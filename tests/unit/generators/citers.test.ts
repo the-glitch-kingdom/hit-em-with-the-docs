@@ -99,3 +99,35 @@ describe('findCitersInIndex (2.3.0)', () => {
     expect(result.incidents_produced_in).toEqual(sortedIncidents);
   });
 });
+
+describe('plain-string symptoms (#46)', () => {
+  it('ignores string entries and still records object entries', async () => {
+    const { mkdtemp, mkdir, writeFile, rm } = await import('fs/promises');
+    const { tmpdir } = await import('os');
+    const { join } = await import('path');
+    const root = await mkdtemp(join(tmpdir(), 'hewtd-citers-'));
+    try {
+      await mkdir(join(root, 'playbooks'));
+      await mkdir(join(root, 'facts'));
+      // The fact carries a string symptom too (the semantic-memory shape).
+      await writeFile(
+        join(root, 'facts', 'some-fact.md'),
+        `---\ntitle: F\ntier: fact\nid: some-fact\nsymptoms:\n  - "Exit code 144"\n---\n# F\n`,
+        'utf-8'
+      );
+      await writeFile(
+        join(root, 'playbooks', 'p.md'),
+        `---\ntitle: P\nsymptoms:\n  - "Exit code 144"\n  - error_pattern: "x"\n    target: "#a"\n    cites: [some-fact]\n---\n# P\n`,
+        'utf-8'
+      );
+      const index = await buildCiterIndex({
+        projectRoot: root,
+        vaultRoot: root,
+        playbookGlobs: [join(root, 'playbooks/*.md')],
+      });
+      expect(index.citers.get('some-fact')).toHaveLength(1);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});

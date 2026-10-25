@@ -165,6 +165,25 @@ symptoms:
 
 Optional: `severity` (`low|medium|high|critical`).
 
+### Plain strings on facts (2.11.0)
+
+On a `fact` doc, an entry may also be a plain string: a literal error text
+for the fact itself. It needs no `target` (the fact is the target) and no
+`cites` (a fact is what gets cited). semantic-memory indexes each string as
+its own search chunk, so a terse error query finds the fact directly.
+
+```yaml
+# facts/pkill-f-matches-own-shell.md
+tier: fact
+symptoms:
+  - "pkill -f: Exit code 144"
+```
+
+Strings and object entries can be mixed on a fact; object entries keep the
+rules above. Any other tier rejects a plain string
+(`PLAYBOOK_SYMPTOM_MISSING_KEY`). `cite` and the citer index skip string
+entries.
+
 ## Validation behavior
 
 ### Error codes (introduced in 2.3.0)

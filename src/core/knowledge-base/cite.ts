@@ -20,7 +20,7 @@ export interface CiteOptions {
   factId: string;
   /**
    * Optional symptom identifier — if present, adds the citation to the
-   * matching entry. If absent, adds to the FIRST symptoms entry (or creates
+   * matching entry. If absent, adds to the FIRST object symptoms entry (or creates
    * a single placeholder symptom).
    */
   symptomMatch?: {
@@ -59,32 +59,36 @@ export async function cite(options: CiteOptions): Promise<CiteResult> {
   const parsed = matter(content);
   const data = (parsed.data ?? {}) as Record<string, unknown>;
 
+  // Plain-string entries (allowed on facts, #46) can't hold cites; skip them.
   const symptoms = Array.isArray(data.symptoms)
-    ? (data.symptoms as SymptomEntry[])
+    ? (data.symptoms as (SymptomEntry | string)[])
     : [];
+  const isEntry = (s: SymptomEntry | string): s is SymptomEntry =>
+    typeof s === 'object' && s !== null;
+  const firstEntry = symptoms.findIndex(isEntry);
 
   let action: CiteResult['action'];
   let symptomIndex: number;
 
-  if (symptoms.length === 0) {
-    // No symptoms block — create one with a single placeholder entry.
+  if (firstEntry < 0) {
+    // No citable entry — add one placeholder entry.
     symptoms.push({
       alert_name: '<TODO: specify alert_name, user_phrase, or error_pattern>',
       target: '<TODO: anchor>',
       cites: [factId],
     });
-    symptomIndex = 0;
+    symptomIndex = symptoms.length - 1;
     action = 'created_block';
   } else {
     // Find the target entry. If symptomMatch is provided, look for a match;
     // otherwise default to the first entry.
-    let targetIdx = 0;
+    let targetIdx = firstEntry;
     if (symptomMatch) {
-      const matched = symptoms.findIndex((s) => matchesSymptom(s, symptomMatch));
+      const matched = symptoms.findIndex((s) => isEntry(s) && matchesSymptom(s, symptomMatch));
       if (matched >= 0) targetIdx = matched;
     }
 
-    const entry = symptoms[targetIdx]!;
+    const entry = symptoms[targetIdx] as SymptomEntry;
     const cites = Array.isArray(entry.cites) ? entry.cites : [];
 
     if (cites.includes(factId)) {

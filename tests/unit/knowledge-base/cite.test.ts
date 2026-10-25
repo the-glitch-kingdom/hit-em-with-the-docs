@@ -194,4 +194,27 @@ symptoms:
     const after = await readFile(playbookPath, 'utf-8');
     expect(after).toBe(original); // unchanged on disk
   });
+  it('skips plain-string symptoms instead of crashing on them (#46)', async () => {
+    const fm = (symptoms: string) =>
+      `---\ntitle: F\ntier: fact\ndomains: [observability]\nstatus: active\nlast_updated: '2026-10-25'\n${symptoms}---\n\n# F\n`;
+
+    // A string first, an object second → the cite goes on the object.
+    await writeFile(
+      playbookPath,
+      fm('symptoms:\n  - "pkill -f: Exit code 144"\n  - error_pattern: "x"\n    target: "#a"\n    cites: [old]\n'),
+      'utf-8'
+    );
+    const onObject = await cite({ playbookPath, factId: 'new-fact' });
+    expect(onObject.action).toBe('inserted');
+    expect(onObject.symptomIndex).toBe(1);
+
+    // Only strings → a placeholder entry is appended; the strings stay.
+    await writeFile(playbookPath, fm('symptoms:\n  - "pkill -f: Exit code 144"\n'), 'utf-8');
+    const appended = await cite({ playbookPath, factId: 'new-fact' });
+    expect(appended.action).toBe('created_block');
+    expect(appended.symptomIndex).toBe(1);
+    const after = await readFile(playbookPath, 'utf-8');
+    expect(after).toContain('pkill -f: Exit code 144');
+    expect(after).toContain('new-fact');
+  });
 });

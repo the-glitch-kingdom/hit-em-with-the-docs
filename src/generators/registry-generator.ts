@@ -7,10 +7,23 @@ import {
 import { formatDate } from '../core/metadata/generator.js';
 import type { IndexEntry } from './index-generator.js';
 
+const COMMON_TASKS: [string, Domain][] = [
+  ['New developer setup', 'quickstart'],
+  ['Coding standards', 'standards'],
+  ['API development', 'api'],
+  ['Security implementation', 'security'],
+  ['Database changes', 'database'],
+  ['Deployment', 'devops'],
+  ['Troubleshooting', 'troubleshooting'],
+];
+
 /**
  * Generate the root REGISTRY.md content (quick reference)
  */
-export function generateRootRegistry(): string {
+export function generateRootRegistry(
+  /** Domains whose folder exists — only these are linked (#45). */
+  present: Domain[] = getAllDomains()
+): string {
   const now = formatDate(new Date());
 
   let content = `---
@@ -33,7 +46,7 @@ purpose: Quick reference for all documentation domains
 |--------|----------|----------|----------|
 `;
 
-  for (const domain of getAllDomains()) {
+  for (const domain of present) {
     const def = getDomainDefinition(domain);
     const keywords = def.keywords.slice(0, 3).join(', ');
     content += `| [${def.name}](${domain}/) | ${def.category} | ${def.loadPriority}/10 | ${keywords} |\n`;
@@ -45,7 +58,8 @@ purpose: Quick reference for all documentation domains
   const categories = ['core', 'development', 'features', 'advanced'] as const;
 
   for (const category of categories) {
-    const categoryDomains = getDomainsByCategory(category);
+    const categoryDomains = getDomainsByCategory(category).filter((d) => present.includes(d));
+    if (categoryDomains.length === 0) continue;
 
     content += `### ${capitalize(category)}\n\n`;
 
@@ -56,16 +70,15 @@ purpose: Quick reference for all documentation domains
     content += `\n`;
   }
 
-  content += `## Common Tasks\n\n`;
-  content += `| Task | Start Here |\n`;
-  content += `|------|------------|\n`;
-  content += `| New developer setup | [quickstart/](quickstart/) |\n`;
-  content += `| Coding standards | [standards/](standards/) |\n`;
-  content += `| API development | [api/](api/) |\n`;
-  content += `| Security implementation | [security/](security/) |\n`;
-  content += `| Database changes | [database/](database/) |\n`;
-  content += `| Deployment | [devops/](devops/) |\n`;
-  content += `| Troubleshooting | [troubleshooting/](troubleshooting/) |\n`;
+  const tasks = COMMON_TASKS.filter(([, domain]) => present.includes(domain));
+  if (tasks.length > 0) {
+    content += `## Common Tasks\n\n`;
+    content += `| Task | Start Here |\n`;
+    content += `|------|------------|\n`;
+    for (const [task, domain] of tasks) {
+      content += `| ${task} | [${domain}/](${domain}/) |\n`;
+    }
+  }
 
   content += `\n---\n\n`;
   content += `*Last updated: ${now}*\n`;

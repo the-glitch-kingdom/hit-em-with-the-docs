@@ -164,6 +164,42 @@ describe('archiveDoc / unarchiveDoc', () => {
     expect(clobber.ok).toBe(false);
     expect(clobber.errors.join(' ')).toMatch(/already exists/i);
   });
+
+  describe('#44', () => {
+    const GUIDE = '# Archive guide\n';
+
+    async function expectRefused(dryRun = false): Promise<void> {
+      const docBefore = await readFile(join(docsPath, 'README.md'), 'utf-8');
+      const res = await archiveDoc({ projectRoot: tmpDir, docsPath, file: 'README.md', dryRun });
+      expect(res.ok).toBe(false);
+      expect(res.action).toBe('rejected');
+      expect(res.errors.join(' ')).toMatch(/archive\/README\.md.*README\.md/);
+      expect(await readFile(join(docsPath, 'archive/README.md'), 'utf-8')).toBe(GUIDE);
+      expect(await readFile(join(docsPath, 'README.md'), 'utf-8')).toBe(docBefore);
+    }
+
+    it('refuses to overwrite an existing file at the archive path (fs)', async () => {
+      await writeDoc('archive/README.md', GUIDE);
+      await writeDoc('README.md');
+      await expectRefused();
+      await expectRefused(true);
+    });
+
+    it('refuses to overwrite a tracked file at the archive path (git)', async () => {
+      execFileSync('git', ['init', '-q'], { cwd: tmpDir });
+      execFileSync('git', ['config', 'user.email', 't@t.co'], { cwd: tmpDir });
+      execFileSync('git', ['config', 'user.name', 't'], { cwd: tmpDir });
+      await writeDoc('archive/README.md', GUIDE);
+      await writeDoc('README.md');
+      execFileSync('git', ['add', '-A'], { cwd: tmpDir });
+      execFileSync('git', ['commit', '-qm', 'init'], { cwd: tmpDir });
+
+      await expectRefused();
+      const status = execFileSync('git', ['status', '--porcelain'], { cwd: tmpDir, encoding: 'utf-8' });
+      expect(status).toBe('');
+    });
+  });
+
   describe('#39', () => {
     it('does not count links from generated indexes, but still counts a hand-written one', async () => {
       await writeDoc('api/old.md');

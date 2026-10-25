@@ -26,6 +26,7 @@ import {
 import { runMaintenance } from '../../src/core/maintain/orchestrator.js';
 import { auditDocumentation } from '../../src/core/audit/auditor.js';
 import { resetRegistry } from '../../src/core/domains/registry.js';
+import { checkLinks } from '../../src/core/links/checker.js';
 
 /** A minimal, valid document body. */
 function doc(title: string | null): string {
@@ -451,5 +452,69 @@ describe('Recursive domain indexing (2.7.1 — issue #12)', () => {
       }
       expect(domainIndex).toContain('Knowledge Base README');
     });
+  });
+});
+
+describe('Generated indexes link only to domains that exist (#45)', () => {
+  let tmpProject: string;
+  let docsPath: string;
+  const originalCwd = process.cwd();
+
+  beforeEach(async () => {
+    tmpProject = await mkdtemp(join(tmpdir(), 'hewtd-dead-links-'));
+    docsPath = join(tmpProject, '.documentation');
+    // One custom domain, so custom folders count as present too.
+    await writeDoc(
+      join(tmpProject, '.claude', 'hit-em-with-the-docs.json'),
+      JSON.stringify({
+        domains: [
+          {
+            id: 'compliance',
+            name: 'Compliance',
+            description: 'Regulatory compliance docs',
+            keywords: ['gdpr', 'troubleshooting', 'reference'],
+            loadPriority: 7,
+            category: 'core',
+          },
+        ],
+      })
+    );
+    process.chdir(tmpProject);
+    resetRegistry();
+  });
+
+  afterEach(async () => {
+    process.chdir(originalCwd);
+    resetRegistry();
+    await rm(tmpProject, { recursive: true, force: true });
+  });
+
+  it('a tree with only some domains has no broken links after regeneration', async () => {
+    for (const d of ['reference', 'troubleshooting', 'compliance']) {
+      await writeDoc(join(docsPath, d, 'a.md'), doc(`${d} doc`));
+    }
+    await regenerateIndexes({ docsPath, silent: true });
+
+    const result = await checkLinks({ docsPath, silent: true });
+    expect(result.brokenLinks).toEqual([]);
+
+    const registry = await readFile(join(docsPath, 'REGISTRY.md'), 'utf-8');
+    expect(registry).toContain('[troubleshooting/](troubleshooting/)');
+    expect(registry).toContain('(compliance/)');
+    expect(registry).not.toMatch(/\]\((standards|api|devops)\//);
+    // Related domains still render, limited to existing folders.
+    const index = await readFile(join(docsPath, 'compliance', 'INDEX.md'), 'utf-8');
+    expect(index).toContain('## Related Domains');
+  });
+
+  it('a partial scaffold links only the scaffolded domains', async () => {
+    await createScaffold({
+      rootPath: docsPath,
+      domains: ['reference', 'troubleshooting'],
+      overwrite: false,
+      silent: true,
+    });
+    const result = await checkLinks({ docsPath, silent: true });
+    expect(result.brokenLinks).toEqual([]);
   });
 });

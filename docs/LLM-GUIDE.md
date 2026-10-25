@@ -111,7 +111,7 @@ The KB subtree lives at `.documentation/knowledge-base/` by default (configurabl
 
 ### Enriching a playbook
 
-Playbooks stay where they are (`troubleshooting/`, `devops/`, etc.). Add a `symptoms:` block to the frontmatter — see `templates/knowledge-base/playbook-symptoms.template.md` for the snippet. Each entry needs one of `alert_name` | `user_phrase` | `error_pattern`, a `target` (anchor or path), and a non-empty `cites` array of fact ids.
+Playbooks stay where they are (`troubleshooting/`, `devops/`, etc.). Add a `symptoms:` block to the frontmatter — see `templates/knowledge-base/playbook-symptoms.template.md` for the snippet. Each entry needs one of `alert_name` | `user_phrase` | `error_pattern`, a `target` (anchor or path), and a non-empty `cites` array of fact ids. A **fact** may also list plain strings (literal error text for that fact, no target or cites); no other tier may.
 
 ## Commands you'll invoke
 

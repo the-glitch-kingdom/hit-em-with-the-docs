@@ -132,6 +132,8 @@ operational knowledge in three tiers, each with a template in
 - **Symptoms:** a `symptoms:` block in a playbook's frontmatter maps an alert
   name, user phrase or error pattern to a section of the playbook, and `cites:`
   the facts that step relies on. `symptoms/INDEX.md` is generated from them.
+  A fact may also carry `symptoms:` as plain strings of literal error text
+  (`- "pkill -f: Exit code 144"`); only facts may use that form.
 
 Logging an incident:
 

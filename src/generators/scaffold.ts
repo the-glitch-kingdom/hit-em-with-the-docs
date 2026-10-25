@@ -53,7 +53,7 @@ export async function createScaffold(options: ScaffoldOptions): Promise<Scaffold
     await createDirectory(rootPath, result, overwrite);
 
     // Create root files
-    await createRootFiles(rootPath, result, overwrite);
+    await createRootFiles(rootPath, domains, result, overwrite);
 
     // Create domain directories and files
     for (const domain of domains) {
@@ -127,6 +127,7 @@ async function createFile(
  */
 async function createRootFiles(
   rootPath: string,
+  domains: Domain[],
   result: ScaffoldResult,
   overwrite: boolean
 ): Promise<void> {
@@ -135,11 +136,11 @@ async function createRootFiles(
   await createFile(join(rootPath, 'INDEX.md'), indexContent, result, overwrite);
 
   // REGISTRY.md
-  const registryContent = generateRootRegistry();
+  const registryContent = generateRootRegistry(domains);
   await createFile(join(rootPath, 'REGISTRY.md'), registryContent, result, overwrite);
 
   // README.md
-  const readmeContent = generateRootReadme();
+  const readmeContent = generateRootReadme(domains);
   await createFile(join(rootPath, 'README.md'), readmeContent, result, overwrite);
 }
 
@@ -265,7 +266,7 @@ INDEX.md / REGISTRY.md, and can't break audit/link-check with stale frontmatter.
 /**
  * Generate root README content
  */
-function generateRootReadme(): string {
+function generateRootReadme(domains: Domain[]): string {
   return `# Documentation
 
 This documentation system uses a hierarchical, domain-based structure for optimal organization and discoverability.
@@ -279,7 +280,7 @@ This documentation system uses a hierarchical, domain-based structure for optima
 
 | Domain | Description |
 |--------|-------------|
-${getAllDomains().map((d) => `| [${d}](${d}/) | ${getDomainDefinition(d).description} |`).join('\n')}
+${domains.map((d) => `| [${d}](${d}/) | ${getDomainDefinition(d).description} |`).join('\n')}
 
 ## Adding New Documentation
 

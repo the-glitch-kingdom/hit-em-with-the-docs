@@ -756,6 +756,57 @@ describe('Metadata Schema', () => {
       const errs = validateKnowledgeBaseFields(playbookBase);
       expect(errs).toEqual([]);
     });
+
+    describe('plain-string symptoms (#46)', () => {
+      const fact = {
+        title: 'pkill -f exits 144',
+        tier: 'fact',
+        domains: ['observability'],
+        status: 'active',
+        last_updated: '2026-10-25',
+        id: 'pkill-f-exit-144',
+        confidence: 'high',
+        last_verified: '2026-10-25',
+        provenance: ['incidents/2026-10-25-x/'],
+      };
+
+      it('accepts plain strings on a fact, alone or mixed with object entries', () => {
+        const symptoms = [
+          'pkill -f: Exit code 144',
+          { error_pattern: '^Exit code 144$', target: '#instead', cites: ['other-fact'] },
+        ];
+        expect(validateMetadata({ ...fact, symptoms }).valid).toBe(true);
+        expect(validateKnowledgeBaseFields({ ...fact, symptoms })).toEqual([]);
+      });
+
+      it('rejects plain strings on other tiers with one clear error each', () => {
+        const symptoms = ['pkill -f: Exit code 144'];
+        expect(validateMetadata({ ...playbookBase, symptoms }).valid).toBe(false);
+        const errs = validateKnowledgeBaseFields({ ...playbookBase, symptoms });
+        expect(errs).toHaveLength(1);
+        expect(errs[0]!.code).toBe(KB_ERROR_CODES.PLAYBOOK_SYMPTOM_MISSING_KEY);
+        expect(errs[0]!.message).toMatch(/plain string; only fact docs/);
+      });
+
+      it('still requires target and cites on object entries of a fact', () => {
+        const errs = validateKnowledgeBaseFields({
+          ...fact,
+          symptoms: [{ error_pattern: 'x' }],
+        });
+        expect(errs.map((e) => e.code)).toEqual([
+          KB_ERROR_CODES.PLAYBOOK_SYMPTOM_MISSING_TARGET,
+          KB_ERROR_CODES.PLAYBOOK_SYMPTOM_MISSING_CITES,
+        ]);
+      });
+
+      it('rejects an empty string', () => {
+        expect(validateMetadata({ ...fact, symptoms: [''] }).valid).toBe(false);
+      });
+
+      it('partial schema accepts plain strings', () => {
+        expect(validatePartialMetadata({ symptoms: ['pkill -f: Exit code 144'] }).valid).toBe(true);
+      });
+    });
   });
 
   describe('backward compatibility (2.3.0 regression preservation)', () => {

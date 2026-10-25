@@ -238,6 +238,11 @@ export async function regenerateIndexes(
   // Scan every domain — the root INDEX needs counts for all of them even
   // when only a subset of domain files is being rewritten.
   const rootEntriesByDomain: Record<string, IndexEntry[]> = {};
+  // Generated files link only to domains with a folder on disk (#45).
+  const present: Domain[] = [];
+  for (const domain of allDomains) {
+    if (await pathExists(join(docsPath, domain))) present.push(domain);
+  }
 
   for (const domain of allDomains) {
     const domainEntries = await buildDomainEntries(docsPath, domain, '');
@@ -250,16 +255,15 @@ export async function regenerateIndexes(
 
     // Only (re)write a domain's own files when it is in the target set and
     // its directory actually exists on disk.
-    if (!targetDomains.includes(domain)) continue;
+    if (!targetDomains.includes(domain) || !present.includes(domain)) continue;
     const domainDir = join(docsPath, domain);
-    if (!(await pathExists(domainDir))) continue;
 
     const indexPath = join(domainDir, 'INDEX.md');
     const registryPath = join(domainDir, 'REGISTRY.md');
     if (!dryRun) {
       await writeFile(
         indexPath,
-        generateDomainIndexContent(domain, domainEntries),
+        generateDomainIndexContent(domain, domainEntries, present),
         'utf-8'
       );
       await writeFile(
@@ -281,7 +285,7 @@ export async function regenerateIndexes(
         generateRootIndex(rootEntriesByDomain as Record<Domain, IndexEntry[]>),
         'utf-8'
       );
-      await writeFile(rootRegistryPath, generateRootRegistry(), 'utf-8');
+      await writeFile(rootRegistryPath, generateRootRegistry(present), 'utf-8');
     }
     result.filesWritten.push(rootIndexPath, rootRegistryPath);
   }

@@ -61,7 +61,6 @@ ${def.keywords.map((k) => `- ${k}`).join('\n')}
 
 - [Domain Registry](REGISTRY.md) - Quick reference
 - [Root Index](../INDEX.md) - All documentation
-- [Standards](../standards/) - Coding standards
 
 ---
 

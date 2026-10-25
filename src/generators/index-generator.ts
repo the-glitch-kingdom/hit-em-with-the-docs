@@ -85,7 +85,9 @@ purpose: Navigation hub for all documentation
  */
 export function generateDomainIndexContent(
   domain: Domain,
-  entries: IndexEntry[] = []
+  entries: IndexEntry[] = [],
+  /** Domains whose folder exists — only these are linked as related (#45). */
+  present: Domain[] = getAllDomains()
 ): string {
   const def = getDomainDefinition(domain);
   const now = formatDate(new Date());
@@ -145,7 +147,7 @@ purpose: Complete listing of ${domain} documentation
   content += `This domain covers: ${def.keywords.slice(0, 10).join(', ')}\n\n`;
 
   // Related domains
-  const relatedDomains = findRelatedDomains(domain);
+  const relatedDomains = findRelatedDomains(domain, present);
   if (relatedDomains.length > 0) {
     content += `## Related Domains\n\n`;
     for (const related of relatedDomains) {
@@ -189,11 +191,11 @@ function groupByTier(entries: IndexEntry[]): Record<string, IndexEntry[]> {
 /**
  * Find related domains based on shared keywords
  */
-function findRelatedDomains(domain: Domain): Domain[] {
+function findRelatedDomains(domain: Domain, present: Domain[]): Domain[] {
   const def = getDomainDefinition(domain);
   const related: { domain: Domain; score: number }[] = [];
 
-  for (const other of getAllDomains()) {
+  for (const other of present) {
     if (other === domain) continue;
 
     const otherDef = getDomainDefinition(other);

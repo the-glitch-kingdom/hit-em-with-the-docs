@@ -32,7 +32,9 @@ import {
  *   3. Each lifecycle-tracked tier has its own required-fields contract
  *      (e.g. fact requires id+confidence+last_verified+provenance).
  *   4. The optional `symptoms:` field, when present on any tier, must be an
- *      array of valid symptom entries.
+ *      array of valid symptom entries. On the fact tier an entry may also be a
+ *      plain string: an error pattern for the fact itself, no target or cites
+ *      (#46 — the shape semantic-memory indexes).
  */
 
 // ----- Core schema groups (existing 22-field surface) -----
@@ -139,17 +141,20 @@ const knowledgeBaseSchema = z.object({
   strengthened: z.array(z.string()).optional(),
   weakened: z.array(z.string()).optional(),
 
-  // Playbook symptoms (any tier may carry this)
+  // Playbook symptoms (any tier may carry this; plain strings on facts only)
   symptoms: z
     .array(
-      z.object({
+      z.union([
+        z.string().min(1),
+        z.object({
         alert_name: z.string().optional(),
         user_phrase: z.union([z.string(), z.array(z.string())]).optional(),
         error_pattern: z.string().optional(),
         severity: z.enum(INCIDENT_SEVERITY_VALUES).optional(),
         target: z.string().min(1).optional(),
         cites: z.array(z.string()).optional(),
-      })
+        }),
+      ])
     )
     .optional(),
 });
@@ -247,11 +252,16 @@ const refineIncidentFactsRequirements = (
 
 /**
  * Symptoms entries (any tier): each must have one of alert_name/user_phrase/
- * error_pattern AND target AND non-empty cites array.
+ * error_pattern AND target AND non-empty cites array. Fact docs may also
+ * list plain strings (#46).
  */
 const refineSymptomsEntries = (data: z.infer<typeof _baseMergedSchema>) => {
   if (!Array.isArray(data.symptoms)) return true;
   for (const s of data.symptoms) {
+    if (typeof s === 'string') {
+      if (data.tier !== 'fact') return false;
+      continue;
+    }
     const hasKey =
       s.alert_name !== undefined ||
       s.user_phrase !== undefined ||
@@ -314,7 +324,7 @@ export const MetadataSchema = _baseMergedSchema
   .refine(refineSymptomsEntries, {
     message: formatKbError(
       KB_ERROR_CODES.PLAYBOOK_SYMPTOM_MISSING_KEY,
-      'each symptoms[] entry requires one of alert_name|user_phrase|error_pattern AND a target AND a non-empty cites[] array'
+      'each symptoms[] entry requires one of alert_name|user_phrase|error_pattern AND a target AND a non-empty cites[] array (fact docs may also list plain strings)'
     ),
     path: ['symptoms'],
   });
@@ -626,6 +636,18 @@ export function validateKnowledgeBaseFields(
   // ----- Symptoms entries (any tier) -----
   if (Array.isArray(data.symptoms)) {
     for (let i = 0; i < data.symptoms.length; i++) {
+      if (typeof data.symptoms[i] === 'string') {
+        if (tier !== 'fact') {
+          errors.push({
+            code: KB_ERROR_CODES.PLAYBOOK_SYMPTOM_MISSING_KEY,
+            message:
+              `symptoms[${i}] is a plain string; only fact docs may use that form. ` +
+              `Use { error_pattern, target, cites } here`,
+            path: `symptoms[${i}]`,
+          });
+        }
+        continue;
+      }
       const s = data.symptoms[i] as Record<string, unknown>;
       const hasKey =
         typeof s.alert_name === 'string' ||

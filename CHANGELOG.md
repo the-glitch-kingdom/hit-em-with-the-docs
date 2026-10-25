@@ -2,6 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.11.0] — 2026-10-25
+
+Three fixes from using hewtd alongside semantic-memory: `archive` no longer
+overwrites files (#44), generated indexes no longer link to domain folders that
+don't exist (#45), and fact docs can carry plain-string `symptoms:`, the shape
+semantic-memory indexes (#46).
+
+### `archive` refuses to overwrite an existing file (#44)
+
+Archiving `README.md` when `archive/README.md` already existed replaced that file
+without warning: `git mv -f` overwrote it, and so did the `fs.rename` fallback
+used for untracked docs. `archive` and `unarchive` now refuse any existing
+destination, naming both paths, in dry runs too. If you were hit by this,
+recover with `hewtd unarchive`, `git checkout HEAD -- <archive path>`, then
+rename the doc and archive it again.
+
+### Generated indexes link only to domains that exist (#45)
+
+Generated `INDEX.md` / `REGISTRY.md` files linked every registered domain, so a
+project using a few of the 15 built-ins got dozens of broken links it couldn't
+fix (the files are generated and guarded). Related domains, the root REGISTRY's
+quick reference, by-category and common-tasks tables now list only domains with
+a folder on disk, and the hardcoded Standards link is gone. A partial scaffold
+(`init --domains`) links only the domains it created. On semantic-memory's docs,
+the 47 generated broken links drop to 0, and the health score rises with them.
+Run `hewtd index` to refresh existing files.
+
+### Plain-string `symptoms:` on facts (#46)
+
+On `tier: fact`, a `symptoms:` entry may now be a plain string: literal error
+text for that fact, with no `target` or `cites`. That's the shape semantic-memory
+indexes as a search chunk, so the same field now passes both tools. Other tiers
+still reject strings, with an error saying only facts may use that form, and
+object entries keep their rules everywhere. `cite` no longer crashes on a string
+entry; it cites onto the first object entry or appends one.
+
 ## [2.10.0] — 2026-10-03
 
 Gotchas found during a working session now have a home: the knowledge base

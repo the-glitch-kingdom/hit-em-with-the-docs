@@ -50,10 +50,12 @@ async function moveFile(
   fromAbs: string,
   toAbs: string
 ): Promise<'git' | 'fs'> {
+  // Both git mv's fallback (fs.rename) and git mv -f replace an existing file.
+  if (await exists(toAbs)) throw new Error(`Refusing to overwrite existing file: ${toAbs}`);
   await mkdir(dirname(toAbs), { recursive: true });
   if (isGitRepo(projectRoot)) {
     try {
-      execFileSync('git', ['mv', '-f', fromAbs, toAbs], {
+      execFileSync('git', ['mv', fromAbs, toAbs], {
         cwd: projectRoot,
         stdio: 'ignore',
       });
@@ -119,6 +121,14 @@ export async function archiveDoc(
 
   const toRel = `${ARCHIVE_DIR}/${fromRel}`;
   const toAbs = join(docsPath, toRel);
+
+  if (await exists(toAbs)) {
+    errors.push(
+      `Archive target already exists: ${toRel}. Archiving ${fromRel} would overwrite it. ` +
+        `Rename one of them first.`
+    );
+    return { ok: false, errors, action: 'rejected', from: fromRel, to: toRel, inboundLinks: [] };
+  }
 
   // Link guard: refuse by default if active docs link to this doc.
   const inboundLinks = await findInboundLinks(docsPath, fromRel);

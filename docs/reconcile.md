@@ -398,6 +398,9 @@ accepted entry. Links from other outside files are not repointed.
 
 ## Limitations
 
+- No backfill (#61): upgrading hewtd, its postinstall, the SessionStart hooks and the routine commands
+  (`index`, `maintain`, `metadata-sync`, `audit`) never add `sources` to, or otherwise change, an existing doc.
+  Existing docs gain `sources` only through `/reconcile` batches; `hewtd integrate` records them for new docs only.
 - No read log for `sources`: the slash command must only list files it read.
 - Team defaults are provisional. Triage was measured on one real tree (121
   docs, whole-tree plan: 4 shards); wall time versus serial was not measured.

@@ -1111,6 +1111,7 @@ program
   .option('--team', 'Force an agent-team plan regardless of job size', false)
   .option('--write-review', 'Write an empty review-file skeleton per shard under .hewtd/reconcile/', false)
   .option('--batch <id>', 'Batch id for --write-review (default: next number)')
+  .option('--outside', 'List markdown files outside the docs root by class (tool-read, junk, not-a-doc, misplaced); with --write-review, write an outside review file', false)
   .option('--apply <files...>', 'Apply the accepted entries of review files (serial, one commit per batch)')
   .action(async (scope: string[], options) => {
     const { loadPluginConfig } = await import('../utils/config.js');
@@ -1130,6 +1131,20 @@ program
         logger.header('hewtd reconcile --apply');
         for (const o of res.outcomes) logger.info(`  [${o.status}] ${o.path}${o.detail ? ` - ${o.detail}` : ''}`);
         if (res.commit) logger.info(`  committed ${res.commit}`);
+      } catch (e) {
+        logger.error((e as Error).message);
+        process.exitCode = 1;
+      }
+      return;
+    }
+    if (options.outside) {
+      try {
+        const { discoverOutside, writeOutsideReview, projectRootOf } = await import('../core/reconcile/outside.js');
+        const docs = await discoverOutside(docsPath, (await loadPluginConfig(projectRootOf(docsPath))).reconcile.keep_in_place);
+        if (options.writeReview) logger.info(`  wrote ${relative(root, await writeOutsideReview({ docsPath, root, docs, batch: options.batch }))}`);
+        if (options.json) { console.log(JSON.stringify(docs, null, 2)); return; }
+        logger.header('hewtd reconcile --outside');
+        for (const d of docs) logger.info(`  [${d.cls}] ${d.path} - ${d.reason}`);
       } catch (e) {
         logger.error((e as Error).message);
         process.exitCode = 1;

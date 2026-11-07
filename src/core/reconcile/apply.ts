@@ -14,6 +14,7 @@ import { regenerateIndexes } from '../../generators/regenerate.js';
 import { getAllDomains } from '../domains/registry.js';
 import { hashContent, recordEntry, saveLedger, type Ledger } from './ledger.js';
 import { gitRoot } from './triage.js';
+import { applyOutsideEntry, outsideKey } from './outside.js';
 import { parseReview, reviewDir, type ReviewEntry } from './review.js';
 
 export interface ApplyOutcome {
@@ -72,13 +73,27 @@ export async function applyReviews(opts: {
   const outcomes: ApplyOutcome[] = [];
   const touched = new Set<string>(); // repo-relative via absolute paths
   const domains = new Set<string>();
-  const applied: { entry: ReviewEntry; file: string; abs: string }[] = [];
+  const applied: { entry: ReviewEntry; file: string; abs: string; outside?: boolean }[] = [];
   const known = new Set<string>(getAllDomains());
 
   for (const r of reviews) {
     const reviewRef = relative(root, r.file).split('\\').join('/');
     for (const { entry: e, accepted } of r.entries) {
       const abs = join(docsPath, e.path);
+      if (e.outside) {
+        const key = outsideKey(e.path);
+        if (ledger.entries[key]?.verdict && ledger.entries[key]?.review_file === reviewRef) { outcomes.push({ path: e.path, status: 'already-applied' }); continue; }
+        if (!accepted) { outcomes.push({ path: e.path, status: 'rejected' }); continue; }
+        if (!e.verdict) { outcomes.push({ path: e.path, status: 'skipped', detail: 'no verdict' }); continue; }
+        const o = await applyOutsideEntry({ docsPath, entry: e });
+        if (o.status !== 'applied') { outcomes.push({ path: e.path, status: o.status, ...(o.detail && { detail: o.detail }) }); continue; }
+        o.touched.forEach((t) => touched.add(t));
+        if (o.domain) domains.add(o.domain);
+        applied.push({ entry: e, file: reviewRef, abs, outside: true });
+        outcomes.push({ path: e.path, status: 'applied' });
+        continue;
+      }
+      if (e.verdict === 'integrate' || e.verdict === 'delete') { outcomes.push({ path: e.path, status: 'error', detail: `"${e.verdict}" is only valid for outside entries` }); continue; }
       const led = ledger.entries[e.path];
       const done = !!led?.verdict && led.review_file === reviewRef;
       const present = await exists(abs);
@@ -140,11 +155,12 @@ export async function applyReviews(opts: {
   }
 
   for (const a of applied) {
-    const dest = a.entry.verdict === 'archive' ? undefined : a.abs;
+    const dest = a.entry.verdict === 'archive' || a.outside ? undefined : a.abs;
     const raw = dest ? await readFile(dest, 'utf-8') : undefined;
-    const prev = ledger.entries[a.entry.path];
+    const key = a.outside ? outsideKey(a.entry.path) : a.entry.path;
+    const prev = ledger.entries[key];
     const rec = recordEntry(ledger, {
-      path: a.entry.path,
+      path: key,
       lane: prev?.lane ?? a.entry.lane ?? 'check',
       content_hash: raw !== undefined ? hashContent(raw) : a.entry.content_hash,
     });

@@ -130,7 +130,7 @@ export interface RepoIndex {
 const git = (root: string, args: string[]): string =>
   execFileSync('git', args, { cwd: root, encoding: 'utf-8', maxBuffer: 512 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] });
 
-function globToRe(glob: string): RegExp {
+export function globToRe(glob: string): RegExp {
   const s = glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*\/?/g, '\0').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]').replace(/\0/g, '(?:.*/)?');
   return new RegExp(`^${s}$`);
 }

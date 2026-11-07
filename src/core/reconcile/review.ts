@@ -9,7 +9,7 @@ import matter from 'gray-matter';
 import { hashContent } from './ledger.js';
 import type { Shard, TriageResult } from './triage.js';
 
-export const VERDICTS = ['verify', 'rewrite', 'archive', 'unverifiable', 'fields'] as const;
+export const VERDICTS = ['verify', 'rewrite', 'archive', 'unverifiable', 'fields', 'integrate', 'delete'] as const;
 export type Verdict = (typeof VERDICTS)[number];
 
 export interface ReviewEntry {
@@ -29,6 +29,10 @@ export interface ReviewEntry {
   sources?: string[];
   /** archive: reason stamped on the doc. */
   reason?: string;
+  /** Outside-tree entry: `path` is project-root-relative; verdicts are integrate | delete. */
+  outside?: boolean;
+  /** integrate: target domain (default: declared or detected). */
+  domain?: string;
   lane?: string;
   reasons?: string[];
 }
@@ -75,7 +79,7 @@ export async function parseReview(file: string): Promise<ReviewFile> {
   return { file, batch: String(data.batch ?? ''), shard: Number(data.shard ?? 1), scope: String(data.scope ?? ''), entries };
 }
 
-async function nextBatch(dir: string): Promise<string> {
+export async function nextBatch(dir: string): Promise<string> {
   let max = 0;
   try {
     for (const f of await readdir(dir)) max = Math.max(max, parseInt(/^review-(\d+)-/.exec(f)?.[1] ?? '0', 10));

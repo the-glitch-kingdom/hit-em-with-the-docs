@@ -141,6 +141,36 @@ const lenientStatusArray = z
   }, z.array(statusValueSchema))
   .default([]);
 
+export const DEFAULT_GENERIC_TITLES = [
+  'Admin', 'Reference', 'Guide', 'Overview', 'Notes', 'README', 'Index', 'Introduction',
+];
+
+/**
+ * Retrieval-readiness audit thresholds (#50). Every key falls back to its
+ * default on an invalid value (`.catch`) so a hand-edited config never throws.
+ * `disabled` lists RETRIEVAL_* codes to silence.
+ */
+const retrievalConfigSchema = z
+  .object({
+    purpose_min_words: z.number().int().positive().catch(8),
+    generic_titles: z.array(z.string()).catch(DEFAULT_GENERIC_TITLES),
+    oversized_chars: z.number().int().positive().catch(15000),
+    oversized_headings: z.number().int().positive().catch(12),
+    near_duplicate: z.boolean().catch(true),
+    near_duplicate_min_chars: z.number().int().positive().catch(300),
+    disabled: z.array(z.string()).catch([]),
+  })
+  .catch({
+    purpose_min_words: 8,
+    generic_titles: DEFAULT_GENERIC_TITLES,
+    oversized_chars: 15000,
+    oversized_headings: 12,
+    near_duplicate: true,
+    near_duplicate_min_chars: 300,
+    disabled: [],
+  })
+  .default({});
+
 const pluginConfigSchema = z
   .object({
     /**
@@ -155,12 +185,14 @@ const pluginConfigSchema = z
     domains: lenientDomainsArray,
     status: lenientStatusArray,
     archive: archiveConfigSchema,
+    retrieval: retrievalConfigSchema,
   })
   .passthrough();
 
 export type VaultConfig = z.infer<typeof vaultConfigSchema>;
 export type EnforcementConfig = z.infer<typeof enforcementConfigSchema>;
 export type ArchiveConfig = z.infer<typeof archiveConfigSchema>;
+export type RetrievalConfig = z.infer<typeof retrievalConfigSchema>;
 export type PluginConfig = z.infer<typeof pluginConfigSchema>;
 
 const CONFIG_FILENAME = '.claude/hit-em-with-the-docs.json';

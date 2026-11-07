@@ -14,6 +14,8 @@ import { KB_ERROR_SEVERITY, type KbErrorCode } from '../metadata/errors.js';
 import { detectDomainFromPath } from '../domains/detector.js';
 import { isValidTier, TIERS } from '../domains/classifier.js';
 import { isValidDomain, getAllDomains } from '../domains/registry.js';
+import { loadPluginConfig } from '../../utils/config.js';
+import { collectRetrievalDocs, checkRetrieval } from './retrieval.js';
 import { checkNamingConvention, checkFilePlacement } from './rules.js';
 
 export interface AuditOptions {
@@ -28,6 +30,8 @@ export interface AuditOptions {
    * the AuditResult itself — it's a flag the CLI inspects.
    */
   strict?: boolean;
+  /** Where `.claude/hit-em-with-the-docs.json` lives (retrieval thresholds). Defaults to cwd. */
+  projectRoot?: string;
 }
 
 export interface AuditResult {
@@ -182,6 +186,12 @@ export async function auditDocumentation(options: AuditOptions): Promise<AuditRe
   // a plain `audit` exit code is unaffected (existing behavior preserved).
   const driftIssues = await checkIndexDrift(docsPath, domain);
   result.issues.push(...driftIssues);
+
+  // Retrieval readiness (#50): advisory warnings. Deliberately carry no `code`
+  // so `audit --strict` (which fails on any coded issue) is unaffected.
+  const retrievalCfg = (await loadPluginConfig(options.projectRoot)).retrieval;
+  const retrievalDocs = await collectRetrievalDocs(docsPath, files);
+  result.issues.push(...checkRetrieval(retrievalDocs, retrievalCfg));
 
   // Calculate stats
   result.stats.metadataCompliance = (metadataCompliant / files.length) * 100 || 0;

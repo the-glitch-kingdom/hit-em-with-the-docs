@@ -118,6 +118,17 @@ export async function runMaintenance(options: MaintainOptions): Promise<Maintain
     }
   }
 
+  // Overview back-links (#51): body edits, so only written under --fix; always listed.
+  // Runs before metadata sync so word_count/read-time and the indexes see the edit in the same run.
+  try {
+    const cfg = await loadPluginConfig(dirname(docsPath));
+    if (cfg.overview.backlinks) {
+      result.overviewBacklinks = await addOverviewBacklinks(docsPath, { dryRun: !fix });
+    }
+  } catch (error) {
+    result.errors.push(`Overview back-links failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
   // Step 1: Metadata Sync
   if (!silent) {
     logger.subheader('Step 1: Metadata Sync');
@@ -167,16 +178,6 @@ export async function runMaintenance(options: MaintainOptions): Promise<Maintain
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     result.errors.push(`Knowledge-base index generation failed: ${message}`);
-  }
-
-  // Overview back-links (#51): body edits, so only written under --fix; always listed.
-  try {
-    const cfg = await loadPluginConfig(dirname(docsPath));
-    if (cfg.overview.backlinks) {
-      result.overviewBacklinks = await addOverviewBacklinks(docsPath, { dryRun: !fix });
-    }
-  } catch (error) {
-    result.errors.push(`Overview back-links failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   // Step 2: Link Check (skip in quick mode)

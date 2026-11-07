@@ -145,6 +145,9 @@ export function mergeMetadata(
   const { _generated, ...generatedFields } = generated;
 
   return {
+    // Keep keys the schema does not model (kind, generated, symptoms, ...): dropping them corrupted docs on --fix.
+    ...existing,
+
     // Core Identity
     title: existing.title ?? generatedFields.title ?? 'Untitled',
     tier: existing.tier ?? generatedFields.tier ?? 'guide',

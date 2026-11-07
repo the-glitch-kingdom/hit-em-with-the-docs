@@ -191,3 +191,14 @@ This is a quick start guide for the project.
     });
   });
 });
+
+describe('mergeMetadata keeps unmodelled keys', () => {
+  it('preserves kind, generated and other extra frontmatter keys', () => {
+    const existing = { title: 'T', kind: 'overview', generated: true, symptoms: ['x'] } as never;
+    const merged = mergeMetadata(existing, { _generated: true } as never) as unknown as Record<string, unknown>;
+    expect(merged.kind).toBe('overview');
+    expect(merged.generated).toBe(true);
+    expect(merged.symptoms).toEqual(['x']);
+    expect(merged.title).toBe('T');
+  });
+});

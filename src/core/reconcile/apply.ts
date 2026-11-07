@@ -6,7 +6,7 @@
 import { execFileSync } from 'child_process';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, statSync, writeFileSync } from 'fs';
 import { mkdir, readFile, stat, writeFile } from 'fs/promises';
-import { dirname, isAbsolute, join, relative } from 'path';
+import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import { parseFrontmatter, setFrontmatter } from '../../utils/frontmatter.js';
 import { formatDate } from '../metadata/generator.js';
 import { archiveDoc } from '../archive/manage.js';
@@ -17,6 +17,8 @@ import { gitRoot } from './triage.js';
 import { assertNoSecrets, findSecrets } from './secrets.js';
 import { loadPluginConfig } from '../../utils/config.js';
 import { applyOutsideEntry, outsideKey } from './outside.js';
+import { headingAnchors, sectionOf } from '../links/anchors.js';
+import { missingTokens } from './noloss.js';
 import { envNames, parseReview, reviewDir, type ReviewEntry } from './review.js';
 
 export interface ApplyOutcome {
@@ -188,6 +190,26 @@ function editDoc(raw: string, e: ReviewEntry, today: string): string {
   return setFrontmatter(body, next, raw);
 }
 
+/** point: check the owner section and the no-loss rule, then write the one-line pointer into the copy. */
+function pointDoc(o: { raw: string; e: ReviewEntry; abs: string; ownerAbs: string; ownerRaw: string; today: string }): string {
+  const { raw, e, abs, ownerAbs, ownerRaw, today } = o;
+  const { summary, target } = e.pointer ?? { summary: '', target: '' };
+  const anchor = target.split('#')[1] ?? '';
+  const old = e.remove?.old ?? '';
+  if (!old || !summary.trim() || /[\r\n]/.test(summary) || !anchor) throw new Error('point needs remove.old, a one-line pointer.summary and a target with #anchor');
+  if (ownerAbs === abs) throw new Error('a doc cannot point at itself');
+  const owner = parseFrontmatter<Record<string, unknown>>(ownerRaw);
+  if (!headingAnchors(owner.content).has(anchor)) throw new Error(`anchor #${anchor} not found in ${target.split('#')[0]}`);
+  const section = sectionOf(owner.content, anchor) ?? '';
+  const missing = missingTokens(old, section, summary);
+  if (missing.length) throw new Error(`no-loss check failed, missing: ${missing.join(', ')}`);
+  const heading = (section.split('\n')[0] ?? '').replace(/^#+\s*/, '').replace(/\s*\{#[^}]*\}\s*$/, '').trim() || anchor;
+  const title = typeof owner.data.title === 'string' && owner.data.title ? owner.data.title : ownerAbs.split('/').pop()!;
+  const rel = relative(dirname(abs), ownerAbs).split('\\').join('/');
+  const line = `${summary.trim()} Details: [${title}: ${heading}](${rel}#${anchor})`;
+  return editDoc(raw, { path: e.path, content_hash: e.content_hash, verdict: 'point', patch: [{ old, new: line }] }, today);
+}
+
 export async function applyReviews(opts: {
   root: string;
   docsPath: string;
@@ -221,9 +243,14 @@ export async function applyReviews(opts: {
   let envPath: string | undefined; // set once .env.hewtd was written, so a rollback restores it
   const known = new Set<string>(getAllDomains());
 
-  for (const r of reviews) {
-    const reviewRef = relative(root, r.file).split('\\').join('/');
-    for (const { entry: e, accepted } of r.entries) {
+  // A merge-then-point pair applies merge first: points run after every other entry.
+  const queue = reviews.flatMap((r) => r.entries.map((x) => ({ ...x, r })));
+  queue.sort((a, b) => Number(a.entry.verdict === 'point') - Number(b.entry.verdict === 'point'));
+  const mergedIds = new Set<string>();
+  const relatedRoots = (await loadPluginConfig(root)).reconcile.related_repos.map((x) => resolve(root, x.path));
+  {
+      for (const { entry: e, accepted, r } of queue) {
+      const reviewRef = relative(root, r.file).split('\\').join('/');
       const abs = join(docsPath, e.path);
       // Hard guard: never write outside the project root (related repos are read-only).
       const rel = relative(root, abs);
@@ -263,8 +290,32 @@ export async function applyReviews(opts: {
       let envNamesFor: string[] | undefined;
       try {
         // Nothing the review proposes to write may carry a secret.
-        assertNoSecrets([...(e.patch ?? []).map((p) => p.new), e.draft ?? '', JSON.stringify(e.frontmatter ?? {})].join('\n'), e.path, secretsCfg);
-        if (e.verdict === 'archive') {
+        assertNoSecrets([...(e.patch ?? []).map((p) => p.new), e.draft ?? '', e.pointer?.summary ?? '', JSON.stringify(e.frontmatter ?? {})].join('\n'), e.path, secretsCfg);
+        if (e.verdict === 'merge') {
+          const body = parseFrontmatter(raw).content;
+          if (!e.section || !headingAnchors(body).has(e.section)) throw new Error(`section #${e.section ?? ''} not found in ${e.path}`);
+          if (!e.patch?.length) throw new Error('merge needs a patch');
+          const next = editDoc(raw, e, today);
+          if (!headingAnchors(parseFrontmatter(next).content).has(e.section)) throw new Error(`section #${e.section} gone after the merge`);
+          await writeFile(abs, next, 'utf-8');
+          touched.add(abs);
+          mergedIds.add(e.id ?? e.path);
+        } else if (e.verdict === 'point') {
+          const target = e.pointer?.target ?? '';
+          const ownerAbs = resolve(docsPath, target.split('#')[0] ?? '');
+          const inDocs = !relative(docsPath, ownerAbs).startsWith('..');
+          // Outside the docs tree only a related repo's doc is allowed, and it is only ever read.
+          if (!inDocs && !relatedRoots.some((rr) => !relative(rr, ownerAbs).startsWith('..'))) throw new Error('pointer target is outside the docs tree and not in a related repo');
+          if (!(await exists(ownerAbs))) throw new Error(`pointer target not found: ${target}`);
+          if (e.depends_on_merge) {
+            if (!mergedIds.has(e.depends_on_merge)) throw new Error(`merge "${e.depends_on_merge}" was not applied`);
+            if (ownerAbs !== join(docsPath, [...applied].find((a) => (a.entry.id ?? a.entry.path) === e.depends_on_merge)!.entry.path)) throw new Error('pointer target is not the merged doc');
+          }
+          const ownerRaw = await readFile(ownerAbs, 'utf-8');
+          if (!e.depends_on_merge && hashContent(ownerRaw) !== e.target_hash) throw new Error('owner doc changed since the review was written (or target_hash missing)');
+          await writeFile(abs, pointDoc({ raw, e, abs, ownerAbs, ownerRaw, today }), 'utf-8');
+          touched.add(abs);
+        } else if (e.verdict === 'archive') {
           const res = await archiveDoc({ projectRoot: root, docsPath, file: e.path, today, ...(e.reason && { reason: e.reason }) });
           if (!res.ok) throw new Error(res.errors.join('; '));
           touched.add(abs);

@@ -540,3 +540,32 @@ async function maybeGenerateKbIndexes(
   // (e.g. surfacing KB stats into the maintenance report).
   void result;
 }
+
+/**
+ * Quick health check without full maintenance
+ */
+export async function quickHealthCheck(docsPath: string): Promise<{
+  healthy: boolean;
+  score: number;
+  issues: string[];
+}> {
+  const domainHealth = await checkDomainHealth(docsPath);
+  const issues: string[] = [];
+
+  if (!domainHealth.healthy) {
+    if (domainHealth.missingDomains.length > 0) {
+      issues.push(`Missing domains: ${domainHealth.missingDomains.join(', ')}`);
+    }
+    if (domainHealth.missingIndexes.length > 0) {
+      issues.push(`Missing INDEX.md in: ${domainHealth.missingIndexes.join(', ')}`);
+    }
+  }
+
+  const score = domainHealth.healthy ? 100 : 100 - issues.length * 10;
+
+  return {
+    healthy: issues.length === 0,
+    score: Math.max(0, score),
+    issues,
+  };
+}

@@ -1161,6 +1161,12 @@ program
         const n = (st: string) => res.outcomes.filter((o) => o.status === st).length;
         logger.info(`applied ${n('applied')}, stale ${n('stale')}, rejected ${n('rejected')}, error ${n('error')}`);
         if (n('error')) process.exitCode = 1;
+        const after = await loadLedger(ledgerFile);
+        if (res.outcomes.some((o) => o.status === 'applied' && after.entries[o.path]?.env_names?.length)) {
+          const { buildSecretsReport, writeSecretsReport } = await import('../core/reconcile/secrets-report.js');
+          const rep = await buildSecretsReport({ root, docsPath, findings: [], ledger: after, cfg: config.reconcile.secrets });
+          logger.info(`  secrets report with next steps (rotate, then purge): ${relative(root, await writeSecretsReport(root, rep.text))}`);
+        }
       } catch (e) {
         logger.error((e as Error).message);
         process.exitCode = 1;
@@ -1171,10 +1177,14 @@ program
       try {
         const { scanSecrets } = await import('../core/reconcile/triage.js');
         const found = await scanSecrets({ root, docsPath, config, scope });
+        const { buildSecretsReport, writeSecretsReport } = await import('../core/reconcile/secrets-report.js');
+        const report = await buildSecretsReport({ root, docsPath, findings: found, ledger: await loadLedger(ledgerFile), cfg: config.reconcile.secrets });
+        const reportFile = relative(root, await writeSecretsReport(root, report.text));
         if (options.json) { console.log(JSON.stringify(found, null, 2)); return; }
         logger.header('hewtd reconcile --secrets');
         for (const f of found) logger.info(`  [${f.kind}] ${f.rule} ${f.file}:${f.line} ${f.masked} (${f.fingerprint.slice(0, 12)})`);
         logger.info(`  ${found.length} finding(s)`);
+        logger.info(`  report with next steps: ${reportFile}`);
       } catch (e) {
         logger.error((e as Error).message);
         process.exitCode = 1;

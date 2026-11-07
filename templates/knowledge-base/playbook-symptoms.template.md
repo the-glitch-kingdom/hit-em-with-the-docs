@@ -52,6 +52,10 @@ symptoms:
 ---
 ```
 
+Plain strings also work as entries (`- "users report slow logins"`). They are
+retrieval phrases only: no `target`/`cites`, so alert routing and `cite` skip
+them. Use the object forms above when an alert must route to this playbook.
+
 ## What `cites:` does
 
 `cites:` binds playbook steps to facts. When a fact changes (e.g. its

@@ -30,6 +30,10 @@ export interface FactSpec {
   consequences?: string;
   /** Optional tags (will be merged with auto-derived tags). */
   tags?: string[];
+  /** Optional one-sentence purpose: the question the fact answers. */
+  purpose?: string;
+  /** Optional plain-string symptoms: how the problem is described, or literal error text. */
+  symptoms?: string[];
   /** Optional domains. Defaults to ['knowledge-base'] if not specified. */
   domains?: string[];
 }
@@ -107,6 +111,8 @@ export async function extractFacts(
       provenance: [provenanceRelPath + '/'],
       tags: spec.tags ?? [],
     };
+    if (spec.purpose) frontmatter.purpose = spec.purpose;
+    if (spec.symptoms?.length) frontmatter.symptoms = spec.symptoms;
     if (spec.verifyCommand) {
       frontmatter.verify_command = spec.verifyCommand;
     }

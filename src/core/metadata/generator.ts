@@ -124,7 +124,7 @@ export function generateMetadata(options: GeneratorOptions): GeneratedMetadata {
 
   // Generate purpose if missing
   if (!existingMetadata.purpose) {
-    const purpose = generatePurpose(content, generated.title ?? '');
+    const purpose = generatePurpose(content);
     if (purpose) {
       generated.purpose = purpose;
       generated._generated.fields.push('purpose');
@@ -253,7 +253,7 @@ function extractTags(content: string): string[] {
 /**
  * Generate a one-sentence purpose from content
  */
-function generatePurpose(content: string, title: string): string | undefined {
+function generatePurpose(content: string): string | undefined {
   // Try to extract from first paragraph
   const paragraphs = content
     .replace(/^---[\s\S]*?---\n*/m, '') // Remove frontmatter
@@ -275,10 +275,7 @@ function generatePurpose(content: string, title: string): string | undefined {
     }
   }
 
-  // Generate a basic purpose from title
-  if (title) {
-    return `Documentation for ${title.toLowerCase()}`;
-  }
-
+  // No usable first paragraph: leave purpose missing so the audit flags it
+  // (a title echo is noise for retrieval).
   return undefined;
 }

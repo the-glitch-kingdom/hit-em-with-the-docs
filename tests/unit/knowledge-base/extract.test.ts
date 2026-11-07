@@ -186,4 +186,15 @@ produced: []
     }
     expect(exists).toBe(false);
   });
+
+  it('writes purpose and symptoms into fact frontmatter when given', async () => {
+    const r = await extractFacts({
+      incidentFolder, vaultRoot, projectRoot: tmpProject,
+      accept: [{ id: 'f-one', title: 'F one', confidence: 'high', claim: 'c',
+        purpose: 'Why does X fail?', symptoms: ['x fails on boot', 'ERR_X'] }],
+    });
+    const c = r.extractedFacts[0].content;
+    expect(c).toContain('purpose: Why does X fail?');
+    expect(c).toMatch(/symptoms:\n  - x fails on boot\n  - ERR_X/);
+  });
 });

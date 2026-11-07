@@ -67,3 +67,13 @@ export function sectionOf(markdown: string, anchor: string): string | null {
   const next = headings.slice(idx + 1).find((h) => h.level <= start.level);
   return lines.slice(start.line, next ? next.line : lines.length).join('\n');
 }
+
+/** Flat sections (heading line to the next heading of any level), for duplicate detection. Body excludes the heading line. */
+export function flatSections(markdown: string): { anchor: string; heading: string; text: string }[] {
+  const { headings, lines } = scan(markdown);
+  return headings.map((h, i) => ({
+    anchor: h.ids[0]!,
+    heading: lines[h.line]!.replace(/^\s*#+\s*|\s*#*\s*$/g, ''),
+    text: lines.slice(h.line + 1, headings[i + 1]?.line ?? lines.length).join('\n'),
+  }));
+}

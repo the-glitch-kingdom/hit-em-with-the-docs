@@ -11,11 +11,13 @@ import { parseFrontmatter } from '../../utils/frontmatter.js';
 import { extractLinks, slugify } from '../../utils/markdown.js';
 import { hashContent, type Ledger } from './ledger.js';
 import { renderReview, reviewDir, nextBatch } from './review.js';
+import { findDuplicates, type Duplicate } from './duplicates.js';
 import { searchDocs } from './search.js';
 import { assertNoSecrets } from './secrets.js';
 
 export type MemberState = 'reconciled' | 'unreviewed' | 'stale' | 'secret';
-export interface OverviewMember { path: string; state: MemberState; via: 'search' | 'link' }
+/** `duplicates`: sections of this member copied from another member; propose merge-then-point alongside the overview. */
+export interface OverviewMember { path: string; state: MemberState; via: 'search' | 'link'; duplicates?: Duplicate[] }
 export interface OverviewSeed {
   question: string;
   members: OverviewMember[];
@@ -71,9 +73,11 @@ export async function seedOverview(opts: {
   }
   for (const h of hits) if (picked.size < limit && !picked.has(h.path)) picked.set(h.path, 'search');
 
-  const members = [...picked].map(([path, via]) => ({
-    path, via, state: memberState(ledger, path, hashContent(readFileSync(join(docsPath, path), 'utf-8'))),
-  }));
+  const dups = await findDuplicates(docsPath, config);
+  const members: OverviewMember[] = [...picked].map(([path, via]) => {
+    const copies = (dups.get(path) ?? []).filter((c) => picked.has(c.owner));
+    return { path, via, state: memberState(ledger, path, hashContent(readFileSync(join(docsPath, path), 'utf-8'))), ...(copies.length && { duplicates: copies }) };
+  });
 
   let existingOverview: OverviewSeed['existingOverview'];
   const want = new Set(members.map((m) => m.path));

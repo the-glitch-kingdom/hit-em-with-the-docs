@@ -14,6 +14,7 @@ import { findClusters } from '../links/clusters.js';
 import { buildRepoIndex, extractReferences, primeSymbols, relatedIndex, resolveReferences, type RelatedRepo, type ResolvedReference } from './references.js';
 import { bodyChange, siblingCommits, stalenessSignal } from './staleness.js';
 import { hashContent, isReviewed, recordEntry, type Ledger } from './ledger.js';
+import { findDuplicates, type Duplicate } from './duplicates.js';
 import { findSecrets, scanFile, type SecretFinding } from './secrets.js';
 
 export type Lane = 'clean' | 'fields-only' | 'check' | 'archive-candidate' | 'secret';
@@ -39,6 +40,8 @@ export interface TriageDoc {
   findings?: SecretFinding[];
   /** cited files holding a secret: never read by the judgment pass, dropped from the cited list */
   blocked_files?: string[];
+  /** sections of this doc that copy another doc's section; the owner should hold the text, this doc a pointer */
+  duplicates?: Duplicate[];
 }
 
 export interface Shard {
@@ -233,6 +236,7 @@ export async function triage(opts: {
   };
   const peripheral = await scanPeripheral(opts.root, docsPath, config);
 
+  const dups = await findDuplicates(docsPath, config);
   const docs: TriageDoc[] = [];
   let staleWarned = false;
   for (const d of loaded) {
@@ -325,6 +329,11 @@ export async function triage(opts: {
       if (lane === 'clean' || lane === 'fields-only') lane = 'check';
       reasons.push(`details owned by ${owner}: summarize and cross-link`);
     }
+    const copies = lane === 'secret' ? undefined : dups.get(d.rel);
+    if (copies) {
+      if (lane === 'clean' || lane === 'fields-only') lane = 'check';
+      for (const c of copies) reasons.push(`copy of ${c.owner}#${c.section}${c.tie ? ` (tie: ${c.tie.join(', ')})` : ''}`);
+    }
     // An overview whose members changed since it was written goes back to check; the verdict is dropped so it stays queued.
     const led = opts.ledger?.entries[d.rel];
     if (led?.members) {
@@ -335,7 +344,7 @@ export async function triage(opts: {
         delete led.verdict;
       }
     }
-    docs.push({ path: d.rel, lane, reasons, missing, bytes, ...(staleCommits !== undefined && { staleCommits }), ...(owner && { owner }), ...(ownFindings.length && { findings: ownFindings }), ...(blocked.size && { blocked_files: [...blocked.keys()].sort() }) });
+    docs.push({ path: d.rel, lane, reasons, missing, bytes, ...(staleCommits !== undefined && { staleCommits }), ...(owner && { owner }), ...(copies && { duplicates: copies }), ...(ownFindings.length && { findings: ownFindings }), ...(blocked.size && { blocked_files: [...blocked.keys()].sort() }) });
 
     if (opts.ledger) recordEntry(opts.ledger, { path: d.rel, lane, content_hash: hashContent(d.raw) });
   }

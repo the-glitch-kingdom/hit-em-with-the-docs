@@ -3,6 +3,7 @@
 import { Command } from 'commander';
 import { dirname, join, relative, resolve } from 'path';
 import { readFile } from 'fs/promises';
+import { existsSync } from 'fs';
 import { createRequire } from 'node:module';
 import { registerUpdateCommands } from '@theglitchking/claude-plugin-runtime';
 import { logger } from '../utils/logger.js';
@@ -25,12 +26,14 @@ import { saveLinkReport } from '../reports/link-report.js';
 import { type Domain } from '../core/domains/constants.js';
 import {
   getAllDomains,
+  getRegistry,
   getDomainDefinition,
   isValidDomain,
 } from '../core/domains/registry.js';
 import { regenerateIndexes, generateKbIndexes } from '../generators/regenerate.js';
 import { stampReports } from '../generators/stamp-reports.js';
 import { writeRawConfig } from '../utils/config.js';
+import { getStatusValues } from '../core/metadata/status-registry.js';
 import { resolveDocsPath } from '../utils/docs-root.js';
 
 const program = new Command();
@@ -40,13 +43,34 @@ program
   .description('Self-managing documentation system with hierarchical structure and intelligent automation')
   .version(pkg.version);
 
-// Every command except `init` finds the docs tree from a subdirectory when -p is the default.
+// Project root of the resolved docs path: the git root holding it, else its parent.
+let projectRootDir = process.cwd();
+function findProjectRoot(docsPath: string): string {
+  let dir = dirname(docsPath);
+  for (;;) {
+    if (existsSync(join(dir, '.git'))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return dirname(docsPath);
+    dir = parent;
+  }
+}
+
+// Every command except `init` finds the docs tree from a subdirectory when -p is the default,
+// and loads the project's config (domains, statuses) from that project, not from the cwd.
 program.hook('preAction', (_this, action) => {
   if (action.name() === 'init') return;
+  let docsPath: string | undefined;
   for (const key of ['path', 'docsPath']) {
-    if (action.getOptionValueSource(key) !== 'default') continue;
-    action.setOptionValue(key, resolveDocsPath(process.cwd(), String(action.getOptionValue(key)), false));
+    if (action.getOptionValueSource(key) === undefined) continue;
+    if (action.getOptionValueSource(key) === 'default') {
+      action.setOptionValue(key, resolveDocsPath(process.cwd(), String(action.getOptionValue(key)), false));
+    }
+    docsPath = resolve(process.cwd(), String(action.getOptionValue(key)));
   }
+  docsPath ??= resolveDocsPath(process.cwd(), '.documentation', false);
+  projectRootDir = findProjectRoot(docsPath);
+  getRegistry(projectRootDir);
+  getStatusValues(projectRootDir);
 });
 
 registerUpdateCommands(program, {
@@ -467,7 +491,7 @@ domain
   .option('--json', 'Output as JSON', false)
   .action(async (options) => {
     const { listDomains } = await import('../core/domains/manage.js');
-    const result = listDomains(process.cwd());
+    const result = listDomains(projectRootDir);
 
     if (options.json) {
       logger.info(JSON.stringify(result, null, 2));
@@ -724,7 +748,7 @@ program
   .description('Find all playbooks and incidents that cite a fact')
   .option('--json', 'Output as JSON', false)
   .action(async (factId, options) => {
-    const projectRoot = process.cwd();
+    const projectRoot = projectRootDir;
     const { loadPluginConfig, resolveVaultRoot, resolvePlaybookGlobs } = await import(
       '../utils/config.js'
     );
@@ -768,7 +792,7 @@ program
   .option('--window <days>', 'Override audit_window_days', undefined)
   .option('--json', 'Output as JSON', false)
   .action(async (options) => {
-    const projectRoot = process.cwd();
+    const projectRoot = projectRootDir;
     const { loadPluginConfig, resolveVaultRoot, resolvePlaybookGlobs } = await import(
       '../utils/config.js'
     );
@@ -912,8 +936,8 @@ program
   .option('--dry-run', 'Preview the migration without writing', false)
   .option('--force', 'Migrate even if a folder already exists at the canonical or legacy location (overwrites)', false)
   .action(async (flatFile, options) => {
-    const projectRoot = process.cwd();
-    const flatFilePath = resolve(projectRoot, flatFile);
+    const projectRoot = projectRootDir;
+    const flatFilePath = resolve(process.cwd(), flatFile);
     const { migrateIncident } = await import('../core/knowledge-base/migrate.js');
     const { loadPluginConfig, resolveVaultRoot } = await import('../utils/config.js');
 
@@ -960,7 +984,7 @@ program
   .description('Relocate incident folders written by buggy 2.3.0 migrate-incident into the canonical <vault>/incidents/ parent, and rewrite any provenance: refs in fact files. Idempotent.')
   .option('--dry-run', 'Report what would be moved without writing', false)
   .action(async (options) => {
-    const projectRoot = process.cwd();
+    const projectRoot = projectRootDir;
     const { fixLegacyLayout } = await import(
       '../core/knowledge-base/fix-legacy-layout.js'
     );
@@ -1070,8 +1094,8 @@ program
       process.exit(1);
     }
 
-    const projectRoot = process.cwd();
-    const incidentFolder = resolve(projectRoot, incidentFolderArg);
+    const projectRoot = projectRootDir;
+    const incidentFolder = resolve(process.cwd(), incidentFolderArg);
     const { loadPluginConfig, resolveVaultRoot } = await import('../utils/config.js');
     const { extractFacts } = await import('../core/knowledge-base/extract.js');
 
@@ -1185,6 +1209,7 @@ program
         for (const [k, v] of Object.entries(t.byLane)) logger.info(`  ${k}: ${v}`);
         for (const d of result.docs) logger.info(`  [${d.lane}] ${d.path}${d.reasons.length ? ` - ${d.reasons.join('; ')}` : ''}`);
         for (const w of result.warnings) logger.warn(w);
+        logger.info(`  schema files: ${result.schemaFiles.length ? result.schemaFiles.join(', ') : 'none (set reconcile.schema_sources to check tables)'}`);
         logger.info(`  mode: ${result.mode}`);
         for (const s of result.shards) logger.info(`    shard ${s.id}: ${s.docs.length} docs, ${s.bytes} bytes`);
       } catch (e) {

@@ -16,6 +16,7 @@ import { isValidTier, TIERS } from '../domains/classifier.js';
 import { isValidDomain, getAllDomains } from '../domains/registry.js';
 import { loadPluginConfig } from '../../utils/config.js';
 import { collectRetrievalDocs, checkRetrieval } from './retrieval.js';
+import { checkOverview } from './overview.js';
 import { checkNamingConvention, checkFilePlacement } from './rules.js';
 
 export interface AuditOptions {
@@ -75,9 +76,9 @@ export interface DomainAuditStats {
 /**
  * Audit documentation for compliance and issues
  */
-/** Issues that should count toward CI failure: advisory RETRIEVAL_* warnings (#50) never do. */
+/** Issues that should count toward CI failure: advisory RETRIEVAL_* (#50) and OVERVIEW_* (#51) warnings never do. */
 export function countActionableIssues(issues: { rule: string }[]): number {
-  return issues.filter((i) => !i.rule.startsWith('RETRIEVAL_')).length;
+  return issues.filter((i) => !/^(RETRIEVAL|OVERVIEW)_/.test(i.rule)).length;
 }
 
 export async function auditDocumentation(options: AuditOptions): Promise<AuditResult> {
@@ -194,9 +195,11 @@ export async function auditDocumentation(options: AuditOptions): Promise<AuditRe
 
   // Retrieval readiness (#50): advisory warnings. Deliberately carry no `code`
   // so `audit --strict` (which fails on any coded issue) is unaffected.
-  const retrievalCfg = (await loadPluginConfig(options.projectRoot)).retrieval;
+  const pluginCfg = await loadPluginConfig(options.projectRoot);
+  const retrievalCfg = pluginCfg.retrieval;
   const retrievalDocs = await collectRetrievalDocs(docsPath, files);
   result.issues.push(...checkRetrieval(retrievalDocs, retrievalCfg));
+  result.issues.push(...(await checkOverview(docsPath, pluginCfg.overview)));
 
   // Calculate stats
   result.stats.metadataCompliance = (metadataCompliant / files.length) * 100 || 0;

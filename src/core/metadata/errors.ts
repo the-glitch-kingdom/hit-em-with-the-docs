@@ -50,6 +50,10 @@ export const KB_ERROR_CODES = {
   RETRIEVAL_MISSING_SYMPTOMS: 'RETRIEVAL_MISSING_SYMPTOMS',
   RETRIEVAL_OVERSIZED: 'RETRIEVAL_OVERSIZED',
   RETRIEVAL_NEAR_DUPLICATE: 'RETRIEVAL_NEAR_DUPLICATE',
+
+  // Overview docs (#51). Advisory: always warnings.
+  OVERVIEW_MISSING: 'OVERVIEW_MISSING',
+  OVERVIEW_STALE_LINKS: 'OVERVIEW_STALE_LINKS',
 } as const;
 
 export type KbErrorCode = (typeof KB_ERROR_CODES)[keyof typeof KB_ERROR_CODES];
@@ -90,6 +94,8 @@ export const KB_ERROR_SEVERITY: Record<KbErrorCode, 'error' | 'warning'> = {
   RETRIEVAL_MISSING_SYMPTOMS: 'warning',
   RETRIEVAL_OVERSIZED: 'warning',
   RETRIEVAL_NEAR_DUPLICATE: 'warning',
+  OVERVIEW_MISSING: 'warning',
+  OVERVIEW_STALE_LINKS: 'warning',
 };
 
 /**

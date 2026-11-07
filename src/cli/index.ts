@@ -1117,9 +1117,11 @@ program
     const { loadPluginConfig } = await import('../utils/config.js');
     const { loadLedger, ledgerStatus, hashContent } = await import('../core/reconcile/ledger.js');
     const { glob } = await import('../utils/glob.js');
-    const root = process.cwd();
+    const { projectRootOf } = await import('../core/reconcile/outside.js');
+    const docsPath = resolve(process.cwd(), options.docsPath);
+    // State (ledger, review files, config) lives at the project root, so a run from a subdirectory shares it.
+    const root = projectRootOf(docsPath);
     const config = await loadPluginConfig(root);
-    const docsPath = resolve(root, options.docsPath);
     const ledgerFile = resolve(root, config.reconcile.ledger_path);
     if (options.apply) {
       try {
@@ -1139,7 +1141,7 @@ program
     }
     if (options.outside) {
       try {
-        const { discoverOutside, writeOutsideReview, projectRootOf } = await import('../core/reconcile/outside.js');
+        const { discoverOutside, writeOutsideReview } = await import('../core/reconcile/outside.js');
         const docs = await discoverOutside(docsPath, (await loadPluginConfig(projectRootOf(docsPath))).reconcile.keep_in_place);
         if (options.writeReview) logger.info(`  wrote ${relative(root, await writeOutsideReview({ docsPath, root, docs, batch: options.batch }))}`);
         if (options.json) { console.log(JSON.stringify(docs, null, 2)); return; }

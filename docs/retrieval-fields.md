@@ -76,7 +76,8 @@ Both are advisory warnings with no `code`: they never change the exit code
 `hewtd maintain` lists pending back-links as a dry run. `hewtd maintain --fix`
 **edits doc bodies**: it inserts `Part of: [Title](rel.md)` after the first H1
 (or at the top of the body when there is no H1) in each member. It is
-idempotent, skips generated and plan-tier docs, and runs before the metadata
+idempotent, skips generated, plan-tier, draft, archived and report docs (the
+same docs clusters ignore), and runs before the metadata
 sync so one `--fix` run converges. Set `overview.backlinks` to `false` to turn
 it off.
 

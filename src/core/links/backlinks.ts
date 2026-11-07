@@ -10,6 +10,7 @@ import { readFile, writeFile } from 'fs/promises';
 import { basename, dirname, join, relative } from 'path';
 import { parseFrontmatter } from '../../utils/frontmatter.js';
 import { buildLinkGraph } from './tracker.js';
+import { isOutOfOverviewScope } from './clusters.js';
 
 export interface BacklinkChange {
   /** Member path relative to the docs root. */
@@ -38,13 +39,18 @@ export async function addOverviewBacklinks(docsPath: string, opts: { dryRun?: bo
   const linked = new Set(graph.edges.map((e) => `${e.source}\0${e.target}`));
   const wanted = new Map<string, Set<string>>(); // member -> overviews
   const overviewIds = new Set<string>();
-  for (const n of graph.nodes) if ((await load(n.id)).data.kind === 'overview') overviewIds.add(n.id);
+  for (const n of graph.nodes) {
+    const { data } = await load(n.id);
+    if (data.kind === 'overview' && !isOutOfOverviewScope(n.id, data)) overviewIds.add(n.id);
+  }
 
   for (const e of graph.edges) {
     if (!overviewIds.has(e.source) || e.source === e.target) continue;
     if (linked.has(`${e.target}\0${e.source}`)) continue;
     const m = await load(e.target);
-    if (isGenerated(e.target, m.data) || m.data.tier === 'plan') continue;
+    if (isGenerated(e.target, m.data) || isOutOfOverviewScope(e.target, m.data)) continue;
+    // Text check too: a path the link parser can't read (spaces, parens) must not be re-inserted every run.
+    if (m.raw.includes(`](${relative(dirname(e.target), e.source).split('\\').join('/')})`)) continue;
     (wanted.get(e.target) ?? wanted.set(e.target, new Set()).get(e.target)!).add(e.source);
   }
 
@@ -57,7 +63,7 @@ export async function addOverviewBacklinks(docsPath: string, opts: { dryRun?: bo
       const h1 = raw.replace(FRONTMATTER, '').match(/^# (.+)$/m)?.[1];
       const title = (typeof data.title === 'string' && data.title) || h1 || basename(ov, '.md');
       const rel = relative(dirname(file), ov).split('\\').join('/');
-      lines.push(`Part of: [${title}](${rel})`);
+      lines.push(`Part of: [${title.replace(/[[\]]/g, '\\$&')}](${rel})`);
     }
     const block = lines.join('\n');
     const { raw } = await load(file);

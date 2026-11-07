@@ -14,6 +14,16 @@ import { buildLinkGraph } from './tracker.js';
 const SKIP_DIRS = new Set(['drafts', 'reports', 'archive']);
 const GENERATED_NAMES = new Set(['INDEX.md', 'REGISTRY.md']);
 
+/** Docs that never take part in clusters or back-links: drafts, reports, archive, plans, draft/archived status. */
+export function isOutOfOverviewScope(rel: string, data: Record<string, unknown>): boolean {
+  return (
+    rel.split(/[\\/]/).some((seg) => SKIP_DIRS.has(seg)) ||
+    data.tier === 'plan' ||
+    data.status === 'archived' ||
+    data.status === 'draft'
+  );
+}
+
 export interface DocCluster {
   /** Domain name, or `component:<first member>` for a cross-domain component. */
   id: string;
@@ -33,14 +43,13 @@ export async function findClusters(
   const graph = await buildLinkGraph(docsPath);
   const info = new Map<string, { generated: boolean; overview: boolean; domain: string }>();
   for (const n of graph.nodes) {
-    if (n.id.split(/[\\/]/).some((seg) => SKIP_DIRS.has(seg))) continue;
     let data: Record<string, unknown> = {};
     try {
       data = parseFrontmatter<Record<string, unknown>>(await readFile(join(docsPath, n.id), 'utf-8')).data;
     } catch {
       // unreadable: treat as plain doc
     }
-    if (data.tier === 'plan' || data.status === 'archived' || data.status === 'draft') continue;
+    if (isOutOfOverviewScope(n.id, data)) continue;
     info.set(n.id, {
       generated: data.generated === true || GENERATED_NAMES.has(basename(n.id)),
       overview: data.kind === 'overview',

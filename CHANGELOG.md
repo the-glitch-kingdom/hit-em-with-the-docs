@@ -20,7 +20,8 @@ now edits doc bodies** (see below).
 - **`maintain --fix` now edits doc bodies:** it inserts a
   `Part of: [Title](rel.md)` back-link in each member of a cluster that has an
   overview. Without `--fix`, `maintain` only lists pending back-links.
-  Idempotent; skips generated and plan-tier docs. Turn it off with
+  Idempotent; skips the docs clusters ignore (generated, plan-tier, drafts,
+  reports, archived, `status: draft`). Turn it off with
   `"overview": {"backlinks": false}`. Review the diff before committing in CI.
 - Fix: `--fix` and `integrate` no longer drop unmodelled frontmatter keys
   (`kind`, `generated`, `symptoms`).

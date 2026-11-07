@@ -26,6 +26,26 @@ beforeEach(async () => {
 afterEach(() => rm(root, { recursive: true, force: true }));
 
 describe('addOverviewBacklinks', () => {
+  it('skips draft-status members and drafts/ overviews (review fix)', async () => {
+    await setup();
+    await put('api/a.md', `${FM('a').replace('status: active', 'status: draft')}\n# Doc a\n\nText.\n`);
+    await put('drafts/ov2.md', `${FM('Draft Ov', 'kind: overview\n')}\n# D\n\n[b](../api/b.md)\n`);
+    const changes = await addOverviewBacklinks(docs);
+    expect(changes.map((c) => c.file)).not.toContain('api/a.md');
+    expect(changes.flatMap((c) => c.overviews)).not.toContain('drafts/ov2.md');
+  });
+
+  it('does not re-insert a back-link the link parser cannot read (review fix)', async () => {
+    for (const n of names) await put(`api/${n}.md`, `${FM(n)}\n# Doc ${n}\n\nText.\n`);
+    const links = names.map((n) => `[${n}](${n}.md)`).join('\n');
+    await put('api/Deploy Flow.md', `${FM('Deploy [v2] Flow', 'kind: overview\n')}\n# Ov\n\n${links}\n`);
+    await addOverviewBacklinks(docs);
+    const once = await readFile(join(docs, 'api/a.md'), 'utf-8');
+    expect(once).toContain('Part of: [Deploy \\[v2\\] Flow](Deploy Flow.md)');
+    expect(await addOverviewBacklinks(docs)).toEqual([]);
+    expect(await readFile(join(docs, 'api/a.md'), 'utf-8')).toBe(once);
+  });
+
   it('adds the line after the H1, keeps frontmatter, and is idempotent', async () => {
     await setup(true);
     const before = await readFile(join(docs, 'api/a.md'), 'utf-8');

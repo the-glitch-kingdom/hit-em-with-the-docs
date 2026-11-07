@@ -103,7 +103,8 @@ See `retrieval-fields.md`.
 pending ones. With `--fix` it edits doc bodies: each member of a cluster that
 has a `kind: overview` doc gets `Part of: [Title](rel.md)` after its first H1
 (top of the body when there is no H1). The step is idempotent, skips generated
-and plan-tier docs, and runs before the metadata sync and index regeneration,
+and plan-tier docs, drafts, reports, archived docs and `status: draft` docs
+(as members and as overviews), and runs before the metadata sync and index regeneration,
 so word counts and INDEX rows settle in the same run. Disable it with
 `"overview": {"backlinks": false}`. See `retrieval-fields.md`.
 

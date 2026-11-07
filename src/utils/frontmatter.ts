@@ -76,12 +76,23 @@ export function extractFrontmatterString(content: string): string | null {
 }
 
 /**
- * Stringify frontmatter data to YAML
+ * Whether the first top-level block sequence in `text` is indented (`key:\n  - x`).
+ * Undefined when there is none to judge by. `text` is a whole file or just its frontmatter.
  */
-export function stringifyFrontmatter(data: Record<string, unknown>): string {
+function detectIndentSeq(text: string | undefined): boolean | undefined {
+  const m = text?.match(/^[\w-]+:[ \t]*\r?\n([ \t]*)- /m);
+  return m ? m[1]!.length > 0 : undefined;
+}
+
+/**
+ * Stringify frontmatter data to YAML. Pass the file's original text (full file or
+ * frontmatter only) to keep its list style; without it, lists are indented.
+ */
+export function stringifyFrontmatter(data: Record<string, unknown>, original?: string): string {
   // Use yaml library for better formatting control
   return yaml.stringify(quoteDateLike(data), {
     indent: 2,
+    indentSeq: detectIndentSeq(original) ?? true,
     lineWidth: 80,
     singleQuote: true,
   });
@@ -117,14 +128,16 @@ function quoteDateLike(value: unknown): unknown {
 }
 
 /**
- * Add or update frontmatter in content
+ * Add or update frontmatter in content. List style follows `original`, which
+ * defaults to `content`; pass the raw file when `content` is already the bare body.
  */
 export function setFrontmatter(
   content: string,
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
+  original: string = content
 ): string {
   const { content: body } = parseFrontmatter(content);
-  const frontmatter = stringifyFrontmatter(data);
+  const frontmatter = stringifyFrontmatter(data, original);
   return `---\n${frontmatter}---\n\n${body.trimStart()}`;
 }
 
@@ -137,7 +150,7 @@ export function mergeFrontmatter(
 ): string {
   const { data: existingData, content: body } = parseFrontmatter(content);
   const mergedData = { ...existingData, ...newData };
-  const frontmatter = stringifyFrontmatter(mergedData);
+  const frontmatter = stringifyFrontmatter(mergedData, content);
   return `---\n${frontmatter}---\n\n${body.trimStart()}`;
 }
 
@@ -170,7 +183,7 @@ export function setFrontmatterField(
 ): string {
   const { data, content: body } = parseFrontmatter(content);
   data[field] = value;
-  const frontmatter = stringifyFrontmatter(data);
+  const frontmatter = stringifyFrontmatter(data, content);
   return `---\n${frontmatter}---\n\n${body.trimStart()}`;
 }
 

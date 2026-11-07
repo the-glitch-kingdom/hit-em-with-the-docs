@@ -3,7 +3,7 @@ import { execFileSync } from 'child_process';
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { stalenessSignal } from '../../../src/core/reconcile/staleness';
+import { stalenessSignal, bodyChange } from '../../../src/core/reconcile/staleness';
 
 let dir: string;
 const g = (...a: string[]) =>
@@ -52,8 +52,27 @@ describe('stalenessSignal', () => {
     g('mv', 'old.md', 'new.md');
     g('commit', '-m', 'rename');
     commit('src/a.ts', '2');
-    // doc content last changed at the rename commit (follow reaches it), one cited commit after
-    expect(stalenessSignal(dir, 'new.md', ['src/a.ts'])).toMatchObject({ status: 'signal', commits: 1 });
+    // body unchanged since the first commit (the rename kept it), so both cited commits count
+    expect(stalenessSignal(dir, 'new.md', ['src/a.ts'])).toMatchObject({ status: 'signal', commits: 2 });
+  });
+
+  it('ignores frontmatter-only commits to the doc', () => {
+    commit('doc.md', '---\ntitle: a\n---\n\nbody\n');
+    commit('src/a.ts', '1');
+    commit('src/a.ts', '2');
+    commit('src/a.ts', '3');
+    commit('doc.md', '---\ntitle: a\nlast_verified: 2026-01-01\n---\n\nbody\n');
+    const s = stalenessSignal(dir, 'doc.md', ['src/a.ts']);
+    expect(s).toMatchObject({ status: 'signal', commits: 3 });
+    expect((s as { docDate: string }).docDate).toMatch(/^\d{4}-/);
+    expect(bodyChange(dir, 'doc.md')?.date).toBe((s as { docDate: string }).docDate);
+  });
+
+  it('resets on a body edit after the code commits', () => {
+    commit('doc.md', '---\ntitle: a\n---\n\nold\n');
+    commit('src/a.ts', '1');
+    commit('doc.md', '---\ntitle: a\n---\n\nnew\n');
+    expect(stalenessSignal(dir, 'doc.md', ['src/a.ts'])).toMatchObject({ status: 'signal', commits: 0 });
   });
 
   it('is unknown in a shallow clone', () => {

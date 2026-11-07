@@ -42,7 +42,6 @@ const snapshot = async (dir: string, rel = ''): Promise<Record<string, string>> 
 };
 
 beforeAll(() => {
-  execFileSync('npm', ['run', 'build'], { cwd: REPO, stdio: 'ignore' });
   expect(existsSync(CLI)).toBe(true);
 }, 120_000);
 beforeEach(async () => {

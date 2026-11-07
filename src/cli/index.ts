@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { join, resolve } from 'path';
+import { dirname, join, resolve } from 'path';
 import { readFile } from 'fs/promises';
 import { createRequire } from 'node:module';
 import { registerUpdateCommands } from '@theglitchking/claude-plugin-runtime';
@@ -29,6 +29,7 @@ import {
   isValidDomain,
 } from '../core/domains/registry.js';
 import { regenerateIndexes } from '../generators/regenerate.js';
+import { resolveDocsPath } from '../utils/docs-root.js';
 
 const program = new Command();
 
@@ -36,6 +37,15 @@ program
   .name('hit-em-with-the-docs')
   .description('Self-managing documentation system with hierarchical structure and intelligent automation')
   .version(pkg.version);
+
+// Every command except `init` finds the docs tree from a subdirectory when -p is the default.
+program.hook('preAction', (_this, action) => {
+  if (action.name() === 'init') return;
+  for (const key of ['path', 'docsPath']) {
+    if (action.getOptionValueSource(key) !== 'default') continue;
+    action.setOptionValue(key, resolveDocsPath(process.cwd(), String(action.getOptionValue(key)), false));
+  }
+});
 
 registerUpdateCommands(program, {
   packageName: '@theglitchking/hit-em-with-the-docs',
@@ -495,7 +505,7 @@ domain
     };
 
     const result = await addDomain({
-      projectRoot: process.cwd(),
+      projectRoot: dirname(docsPath),
       docsPath,
       spec,
       dryRun: options.dryRun,
@@ -532,7 +542,7 @@ domain
     const docsPath = resolve(process.cwd(), options.path);
 
     const result = await removeDomain({
-      projectRoot: process.cwd(),
+      projectRoot: dirname(docsPath),
       docsPath,
       id,
       dryRun: options.dryRun,
@@ -572,7 +582,7 @@ program
     const { archiveDoc } = await import('../core/archive/manage.js');
     const docsPath = resolve(process.cwd(), options.path);
     const result = await archiveDoc({
-      projectRoot: process.cwd(),
+      projectRoot: dirname(docsPath),
       docsPath,
       file,
       reason: options.reason,
@@ -617,7 +627,7 @@ program
     const { unarchiveDoc } = await import('../core/archive/manage.js');
     const docsPath = resolve(process.cwd(), options.path);
     const result = await unarchiveDoc({
-      projectRoot: process.cwd(),
+      projectRoot: dirname(docsPath),
       docsPath,
       file,
       dryRun: options.dryRun,
@@ -647,11 +657,11 @@ program
     const { loadPluginConfig } = await import('../utils/config.js');
     const { findArchiveCandidates } = await import('../core/archive/candidates.js');
     const docsPath = resolve(process.cwd(), options.path);
-    const config = await loadPluginConfig(process.cwd());
+    const config = await loadPluginConfig(dirname(docsPath));
 
     const candidates = await findArchiveCandidates({
       docsPath,
-      projectRoot: process.cwd(),
+      projectRoot: dirname(docsPath),
       config: config.archive,
     });
 

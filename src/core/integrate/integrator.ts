@@ -1,5 +1,5 @@
 import { readFile, writeFile, mkdir } from 'fs/promises';
-import { join, relative, basename, dirname } from 'path';
+import { join, relative, basename, dirname, resolve, isAbsolute } from 'path';
 import { logger } from '../../utils/logger.js';
 import { parseFrontmatter, setFrontmatter } from '../../utils/frontmatter.js';
 import { pathExists, findMarkdownFiles } from '../../utils/glob.js';
@@ -159,6 +159,14 @@ export async function integrateDocument(
     const fileName = basename(filePath);
     const targetPath = join(docsPath, targetDomain, fileName);
     result.targetPath = targetPath;
+
+    // A doc already in the tree must not be copied (that leaves two). Moving it
+    // would break inbound links, so only the in-place rewrite is allowed.
+    const rel = relative(resolve(docsPath), resolve(filePath));
+    if (rel && !rel.startsWith('..') && !isAbsolute(rel) && resolve(filePath) !== resolve(targetPath)) {
+      result.error = `${rel} is already in the docs tree; use maintain --fix / metadata-sync`;
+      return result;
+    }
 
     if (!silent) {
       logger.newline();

@@ -53,7 +53,7 @@ CLI (via `npx --no @theglitchking/hit-em-with-the-docs <cmd>` or `hewtd <cmd>` i
 - `unarchive <file>` — restore an archived doc to its domain folder (2.7.0+)
 - `archive-candidates` — advisory list of docs worth retiring (2.7.0+)
 - `search <query>` — search documentation
-- `fix-retrieval-fields [--apply]` — move `summary`/`description` into `purpose`, merge `keywords` into `tags` (dry run by default) (2.12.0+)
+- `fix-retrieval-fields [--apply]` — move `summary`/`description` into `purpose`, merge `keywords` into `tags` (dry run by default); drops filler, clears generator-fallback purposes (2.12.0+, filler 2.14.0)
 
 Slash commands (Claude Code):
 - `/hit-em-with-the-docs:domain` — add/remove/list custom domains (2.6.0+)

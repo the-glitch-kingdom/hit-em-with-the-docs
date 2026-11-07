@@ -97,6 +97,24 @@ Reports go to `<docs root>/reports` by default. Set `reports_dir` in
 `.claude/hit-em-with-the-docs.json` (relative to the repo root) to move them.
 See `retrieval-fields.md`.
 
+## Upgrade step: `hewtd index` (2.14.0)
+
+Besides the root and domain indexes, `hewtd index` now rebuilds the facts,
+incidents and symptoms indexes when a knowledge-base vault exists, and stamps
+`generated: true` on older generator-named reports (`maintenance-*`,
+`health-*`, `audit-*`, `links-*`, `.md` only; a file that already has a
+`generated:` key is left alone). `--dry-run` only reports what it would do.
+`hewtd init` writes `reports_dir: ".hewtd/reports"` for new installs only, and
+only when the key is absent; existing projects keep their setting.
+
+## Docs root from subdirectories (2.14.0)
+
+Every command's default docs path (`-p`, `--path`, `--docs-path`) walks up from
+the current directory to the nearest ancestor containing `.documentation`,
+stopping at the git root. An explicit `-p` is used as given. `init` is excluded.
+For commands with a docs-path option, the config root is the parent of the docs
+path.
+
 ## Overview back-links (2.13.0)
 
 `hewtd maintain` also checks overview back-links. Without `--fix` it only lists

@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.14.0] — 2026-11-07
+
+Follow-ups to 2.13 (#55) and two `integrate` traps (#54). Behaviour changes:
+
+- **`integrate` refuses a file already in the docs tree at a path other than
+  its target.** It exits non-zero ("already in the docs tree"; use
+  `maintain --fix` / `metadata-sync`) and writes nothing. A file already at its
+  target is still rewritten in place.
+- **Commands find the docs root from subdirectories.** The default
+  `-p`/`--path`/`--docs-path` walks up to the nearest ancestor with
+  `.documentation`, stopping at the git root. Explicit `-p` is unchanged; `init`
+  is excluded. For docs-path commands the config root is the parent of the docs path.
+- **`hewtd init` writes `reports_dir: ".hewtd/reports"`** when the key is absent
+  (new installs; existing settings are kept).
+- **`hewtd index` stamps `generated: true`** on unstamped `maintenance-`,
+  `health-`, `audit-` and `links-` `.md` reports and rebuilds the facts,
+  incidents and symptoms indexes. `--dry-run` only reports.
+- **Fewer `OVERVIEW_MISSING` warnings.** Detection now finds dense flows
+  (label propagation, hubs excluded) instead of one cluster per domain; the
+  message reads `Flow: tags — N docs (...) have no overview`. Still advisory.
+- `fix-retrieval-fields` drops filler `summary`/`description`, clears
+  `Documentation for <title>` purposes, and prints `dropped`/`cleared` counts.
+- Fix: restored the exported `quickHealthCheck`.
+
 ## [2.13.0] — 2026-11-06
 
 Overview docs (#51). Additive, with one behaviour change: **`maintain --fix`

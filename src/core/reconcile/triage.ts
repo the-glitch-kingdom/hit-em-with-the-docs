@@ -46,6 +46,8 @@ export interface TriageResult {
   mode: 'serial' | 'team';
   shards: Shard[];
   warnings: string[];
+  /** schema files parsed for table/column checks (empty = tables are unknown) */
+  schemaFiles: string[];
 }
 
 const posix = (p: string): string => p.split('\\').join('/');
@@ -159,7 +161,8 @@ export async function triage(opts: {
     const missing = [...new Set([...resolved.filter((r) => r.status === 'missing').map((r) => r.ref), ...goneSources])];
     const checkable = resolved.filter((r) => r.status !== 'unknown').length + pathSources.length;
 
-    const cited = [...new Set([...resolved.map((r) => r.where), ...sources].filter((p): p is string => !!p && idx.files.has(p)))].sort();
+    // Symbol hits are not cited files: a common name living in a data file must not add bytes or staleness.
+    const cited = [...new Set([...resolved.filter((r) => r.kind === 'path').map((r) => r.where), ...sources].filter((p): p is string => !!p && idx.files.has(p)))].sort();
     let bytes = Buffer.byteLength(d.raw);
     for (const c of cited) {
       if (LOCKFILE.test(c)) continue; // a symbol hit in a lockfile is not something the pass reads
@@ -211,6 +214,7 @@ export async function triage(opts: {
     mode,
     shards,
     warnings,
+    schemaFiles: idx.schemaFiles,
   };
 }
 

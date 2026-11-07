@@ -188,7 +188,8 @@ const overviewConfigSchema = z
 export const DEFAULT_RECONCILE_KEEP_IN_PLACE = [
   'README.md', 'SECURITY.md', 'LICENSE.md', 'CONTRIBUTING.md', 'CHANGELOG.md', '.github/**', '.claude/**',
 ];
-export const DEFAULT_RECONCILE_SCHEMA_SOURCES = ['**/migrations/**/*.sql', '**/schema.prisma'];
+/** Empty on purpose: a guessed schema flagged 34 live tables `missing` (#58). Set `schema_sources` to opt in. */
+export const DEFAULT_RECONCILE_SCHEMA_SOURCES: string[] = [];
 
 /** Reconcile (#54). Lenient like `retrieval`: any invalid key falls back to its default. */
 const reconcileConfigSchema = z

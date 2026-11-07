@@ -1303,6 +1303,7 @@ program
   .option('--baseline-add <file:line>', 'Baseline the finding(s) on that line (a known false positive)')
   .option('--reason <text>', 'Why it is a false positive (required with --baseline-add)')
   .option('--baseline-prune', 'Drop baseline entries whose value no longer occurs in anything scanned', false)
+  .option('--staged', 'Scan only the lines the staged diff adds under the docs root (exit 1 on a secret); used by the pre-commit hook', false)
   .action(async (options) => {
     try {
       const { loadPluginConfig } = await import('../utils/config.js');
@@ -1312,6 +1313,16 @@ program
       const root = projectRootOf(docsPath);
       const config = await loadPluginConfig(root);
       const cfg = config.reconcile.secrets;
+      if (options.staged) {
+        const { scanStaged } = await import('../core/reconcile/hooks.js');
+        const hits = scanStaged(root, docsPath, cfg);
+        if (!hits.length) return;
+        logger.error(`commit refused: ${hits.length} added line(s) contain a secret (masked, first4…length):`);
+        for (const f of hits.slice(0, 20)) logger.info(`  ${f.file}:${f.line} ${f.rule} ${f.masked} (${f.fingerprint.slice(0, 12)})`);
+        logger.info('  rotate it, then move the value to .env.hewtd and leave a pointer (hewtd reconcile --secrets); a false positive: hewtd secrets --baseline-add <file:line> --reason "..."');
+        process.exitCode = 1;
+        return;
+      }
       if (!options.baselineAdd && !options.baselinePrune) throw new Error('nothing to do: pass --baseline-add <file:line> --reason "..." or --baseline-prune');
       if (options.baselineAdd) {
         const m = /^(.+):(\d+)$/.exec(options.baselineAdd);
@@ -1340,6 +1351,25 @@ program
         logger.header('hewtd secrets --baseline-prune');
         logger.info(`  removed ${entries.length - kept.length}, kept ${kept.length}`);
       }
+    } catch (e) {
+      logger.error((e as Error).message);
+      process.exitCode = 1;
+    }
+  });
+
+// Opt-in git pre-commit hook for the staged secret scan
+program
+  .command('hooks <action>')
+  .description('install | uninstall the opt-in pre-commit hook block (hewtd secrets --staged); never overwrites an existing hook')
+  .option('-p, --docs-path <path>', 'Documentation path', '.documentation')
+  .action(async (action, options) => {
+    try {
+      if (action !== 'install' && action !== 'uninstall') throw new Error('expected install or uninstall');
+      const { projectRootOf } = await import('../core/reconcile/outside.js');
+      const { installHook, uninstallHook } = await import('../core/reconcile/hooks.js');
+      const root = projectRootOf(resolve(process.cwd(), options.docsPath));
+      const r = await (action === 'install' ? installHook : uninstallHook)(root);
+      logger.info(`${r.changed ? action + 'ed' : 'unchanged'}: ${relative(root, r.path)}`);
     } catch (e) {
       logger.error((e as Error).message);
       process.exitCode = 1;

@@ -4,9 +4,9 @@
  * Deterministic, no LLM. "unknown" means we could not check; it never means "missing".
  */
 import { execFileSync } from 'child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, statSync } from 'fs';
 import { tmpdir } from 'os';
-import { join, resolve } from 'path';
+import { dirname, join, relative, resolve } from 'path';
 import { extractLinks } from '../../utils/markdown.js';
 import { checkSingleLink } from '../links/checker.js';
 
@@ -119,10 +119,16 @@ export interface Schema { tables: Map<string, Set<string>> }
 export interface RepoIndex {
   root: string;
   files: Set<string>;
-  scripts: Set<string>;
+  /** npm script name -> directory of the first package.json defining it ('' = root) */
+  scripts: Map<string, string>;
   makeTargets: Set<string>;
   deps: Set<string>;
   schema: Schema;
+  /** schema files actually parsed (from `schema_sources`) */
+  schemaFiles: string[];
+  /** names with no code hit that do appear in markdown (docs neither prove nor disprove them) */
+  /** name -> up to two markdown files that mention it (names with no code hit only) */
+  mdNames: Map<string, Set<string>>;
   /** symbol -> first file it appears in (non-markdown); filled by primeSymbols */
   symbols: Map<string, string | null>;
 }
@@ -195,19 +201,45 @@ export function buildRepoIndex(root: string, schemaSources: string[] = []): Repo
   if (typeof pkg.name === 'string') deps.add(pkg.name);
   const makeTargets = new Set<string>();
   for (const m of read('Makefile').matchAll(/^([A-Za-z0-9_.-]+)\s*:(?!=)/gm)) makeTargets.add(m[1]!);
+  const scripts = new Map<string, string>();
+  for (const f of [...files].filter((f) => f === 'package.json' || f.endsWith('/package.json')).sort()) {
+    try {
+      const sc = (JSON.parse(read(f) || '{}') as { scripts?: Record<string, unknown> }).scripts;
+      const dir = f === 'package.json' ? '' : f.slice(0, -'/package.json'.length);
+      if (sc && typeof sc === 'object') for (const k of Object.keys(sc)) if (!scripts.has(k)) scripts.set(k, dir);
+    } catch { /* unreadable package.json: no scripts */ }
+  }
   const schema: Schema = { tables: new Map() };
+  const schemaFiles: string[] = [];
   const res = schemaSources.map(globToRe);
   for (const f of files) {
     if (!res.some((r) => r.test(f))) continue;
+    if (f.endsWith('.sql') || f.endsWith('.prisma')) schemaFiles.push(f);
     if (f.endsWith('.sql')) parseSql(read(f), schema);
     else if (f.endsWith('.prisma')) parsePrisma(read(f), schema);
   }
-  return { root, files, scripts: new Set(Object.keys(obj('scripts'))), makeTargets, deps, schema, symbols: new Map() };
+  return { root, files, scripts, makeTargets, deps, schema, schemaFiles, mdNames: new Map(), symbols: new Map() };
 }
 
-/** One `git grep` batch (per 400 names) for every not-yet-checked symbol/env var. Markdown is excluded: docs do not prove code exists. */
+const BIG_FILE = 512 * 1024;
+const WORD = /\w/;
+
+/** First file (in order) containing `name` as a whole word, read in Node; for files too big for `git grep -o`. */
+function hasWord(text: string, name: string): boolean {
+  for (let i = text.indexOf(name); i >= 0; i = text.indexOf(name, i + 1)) {
+    if (!WORD.test(text[i - 1] ?? '') && !WORD.test(text[i + name.length] ?? '')) return true;
+  }
+  return false;
+}
+
+/**
+ * Per 400 names: `git grep -l` finds candidate files fast; `-o` runs only on small candidates (it crawls on a
+ * huge single-line file), large ones are scanned in Node. Markdown is excluded: docs do not prove code exists,
+ * but a second pass records which still-unfound names docs mention (those become unknown, not missing).
+ */
 export function primeSymbols(idx: RepoIndex, names: Iterable<string>): void {
   const todo = [...new Set(names)].filter((n) => !idx.symbols.has(n));
+  const run = (args: string[]): string => { try { return git(idx.root, args); } catch { return ''; } /* exit 1 = no matches */ };
   for (let i = 0; i < todo.length; i += 400) {
     const chunk = todo.slice(i, i + 400);
     const dir = mkdtempSync(join(tmpdir(), 'hewtd-refs-'));
@@ -215,14 +247,40 @@ export function primeSymbols(idx: RepoIndex, names: Iterable<string>): void {
     writeFileSync(pf, chunk.join('\n') + '\n');
     const want = new Set(chunk);
     try {
-      let out = '';
-      try {
-        out = git(idx.root, ['grep', '-I', '-o', '-w', '-F', '-f', pf, '--', '.', ':!*.md', ':!*.mdx']);
-      } catch { /* exit 1 = no matches */ }
-      for (const l of out.split('\n')) {
-        const c = l.lastIndexOf(':');
-        const tok = l.slice(c + 1);
-        if (c > 0 && want.has(tok) && !idx.symbols.get(tok)) idx.symbols.set(tok, l.slice(0, c));
+      const code = ['--', '.', ':!*.md', ':!*.mdx'];
+      const cands = run(['grep', '-I', '-l', '-w', '-F', '-f', pf, ...code]).split('\n').filter(Boolean).sort();
+      const small: string[] = [];
+      const big: string[] = [];
+      for (const f of cands) {
+        let size = 0;
+        try { size = statSync(join(idx.root, f)).size; } catch { /* gone: skip */ }
+        (size > BIG_FILE ? big : small).push(f);
+      }
+      for (let j = 0; j < small.length; j += 500) {
+        const out = run(['grep', '-I', '-o', '-w', '-F', '-f', pf, '--', ...small.slice(j, j + 500).map((f) => `:(literal)${f}`)]);
+        for (const l of out.split('\n')) {
+          const c = l.lastIndexOf(':');
+          const tok = l.slice(c + 1);
+          if (c > 0 && want.has(tok) && !idx.symbols.get(tok)) idx.symbols.set(tok, l.slice(0, c));
+        }
+      }
+      for (const f of big) {
+        const left = chunk.filter((n) => !idx.symbols.get(n));
+        if (!left.length) break;
+        let text = '';
+        try { text = readFileSync(join(idx.root, f), 'utf-8'); } catch { continue; }
+        for (const n of left) if (hasWord(text, n)) idx.symbols.set(n, f);
+      }
+      const unfound = chunk.filter((n) => !idx.symbols.get(n));
+      if (unfound.length) {
+        writeFileSync(pf, unfound.join('\n') + '\n');
+        for (const l of run(['grep', '-I', '-o', '-w', '-F', '-f', pf, '--', '*.md', '*.mdx']).split('\n')) {
+          const c = l.lastIndexOf(':');
+          const tok = l.slice(c + 1);
+          if (c <= 0 || !want.has(tok)) continue;
+          const files = idx.mdNames.get(tok) ?? idx.mdNames.set(tok, new Set()).get(tok)!;
+          if (files.size < 2) files.add(l.slice(0, c));
+        }
       }
     } finally { rmSync(dir, { recursive: true, force: true }); }
     for (const n of chunk) if (!idx.symbols.has(n)) idx.symbols.set(n, null);
@@ -231,12 +289,33 @@ export function primeSymbols(idx: RepoIndex, names: Iterable<string>): void {
 
 // ---------- resolution ----------
 
+function mentionedElsewhere(idx: RepoIndex, name: string, self: string | undefined): boolean {
+  const files = idx.mdNames.get(name);
+  return !!files && [...files].some((f) => f !== self);
+}
+
+/** A sibling checkout, read-only. `idx` is built lazily, only when a ref misses locally. */
+export interface RelatedRepo { name: string; root: string; idx?: RepoIndex | null }
+
+/** The sibling's index, or null when it is not a checked-out git repo. Never reads the sibling's config. */
+export function relatedIndex(r: RelatedRepo): RepoIndex | null {
+  if (r.idx === undefined) {
+    try { r.idx = existsSync(r.root) ? buildRepoIndex(r.root) : null; } catch { r.idx = null; }
+  }
+  return r.idx;
+}
+
 export interface ResolveOptions {
+  /** sibling checkouts, consulted only for refs unresolved locally */
+  related?: RelatedRepo[];
   /** absolute path of the doc, for resolving relative links */
   docFile?: string;
   /** absolute docs root, for resolving links */
   docsPath?: string;
 }
+
+/** `example.com/x`: a host-like first segment (letters-only TLD) is a URL, not a repo directory. */
+const HOST_LIKE = /^[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}\//i;
 
 function resolvePath(idx: RepoIndex, ref: string): string | undefined {
   const p = ref.replace(/^\.\//, '').replace(/^\//, '');
@@ -249,16 +328,48 @@ function resolvePath(idx: RepoIndex, ref: string): string | undefined {
   return undefined;
 }
 
+/** `<name>:<where>` for the first sibling that has the ref; undefined if none does. */
+function inRelated(related: RelatedRepo[], r: Reference): string | undefined {
+  for (const rel of related) {
+    const sib = relatedIndex(rel);
+    if (!sib) continue;
+    let where: string | undefined;
+    if (r.kind === 'path') where = resolvePath(sib, r.ref);
+    else if (r.kind === 'symbol' || r.kind === 'env') where = sib.symbols.get(r.ref) ?? undefined;
+    else if (r.kind === 'command') {
+      const name = r.ref.replace(/^\S+( run)? /, '');
+      if (r.ref.startsWith('npm') && sib.scripts.has(name)) where = join(sib.scripts.get(name)!, 'package.json');
+      else if (r.ref.startsWith('make') && sib.makeTargets.has(name)) where = 'Makefile';
+    }
+    if (where) return `${rel.name}:${where}`;
+  }
+  return undefined;
+}
+
 export async function resolveReferences(idx: RepoIndex, refs: Reference[], opts: ResolveOptions = {}): Promise<ResolvedReference[]> {
-  primeSymbols(idx, refs.filter((r) => r.kind === 'symbol' || r.kind === 'env').map((r) => r.ref));
+  const related = opts.related ?? [];
+  const symNames = refs.filter((r) => r.kind === 'symbol' || r.kind === 'env').map((r) => r.ref);
+  primeSymbols(idx, symNames);
+  const lost = symNames.filter((n) => !idx.symbols.get(n));
+  if (related.length && lost.length) for (const rel of related) { const sib = relatedIndex(rel); if (sib) primeSymbols(sib, lost); }
   const haveSchema = idx.schema.tables.size > 0;
+  const self = opts.docFile ? relative(idx.root, opts.docFile).split('\\').join('/') : undefined;
   const out: ResolvedReference[] = [];
   for (const r of refs) {
     let status: RefStatus = 'unknown';
     let where: string | undefined;
     switch (r.kind) {
-      case 'path': where = resolvePath(idx, r.ref); status = where ? 'ok' : 'missing'; break;
-      case 'symbol': case 'env': where = idx.symbols.get(r.ref) ?? undefined; status = where ? 'ok' : 'missing'; break;
+      case 'path':
+        // `/docs/x/` and `/api/v1/x` are URL paths, not repo paths
+        if (r.ref.startsWith('/')) break;
+        where = resolvePath(idx, r.ref);
+        status = where ? 'ok' : HOST_LIKE.test(r.ref) ? 'unknown' : 'missing';
+        break;
+      case 'symbol': case 'env':
+        where = idx.symbols.get(r.ref) ?? undefined;
+        // Only another doc's mention makes a code-less name `unknown` (an external name); the citing doc itself proves nothing.
+        status = where ? 'ok' : mentionedElsewhere(idx, r.ref, self) ? 'unknown' : 'missing';
+        break;
       case 'command': {
         const [tool, name] = [r.ref.split(' ')[0]!, r.ref.replace(/^\S+( run)? /, '')];
         if (tool === 'npm') status = idx.scripts.has(name) ? 'ok' : 'missing';
@@ -276,9 +387,26 @@ export async function resolveReferences(idx: RepoIndex, refs: Reference[], opts:
       }
       case 'doc-link':
         if (opts.docFile && opts.docsPath) {
-          status = (await checkSingleLink(r.ref, opts.docFile, opts.docsPath)).valid ? 'ok' : 'missing';
+          const target = r.ref.startsWith('/') ? null : resolve(dirname(opts.docFile), decodeURI(r.ref.split(/[#?]/)[0]!));
+          if (target && relative(idx.root, target).startsWith('..')) {
+            // outside the project: only a related repo's .documentation is checkable
+            const rel = related.find((x) => !relative(join(x.root, '.documentation'), target).startsWith('..'));
+            if (rel) {
+              status = existsSync(target) && statSync(target).isFile() ? 'ok' : 'missing';
+              where = `${rel.name}:${relative(rel.root, target).split('\\').join('/')}`;
+            }
+          } else {
+            status = (await checkSingleLink(r.ref, opts.docFile, opts.docsPath)).valid ? 'ok' : 'missing';
+          }
         }
         break;
+    }
+    // markdown-only names are unknown locally, but code in a sibling still proves them
+    const lookup = status === 'missing' || (status === 'unknown' && !where && (r.kind === 'symbol' || r.kind === 'env'));
+    if (lookup && related.length && r.kind !== 'doc-link' && r.kind !== 'table' && r.kind !== 'column') {
+      where = inRelated(related, r);
+      // a sibling that is not checked out might own it: unknown, not missing
+      status = where ? 'ok' : related.some((x) => !relatedIndex(x)) ? 'unknown' : status;
     }
     out.push(where ? { ...r, status, where } : { ...r, status });
   }

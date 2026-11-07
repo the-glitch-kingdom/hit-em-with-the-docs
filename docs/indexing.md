@@ -113,7 +113,8 @@ Every command's default docs path (`-p`, `--path`, `--docs-path`) walks up from
 the current directory to the nearest ancestor containing `.documentation`,
 stopping at the git root. An explicit `-p` is used as given. `init` is excluded.
 For commands with a docs-path option, the config root is the parent of the docs
-path.
+path. Since 2.16.0 config (custom domains, statuses, reconcile) is loaded from
+that project root, so a run from a subdirectory behaves like one from the root.
 
 ## Overview back-links (2.13.0)
 

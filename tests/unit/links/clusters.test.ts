@@ -112,6 +112,24 @@ describe('findClusters communities', () => {
     expect(cl.length).toBeGreaterThanOrEqual(2);
   });
 
+  it('merges a domain flow and a cross-domain flow that share most members', async () => {
+    const ids = clique('a', 'p');
+    put('b/q0.md', ids.map((i) => `../a/${i}.md`));
+    ids.forEach((i) => put(`a/${i}.md`, [...ids.filter((j) => j !== i).map((j) => `${j}.md`), '../b/q0.md']));
+    const cl = await findClusters(root, cfg);
+    expect(cl).toHaveLength(1);
+    expect(cl[0]!.members).toHaveLength(6);
+  });
+
+  it('a root README linking 40 of 586 docs is not a member of any flow', async () => {
+    clique('a', 'p');
+    put('README.md', Array.from({ length: 40 }, (_, i) => `misc/m${i}.md`).concat(Array.from({ length: 5 }, (_, i) => `a/p${i}.md`)));
+    for (let i = 0; i < 541; i++) put(`misc/m${i}.md`);
+    const cl = await findClusters(root, cfg);
+    expect(cl.flatMap((c) => c.members)).not.toContain('README.md');
+    expect(cl.some((c) => c.id === 'a')).toBe(true);
+  });
+
   it('is deterministic', async () => {
     clique('guides', 'x');
     clique('ref', 'y');

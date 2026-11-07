@@ -10,6 +10,8 @@
 > You still need to remember to use this plugin when creating documentation! As projects grow, documentation needs to be created and maintained. You'll need to invoke this plugin or ask an LLM to create documentation for your features, workflows, or infrastructure. This plugin must be invoked to create, update, or maintain your docs.
 
 > [!NOTE]
+> **2.16.0** adds `reconcile.related_repos` (summarize and cross-link, never copy), atomic `--apply` and fewer false "missing" references; see the [CHANGELOG](./CHANGELOG.md).
+>
 > **2.15.0 — `/reconcile`.** Check existing docs against the code in scoped, resumable batches: `hewtd reconcile <scope>` triages (deterministic, no LLM), the `/hit-em-with-the-docs:reconcile` slash command judges, and `--apply` writes only what you accept. Optional agent-team mode for big jobs, an outside-the-tree lane, a ledger under `.hewtd/`, and a `moved_from` frontmatter field. See [`docs/reconcile.md`](./docs/reconcile.md) and the [CHANGELOG](./CHANGELOG.md).
 >
 > **2.14.0 — follow-ups.** `integrate` now refuses a file already inside the docs tree at a path other than its target (use `maintain --fix` / `metadata-sync`). Commands find `.documentation` from any subdirectory. `fix-retrieval-fields` drops filler. `hewtd index` rebuilds KB indexes and stamps old reports. `OVERVIEW_MISSING` fires per flow, not per domain. See [CHANGELOG](./CHANGELOG.md).

@@ -188,7 +188,15 @@ const overviewConfigSchema = z
 export const DEFAULT_RECONCILE_KEEP_IN_PLACE = [
   'README.md', 'SECURITY.md', 'LICENSE.md', 'CONTRIBUTING.md', 'CHANGELOG.md', '.github/**', '.claude/**',
 ];
-export const DEFAULT_RECONCILE_SCHEMA_SOURCES = ['**/migrations/**/*.sql', '**/schema.prisma'];
+/** Empty on purpose: a guessed schema flagged 34 live tables `missing` (#58). Set `schema_sources` to opt in. */
+export const DEFAULT_RECONCILE_SCHEMA_SOURCES: string[] = [];
+
+/** Sibling checkouts reconcile may read (never write) to resolve references and cross-links (#58). */
+const relatedRepoSchema = z.object({ name: z.string().regex(/^[\w.-]+$/), path: z.string().min(1) });
+const lenientRelatedRepos = z
+  .array(z.unknown())
+  .transform((a) => a.flatMap((x) => { const r = relatedRepoSchema.safeParse(x); return r.success ? [r.data] : []; }))
+  .catch([]);
 
 /** Reconcile (#54). Lenient like `retrieval`: any invalid key falls back to its default. */
 const reconcileConfigSchema = z
@@ -196,6 +204,7 @@ const reconcileConfigSchema = z
     keep_in_place: z.array(z.string()).catch(DEFAULT_RECONCILE_KEEP_IN_PLACE),
     ledger_path: z.string().min(1).catch('.hewtd/reconcile.json'),
     schema_sources: z.array(z.string()).catch(DEFAULT_RECONCILE_SCHEMA_SOURCES),
+    related_repos: lenientRelatedRepos,
     team: z
       .object({
         min_docs: z.number().int().positive().catch(12),
@@ -210,6 +219,7 @@ const reconcileConfigSchema = z
     keep_in_place: DEFAULT_RECONCILE_KEEP_IN_PLACE,
     ledger_path: '.hewtd/reconcile.json',
     schema_sources: DEFAULT_RECONCILE_SCHEMA_SOURCES,
+    related_repos: [] as Array<{ name: string; path: string }>,
     team: { min_docs: 12, min_bytes: 250000, max_agents: 4, docs_per_agent: 8 },
   })
   .default({});

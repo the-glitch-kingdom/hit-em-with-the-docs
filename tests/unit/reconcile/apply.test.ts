@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { execFileSync } from 'child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, chmodSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { applyReviews } from '../../../src/core/reconcile/apply';
 import { renderReview, parseReview, writeReviewSkeletons, type ReviewEntry } from '../../../src/core/reconcile/review';
-import { hashContent, loadLedger } from '../../../src/core/reconcile/ledger';
+import { hashContent, loadLedger, isReviewed } from '../../../src/core/reconcile/ledger';
 
 let root: string, docs: string, ledgerFile: string;
 const g = (...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: root, encoding: 'utf-8' }).trim();
@@ -117,5 +117,70 @@ describe('applyReviews', () => {
     const r = await parseReview(f!);
     expect(r.entries.map((e) => [e.entry.path, e.entry.verdict, e.accepted])).toEqual([['backend/a.md', null, false]]);
     expect((await run([f!])).outcomes[0].status).toBe('rejected');
+  });
+
+  it('an ignored archive/ target is still committed (git add -f)', async () => {
+    writeFileSync(join(root, '.gitignore'), '.hewtd/\narchive/\n');
+    g('add', '-A'); g('commit', '-qm', 'ignore archive');
+    const res = await run([review('review-1-1.md', [entry('backend/a.md', { verdict: 'archive', reason: 'gone' })])]);
+    expect(res.outcomes[0].status).toBe('applied');
+    expect(existsSync(join(docs, 'backend/a.md'))).toBe(false);
+    expect(g('status', '--porcelain')).toBe('');
+    expect(g('ls-files', '.documentation/archive')).toMatch(/a\.md/);
+  });
+
+  it('a failing commit rolls the whole batch back: tree, index and ledger untouched, rerun works', async () => {
+    const f = review('review-1-1.md', [entry('backend/a.md', { verdict: 'archive', reason: 'gone' }), entry('backend/b.md', { sources: ['x.ts'] })]);
+    const hook = join(root, '.git/hooks/pre-commit');
+    writeFileSync(hook, '#!/bin/sh\nexit 1\n');
+    chmodSync(hook, 0o755);
+    const head = g('rev-parse', 'HEAD');
+    const res = await run([f]);
+    expect(res.commit).toBeUndefined();
+    expect(res.outcomes.map((o) => o.status)).toEqual(['error', 'error']);
+    expect(g('rev-parse', 'HEAD')).toBe(head);
+    expect(g('status', '--porcelain')).toBe('');
+    expect(existsSync(join(docs, 'archive'))).toBe(false);
+    expect(read('backend/b.md')).toBe(doc('b'));
+    expect(existsSync(ledgerFile)).toBe(false);
+    rmSync(hook);
+    expect((await run([f])).outcomes.map((o) => o.status)).toEqual(['applied', 'applied']);
+  });
+
+  it('rollback restores uncommitted edits and pre-existing untracked files, not HEAD (review fix)', async () => {
+    const dirty = doc('b') + '\nmy uncommitted edit\n';
+    writeFileSync(join(docs, 'backend/b.md'), dirty);
+    writeFileSync(join(docs, 'INDEX.md'), '# my hand-made index, never committed\n');
+    const f = review('review-1-1.md', [entry('backend/b.md', { sources: ['x.ts'] })]);
+    const hook = join(root, '.git/hooks/pre-commit');
+    writeFileSync(hook, '#!/bin/sh\nexit 1\n');
+    chmodSync(hook, 0o755);
+    const res = await run([f]);
+    expect(res.outcomes[0]).toMatchObject({ status: 'error' });
+    expect(res.outcomes[0]!.detail).toMatch(/rolled back/);
+    expect(read('backend/b.md')).toBe(dirty);
+    expect(read('INDEX.md')).toBe('# my hand-made index, never committed\n');
+    expect(g('diff', '--cached', '--name-only')).toBe('');
+  });
+
+  it('refuses an entry that resolves outside the project root and writes nothing', async () => {
+    const outside = mkdtempSync(join(tmpdir(), 'sibling-'));
+    try {
+      const target = join(outside, 'x.md');
+      writeFileSync(target, doc('x'));
+      const rel = join('..', '..', outside.split('/').pop()!, 'x.md');
+      const e: ReviewEntry = { path: rel, content_hash: hashContent(doc('x')), verdict: 'verify' };
+      const res = await run([review('review-1-1.md', [e])]);
+      expect(res.outcomes[0]).toMatchObject({ status: 'error', detail: expect.stringContaining('outside the project root') });
+      expect(readFileSync(target, 'utf-8')).toBe(doc('x'));
+    } finally { rmSync(outside, { recursive: true, force: true }); }
+  });
+
+  it('a rewrite verdict is recorded but the doc stays unreviewed', async () => {
+    const res = await run([review('review-1-1.md', [entry('backend/a.md', { verdict: 'rewrite', draft: 'new' })])]);
+    expect(res.outcomes[0].status).toBe('applied');
+    const l = (await loadLedger(ledgerFile)).entries['backend/a.md'];
+    expect(l?.verdict).toBe('rewrite');
+    expect(isReviewed(l, hashContent(read('backend/a.md')))).toBe(false);
   });
 });

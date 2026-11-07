@@ -17,6 +17,10 @@ const MAX_ROUNDS = 20;
 const HUB_MIN_OUT = 20;
 const HUB_SHARE = 0.1;
 const GENERATED_NAMES = new Set(['INDEX.md', 'REGISTRY.md']);
+const MERGE_JACCARD = 0.6;
+const MERGE_CONTAINED = 0.8;
+// Root-level landing docs (README.md etc.) link broadly by nature, whatever the tree size.
+const LANDING = /^(readme|index|overview)\.mdx?$/i;
 
 /** Docs that never take part in clusters or back-links: drafts, reports, archive, plans, draft/archived status. */
 export function isOutOfOverviewScope(rel: string, data: Record<string, unknown>): boolean {
@@ -77,7 +81,7 @@ export async function findClusters(
   // Landing docs that link to a large share of the tree bridge every group; they stay out of
   // community detection (and member lists) but can still qualify as an overview.
   const hubMin = Math.max(HUB_MIN_OUT, Math.ceil(plain.length * HUB_SHARE));
-  const hubs = plain.filter((id) => (out.get(id)?.size ?? 0) >= hubMin);
+  const hubs = plain.filter((id) => (out.get(id)?.size ?? 0) >= hubMin || (!/[\\/]/.test(id) && LANDING.test(id)));
   const core = plain.filter((id) => !hubs.includes(id));
   const coreSet = new Set(core);
 
@@ -139,6 +143,21 @@ export async function findClusters(
     if (n < 2 && i >= 0) continue;
     if (i >= 0) groups.splice(i, 1);
     groups.push(sub);
+  }
+
+  // Near-identical flows (heavy overlap) are one flow: fold the smaller into the larger.
+  groups.sort((a, b) => b.members.length - a.members.length || a.id.localeCompare(b.id));
+  for (let i = 0; i < groups.length; i++) {
+    for (let j = groups.length - 1; j > i; j--) {
+      const big = new Set(groups[i]!.members);
+      const shared = groups[j]!.members.filter((m) => big.has(m)).length;
+      const union = big.size + groups[j]!.members.length - shared;
+      if (shared / union >= MERGE_JACCARD || shared / groups[j]!.members.length >= MERGE_CONTAINED) {
+        groups[i]!.members = [...new Set([...groups[i]!.members, ...groups[j]!.members])].sort();
+        groups.splice(j, 1);
+        j = groups.length; // members changed: rescan against the grown flow
+      }
+    }
   }
 
   return groups.map((g) => {

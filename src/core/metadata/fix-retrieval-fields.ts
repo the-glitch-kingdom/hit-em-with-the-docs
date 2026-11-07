@@ -86,7 +86,7 @@ export async function fixRetrievalFields(opts: {
     if (opts.apply) {
       // Replace only the frontmatter block; the body is written back byte for byte.
       const body = raw.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
-      await writeFile(file, `---\n${stringifyFrontmatter(data)}---\n${body}`, 'utf-8');
+      await writeFile(file, `---\n${stringifyFrontmatter(data, raw)}---\n${body}`, 'utf-8');
     }
   }
   return result;

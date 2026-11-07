@@ -51,6 +51,27 @@ describe('discoverOutside', () => {
     expect((await discoverOutside(docs, ['notes/**'])).find((d) => d.path === 'notes/copy.md')!.cls).toBe('tool-read');
   });
 
+  it('a config naming a longer file does not claim a shorter one; old/ is not an archive folder (review fix)', async () => {
+    put('notes.md', `# Notes\n\n${words(50)}\n`);
+    put('product/old/plan.md', `# Plan\n\n${words(50)}\n`);
+    put('tools/release.json', '{"changelog": "docs/release-notes.md"}\n');
+    g('add', '-A'); g('commit', '-qm', 'more');
+    const found = await discoverOutside(docs, []);
+    expect(found.find((d) => d.path === 'notes.md')).toMatchObject({ cls: 'misplaced' });
+    expect(found.find((d) => d.path === 'product/old/plan.md')!.cls).toBe('misplaced');
+  });
+
+  it('classes config-referenced files as not-a-doc and archive folders as junk', async () => {
+    put('.design-sync/conventions.md', `# Conventions\n\n${words(50)}\n`);
+    put('tools/config.json', '{"conventions": "./.design-sync/conventions.md"}\n');
+    put('_archive/x.md', `# Old thing\n\n${words(50)}\n`);
+    g('add', '-A'); g('commit', '-qm', 'more');
+    const found = await discoverOutside(docs, []);
+    expect(found.find((d) => d.path === '.design-sync/conventions.md')).toMatchObject({ cls: 'not-a-doc', reason: 'referenced by tools/config.json' });
+    expect(found.find((d) => d.path === '_archive/x.md')).toMatchObject({ cls: 'junk', reason: 'archived copy' });
+    expect((await discoverOutside(docs, ['_archive/**'])).find((d) => d.path === '_archive/x.md')!.cls).toBe('tool-read');
+  });
+
   it('writes a review skeleton: junk pre-set to delete, misplaced left open', async () => {
     const f = await writeOutsideReview({ docsPath: docs, root, docs: await discoverOutside(docs, ['README.md']) });
     const t = readFileSync(f, 'utf-8');
@@ -69,6 +90,8 @@ describe('outside apply', () => {
     expect(t).toMatch(/moved_from: notes\/design\.md/);
     expect(t).toMatch(/first commit \d{4}-\d\d-\d\d, last change\s+\d{4}-\d\d-\d\d, authors: Ann/);
     expect(t).not.toContain('last_verified');
+    expect(t).not.toContain('last_validated');
+    expect(t).toMatch(/last_updated: ['"]?\d{4}-\d\d-\d\d/); // git date of the original, not a stamp
     expect(t).toContain('(../../src/x.ts)'); // relative link rebased
     expect(readFileSync(join(docs, 'backend/a.md'), 'utf-8')).toContain('(../api/design.md)'); // inbound link repointed
     expect(g('status', '--porcelain')).toBe('');

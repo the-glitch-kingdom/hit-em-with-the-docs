@@ -41,10 +41,12 @@ Each review file has, per doc, a heading `## <docs-relative path>`, a `- [ ] acc
 - `verdict`: `verify` (doc matches the code; stamps `last_verified`), `rewrite` (needs a larger rewrite; put the full proposed body in `draft`), `archive` (obsolete; put the why in `reason`), `unverifiable` (cannot be checked from the repo; sets `confidence: low`), or `fields` (frontmatter only).
 - `frontmatter`: keys to set, for example `purpose` and `symptoms`. Never `last_verified`; only the `verify` verdict stamps it.
 - `patch`: `[{old, new}]` exact-text body edits. Each `old` must occur exactly once in the body.
-- `sources`: every file you actually read to decide. Do not list files you did not open.
+- `sources`: every file you actually read to decide. Do not list files you did not open. A file read in a related repo (`reconcile.related_repos`) is listed as `<name>:<path>`.
 - `reason`: for `archive` and `unverifiable`.
 
 Rules: draft metadata from the doc's own text and the code it cites only. Do not invent symptoms or purposes. If a claim cannot be checked, say `unverifiable`; do not guess. Do not touch `content_hash`, `path`, `lane` or `reasons`. Leave `verdict: null` for a doc you did not get to. Use the `missing` references and `reasons` in the entry as the starting evidence. Do not edit anything under the docs tree.
+
+Related repos: each project keeps its docs in its own `.documentation`. When a triage entry says `details owned by <name>: summarize and cross-link`, or the doc duplicates details a related repo owns, propose a `patch` that keeps a short summary and adds a link to the owning repo's doc (read that repo's `.documentation` to pick the target). Related repos are read-only: never propose integrating, moving or copying a sibling doc, and never edit anything outside this project.
 
 Leave `- [ ] accept` unticked. The user ticks it, or you tick it after they say yes.
 

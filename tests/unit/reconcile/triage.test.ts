@@ -175,3 +175,19 @@ describe('team plan', () => {
     expect(shards.flatMap((s) => s.docs).sort()).toEqual(names);
   });
 });
+
+describe('triage cited files (#58)', () => {
+  it('a symbol living in a large data file adds no bytes and no staleness', async () => {
+    put('src/data.json', JSON.stringify({ v: 'widgetRetry ' + 'y'.repeat(3 * 1024 * 1024) }));
+    g('add', '-A');
+    g('commit', '-m', 'data');
+    const r = await run(['ops/clean.md']);
+    expect(r.docs[0]!.bytes).toBeLessThan(10000);
+    expect(r.schemaFiles).toEqual([]);
+  });
+
+  it('--next 3 style small docs stay serial', async () => {
+    const r = await run(['ops/clean.md', 'ops/fields.md', 'ops/gone.md']);
+    expect(r.mode).toBe('serial');
+  });
+});

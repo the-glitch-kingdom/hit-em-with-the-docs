@@ -114,4 +114,21 @@ describe('fixRetrievalFields', () => {
     expect(r.changed).toHaveLength(0);
     expect(r.dropped + r.cleared).toBe(0);
   });
+
+  it.each([
+    ['unindented', 'tags:\n- a\n- b', 'tags:\n- a\n- b\n'],
+    ['indented', 'tags:\n  - a\n  - b', 'tags:\n  - a\n  - b\n'],
+  ])('keeps %s list style: diff touches only the moved field', async (_n, list, expected) => {
+    await put('s.md', `title: S\n${list}\nsummary: Explains how the nightly export job retries failed uploads`);
+    await fixRetrievalFields({ docsPath: dir, apply: true });
+    const fm = (await readFile(join(dir, 's.md'), 'utf-8')).split('---')[1]!;
+    expect(fm).toBe(`\ntitle: S\n${expected}purpose: Explains how the nightly export job retries failed uploads\n`);
+  });
+
+  it('setFrontmatter keeps list style from an explicit original; new files default to indented', async () => {
+    const { setFrontmatter, stringifyFrontmatter } = await import('../../../src/utils/frontmatter.js');
+    const orig = '---\ntags:\n- a\n---\n\nB\n';
+    expect(setFrontmatter('B\n', { tags: ['a', 'b'] }, orig)).toContain('tags:\n- a\n- b\n');
+    expect(stringifyFrontmatter({ tags: ['a'] })).toBe('tags:\n  - a\n');
+  });
 });

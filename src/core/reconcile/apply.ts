@@ -4,9 +4,9 @@
  * commits once per batch.
  */
 import { execFileSync } from 'child_process';
-import { existsSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, statSync, writeFileSync } from 'fs';
 import { mkdir, readFile, stat, writeFile } from 'fs/promises';
-import { dirname, join, relative } from 'path';
+import { dirname, isAbsolute, join, relative } from 'path';
 import { parseFrontmatter, setFrontmatter } from '../../utils/frontmatter.js';
 import { formatDate } from '../metadata/generator.js';
 import { archiveDoc } from '../archive/manage.js';
@@ -32,6 +32,50 @@ export interface ApplyResult {
 const exists = (p: string) => stat(p).then(() => true, () => false);
 const git = (cwd: string, args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 
+/**
+ * Files that differ from HEAD before the batch starts (dirty tracked files anywhere, plus
+ * untracked and ignored files under the docs tree), with their contents, so a rollback
+ * returns to the pre-apply state rather than to HEAD.
+ */
+function snapshot(top: string, docsRel: string): Map<string, Buffer> {
+  const snap = new Map<string, Buffer>();
+  const paths = (args: string[]): string[] => {
+    // not git(): its trim() would eat the leading space of the first ' M path' entry
+    const toks = execFileSync('git', ['status', '--porcelain=v1', '-z', ...args], { cwd: top, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] }).split('\0');
+    const out: string[] = [];
+    for (let i = 0; i < toks.length; i++) {
+      const t = toks[i]!;
+      if (t.length < 4) continue;
+      out.push(t.slice(3));
+      if (t[0] === 'R' || t[0] === 'C') i++; // rename/copy: next token is the old path
+    }
+    return out;
+  };
+  const rels = [...paths(['--untracked-files=no']), ...paths(['--untracked-files=all', '--ignored', '--', docsRel])];
+  for (const r of rels) {
+    try { if (statSync(join(top, r)).isFile()) snap.set(r, readFileSync(join(top, r))); } catch { /* deleted in the worktree */ }
+  }
+  return snap;
+}
+
+/** Undo a failed batch: touched paths back to their pre-apply state, batch-created files removed. */
+function rollback(top: string, abs: string[], snap: Map<string, Buffer>): void {
+  const rels = abs.map((p) => relative(top, p));
+  const inHead = new Set(git(top, ['ls-tree', '-r', '--name-only', '-z', 'HEAD', '--', ...rels]).split('\0').filter(Boolean));
+  const tracked = rels.filter((r) => inHead.has(r));
+  const created = rels.filter((r) => !inHead.has(r) && !snap.has(r));
+  if (tracked.length) git(top, ['restore', '--staged', '--worktree', '--source=HEAD', '--', ...tracked]);
+  const unstage = rels.filter((r) => !inHead.has(r));
+  if (unstage.length) git(top, ['rm', '-q', '--cached', '-f', '--ignore-unmatch', '--', ...unstage]);
+  // Uncommitted edits and pre-existing untracked/ignored files the batch overwrote come back as they were.
+  for (const r of rels) { const b = snap.get(r); if (b) { mkdirSync(dirname(join(top, r)), { recursive: true }); writeFileSync(join(top, r), b); } }
+  for (const r of created) {
+    rmSync(join(top, r), { force: true });
+    // Drop directories the batch created (e.g. a fresh archive/), never a non-empty one.
+    for (let d = dirname(join(top, r)); d !== top && existsSync(d) && !readdirSync(d).length; d = dirname(d)) rmdirSync(d);
+  }
+}
+
 /** Build the new file content for a verify/fields/unverifiable entry. */
 function editDoc(raw: string, e: ReviewEntry, today: string): string {
   const { data, content } = parseFrontmatter<Record<string, unknown>>(raw);
@@ -45,7 +89,7 @@ function editDoc(raw: string, e: ReviewEntry, today: string): string {
   if (e.sources) next.sources = e.sources;
   if (e.verdict === 'verify') next.last_verified = today;
   if (e.verdict === 'unverifiable') next.confidence = 'low';
-  return setFrontmatter(body, next);
+  return setFrontmatter(body, next, raw);
 }
 
 export async function applyReviews(opts: {
@@ -59,6 +103,8 @@ export async function applyReviews(opts: {
   const { root, docsPath, ledger } = opts;
   const today = opts.today ?? formatDate(new Date());
   const reviews = await Promise.all(opts.files.map((f) => parseReview(f)));
+  const top0 = gitRoot(root);
+  const snap = top0 ? snapshot(top0, relative(top0, docsPath) || '.') : new Map<string, Buffer>();
 
   // Merge shards; the same doc in two files is a hard error before anything is written.
   const owner = new Map<string, string>();
@@ -81,6 +127,12 @@ export async function applyReviews(opts: {
     const reviewRef = relative(root, r.file).split('\\').join('/');
     for (const { entry: e, accepted } of r.entries) {
       const abs = join(docsPath, e.path);
+      // Hard guard: never write outside the project root (related repos are read-only).
+      const rel = relative(root, abs);
+      if (rel === '..' || rel.startsWith('../') || rel.startsWith('..\\') || isAbsolute(rel)) {
+        outcomes.push({ path: e.path, status: 'error', detail: 'path resolves outside the project root' });
+        continue;
+      }
       if (e.outside) {
         const key = outsideKey(e.path);
         if (ledger.entries[key]?.verdict && ledger.entries[key]?.review_file === reviewRef) { outcomes.push({ path: e.path, status: 'already-applied' }); continue; }
@@ -136,23 +188,35 @@ export async function applyReviews(opts: {
   const result: ApplyResult = { outcomes, touched: [] };
   if (!applied.length) return result;
 
-  if (domains.size) {
-    const reg = await regenerateIndexes({
-      docsPath, silent: true,
-      domains: [...domains].filter((d) => known.has(d)) as never,
-    });
-    reg.filesWritten.forEach((f) => touched.add(f));
-  }
-
   const top = gitRoot(root);
   let commit: string | undefined;
-  if (top && touched.size) {
-    const paths = [...touched].map((p) => relative(top, p));
-    const present = paths.filter((p) => existsSync(join(top, p)));
-    git(top, ['add', '-A', '--', ...present]);
-    const first = reviews[0]!;
-    if (git(top, ['status', '--porcelain', '--', ...paths])) git(top, ['commit', '-q', '--only', '-m', `docs(reconcile): ${first.scope || 'docs'} batch ${first.batch}`, '--', ...paths]);
-    commit = git(top, ['rev-parse', '--short', 'HEAD']);
+  try {
+    if (domains.size) {
+      const reg = await regenerateIndexes({
+        docsPath, silent: true,
+        domains: [...domains].filter((d) => known.has(d)) as never,
+      });
+      reg.filesWritten.forEach((f) => touched.add(f));
+    }
+    if (top && touched.size) {
+      const paths = [...touched].map((p) => relative(top, p));
+      const present = paths.filter((p) => existsSync(join(top, p)));
+      // -f: apply wrote these itself, so an ignored target (archive/) must still be staged.
+      // An empty pathspec would stage the whole tree (ignored files included).
+      if (present.length) git(top, ['add', '-A', '-f', '--', ...present]);
+      const gone = paths.filter((p) => !present.includes(p));
+      if (gone.length) git(top, ['rm', '-q', '--cached', '--ignore-unmatch', '--', ...gone]);
+      const first = reviews[0]!;
+      if (git(top, ['status', '--porcelain', '--', ...paths])) git(top, ['commit', '-q', '--only', '-m', `docs(reconcile): ${first.scope || 'docs'} batch ${first.batch}`, '--', ...paths]);
+      commit = git(top, ['rev-parse', '--short', 'HEAD']);
+    }
+  } catch (err) {
+    let msg = (err as Error).message;
+    if (top) {
+      try { rollback(top, [...touched], snap); } catch (rbErr) { msg += `; rollback also failed: ${(rbErr as Error).message}`; }
+    }
+    const failed = new Set(applied.map((a) => a.entry.path));
+    return { outcomes: outcomes.map((o) => (failed.has(o.path) && o.status === 'applied' ? { ...o, status: 'error' as const, detail: `rolled back: ${msg}` } : o)), touched: [] };
   }
 
   for (const a of applied) {

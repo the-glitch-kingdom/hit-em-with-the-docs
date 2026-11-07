@@ -119,6 +119,16 @@ describe('hewtd reconcile (built CLI)', () => {
     expect(st).toMatch(/reviewed 1 of 3/);
   });
 
+  it('an error entry exits 1 with a summary line; a rewrite doc stays in --next', () => {
+    hewtd(['reconcile', 'backend', '--write-review']);
+    const f = reviewFiles()[0]!;
+    fill(f, (p) => (p === 'backend/a.md' ? { verdict: 'rewrite', draft: 'x' } : p === 'backend/b.md' ? { verdict: 'integrate' } : null));
+    const r = hewtd(['reconcile', '--apply', f]);
+    expect(r.status).toBe(1);
+    expect(r.stdout).toMatch(/applied 1, stale 0, rejected 1, error 1/);
+    expect(triageJson('--next', '3').docs.map((d: { path: string }) => d.path)).toContain('backend/a.md');
+  });
+
   it('a doc edited after the review is stale: skipped, nothing overwritten', () => {
     hewtd(['reconcile', 'backend', '--write-review']);
     const f = reviewFiles()[0]!;

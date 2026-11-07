@@ -48,7 +48,8 @@ export async function saveLedger(file: string, ledger: Ledger): Promise<void> {
 /** Reviewed = has a verdict and the doc is unchanged since. */
 export function isReviewed(entry: LedgerEntry | undefined, currentHash: string): boolean {
   // A clean doc needs no judgment pass: triage alone settles it, so --next moves past it.
-  return !!entry && (!!entry.verdict || entry.lane === 'clean') && entry.content_hash === currentHash;
+  // A rewrite verdict only records the draft: the doc stays in the queue until the rewrite lands.
+  return !!entry && ((!!entry.verdict && entry.verdict !== 'rewrite') || entry.lane === 'clean') && entry.content_hash === currentHash;
 }
 
 /** Record a doc's current state; a changed hash drops the old verdict. */

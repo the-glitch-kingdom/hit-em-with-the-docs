@@ -1157,6 +1157,9 @@ program
         logger.header('hewtd reconcile --apply');
         for (const o of res.outcomes) logger.info(`  [${o.status}] ${o.path}${o.detail ? ` - ${o.detail}` : ''}`);
         if (res.commit) logger.info(`  committed ${res.commit}`);
+        const n = (st: string) => res.outcomes.filter((o) => o.status === st).length;
+        logger.info(`applied ${n('applied')}, stale ${n('stale')}, rejected ${n('rejected')}, error ${n('error')}`);
+        if (n('error')) process.exitCode = 1;
       } catch (e) {
         logger.error((e as Error).message);
         process.exitCode = 1;

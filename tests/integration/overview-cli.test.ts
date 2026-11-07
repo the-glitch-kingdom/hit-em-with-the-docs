@@ -58,7 +58,6 @@ const writeOverview = (linked = NAMES) =>
   );
 
 beforeAll(() => {
-  execFileSync('npm', ['run', 'build'], { cwd: REPO, stdio: 'ignore' });
   expect(existsSync(CLI)).toBe(true);
 }, 120_000);
 

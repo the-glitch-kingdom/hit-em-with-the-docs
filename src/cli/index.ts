@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { dirname, join, resolve } from 'path';
+import { dirname, join, relative, resolve } from 'path';
 import { readFile } from 'fs/promises';
 import { createRequire } from 'node:module';
 import { registerUpdateCommands } from '@theglitchking/claude-plugin-runtime';
@@ -1096,6 +1096,114 @@ program
     if (result.factsMdUpdated) {
       logger.success(`Updated ${result.factsMdPath} (produced: list)`);
     }
+  });
+
+// Reconcile command
+program
+  .command('reconcile')
+  .description('Scoped, resumable doc-vs-code reconciliation (deterministic; the judgment pass is the /reconcile slash command).')
+  .option('-p, --docs-path <path>', 'Documentation path', '.documentation')
+  .option('--status', 'Show ledger progress: counts per lane/verdict, reviewed vs total, next unreviewed', false)
+  .argument('[scope...]', 'Domain, folder or doc files to reconcile (required unless --next)')
+  .option('--next <n>', 'With --status: how many unreviewed docs to list. Otherwise: reconcile the next N unreviewed docs')
+  .option('--json', 'Machine-readable triage output (for the slash command)', false)
+  .option('--serial', 'Force a serial plan regardless of job size', false)
+  .option('--team', 'Force an agent-team plan regardless of job size', false)
+  .option('--write-review', 'Write an empty review-file skeleton per shard under .hewtd/reconcile/', false)
+  .option('--batch <id>', 'Batch id for --write-review (default: next number)')
+  .option('--outside', 'List markdown files outside the docs root by class (tool-read, junk, not-a-doc, misplaced); with --write-review, write an outside review file', false)
+  .option('--apply <files...>', 'Apply the accepted entries of review files (serial, one commit per batch)')
+  .action(async (scope: string[], options) => {
+    const { loadPluginConfig } = await import('../utils/config.js');
+    const { loadLedger, ledgerStatus, hashContent } = await import('../core/reconcile/ledger.js');
+    const { glob } = await import('../utils/glob.js');
+    const { projectRootOf } = await import('../core/reconcile/outside.js');
+    const docsPath = resolve(process.cwd(), options.docsPath);
+    // State (ledger, review files, config) lives at the project root, so a run from a subdirectory shares it.
+    const root = projectRootOf(docsPath);
+    const config = await loadPluginConfig(root);
+    const ledgerFile = resolve(root, config.reconcile.ledger_path);
+    if (options.apply) {
+      try {
+        const { applyReviews } = await import('../core/reconcile/apply.js');
+        const res = await applyReviews({
+          root, docsPath, ledger: await loadLedger(ledgerFile), ledgerFile,
+          files: (options.apply as string[]).map((f) => resolve(root, f)),
+        });
+        logger.header('hewtd reconcile --apply');
+        for (const o of res.outcomes) logger.info(`  [${o.status}] ${o.path}${o.detail ? ` - ${o.detail}` : ''}`);
+        if (res.commit) logger.info(`  committed ${res.commit}`);
+      } catch (e) {
+        logger.error((e as Error).message);
+        process.exitCode = 1;
+      }
+      return;
+    }
+    if (options.outside) {
+      try {
+        const { discoverOutside, writeOutsideReview } = await import('../core/reconcile/outside.js');
+        const docs = await discoverOutside(docsPath, (await loadPluginConfig(projectRootOf(docsPath))).reconcile.keep_in_place);
+        if (options.writeReview) logger.info(`  wrote ${relative(root, await writeOutsideReview({ docsPath, root, docs, batch: options.batch }))}`);
+        if (options.json) { console.log(JSON.stringify(docs, null, 2)); return; }
+        logger.header('hewtd reconcile --outside');
+        for (const d of docs) logger.info(`  [${d.cls}] ${d.path} - ${d.reason}`);
+      } catch (e) {
+        logger.error((e as Error).message);
+        process.exitCode = 1;
+      }
+      return;
+    }
+    if (!options.status) {
+      const { resolveScope, dirtyInScope, triage } = await import('../core/reconcile/triage.js');
+      const { saveLedger } = await import('../core/reconcile/ledger.js');
+      try {
+        if (options.serial && options.team) throw new Error('--serial and --team are mutually exclusive');
+        const ledger = await loadLedger(ledgerFile);
+        const next = options.next ? parseInt(options.next, 10) || undefined : undefined;
+        const rels = await resolveScope(docsPath, scope, { ...(next && { next }), ledger });
+        const dirty = dirtyInScope(docsPath, rels);
+        if (dirty.length) {
+          throw new Error(`Refusing to start: uncommitted changes in scope (commit or stash first):\n${dirty.map((d) => `  ${d}`).join('\n')}`);
+        }
+        const result = await triage({
+          root, docsPath, rels, config, ledger,
+          ...((options.serial && { mode: 'serial' }) || (options.team && { mode: 'team' }) || {}),
+        });
+        await saveLedger(ledgerFile, ledger);
+        if (options.writeReview) {
+          const { writeReviewSkeletons } = await import('../core/reconcile/review.js');
+          const files = await writeReviewSkeletons({ root, docsPath, triage: result, scope: scope.join(' ') || `next ${options.next}`, batch: options.batch });
+          files.forEach((f) => logger.info(`  wrote ${relative(root, f)}`));
+        }
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+        logger.header('hewtd reconcile');
+        const t = result.totals;
+        logger.info(`  ${t.docs} docs, ${t.bytes} bytes to read; judgment needed on ${t.judgmentDocs} (${t.judgmentBytes} bytes)`);
+        for (const [k, v] of Object.entries(t.byLane)) logger.info(`  ${k}: ${v}`);
+        for (const d of result.docs) logger.info(`  [${d.lane}] ${d.path}${d.reasons.length ? ` - ${d.reasons.join('; ')}` : ''}`);
+        for (const w of result.warnings) logger.warn(w);
+        logger.info(`  mode: ${result.mode}`);
+        for (const s of result.shards) logger.info(`    shard ${s.id}: ${s.docs.length} docs, ${s.bytes} bytes`);
+      } catch (e) {
+        logger.error((e as Error).message);
+        process.exitCode = 1;
+      }
+      return;
+    }
+    const files = (await glob('**/*.md', { cwd: docsPath, ignore: ['archive/**', '**/INDEX.md', '**/REGISTRY.md'] })).sort();
+    const docs = await Promise.all(
+      files.map(async (f) => ({ path: f, hash: hashContent(await readFile(join(docsPath, f), 'utf-8')) }))
+    );
+    const ledger = await loadLedger(ledgerFile);
+    const st = ledgerStatus(ledger, docs, parseInt(options.next ?? '10', 10) || 10);
+    logger.header('hewtd reconcile --status');
+    logger.info(`  reviewed ${st.reviewed} of ${st.total}`);
+    for (const [k, v] of Object.entries(st.byLane)) logger.info(`  lane ${k}: ${v}`);
+    for (const [k, v] of Object.entries(st.byVerdict)) logger.info(`  verdict ${k}: ${v}`);
+    if (st.nextUnreviewed.length) logger.info(`  next unreviewed:\n${st.nextUnreviewed.map((p) => `    ${p}`).join('\n')}`);
   });
 
 // Search command

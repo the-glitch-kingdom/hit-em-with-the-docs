@@ -1,0 +1,291 @@
+/**
+ * Reconcile: list the concrete things a doc claims exist (paths, symbols, env vars,
+ * commands, tables/columns, internal doc links) and whether each resolves in the repo.
+ * Deterministic, no LLM. "unknown" means we could not check; it never means "missing".
+ */
+import { execFileSync } from 'child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'fs';
+import { tmpdir } from 'os';
+import { join, resolve } from 'path';
+import { extractLinks } from '../../utils/markdown.js';
+import { checkSingleLink } from '../links/checker.js';
+
+export type RefKind = 'path' | 'symbol' | 'env' | 'command' | 'table' | 'column' | 'doc-link';
+export type RefStatus = 'ok' | 'missing' | 'unknown';
+export interface Reference {
+  ref: string;
+  kind: RefKind;
+  line: number;
+}
+export interface ResolvedReference extends Reference {
+  status: RefStatus;
+  where?: string;
+}
+
+// ---------- extraction ----------
+
+const EXAMPLE_FENCE = /output|example|result|sample|stdout|response/i;
+const SQL_FENCE = /^(sql|psql|pgsql|mysql|sqlite)\b/i;
+const FILE_EXT = /\.(?:[cm]?[jt]sx?|json|ya?ml|toml|md|mdx|sql|prisma|py|go|rs|rb|java|sh|css|html?|env|txt|lock|cfg|ini)$/i;
+const NOT_COLUMN_OWNER_EXT = /^(?:[cm]?[jt]sx?|json|ya?ml|toml|md|sql|py|go|rs|rb|java|sh|css|html?|env|txt|prisma)$/i;
+const ENV_RE = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/;
+const SYMBOL_RE = /^[A-Za-z_$][\w$]*$/;
+const CMD_RES: Array<[RegExp, string]> = [
+  [/\bnpm run ([\w:.-]+)/g, 'npm run '],
+  [/\bnpx (?:--?\w[\w-]* )*(@?[\w][\w@/.-]*)/g, 'npx '],
+  [/\bmake ([\w.-]+)/g, 'make '],
+];
+const SQL_TABLE_RES = [
+  /\b(?:FROM|JOIN|UPDATE|INTO|ALTER\s+TABLE)\s+(?:IF\s+EXISTS\s+)?["`]?([A-Za-z_][\w.]*)["`]?/gi,
+];
+
+function looksLikeSymbol(t: string): boolean {
+  const name = t.replace(/\(\)$/, '');
+  if (!SYMBOL_RE.test(name) || name.length < 4 || ENV_RE.test(name)) return false;
+  return t.endsWith('()') || /[a-z][A-Z]/.test(name) || /^[A-Z][a-z]+[A-Z]/.test(name) || /^[a-z]+_[a-z_]+$/.test(name);
+}
+
+function looksLikePath(t: string): boolean {
+  if (/[\s*?<>{}$|=,;]/.test(t) || /^[a-z][a-z0-9+.-]*:\/\//i.test(t) || t.startsWith('~') || t.startsWith('@')) return false;
+  const p = t.replace(/:\d+(?::\d+)?$/, '');
+  return (p.includes('/') && (FILE_EXT.test(p) || p.endsWith('/'))) || (FILE_EXT.test(p) && /^[\w.-]+$/.test(p) && p.includes('.') && !/^\.\w+$/.test(p));
+}
+
+export function extractReferences(body: string): Reference[] {
+  const out: Reference[] = [];
+  const seen = new Set<string>();
+  const add = (ref: string, kind: RefKind, line: number): void => {
+    const k = `${kind}\0${ref}`;
+    if (!seen.has(k)) { seen.add(k); out.push({ ref, kind, line }); }
+  };
+  const scanCommands = (text: string, line: number): void => {
+    for (const [re, prefix] of CMD_RES) {
+      for (const m of text.matchAll(re)) add(prefix + m[1], 'command', line);
+    }
+  };
+  const scanSql = (text: string, line: number): void => {
+    for (const re of SQL_TABLE_RES) {
+      for (const m of text.matchAll(re)) {
+        const t = m[1]!;
+        if (!/^(?:select|set|values|where|the|a|an)$/i.test(t)) add(t, 'table', line);
+      }
+    }
+    for (const m of text.matchAll(/ADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?["`]?(\w+)["`]?/gi)) {
+      const tbl = /ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?["`]?([\w.]+)/i.exec(text);
+      if (tbl) add(`${tbl[1]}.${m[1]}`, 'column', line);
+    }
+  };
+
+  let fence: { marker: string; len: number; skip: boolean; sql: boolean } | null = null;
+  body.split('\n').forEach((raw, i) => {
+    const line = i + 1;
+    if (fence) {
+      if (new RegExp(`^ {0,3}\\${fence.marker}{${fence.len},}\\s*$`).test(raw)) { fence = null; return; }
+      if (fence.skip) return;
+      scanCommands(raw, line);
+      if (fence.sql) scanSql(raw, line);
+      return;
+    }
+    const open = /^ {0,3}(`{3,}|~{3,})\s*(.*)$/.exec(raw);
+    if (open) {
+      const info = open[2] ?? '';
+      fence = { marker: open[1]![0]!, len: open[1]!.length, skip: EXAMPLE_FENCE.test(info), sql: SQL_FENCE.test(info) };
+      return;
+    }
+    for (const m of raw.matchAll(/`([^`\n]+)`/g)) {
+      const t = m[1]!.trim();
+      scanCommands(t, line);
+      if (/^(?:SELECT|INSERT|UPDATE|DELETE|ALTER)\b/i.test(t)) { scanSql(t, line); continue; }
+      if (ENV_RE.test(t)) add(t, 'env', line);
+      else if (looksLikePath(t)) add(t.replace(/:\d+(?::\d+)?$/, ''), 'path', line);
+      else if (looksLikeSymbol(t)) add(t.replace(/\(\)$/, ''), 'symbol', line);
+      else {
+        const d = /^([a-z][a-z0-9_]*)\.([a-z][a-z0-9_]*)$/.exec(t);
+        if (d && !NOT_COLUMN_OWNER_EXT.test(d[2]!)) add(t, 'column', line);
+      }
+    }
+    for (const m of raw.matchAll(/\$([A-Z][A-Z0-9_]{2,})\b/g)) add(m[1]!, 'env', line);
+  });
+  for (const l of extractLinks(body)) {
+    if (l.isInternal && !/^[a-z][a-z0-9+.-]*:/i.test(l.url)) add(l.url, 'doc-link', l.lineNumber);
+  }
+  return out;
+}
+
+// ---------- repo index (built once per run) ----------
+
+export interface Schema { tables: Map<string, Set<string>> }
+
+export interface RepoIndex {
+  root: string;
+  files: Set<string>;
+  scripts: Set<string>;
+  makeTargets: Set<string>;
+  deps: Set<string>;
+  schema: Schema;
+  /** symbol -> first file it appears in (non-markdown); filled by primeSymbols */
+  symbols: Map<string, string | null>;
+}
+
+const git = (root: string, args: string[]): string =>
+  execFileSync('git', args, { cwd: root, encoding: 'utf-8', maxBuffer: 512 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] });
+
+export function globToRe(glob: string): RegExp {
+  const s = glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*\/?/g, '\0').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]').replace(/\0/g, '(?:.*/)?');
+  return new RegExp(`^${s}$`);
+}
+
+const norm = (n: string): string => n.replace(/["`]/g, '').split('.').pop()!.toLowerCase();
+const SQL_CONSTRAINT = /^(?:primary|foreign|unique|constraint|check|index|key|exclude|like)$/i;
+
+export function parseSql(sql: string, schema: Schema): void {
+  const s = sql.replace(/--.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  for (const m of s.matchAll(/CREATE\s+(?:\w+\s+)*?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([\w."`]+)\s*\(/gi)) {
+    const cols = new Set<string>();
+    let depth = 1, i = m.index! + m[0].length, start = i;
+    const parts: string[] = [];
+    for (; i < s.length && depth > 0; i++) {
+      const c = s[i];
+      if (c === '(') depth++;
+      else if (c === ')') { depth--; if (depth === 0) parts.push(s.slice(start, i)); }
+      else if (c === ',' && depth === 1) { parts.push(s.slice(start, i)); start = i + 1; }
+    }
+    for (const p of parts) {
+      const w = /^\s*["`]?(\w+)["`]?/.exec(p)?.[1];
+      if (w && !SQL_CONSTRAINT.test(w)) cols.add(w.toLowerCase());
+    }
+    const key = norm(m[1]!);
+    schema.tables.set(key, new Set([...(schema.tables.get(key) ?? []), ...cols]));
+  }
+  for (const m of s.matchAll(/ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?([\w."`]+)([^;]*);/gi)) {
+    const key = norm(m[1]!);
+    const cols = schema.tables.get(key) ?? new Set<string>();
+    for (const a of m[2]!.matchAll(/ADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?["`]?(\w+)["`]?/gi)) {
+      if (!SQL_CONSTRAINT.test(a[1]!)) cols.add(a[1]!.toLowerCase());
+    }
+    schema.tables.set(key, cols);
+  }
+}
+
+export function parsePrisma(src: string, schema: Schema): void {
+  for (const m of src.matchAll(/^model\s+(\w+)\s*\{([\s\S]*?)^\}/gm)) {
+    const cols = new Set<string>();
+    let table = m[1]!;
+    for (const line of m[2]!.split('\n')) {
+      const l = line.trim();
+      const map = /@@map\(\s*"([^"]+)"/.exec(l);
+      if (map) table = map[1]!;
+      else if (l && !l.startsWith('@@') && !l.startsWith('//')) {
+        const f = /^(\w+)\s+\w/.exec(l)?.[1];
+        if (f) cols.add((/@map\(\s*"([^"]+)"/.exec(l)?.[1] ?? f).toLowerCase());
+      }
+    }
+    for (const k of new Set([m[1]!, table])) schema.tables.set(k.toLowerCase(), cols);
+  }
+}
+
+/** Build every per-run index: tracked files, package scripts, Makefile targets, parsed schema. */
+export function buildRepoIndex(root: string, schemaSources: string[] = []): RepoIndex {
+  const files = new Set(git(root, ['ls-files', '-z']).split('\0').filter(Boolean));
+  const read = (p: string): string => { try { return readFileSync(join(root, p), 'utf-8'); } catch { return ''; } };
+  let pkg: Record<string, Record<string, unknown> | string> = {};
+  try { pkg = JSON.parse(read('package.json') || '{}'); } catch { /* unreadable package.json: no scripts */ }
+  const obj = (k: string): Record<string, unknown> => (typeof pkg[k] === 'object' && pkg[k] ? (pkg[k] as Record<string, unknown>) : {});
+  const deps = new Set([...Object.keys(obj('dependencies')), ...Object.keys(obj('devDependencies')), ...Object.keys(obj('bin'))]);
+  if (typeof pkg.name === 'string') deps.add(pkg.name);
+  const makeTargets = new Set<string>();
+  for (const m of read('Makefile').matchAll(/^([A-Za-z0-9_.-]+)\s*:(?!=)/gm)) makeTargets.add(m[1]!);
+  const schema: Schema = { tables: new Map() };
+  const res = schemaSources.map(globToRe);
+  for (const f of files) {
+    if (!res.some((r) => r.test(f))) continue;
+    if (f.endsWith('.sql')) parseSql(read(f), schema);
+    else if (f.endsWith('.prisma')) parsePrisma(read(f), schema);
+  }
+  return { root, files, scripts: new Set(Object.keys(obj('scripts'))), makeTargets, deps, schema, symbols: new Map() };
+}
+
+/** One `git grep` batch (per 400 names) for every not-yet-checked symbol/env var. Markdown is excluded: docs do not prove code exists. */
+export function primeSymbols(idx: RepoIndex, names: Iterable<string>): void {
+  const todo = [...new Set(names)].filter((n) => !idx.symbols.has(n));
+  for (let i = 0; i < todo.length; i += 400) {
+    const chunk = todo.slice(i, i + 400);
+    const dir = mkdtempSync(join(tmpdir(), 'hewtd-refs-'));
+    const pf = join(dir, 'patterns');
+    writeFileSync(pf, chunk.join('\n') + '\n');
+    const want = new Set(chunk);
+    try {
+      let out = '';
+      try {
+        out = git(idx.root, ['grep', '-I', '-o', '-w', '-F', '-f', pf, '--', '.', ':!*.md', ':!*.mdx']);
+      } catch { /* exit 1 = no matches */ }
+      for (const l of out.split('\n')) {
+        const c = l.lastIndexOf(':');
+        const tok = l.slice(c + 1);
+        if (c > 0 && want.has(tok) && !idx.symbols.get(tok)) idx.symbols.set(tok, l.slice(0, c));
+      }
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+    for (const n of chunk) if (!idx.symbols.has(n)) idx.symbols.set(n, null);
+  }
+}
+
+// ---------- resolution ----------
+
+export interface ResolveOptions {
+  /** absolute path of the doc, for resolving relative links */
+  docFile?: string;
+  /** absolute docs root, for resolving links */
+  docsPath?: string;
+}
+
+function resolvePath(idx: RepoIndex, ref: string): string | undefined {
+  const p = ref.replace(/^\.\//, '').replace(/^\//, '');
+  if (idx.files.has(p)) return p;
+  const dir = p.endsWith('/') ? p : `${p}/`;
+  for (const f of idx.files) {
+    if (f.startsWith(dir)) return p;
+    if (f.endsWith(`/${p}`)) return f; // docs often cite a path relative to a package
+  }
+  return undefined;
+}
+
+export async function resolveReferences(idx: RepoIndex, refs: Reference[], opts: ResolveOptions = {}): Promise<ResolvedReference[]> {
+  primeSymbols(idx, refs.filter((r) => r.kind === 'symbol' || r.kind === 'env').map((r) => r.ref));
+  const haveSchema = idx.schema.tables.size > 0;
+  const out: ResolvedReference[] = [];
+  for (const r of refs) {
+    let status: RefStatus = 'unknown';
+    let where: string | undefined;
+    switch (r.kind) {
+      case 'path': where = resolvePath(idx, r.ref); status = where ? 'ok' : 'missing'; break;
+      case 'symbol': case 'env': where = idx.symbols.get(r.ref) ?? undefined; status = where ? 'ok' : 'missing'; break;
+      case 'command': {
+        const [tool, name] = [r.ref.split(' ')[0]!, r.ref.replace(/^\S+( run)? /, '')];
+        if (tool === 'npm') status = idx.scripts.has(name) ? 'ok' : 'missing';
+        else if (tool === 'make') status = idx.makeTargets.has(name) ? 'ok' : idx.files.has('Makefile') ? 'missing' : 'unknown';
+        else status = idx.deps.has(name) || existsSync(resolve(idx.root, 'node_modules/.bin', name)) ? 'ok' : 'unknown'; // npx can fetch from the registry
+        break;
+      }
+      case 'table': case 'column': {
+        if (!haveSchema) break;
+        const [t, c] = r.kind === 'column' ? r.ref.split('.') : [r.ref, undefined];
+        const cols = idx.schema.tables.get(norm(t!));
+        // shortcut: `a.b` with a one-word owner not in the schema is probably an object property, so unknown
+        status = !cols ? (c && !t!.includes('_') ? 'unknown' : 'missing') : c && !cols.has(c.toLowerCase()) ? 'missing' : 'ok';
+        break;
+      }
+      case 'doc-link':
+        if (opts.docFile && opts.docsPath) {
+          status = (await checkSingleLink(r.ref, opts.docFile, opts.docsPath)).valid ? 'ok' : 'missing';
+        }
+        break;
+    }
+    out.push(where ? { ...r, status, where } : { ...r, status });
+  }
+  return out;
+}
+
+/** Convenience: extract and resolve one doc body. */
+export async function checkDocReferences(idx: RepoIndex, body: string, opts: ResolveOptions = {}): Promise<ResolvedReference[]> {
+  return resolveReferences(idx, extractReferences(body), opts);
+}

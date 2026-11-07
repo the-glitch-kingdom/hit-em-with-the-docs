@@ -136,6 +136,7 @@ Use Bash to run these. They're all available via `npx --no @theglitchking/hit-em
 | `hewtd domain remove <id>` | Remove a custom domain from config. Never deletes docs — reports how many become orphaned. Can't remove a built-in. |
 | `hewtd archive <file>` | Retire a doc: move it into `archive/`, stamp lifecycle frontmatter, reindex. Reversible. Link guard refuses if active docs still link to it — `--force` overrides; `--dry-run` previews; `-r/--reason` records why. |
 | `hewtd unarchive <file>` | Restore an archived doc to its recorded `archived_from` path; clears the archive stamp. Refuses if the target already exists. |
+| `hewtd reconcile <scope>` | Check existing docs against the code (2.15.0+). Deterministic triage; `--write-review` writes review files, `--apply <files>` applies accepted entries, `--status`, `--outside`. Judging is done by `/hit-em-with-the-docs:reconcile`. See `docs/reconcile.md`. |
 | `hewtd archive-candidates` | Advisory, read-only. List docs that may warrant archiving (score + reasons). Never moves anything. `--json` for machine output. |
 
 ## Slash commands (Claude Code)
@@ -146,6 +147,7 @@ Use Bash to run these. They're all available via `npx --no @theglitchking/hit-em
 | `/hit-em-with-the-docs:status` | Show installed version, update policy, hook state |
 | `/hit-em-with-the-docs:policy [auto\|nudge\|off]` | Get/set the update policy |
 | `/hit-em-with-the-docs:domain list\|add\|remove` | Manage custom domains (add confirms via dry-run; remove confirms the orphaned-doc count before applying) |
+| `/hit-em-with-the-docs:reconcile <scope>` | Reconcile existing docs with the code; proposes fixes, applies only what you accept (`--next N`, `--status`, `--outside`) |
 | `/hit-em-with-the-docs:update` | Update to the latest version |
 | `/hit-em-with-the-docs:relink` | Re-run the skill linker (no-op for hewtd; useful for plugin-stack debugging) |
 
@@ -198,6 +200,7 @@ Details: `docs/retrieval-fields.md`.
 
 ## Where to dig deeper
 
+- `docs/reconcile.md` — reconciling existing docs with the code
 - `docs/retrieval-fields.md` — the retrieval standard, warning codes, config
 
 - **Reference docs:** `docs/plan-tier-frontmatter.md`, `docs/knowledge-base-primitives.md`

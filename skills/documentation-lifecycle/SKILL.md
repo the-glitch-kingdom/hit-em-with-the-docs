@@ -161,6 +161,10 @@ hewtd maintain && hewtd audit --strict
 `--run-verify <id>` re-checks one and `--run-verify-all` re-checks every fact
 with a `verify_command`. `/hit-em-with-the-docs:help` covers the rest.
 
+Reconciling existing docs with the code: `/hit-em-with-the-docs:reconcile <domain|folder|files>`
+(`--next N` resumes, `--status` shows progress). The CLI triages and applies;
+the slash command does the judging; nothing changes until you accept.
+
 ## Checking the tree
 
 ```bash

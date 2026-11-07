@@ -1104,25 +1104,60 @@ program
   .description('Scoped, resumable doc-vs-code reconciliation (deterministic; the judgment pass is the /reconcile slash command).')
   .option('-p, --docs-path <path>', 'Documentation path', '.documentation')
   .option('--status', 'Show ledger progress: counts per lane/verdict, reviewed vs total, next unreviewed', false)
-  .option('--next <n>', 'How many unreviewed docs to list', '10')
-  .action(async (options) => {
+  .argument('[scope...]', 'Domain, folder or doc files to reconcile (required unless --next)')
+  .option('--next <n>', 'With --status: how many unreviewed docs to list. Otherwise: reconcile the next N unreviewed docs')
+  .option('--json', 'Machine-readable triage output (for the slash command)', false)
+  .option('--serial', 'Force a serial plan regardless of job size', false)
+  .option('--team', 'Force an agent-team plan regardless of job size', false)
+  .action(async (scope: string[], options) => {
     const { loadPluginConfig } = await import('../utils/config.js');
     const { loadLedger, ledgerStatus, hashContent } = await import('../core/reconcile/ledger.js');
     const { glob } = await import('../utils/glob.js');
     const root = process.cwd();
     const config = await loadPluginConfig(root);
+    const docsPath = resolve(root, options.docsPath);
+    const ledgerFile = resolve(root, config.reconcile.ledger_path);
     if (!options.status) {
-      logger.error('Nothing to do yet: pass --status.');
-      process.exitCode = 1;
+      const { resolveScope, dirtyInScope, triage } = await import('../core/reconcile/triage.js');
+      const { saveLedger } = await import('../core/reconcile/ledger.js');
+      try {
+        if (options.serial && options.team) throw new Error('--serial and --team are mutually exclusive');
+        const ledger = await loadLedger(ledgerFile);
+        const next = options.next ? parseInt(options.next, 10) || undefined : undefined;
+        const rels = await resolveScope(docsPath, scope, { ...(next && { next }), ledger });
+        const dirty = dirtyInScope(docsPath, rels);
+        if (dirty.length) {
+          throw new Error(`Refusing to start: uncommitted changes in scope (commit or stash first):\n${dirty.map((d) => `  ${d}`).join('\n')}`);
+        }
+        const result = await triage({
+          root, docsPath, rels, config, ledger,
+          ...((options.serial && { mode: 'serial' }) || (options.team && { mode: 'team' }) || {}),
+        });
+        await saveLedger(ledgerFile, ledger);
+        if (options.json) {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+        logger.header('hewtd reconcile');
+        const t = result.totals;
+        logger.info(`  ${t.docs} docs, ${t.bytes} bytes to read; judgment needed on ${t.judgmentDocs} (${t.judgmentBytes} bytes)`);
+        for (const [k, v] of Object.entries(t.byLane)) logger.info(`  ${k}: ${v}`);
+        for (const d of result.docs) logger.info(`  [${d.lane}] ${d.path}${d.reasons.length ? ` - ${d.reasons.join('; ')}` : ''}`);
+        for (const w of result.warnings) logger.warn(w);
+        logger.info(`  mode: ${result.mode}`);
+        for (const s of result.shards) logger.info(`    shard ${s.id}: ${s.docs.length} docs, ${s.bytes} bytes`);
+      } catch (e) {
+        logger.error((e as Error).message);
+        process.exitCode = 1;
+      }
       return;
     }
-    const docsPath = resolve(root, options.docsPath);
     const files = (await glob('**/*.md', { cwd: docsPath, ignore: ['archive/**', '**/INDEX.md', '**/REGISTRY.md'] })).sort();
     const docs = await Promise.all(
       files.map(async (f) => ({ path: f, hash: hashContent(await readFile(join(docsPath, f), 'utf-8')) }))
     );
-    const ledger = await loadLedger(resolve(root, config.reconcile.ledger_path));
-    const st = ledgerStatus(ledger, docs, parseInt(options.next, 10) || 10);
+    const ledger = await loadLedger(ledgerFile);
+    const st = ledgerStatus(ledger, docs, parseInt(options.next ?? '10', 10) || 10);
     logger.header('hewtd reconcile --status');
     logger.info(`  reviewed ${st.reviewed} of ${st.total}`);
     for (const [k, v] of Object.entries(st.byLane)) logger.info(`  lane ${k}: ${v}`);

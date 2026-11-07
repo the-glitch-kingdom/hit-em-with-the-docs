@@ -1100,6 +1100,37 @@ program
 
 // Search command
 program
+  .command('reconcile')
+  .description('Scoped, resumable doc-vs-code reconciliation (deterministic; the judgment pass is the /reconcile slash command).')
+  .option('-p, --docs-path <path>', 'Documentation path', '.documentation')
+  .option('--status', 'Show ledger progress: counts per lane/verdict, reviewed vs total, next unreviewed', false)
+  .option('--next <n>', 'How many unreviewed docs to list', '10')
+  .action(async (options) => {
+    const { loadPluginConfig } = await import('../utils/config.js');
+    const { loadLedger, ledgerStatus, hashContent } = await import('../core/reconcile/ledger.js');
+    const { glob } = await import('../utils/glob.js');
+    const root = process.cwd();
+    const config = await loadPluginConfig(root);
+    if (!options.status) {
+      logger.error('Nothing to do yet: pass --status.');
+      process.exitCode = 1;
+      return;
+    }
+    const docsPath = resolve(root, options.docsPath);
+    const files = (await glob('**/*.md', { cwd: docsPath, ignore: ['archive/**', '**/INDEX.md', '**/REGISTRY.md'] })).sort();
+    const docs = await Promise.all(
+      files.map(async (f) => ({ path: f, hash: hashContent(await readFile(join(docsPath, f), 'utf-8')) }))
+    );
+    const ledger = await loadLedger(resolve(root, config.reconcile.ledger_path));
+    const st = ledgerStatus(ledger, docs, parseInt(options.next, 10) || 10);
+    logger.header('hewtd reconcile --status');
+    logger.info(`  reviewed ${st.reviewed} of ${st.total}`);
+    for (const [k, v] of Object.entries(st.byLane)) logger.info(`  lane ${k}: ${v}`);
+    for (const [k, v] of Object.entries(st.byVerdict)) logger.info(`  verdict ${k}: ${v}`);
+    if (st.nextUnreviewed.length) logger.info(`  next unreviewed:\n${st.nextUnreviewed.map((p) => `    ${p}`).join('\n')}`);
+  });
+
+program
   .command('search <query>')
   .description('Search documentation')
   .option('-p, --path <path>', 'Documentation path', '.documentation')

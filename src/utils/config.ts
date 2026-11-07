@@ -185,6 +185,35 @@ const overviewConfigSchema = z
   .catch({ min_cluster_size: 5, min_link_coverage: 0.6, backlinks: true, disabled: [] })
   .default({});
 
+export const DEFAULT_RECONCILE_KEEP_IN_PLACE = [
+  'README.md', 'SECURITY.md', 'LICENSE.md', 'CONTRIBUTING.md', 'CHANGELOG.md', '.github/**', '.claude/**',
+];
+export const DEFAULT_RECONCILE_SCHEMA_SOURCES = ['**/migrations/**/*.sql', '**/schema.prisma'];
+
+/** Reconcile (#54). Lenient like `retrieval`: any invalid key falls back to its default. */
+const reconcileConfigSchema = z
+  .object({
+    keep_in_place: z.array(z.string()).catch(DEFAULT_RECONCILE_KEEP_IN_PLACE),
+    ledger_path: z.string().min(1).catch('.hewtd/reconcile.json'),
+    schema_sources: z.array(z.string()).catch(DEFAULT_RECONCILE_SCHEMA_SOURCES),
+    team: z
+      .object({
+        min_docs: z.number().int().positive().catch(12),
+        min_bytes: z.number().int().positive().catch(250000),
+        max_agents: z.number().int().positive().catch(4),
+        docs_per_agent: z.number().int().positive().catch(8),
+      })
+      .catch({ min_docs: 12, min_bytes: 250000, max_agents: 4, docs_per_agent: 8 })
+      .default({}),
+  })
+  .catch({
+    keep_in_place: DEFAULT_RECONCILE_KEEP_IN_PLACE,
+    ledger_path: '.hewtd/reconcile.json',
+    schema_sources: DEFAULT_RECONCILE_SCHEMA_SOURCES,
+    team: { min_docs: 12, min_bytes: 250000, max_agents: 4, docs_per_agent: 8 },
+  })
+  .default({});
+
 const pluginConfigSchema = z
   .object({
     /**
@@ -201,6 +230,7 @@ const pluginConfigSchema = z
     archive: archiveConfigSchema,
     retrieval: retrievalConfigSchema,
     overview: overviewConfigSchema,
+    reconcile: reconcileConfigSchema,
     /** Reports directory, relative to the repo root. Unset = `<docs root>/reports`. */
     reports_dir: z.string().min(1).optional().catch(undefined),
   })
@@ -211,6 +241,7 @@ export type EnforcementConfig = z.infer<typeof enforcementConfigSchema>;
 export type ArchiveConfig = z.infer<typeof archiveConfigSchema>;
 export type RetrievalConfig = z.infer<typeof retrievalConfigSchema>;
 export type OverviewConfig = z.infer<typeof overviewConfigSchema>;
+export type ReconcileConfig = z.infer<typeof reconcileConfigSchema>;
 export type PluginConfig = z.infer<typeof pluginConfigSchema>;
 
 const CONFIG_FILENAME = '.claude/hit-em-with-the-docs.json';

@@ -140,6 +140,8 @@ const knowledgeBaseSchema = z.object({
   sources: z.array(z.string()).optional(),
   invalidated_by: z.array(z.string()).optional(),
   working_dir: z.string().optional(),
+  // Original location of a file integrated from outside the docs tree (reconcile outside lane)
+  moved_from: z.string().optional(),
 
   // Incident-narrative fields
   date: dateStringSchema.optional(),

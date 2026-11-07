@@ -194,9 +194,9 @@ symptoms:
     const after = await readFile(playbookPath, 'utf-8');
     expect(after).toBe(original); // unchanged on disk
   });
-  it('skips plain-string symptoms instead of crashing on them (#46)', async () => {
+  it('skips plain-string symptoms on a non-fact tier (#46, #50)', async () => {
     const fm = (symptoms: string) =>
-      `---\ntitle: F\ntier: fact\ndomains: [observability]\nstatus: active\nlast_updated: '2026-10-25'\n${symptoms}---\n\n# F\n`;
+      `---\ntitle: F\ntier: guide\ndomains: [observability]\nstatus: active\nlast_updated: '2026-10-25'\n${symptoms}---\n\n# F\n`;
 
     // A string first, an object second → the cite goes on the object.
     await writeFile(

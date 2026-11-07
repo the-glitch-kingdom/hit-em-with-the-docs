@@ -779,13 +779,22 @@ describe('Metadata Schema', () => {
         expect(validateKnowledgeBaseFields({ ...fact, symptoms })).toEqual([]);
       });
 
-      it('rejects plain strings on other tiers with one clear error each', () => {
+      it('accepts plain strings on other tiers too (#50)', () => {
         const symptoms = ['pkill -f: Exit code 144'];
-        expect(validateMetadata({ ...playbookBase, symptoms }).valid).toBe(false);
-        const errs = validateKnowledgeBaseFields({ ...playbookBase, symptoms });
-        expect(errs).toHaveLength(1);
-        expect(errs[0]!.code).toBe(KB_ERROR_CODES.PLAYBOOK_SYMPTOM_MISSING_KEY);
-        expect(errs[0]!.message).toMatch(/plain string; only fact docs/);
+        expect(validateMetadata({ ...playbookBase, symptoms }).valid).toBe(true);
+        expect(validateKnowledgeBaseFields({ ...playbookBase, symptoms })).toEqual([]);
+      });
+
+      it('still flags a bad object entry beside strings on a guide', () => {
+        const errs = validateKnowledgeBaseFields({
+          ...playbookBase,
+          symptoms: ['phrase', { target: '' }],
+        });
+        expect(errs.map((e) => e.code)).toEqual([
+          KB_ERROR_CODES.PLAYBOOK_SYMPTOM_MISSING_KEY,
+          KB_ERROR_CODES.PLAYBOOK_SYMPTOM_MISSING_TARGET,
+          KB_ERROR_CODES.PLAYBOOK_SYMPTOM_MISSING_CITES,
+        ]);
       });
 
       it('still requires target and cites on object entries of a fact', () => {

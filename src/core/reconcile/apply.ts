@@ -79,7 +79,7 @@ function moveSecrets(top: string, raw: string, e: ReviewEntry, cfg: Parameters<t
     const name = proposed.get(f.fingerprint) ?? fresh.get(f.fingerprint)!;
     if (!/^[A-Za-z_]\w*$/.test(name)) throw new Error(`bad env name ${JSON.stringify(name)}`);
     if (env.has(name) && env.get(name) !== value) throw new Error(`${name} already exists in ${ENV} with a different value`);
-    if (!env.has(name)) { env.set(name, value); lines.push(`${name}=${/^[\w.\/+=:@-]+$/.test(value) ? value : JSON.stringify(value)}`); }
+    if (!env.has(name)) { env.set(name, value); lines.push(`${name}=${/^[\w./+=:@-]+$/.test(value) ? value : JSON.stringify(value)}`); }
     names.push(name);
     next = next.split(value).join(`<secret: ${name}, see ${ENV}>`);
   }

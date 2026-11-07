@@ -76,6 +76,29 @@ describe('outside apply', () => {
     expect(g('rev-list', '--count', 'HEAD')).toBe('2');
   });
 
+  it('never overwrites an existing doc at the target path (review fix)', async () => {
+    const before = `---\ntitle: Existing\ndomains:\n  - api\n---\n\n# Existing\n\nKeep me.\n`;
+    mkdirSync(join(docs, 'api'), { recursive: true });
+    writeFileSync(join(docs, 'api/a.md'), before);
+    put('notes/a.md', `# Another a\n\n${words(60)}\n`);
+    g('add', '-A'); g('commit', '-qm', 'add');
+    const res = await run([entry('notes/a.md', 'integrate', { domain: 'api' })]);
+    expect(res.outcomes[0]).toMatchObject({ status: 'error' });
+    expect(res.outcomes[0]!.detail).toMatch(/already exists/);
+    expect(readFileSync(join(docs, 'api/a.md'), 'utf-8')).toBe(before);
+    expect(existsSync(join(root, 'notes/a.md'))).toBe(true);
+  });
+
+  it('refuses to repoint links in a doc with uncommitted edits, and changes nothing (review fix)', async () => {
+    writeFileSync(join(docs, 'backend/a.md'), readFileSync(join(docs, 'backend/a.md'), 'utf-8') + '\nmy unsaved edit\n');
+    const res = await run([entry('notes/design.md', 'integrate', { domain: 'api' })]);
+    expect(res.outcomes[0]).toMatchObject({ status: 'error' });
+    expect(res.outcomes[0]!.detail).toMatch(/uncommitted/);
+    expect(existsSync(join(root, 'notes/design.md'))).toBe(true);
+    expect(existsSync(join(docs, 'api/design.md'))).toBe(false);
+    expect(g('rev-list', '--count', 'HEAD')).toBe('1');
+  });
+
   it('never moves or deletes a keep_in_place file, even when accepted', async () => {
     const res = await run([entry('README.md', 'integrate')]);
     expect(res.outcomes[0]).toMatchObject({ status: 'error' });

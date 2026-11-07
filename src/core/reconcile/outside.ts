@@ -140,10 +140,28 @@ export async function applyOutsideEntry(opts: { docsPath: string; entry: ReviewE
   }
   if (e.verdict !== 'integrate') return fail(`verdict "${e.verdict}" is not valid for an outside entry`);
 
+  const integrateOpts = { filePath: abs, docsPath, force: true, silent: true, ...(e.domain && { domain: e.domain }) };
+  const plan = await integrateDocument({ ...integrateOpts, dryRun: true });
+  if (!plan.success || !plan.targetPath) return fail(plan.error ?? 'integrate failed');
+  const target = plan.targetPath;
+  // force only skips the similarity prompt; it must never overwrite a doc nobody accepted a change to.
+  if (existsSync(target)) return fail(`target ${relative(top, target).split('\\').join('/')} already exists`);
+
+  // Plan every inbound-link rewrite before touching anything, and refuse if one would sweep in uncommitted edits.
+  const rewrites: { f: string; next: string }[] = [];
+  for (const f of await findMarkdownFiles(docsPath)) {
+    const text = await readFile(f, 'utf-8');
+    const next = rewriteLinks(text, (t) => (resolve(dirname(f), t.split('#')[0]!) === abs ? posixRel(dirname(f), target) : undefined));
+    if (next !== text) rewrites.push({ f, next });
+  }
+  if (rewrites.length) {
+    const dirty = git(top, ['status', '--porcelain', '--untracked-files=no', '--', ...rewrites.map((r) => relative(top, r.f))]);
+    if (dirty) return fail(`uncommitted changes in docs that link here; commit them first:\n${dirty}`);
+  }
+
   const history = await gitHistory(top, rel);
-  const res = await integrateDocument({ filePath: abs, docsPath, force: true, silent: true, ...(e.domain && { domain: e.domain }) });
-  if (!res.success || !res.targetPath) return fail(res.error ?? 'integrate failed');
-  const target = res.targetPath;
+  const res = await integrateDocument(integrateOpts);
+  if (!res.success || res.targetPath !== target) return fail(res.error ?? 'integrate failed');
   const targetRel = relative(docsPath, target).split('\\').join('/');
 
   // Provenance + moved_from; a moved doc was never reconciled, so no last_verified.
@@ -156,11 +174,9 @@ export async function applyOutsideEntry(opts: { docsPath: string; entry: ReviewE
   await writeFile(target, setFrontmatter(rebased, { ...fm, moved_from: rel, provenance: [...prov, `moved from ${rel}${history ? `; ${history}` : ''}`] }), 'utf-8');
 
   const touched = [abs, target];
-  for (const f of await findMarkdownFiles(docsPath)) {
-    if (f === target) continue;
-    const text = await readFile(f, 'utf-8');
-    const next = rewriteLinks(text, (t) => (resolve(dirname(f), t.split('#')[0]!) === abs ? posixRel(dirname(f), target) : undefined));
-    if (next !== text) { await writeFile(f, next, 'utf-8'); touched.push(f); }
+  for (const { f, next } of rewrites) {
+    await writeFile(f, next, 'utf-8');
+    touched.push(f);
   }
   await rmFile(top, rel);
   return { status: 'applied', touched, domain: targetRel.split('/')[0]! };

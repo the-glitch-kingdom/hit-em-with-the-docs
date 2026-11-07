@@ -14,7 +14,7 @@ tree back in line with the code, in bounded, resumable batches.
 
 A scope is required. Forms: a domain (`security`), a folder, or doc files
 (`security/auth.md`). `--next N` takes the next N unreviewed docs from the
-ledger. With no scope and no `--next` the command refuses. It also refuses if
+ledger (a doc triage found `clean` counts as reviewed until its content changes). With no scope and no `--next` the command refuses. It also refuses if
 any in-scope `.md` file has uncommitted changes (untracked files count).
 
 ```bash
@@ -37,7 +37,7 @@ doc links), resolved against `git ls-files`, one batched `git grep`,
 
 | Lane | Meaning |
 |---|---|
-| `clean` | Already carries `sources` and `last_verified`, nothing missing. |
+| `clean` | Already carries `sources` and `last_verified`, nothing missing (a `sources` path that no longer exists counts as missing). |
 | `fields-only` | Only frontmatter fields are missing. |
 | `check` | Needs the judgment pass. |
 | `archive-candidate` | Cited things are missing. Only `missing` counts; `unknown` is neutral. |
@@ -137,7 +137,11 @@ accepted entry. Links from other outside files are not repointed.
   re-judge it; the old proposal is never applied.
 - **Staleness shows `unknown`, shallow clone warning**: run
   `git fetch --unshallow`. Triage still works without the signal.
-- **Rejected, doc in two review files**: remove it from one file and rerun.
+- **Rejected, doc in two review files** (or twice in one): remove the duplicate and rerun.
+- **Outside entry: "target ... already exists"**: a doc with that filename is
+  already in the chosen domain. Pick another `domain` in the entry, or merge by hand.
+- **Outside entry: "uncommitted changes in docs that link here"**: the move would
+  repoint links in those docs and commit them; commit or stash them first.
 - **Nothing applied**: entries need `- [x] accept` and a non-null verdict.
 - **Stray `.hewtd/` in a subdirectory**: state is rooted at the git root; a
   directory created by an older build can be deleted.

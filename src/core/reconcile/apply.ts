@@ -64,9 +64,10 @@ export async function applyReviews(opts: {
   const owner = new Map<string, string>();
   for (const r of reviews) {
     for (const { entry } of r.entries) {
-      const prev = owner.get(entry.path);
-      if (prev && prev !== r.file) throw new Error(`${entry.path} appears in both ${prev} and ${r.file}`);
-      owner.set(entry.path, r.file);
+      const key = entry.outside ? outsideKey(entry.path) : entry.path;
+      const prev = owner.get(key);
+      if (prev) throw new Error(prev === r.file ? `${entry.path} appears twice in ${r.file}` : `${entry.path} appears in both ${prev} and ${r.file}`);
+      owner.set(key, r.file);
     }
   }
 

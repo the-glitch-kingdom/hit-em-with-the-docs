@@ -90,6 +90,14 @@ describe('applyReviews', () => {
     expect(g('rev-list', '--count', 'HEAD')).toBe('1');
   });
 
+  it('rejects the same doc twice in one file, but not an outside entry with the same path (review fix)', async () => {
+    const e = entry('backend/a.md', {});
+    await expect(run([review('review-1-1.md', [e, e])])).rejects.toThrow(/appears twice/);
+    const out = { ...entry('backend/a.md', {}), outside: true, verdict: null };
+    const r = await run([review('review-2-1.md', [e]), review('review-2-2.md', [out], [false], 2)]);
+    expect(r.outcomes.map((o) => o.status)).toContain('rejected');
+  });
+
   it('archive uses archiveDoc; rewrite leaves the original and writes a draft', async () => {
     const f = review('review-1-1.md', [entry('backend/b.md', { verdict: 'archive', reason: 'gone' })]);
     const res = await run([f]);

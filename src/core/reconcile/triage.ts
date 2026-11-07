@@ -152,10 +152,13 @@ export async function triage(opts: {
   for (const d of loaded) {
     const abs = join(docsPath, d.rel);
     const resolved: ResolvedReference[] = await resolveReferences(idx, d.refs, { docFile: abs, docsPath });
-    const missing = [...new Set(resolved.filter((r) => r.status === 'missing').map((r) => r.ref))];
-    const checkable = resolved.filter((r) => r.status !== 'unknown').length;
-
     const sources = Array.isArray(d.data.sources) ? d.data.sources.filter((s): s is string => typeof s === 'string') : [];
+    // Only path-like sources are checkable; URLs and prose citations are not claims about the repo.
+    const pathSources = sources.filter((s) => !/^[a-z]+:\/\//i.test(s) && !/\s/.test(s) && /\.\w+$/.test(s));
+    const goneSources = pathSources.filter((s) => !idx.files.has(s));
+    const missing = [...new Set([...resolved.filter((r) => r.status === 'missing').map((r) => r.ref), ...goneSources])];
+    const checkable = resolved.filter((r) => r.status !== 'unknown').length + pathSources.length;
+
     const cited = [...new Set([...resolved.map((r) => r.where), ...sources].filter((p): p is string => !!p && idx.files.has(p)))].sort();
     let bytes = Buffer.byteLength(d.raw);
     for (const c of cited) {

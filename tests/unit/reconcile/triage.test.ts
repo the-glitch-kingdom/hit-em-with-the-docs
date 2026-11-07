@@ -52,6 +52,22 @@ describe('triage lanes', () => {
     expect(r.docs.find((d) => d.path === 'ops/clean.md')!.bytes).toBeGreaterThan(30);
   });
 
+  it('a frontmatter source that no longer exists keeps a doc out of clean (review fix)', async () => {
+    put('ops/srcgone.md', fm().replace('[src/a.ts]', '[src/a.ts, src/removed.ts, "https://example.com/spec"]') + 'Plain prose only.\n');
+    const r = await run(['ops/srcgone.md']);
+    expect(r.docs[0]!.lane).toBe('check');
+    expect(r.docs[0]!.missing).toEqual(['src/removed.ts']);
+  });
+
+  it('--next moves past docs triage found clean (review fix)', async () => {
+    const ledger = { version: 1 as const, entries: {} };
+    const config = await loadPluginConfig(dir);
+    const first = await resolveScope(docs, [], { next: 1, ledger });
+    expect(first).toEqual(['ops/clean.md']);
+    await triage({ root: dir, docsPath: docs, rels: first, config, ledger });
+    expect(await resolveScope(docs, [], { next: 1, ledger })).toEqual(['ops/dead.md']);
+  });
+
   it('is deterministic and writes nothing under the docs tree', async () => {
     const rels = await resolveScope(docs, ['ops']);
     const a = JSON.stringify(await run(rels));

@@ -249,6 +249,12 @@ const reconcileConfigSchema = z
   })
   .default({});
 
+/** Integrate (#61). Lenient: an invalid cap falls back to 10; 0 turns `sources` recording off. */
+const integrateConfigSchema = z
+  .object({ sources_max: z.number().int().nonnegative().catch(10) })
+  .catch({ sources_max: 10 })
+  .default({});
+
 const pluginConfigSchema = z
   .object({
     /**
@@ -266,6 +272,7 @@ const pluginConfigSchema = z
     retrieval: retrievalConfigSchema,
     overview: overviewConfigSchema,
     reconcile: reconcileConfigSchema,
+    integrate: integrateConfigSchema,
     /** Reports directory, relative to the repo root. Unset = `<docs root>/reports`. */
     reports_dir: z.string().min(1).optional().catch(undefined),
   })
@@ -301,11 +308,11 @@ export async function loadPluginConfig(projectRoot?: string): Promise<PluginConf
   }
 
   const parsed = pluginConfigSchema.safeParse(raw);
-  if (parsed.success) {
-    return parsed.data;
-  }
-  // Malformed config — return defaults rather than crash.
-  return pluginConfigSchema.parse({});
+  const cfg = parsed.success ? parsed.data : pluginConfigSchema.parse({}); // malformed: defaults, not a crash
+  // The committed secrets baseline joins the allowlist, so every secret check honours it (#61).
+  const { loadBaseline, baselineAllow } = await import('../core/reconcile/secrets.js');
+  cfg.reconcile.secrets.allow = [...cfg.reconcile.secrets.allow, ...baselineAllow(await loadBaseline(root))];
+  return cfg;
 }
 
 /**

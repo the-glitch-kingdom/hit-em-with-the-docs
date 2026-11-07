@@ -1295,6 +1295,87 @@ program
     if (st.nextUnreviewed.length) logger.info(`  next unreviewed:\n${st.nextUnreviewed.map((p) => `    ${p}`).join('\n')}`);
   });
 
+// Secrets command: baseline management (later: --staged)
+program
+  .command('secrets')
+  .description('Secret-scan baseline: --baseline-add <file:line> --reason "..." | --baseline-prune. Never prints a value.')
+  .option('-p, --docs-path <path>', 'Documentation path', '.documentation')
+  .option('--baseline-add <file:line>', 'Baseline the finding(s) on that line (a known false positive)')
+  .option('--reason <text>', 'Why it is a false positive (required with --baseline-add)')
+  .option('--baseline-prune', 'Drop baseline entries whose value no longer occurs in anything scanned', false)
+  .option('--staged', 'Scan only the lines the staged diff adds under the docs root (exit 1 on a secret); used by the pre-commit hook', false)
+  .action(async (options) => {
+    try {
+      const { loadPluginConfig } = await import('../utils/config.js');
+      const { projectRootOf } = await import('../core/reconcile/outside.js');
+      const { addBaseline, loadBaseline, saveBaseline, scanFile, BASELINE_PATH } = await import('../core/reconcile/secrets.js');
+      const docsPath = resolve(process.cwd(), options.docsPath);
+      const root = projectRootOf(docsPath);
+      const config = await loadPluginConfig(root);
+      const cfg = config.reconcile.secrets;
+      if (options.staged) {
+        const { scanStaged } = await import('../core/reconcile/hooks.js');
+        const hits = scanStaged(root, docsPath, cfg);
+        if (!hits.length) return;
+        logger.error(`commit refused: ${hits.length} added line(s) contain a secret (masked, first4…length):`);
+        for (const f of hits.slice(0, 20)) logger.info(`  ${f.file}:${f.line} ${f.rule} ${f.masked} (${f.fingerprint.slice(0, 12)})`);
+        logger.info('  rotate it, then move the value to .env.hewtd and leave a pointer (hewtd reconcile --secrets); a false positive: hewtd secrets --baseline-add <file:line> --reason "..."');
+        process.exitCode = 1;
+        return;
+      }
+      if (!options.baselineAdd && !options.baselinePrune) throw new Error('nothing to do: pass --baseline-add <file:line> --reason "..." or --baseline-prune');
+      if (options.baselineAdd) {
+        const m = /^(.+):(\d+)$/.exec(options.baselineAdd);
+        if (!m) throw new Error('--baseline-add expects <file:line>');
+        const file = relative(root, resolve(process.cwd(), m[1]!)).split('\\').join('/');
+        const text = await readFile(join(root, file), 'utf-8');
+        const added = await addBaseline(root, file, text, parseInt(m[2]!, 10), options.reason ?? '', cfg);
+        logger.header('hewtd secrets --baseline-add');
+        for (const a of added) logger.info(`  baselined ${a.rule} ${a.file} ${a.masked} (${a.fingerprint.slice(0, 12)})`);
+        if (!added.length) logger.info('  already baselined');
+        // Hint only: .gitignore is the user's call.
+        const { spawnSync } = await import('child_process');
+        if (spawnSync('git', ['check-ignore', '-q', BASELINE_PATH], { cwd: root }).status === 0) {
+          logger.warn(`  ${BASELINE_PATH} is gitignored; to share it: git add -f ${BASELINE_PATH} (or add "!${BASELINE_PATH}" to .gitignore)`);
+        }
+      }
+      if (options.baselinePrune) {
+        const { scanSecrets } = await import('../core/reconcile/triage.js');
+        const entries = await loadBaseline(root);
+        // Scan with the baseline off, so a still-present value shows up.
+        const bare = { ...config, reconcile: { ...config.reconcile, secrets: { ...cfg, allow: cfg.allow.filter((a) => !entries.some((e) => e.fingerprint === a.fingerprint)) } } };
+        const seen = new Set((await scanSecrets({ root, docsPath, config: bare })).map((f) => f.fingerprint));
+        for (const e of entries) for (const f of await scanFile(join(root, e.file), e.file, bare.reconcile.secrets)) seen.add(f.fingerprint);
+        const kept = entries.filter((e) => seen.has(e.fingerprint));
+        if (kept.length !== entries.length) await saveBaseline(root, kept);
+        logger.header('hewtd secrets --baseline-prune');
+        logger.info(`  removed ${entries.length - kept.length}, kept ${kept.length}`);
+      }
+    } catch (e) {
+      logger.error((e as Error).message);
+      process.exitCode = 1;
+    }
+  });
+
+// Opt-in git pre-commit hook for the staged secret scan
+program
+  .command('hooks <action>')
+  .description('install | uninstall the opt-in pre-commit hook block (hewtd secrets --staged); never overwrites an existing hook')
+  .option('-p, --docs-path <path>', 'Documentation path', '.documentation')
+  .action(async (action, options) => {
+    try {
+      if (action !== 'install' && action !== 'uninstall') throw new Error('expected install or uninstall');
+      const { projectRootOf } = await import('../core/reconcile/outside.js');
+      const { installHook, uninstallHook } = await import('../core/reconcile/hooks.js');
+      const root = projectRootOf(resolve(process.cwd(), options.docsPath));
+      const r = await (action === 'install' ? installHook : uninstallHook)(root);
+      logger.info(`${r.changed ? action + 'ed' : 'unchanged'}: ${relative(root, r.path)}`);
+    } catch (e) {
+      logger.error((e as Error).message);
+      process.exitCode = 1;
+    }
+  });
+
 // Search command
 program
   .command('search <query>')

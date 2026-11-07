@@ -2,7 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
-## [2.18.0] — 2026-11-07
+## [2.19.0] — 2026-11-07
+
+Write-time guards (#61). Ships 2.17.0 and 2.18.0 too.
+
+- `hewtd integrate` refuses any input holding a secret (masked findings, no
+  `--force` bypass, also on `--dry-run`).
+- `integrate` records up to `integrate.sources_max` (default 10, `0` = off)
+  file-level `sources` for a new doc; never `last_verified`; never indexed by search.
+- `hewtd secrets --staged` scans only added lines of the staged diff.
+- `hewtd hooks install|uninstall`: opt-in pre-commit block inserted after the shebang (runs before any `exit`), refuses symlinked or non-shell hooks, byte-exact removal; fails closed if `hewtd` cannot run.
+- `.hewtd/secrets-baseline.json` and `hewtd secrets --baseline-add|--baseline-prune`:
+  fingerprints only, merged into `reconcile.secrets.allow`.
+- No backfill: upgrading changes no existing doc.
+- Docs: `docs/write-time-guards.md`.
+
+## [2.18.0] — 2026-11-07 (not published separately; ships in 2.19.0)
 
 Question-seeded overviews and one owner per fact for `/reconcile` (#59, part 1).
 
@@ -18,7 +33,7 @@ Question-seeded overviews and one owner per fact for `/reconcile` (#59, part 1).
 - Overview template uses pointer records; `/reconcile` section 3 rewritten (the
   `integrate -a` path is gone).
 
-## [2.17.0] — 2026-11-07 (not published separately; ships in 2.18.0)
+## [2.17.0] — 2026-11-07 (not published separately; ships in 2.19.0)
 
 Secrets step for `/reconcile` (#59, part 2).
 

@@ -11,6 +11,11 @@ import { type PartialDocumentMetadata } from '../metadata/schema.js';
 import type { Domain } from '../domains/constants.js';
 import { regenerateIndexes } from '../../generators/regenerate.js';
 import levenshtein from 'fast-levenshtein';
+import { loadPluginConfig, type PluginConfig } from '../../utils/config.js';
+import { scanText } from '../reconcile/secrets.js';
+import { gitRoot } from '../reconcile/triage.js';
+import { buildRepoIndex, extractReferences, resolveReferences, type RelatedRepo } from '../reconcile/references.js';
+import { execFileSync } from 'child_process';
 
 export interface IntegrateOptions {
   filePath: string;
@@ -32,6 +37,8 @@ export interface IntegrateResult {
   tier?: string;
   duplicates?: DuplicateMatch[];
   metadata?: PartialDocumentMetadata;
+  /** Files/URLs this run added to the doc's `sources` (citation counts in `sourceCounts`). */
+  sourcesAdded?: string[];
   error?: string;
 }
 
@@ -83,7 +90,24 @@ export async function integrateDocument(
 
     // Read file content
     const content = await readFile(filePath, 'utf-8');
-    const { data: existingMetadata } = parseFrontmatter<PartialDocumentMetadata>(content);
+    const { data: existingMetadata, content: body } = parseFrontmatter<PartialDocumentMetadata>(content);
+
+    // Secret guard (#61): the whole input is new, so any secret in it refuses the write.
+    // --force does not bypass this; only the allowlist/baseline does. Findings are masked.
+    const root = gitRoot(docsPath) ?? dirname(resolve(docsPath));
+    const config = await loadPluginConfig(root);
+    const found = scanText(content, basename(filePath), config.reconcile.secrets);
+    const secrets = found.filter((f) => f.kind === 'secret');
+    if (!silent) for (const f of found.filter((f) => f.kind === 'personal')) logger.warn(`personal data (${f.rule}) at ${f.file}:${f.line}`);
+    if (secrets.length) {
+      result.error =
+        `Refusing to integrate: ${secrets.length} secret(s) found (rule file:line first4…length): ` +
+        secrets.slice(0, 5).map((f) => `${f.rule} ${f.file}:${f.line} ${f.masked}`).join(', ') +
+        (secrets.length > 5 ? ` (+${secrets.length - 5} more)` : '') +
+        '. Move the value with `hewtd reconcile --secrets` (value to .env.hewtd, pointer left in the doc), ' +
+        'or baseline a false positive with `hewtd secrets --baseline-add <file:line> --reason "..."`. --force does not bypass this.';
+      return result;
+    }
 
     // Detect domain
     const domainResult = detectDomain(filePath, content, docsPath);
@@ -138,6 +162,14 @@ export async function integrateDocument(
 
     const finalMetadata = mergeMetadata(existingMetadata, generated);
     result.metadata = finalMetadata;
+
+    // Sources (#61): record cited code files, never `last_verified`.
+    const added = await citedSources(body, root, config, Array.isArray(existingMetadata.sources) ? existingMetadata.sources : undefined, silent);
+    if (added.length) {
+      finalMetadata.sources = [...(Array.isArray(existingMetadata.sources) ? existingMetadata.sources : []), ...added.map((a) => a.path)];
+      result.sourcesAdded = added.map((a) => a.path);
+      if (!silent) for (const a of added) logger.info(`  ${dryRun ? 'Would add' : 'Adding'} source: ${a.path} (cited ${a.count}x)`);
+    }
 
     // Determine target path. An explicit choice beats keyword detection:
     // `--domain`, then the doc's own first declared domain, then detection.
@@ -223,6 +255,75 @@ export async function integrateDocument(
   }
 
   return result;
+}
+
+/**
+ * Candidate `sources` for a new doc: file-level, de-duplicated, most-cited first (ties by first
+ * mention), appended after any hand-written entries until `integrate.sources_max` is reached.
+ * Best effort: outside a git repo there is nothing to resolve, so nothing is added.
+ */
+async function citedSources(
+  body: string,
+  root: string,
+  config: PluginConfig,
+  hand: unknown[] | undefined,
+  silent: boolean
+): Promise<Array<{ path: string; count: number }>> {
+  const room = config.integrate.sources_max - (hand?.length ?? 0);
+  if (room <= 0) return [];
+  // `path#symbol` and `path#anchor` fold into the path before extraction
+  const text = body.replace(/(\.[A-Za-z]\w{0,4})#[\w.:-]+(?=[`\s)\]]|$)/g, '$1');
+  const count = (s: string): number => text.split(s).length - 1;
+  const cand = new Map<string, { count: number; first: number }>();
+  const add = (path: string, ref: string): void => {
+    const c = cand.get(path) ?? { count: 0, first: text.indexOf(ref) };
+    c.count += count(ref);
+    cand.set(path, c);
+  };
+  try {
+    const idx = buildRepoIndex(root, config.reconcile.schema_sources);
+    const related: RelatedRepo[] = config.reconcile.related_repos.map((r) => ({ name: r.name, root: resolve(root, r.path) }));
+    const refs = await resolveReferences(idx, extractReferences(text), { related });
+    for (const r of refs) {
+      if (r.status === 'missing' || r.status === 'unknown') {
+        if (!silent && r.status === 'missing' && r.kind !== 'doc-link') logger.warn(`  ${r.status}: ${r.ref} (not recorded in sources)`);
+        continue;
+      }
+      if (r.status !== 'ok') continue;
+      if (r.kind === 'path' && r.where) add(r.where, r.ref);
+      else if (r.kind === 'command' && r.ref.startsWith('npm')) {
+        const dir = idx.scripts.get(r.ref.replace(/^\S+ run /, ''));
+        if (r.where) add(r.where, r.ref);
+        else if (dir !== undefined) add(dir ? `${dir}/package.json` : 'package.json', r.ref);
+      } else if ((r.kind === 'symbol' || r.kind === 'env') && r.where && !/^[\w.-]+:/.test(r.where)) {
+        const only = uniqueFile(root, r.ref);
+        if (only) add(only, r.ref);
+      }
+    }
+  } catch {
+    return []; // not a git checkout: nothing resolvable
+  }
+  for (const m of text.matchAll(/\]\((https?:\/\/[^)\s]+)\)|`(https?:\/\/[^`\s]+)`/g)) add((m[1] ?? m[2])!, (m[1] ?? m[2])!);
+  const have = new Set((hand ?? []).filter((h): h is string => typeof h === 'string'));
+  return [...cand]
+    .filter(([p]) => !have.has(p))
+    .sort((a, b) => b[1].count - a[1].count || a[1].first - b[1].first)
+    .slice(0, room)
+    .map(([path, c]) => ({ path, count: c.count }));
+}
+
+/** Data and generated files: a name found there is not a citation of that file (#58). */
+const NOT_CODE = ['*.md', '*.mdx', '*.json', '*.jsonl', '*.csv', '*.tsv', '*.txt', '*.log', '*.svg', '*.xml', '*.lock', '*.min.js', '*.map', '*.snap'];
+
+/** The one tracked code file holding `name`, or undefined when it is in none or several (#58). */
+function uniqueFile(root: string, name: string): string | undefined {
+  try {
+    const out = execFileSync('git', ['grep', '-I', '-l', '-w', '-F', '-e', name, '--', '.', ...NOT_CODE.map((g) => `:!${g}`)], { cwd: root, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const files = out.split('\n').filter(Boolean);
+    return files.length === 1 ? files[0] : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

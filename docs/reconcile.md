@@ -1,4 +1,4 @@
-# Reconcile: check existing docs against the code (2.15.0, updated in 2.18.0)
+# Reconcile: check existing docs against the code (2.15.0, updated in 2.19.0)
 
 `hewtd reconcile` and `/hit-em-with-the-docs:reconcile` bring an existing docs
 tree back in line with the code, in bounded, resumable batches.
@@ -94,6 +94,7 @@ hewtd reconcile --secrets [scope] [--json]
   the real secret store and delete its `.env.hewtd` line; if it was ever
   committed, git history still holds it, so purge with `git filter-repo` if
   you need to; then reindex.
+- **Write-time guards (2.19.0)**: integrate refuses secrets, `hewtd secrets --staged` and an opt-in pre-commit hook check new commits, and accepted findings live in the committed `.hewtd/secrets-baseline.json` (fingerprints only, merged into `allow`). See [`write-time-guards.md`](./write-time-guards.md).
 - **Guarantees**: every write (review files, ledger, apply entries, the staged
   diff, the report) is checked first. A hit in the staged diff rolls the whole
   batch back.
@@ -398,6 +399,9 @@ accepted entry. Links from other outside files are not repointed.
 
 ## Limitations
 
+- No backfill (#61): upgrading hewtd, its postinstall, the SessionStart hooks and the routine commands
+  (`index`, `maintain`, `metadata-sync`, `audit`) never add `sources` to, or otherwise change, an existing doc.
+  Existing docs gain `sources` only through `/reconcile` batches; `hewtd integrate` records them for new docs only.
 - No read log for `sources`: the slash command must only list files it read.
 - Team defaults are provisional. Triage was measured on one real tree (121
   docs, whole-tree plan: 4 shards); wall time versus serial was not measured.

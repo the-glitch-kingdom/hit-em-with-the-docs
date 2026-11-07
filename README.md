@@ -10,9 +10,11 @@
 > You still need to remember to use this plugin when creating documentation! As projects grow, documentation needs to be created and maintained. You'll need to invoke this plugin or ask an LLM to create documentation for your features, workflows, or infrastructure. This plugin must be invoked to create, update, or maintain your docs.
 
 > [!NOTE]
-> **2.18.0** adds question-seeded overviews (`hewtd reconcile --overview "<question>"`) and one owner per fact: copies are merged into the owning doc and replaced by a pointer, with a mechanical no-loss check and pointer staleness; `link-check` warns on broken `#anchor`s. See [`docs/reconcile.md`](./docs/reconcile.md).
+> **2.19.0** adds write-time guards: `integrate` refuses secrets and records a small file-level `sources` list (never `last_verified`), `hewtd secrets --staged` and an opt-in `hewtd hooks install` pre-commit hook check commits, and `.hewtd/secrets-baseline.json` holds accepted findings. 2.17.0 and 2.18.0 ship in 2.19.0. See [`docs/write-time-guards.md`](./docs/write-time-guards.md).
 >
-> **2.17.0** (ships in 2.18.0) adds a secrets step to `/reconcile`: `hewtd reconcile --secrets` finds secrets (masked output), blocks docs that hold them, and moves values to a git-ignored `.env.hewtd`; see [`docs/reconcile.md`](./docs/reconcile.md).
+> **2.18.0** (ships in 2.19.0) adds question-seeded overviews (`hewtd reconcile --overview "<question>"`) and one owner per fact: copies are merged into the owning doc and replaced by a pointer, with a mechanical no-loss check and pointer staleness; `link-check` warns on broken `#anchor`s. See [`docs/reconcile.md`](./docs/reconcile.md).
+>
+> **2.17.0** (ships in 2.19.0) adds a secrets step to `/reconcile`: `hewtd reconcile --secrets` finds secrets (masked output), blocks docs that hold them, and moves values to a git-ignored `.env.hewtd`; see [`docs/reconcile.md`](./docs/reconcile.md).
 >
 > **2.16.0** adds `reconcile.related_repos` (summarize and cross-link, never copy), atomic `--apply` and fewer false "missing" references; see the [CHANGELOG](./CHANGELOG.md).
 >

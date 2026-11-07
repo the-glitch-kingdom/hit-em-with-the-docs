@@ -137,6 +137,8 @@ Use Bash to run these. They're all available via `npx --no @theglitchking/hit-em
 | `hewtd archive <file>` | Retire a doc: move it into `archive/`, stamp lifecycle frontmatter, reindex. Reversible. Link guard refuses if active docs still link to it — `--force` overrides; `--dry-run` previews; `-r/--reason` records why. |
 | `hewtd unarchive <file>` | Restore an archived doc to its recorded `archived_from` path; clears the archive stamp. Refuses if the target already exists. |
 | `hewtd reconcile <scope>` | Check existing docs against the code (2.15.0+). Deterministic triage; `--write-review` writes review files, `--apply <files>` applies accepted entries, `--status`, `--outside`, `--secrets [scope] [--json]` (masked secret scan, 2.17.0), `--overview "<q>"` (seed an overview from a question) and `--write-review --overview <members-file>` (2.18.0; verdicts `overview`, `merge`, `point` give one owner per fact). Judging is done by `/hit-em-with-the-docs:reconcile`. See `docs/reconcile.md`. |
+| `hewtd secrets --staged` | Scan only lines the staged diff adds for secrets (2.19.0); exit 1 with masked findings. `--baseline-add <file:line> --reason "..."` and `--baseline-prune` manage `.hewtd/secrets-baseline.json`. See `docs/write-time-guards.md`. |
+| `hewtd hooks install\|uninstall` | Opt-in pre-commit block running `hewtd secrets --staged` (2.19.0). Appended, never overwrites; uninstall is byte-exact. |
 | `hewtd archive-candidates` | Advisory, read-only. List docs that may warrant archiving (score + reasons). Never moves anything. `--json` for machine output. |
 
 ## Slash commands (Claude Code)

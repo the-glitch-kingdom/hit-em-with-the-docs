@@ -6,7 +6,7 @@
 import { execFileSync } from 'child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, statSync } from 'fs';
 import { tmpdir } from 'os';
-import { join, resolve } from 'path';
+import { dirname, join, relative, resolve } from 'path';
 import { extractLinks } from '../../utils/markdown.js';
 import { checkSingleLink } from '../links/checker.js';
 
@@ -284,7 +284,20 @@ export function primeSymbols(idx: RepoIndex, names: Iterable<string>): void {
 
 // ---------- resolution ----------
 
+/** A sibling checkout, read-only. `idx` is built lazily, only when a ref misses locally. */
+export interface RelatedRepo { name: string; root: string; idx?: RepoIndex | null }
+
+/** The sibling's index, or null when it is not a checked-out git repo. Never reads the sibling's config. */
+export function relatedIndex(r: RelatedRepo): RepoIndex | null {
+  if (r.idx === undefined) {
+    try { r.idx = existsSync(r.root) ? buildRepoIndex(r.root) : null; } catch { r.idx = null; }
+  }
+  return r.idx;
+}
+
 export interface ResolveOptions {
+  /** sibling checkouts, consulted only for refs unresolved locally */
+  related?: RelatedRepo[];
   /** absolute path of the doc, for resolving relative links */
   docFile?: string;
   /** absolute docs root, for resolving links */
@@ -305,8 +318,30 @@ function resolvePath(idx: RepoIndex, ref: string): string | undefined {
   return undefined;
 }
 
+/** `<name>:<where>` for the first sibling that has the ref; undefined if none does. */
+function inRelated(related: RelatedRepo[], r: Reference): string | undefined {
+  for (const rel of related) {
+    const sib = relatedIndex(rel);
+    if (!sib) continue;
+    let where: string | undefined;
+    if (r.kind === 'path') where = resolvePath(sib, r.ref);
+    else if (r.kind === 'symbol' || r.kind === 'env') where = sib.symbols.get(r.ref) ?? undefined;
+    else if (r.kind === 'command') {
+      const name = r.ref.replace(/^\S+( run)? /, '');
+      if (r.ref.startsWith('npm') && sib.scripts.has(name)) where = join(sib.scripts.get(name)!, 'package.json');
+      else if (r.ref.startsWith('make') && sib.makeTargets.has(name)) where = 'Makefile';
+    }
+    if (where) return `${rel.name}:${where}`;
+  }
+  return undefined;
+}
+
 export async function resolveReferences(idx: RepoIndex, refs: Reference[], opts: ResolveOptions = {}): Promise<ResolvedReference[]> {
-  primeSymbols(idx, refs.filter((r) => r.kind === 'symbol' || r.kind === 'env').map((r) => r.ref));
+  const related = opts.related ?? [];
+  const symNames = refs.filter((r) => r.kind === 'symbol' || r.kind === 'env').map((r) => r.ref);
+  primeSymbols(idx, symNames);
+  const lost = symNames.filter((n) => !idx.symbols.get(n));
+  if (related.length && lost.length) for (const rel of related) { const sib = relatedIndex(rel); if (sib) primeSymbols(sib, lost); }
   const haveSchema = idx.schema.tables.size > 0;
   const out: ResolvedReference[] = [];
   for (const r of refs) {
@@ -340,9 +375,26 @@ export async function resolveReferences(idx: RepoIndex, refs: Reference[], opts:
       }
       case 'doc-link':
         if (opts.docFile && opts.docsPath) {
-          status = (await checkSingleLink(r.ref, opts.docFile, opts.docsPath)).valid ? 'ok' : 'missing';
+          const target = r.ref.startsWith('/') ? null : resolve(dirname(opts.docFile), decodeURI(r.ref.split(/[#?]/)[0]!));
+          if (target && relative(idx.root, target).startsWith('..')) {
+            // outside the project: only a related repo's .documentation is checkable
+            const rel = related.find((x) => !relative(join(x.root, '.documentation'), target).startsWith('..'));
+            if (rel) {
+              status = existsSync(target) && statSync(target).isFile() ? 'ok' : 'missing';
+              where = `${rel.name}:${relative(rel.root, target).split('\\').join('/')}`;
+            }
+          } else {
+            status = (await checkSingleLink(r.ref, opts.docFile, opts.docsPath)).valid ? 'ok' : 'missing';
+          }
         }
         break;
+    }
+    // markdown-only names are unknown locally, but code in a sibling still proves them
+    const lookup = status === 'missing' || (status === 'unknown' && !where && (r.kind === 'symbol' || r.kind === 'env'));
+    if (lookup && related.length && r.kind !== 'doc-link' && r.kind !== 'table' && r.kind !== 'column') {
+      where = inRelated(related, r);
+      // a sibling that is not checked out might own it: unknown, not missing
+      status = where ? 'ok' : related.some((x) => !relatedIndex(x)) ? 'unknown' : status;
     }
     out.push(where ? { ...r, status, where } : { ...r, status });
   }

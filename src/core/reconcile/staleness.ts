@@ -104,3 +104,13 @@ export function stalenessSignal(
     return { status: 'none' }; // not a git repo / git missing
   }
 }
+
+/** Commits in a sibling repo to `paths` since `since` (ISO date of the doc's last body change). 0 if unreadable. */
+export function siblingCommits(siblingRoot: string, since: string, paths: string[]): number {
+  if (!paths.length) return 0;
+  try {
+    return parseInt(git(siblingRoot, ['rev-list', '--count', `--since=${since}`, 'HEAD', '--', ...paths]), 10) || 0;
+  } catch {
+    return 0;
+  }
+}

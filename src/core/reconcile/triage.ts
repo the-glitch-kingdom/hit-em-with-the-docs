@@ -11,8 +11,8 @@ import { parseFrontmatter } from '../../utils/frontmatter.js';
 import type { PluginConfig } from '../../utils/config.js';
 import { checkRetrieval } from '../audit/retrieval.js';
 import { findClusters } from '../links/clusters.js';
-import { buildRepoIndex, extractReferences, primeSymbols, resolveReferences, type ResolvedReference } from './references.js';
-import { stalenessSignal } from './staleness.js';
+import { buildRepoIndex, extractReferences, primeSymbols, relatedIndex, resolveReferences, type RelatedRepo, type ResolvedReference } from './references.js';
+import { bodyChange, siblingCommits, stalenessSignal } from './staleness.js';
 import { hashContent, isReviewed, recordEntry, type Ledger } from './ledger.js';
 
 export type Lane = 'clean' | 'fields-only' | 'check' | 'archive-candidate';
@@ -32,6 +32,8 @@ export interface TriageDoc {
   /** Doc bytes + bytes of the cited files the judgment pass must read. */
   bytes: number;
   staleCommits?: number;
+  /** related repo whose docs should own this doc's details (summarize and cross-link) */
+  owner?: string;
 }
 
 export interface Shard {
@@ -135,6 +137,14 @@ export async function triage(opts: {
   const repo = gitRoot(docsPath) ?? opts.root;
   const idx = buildRepoIndex(repo, config.reconcile.schema_sources);
   const warnings: string[] = [];
+  const related: RelatedRepo[] = config.reconcile.related_repos.map((r) => ({ name: r.name, root: resolve(opts.root, r.path) }));
+  for (const r of related) {
+    if (!existsSync(r.root)) warnings.push(`related repo "${r.name}" is not checked out at ${r.root}: its references stay unknown`);
+  }
+  const relOf = (where: string | undefined): RelatedRepo | undefined => {
+    const name = where && /^[\w.-]+:/.exec(where)?.[0].slice(0, -1);
+    return name ? related.find((r) => r.name === name) : undefined;
+  };
 
   const loaded = rels.map((rel) => {
     const raw = readFileSync(join(docsPath, rel), 'utf-8');
@@ -153,13 +163,19 @@ export async function triage(opts: {
   let staleWarned = false;
   for (const d of loaded) {
     const abs = join(docsPath, d.rel);
-    const resolved: ResolvedReference[] = await resolveReferences(idx, d.refs, { docFile: abs, docsPath });
+    const resolved: ResolvedReference[] = await resolveReferences(idx, d.refs, { docFile: abs, docsPath, related });
     const sources = Array.isArray(d.data.sources) ? d.data.sources.filter((s): s is string => typeof s === 'string') : [];
     // Only path-like sources are checkable; URLs and prose citations are not claims about the repo.
-    const pathSources = sources.filter((s) => !/^[a-z]+:\/\//i.test(s) && !/\s/.test(s) && /\.\w+$/.test(s));
+    // `<name>:<path>` names a file in a related repo (read-only); checked there, not in this repo.
+    const relSources = sources.filter((s) => !/\s|:\/\//.test(s) && !!relOf(s));
+    const goneRel = relSources.filter((s) => {
+      const sib = relatedIndex(relOf(s)!);
+      return !!sib && !sib.files.has(s.slice(s.indexOf(':') + 1));
+    });
+    const pathSources = sources.filter((s) => !relOf(s)).filter((s) => !/^[a-z]+:\/\//i.test(s) && !/\s/.test(s) && /\.\w+$/.test(s));
     const goneSources = pathSources.filter((s) => !idx.files.has(s));
-    const missing = [...new Set([...resolved.filter((r) => r.status === 'missing').map((r) => r.ref), ...goneSources])];
-    const checkable = resolved.filter((r) => r.status !== 'unknown').length + pathSources.length;
+    const missing = [...new Set([...resolved.filter((r) => r.status === 'missing').map((r) => r.ref), ...goneSources, ...goneRel])];
+    const checkable = resolved.filter((r) => r.status !== 'unknown').length + pathSources.length + relSources.filter((s) => relatedIndex(relOf(s)!)).length;
 
     // Symbol hits are not cited files: a common name living in a data file must not add bytes or staleness.
     const cited = [...new Set([...resolved.filter((r) => r.kind === 'path').map((r) => r.where), ...sources].filter((p): p is string => !!p && idx.files.has(p)))].sort();
@@ -169,10 +185,26 @@ export async function triage(opts: {
       try { bytes += statSync(join(repo, c)).size; } catch { /* deleted or unreadable */ }
     }
 
+    // Related-repo files the pass reads: bytes count, staleness = sibling commits since the doc's last body change.
+    const relCited = new Map<RelatedRepo, string[]>();
+    for (const w of [...resolved.filter((r) => r.kind === 'path').map((r) => r.where), ...relSources]) {
+      const rel = relOf(w);
+      if (rel && w) relCited.set(rel, [...(relCited.get(rel) ?? []), w.slice(w.indexOf(':') + 1)]);
+    }
+    for (const [rel, paths] of relCited) {
+      for (const p of paths) { try { bytes += statSync(join(rel.root, p)).size; } catch { /* gone */ } }
+    }
+
     let staleCommits: number | undefined;
-    const sig = cited.length ? stalenessSignal(repo, posix(relative(repo, abs)), cited) : ({ status: 'none' } as const);
+    const docRel = posix(relative(repo, abs));
+    const sig = cited.length ? stalenessSignal(repo, docRel, cited) : ({ status: 'none' } as const);
     if (sig.status === 'signal') staleCommits = sig.commits;
-    else if (sig.status === 'unknown' && !staleWarned) (warnings.push(sig.warning), (staleWarned = true));
+    if (relCited.size) {
+      let since = sig.status === 'signal' ? sig.docDate : undefined;
+      if (!since) { try { since = bodyChange(repo, docRel)?.date; } catch { /* not in git */ } }
+      if (since) staleCommits = (staleCommits ?? 0) + [...relCited].reduce((n, [rel, ps]) => n + siblingCommits(rel.root, since!, [...new Set(ps)]), 0);
+    }
+    if (sig.status === 'unknown' && !staleWarned) (warnings.push(sig.warning), (staleWarned = true));
 
     const reasons: string[] = [];
     let lane: Lane;
@@ -191,7 +223,20 @@ export async function triage(opts: {
     } else {
       lane = 'clean';
     }
-    docs.push({ path: d.rel, lane, reasons, missing, bytes, ...(staleCommits !== undefined && { staleCommits }) });
+
+    // Details owned by a sibling: most checkable refs resolve there and the doc does not cross-link into its docs.
+    let owner: string | undefined;
+    const checked = resolved.filter((r) => r.status !== 'unknown');
+    for (const rel of related) {
+      const hits = checked.filter((r) => r.status === 'ok' && relOf(r.where) === rel);
+      const linked = resolved.some((r) => r.kind === 'doc-link' && r.status === 'ok' && relOf(r.where) === rel);
+      if (hits.length >= 2 && hits.length / checked.length > 0.5 && !linked) owner = rel.name;
+    }
+    if (owner) {
+      if (lane === 'clean' || lane === 'fields-only') lane = 'check';
+      reasons.push(`details owned by ${owner}: summarize and cross-link`);
+    }
+    docs.push({ path: d.rel, lane, reasons, missing, bytes, ...(staleCommits !== undefined && { staleCommits }), ...(owner && { owner }) });
 
     if (opts.ledger) recordEntry(opts.ledger, { path: d.rel, lane, content_hash: hashContent(d.raw) });
   }

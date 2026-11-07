@@ -10,7 +10,27 @@ This is the **LLM judgment pass** for `hewtd reconcile`. The CLI is deterministi
 
 `hewtd` below means `npx --no @theglitchking/hit-em-with-the-docs`.
 
-## 0. Quick modes
+## 0. Secrets first
+
+Before any triage, judgment or sharding, scan for secrets. No model may see a secret, so this runs first and the judgment pass never opens a flagged file.
+
+```bash
+hewtd reconcile --secrets <scope...> --json
+```
+
+The scan covers the docs in scope, `archive/`, the outside lane, `.hewtd/` and every file the docs cite. `--json` prints masked findings only: `rule`, `file:line`, the first 4 characters plus the length, and a sha256 fingerprint. Never a value.
+
+If there are findings, show that masked list and stop. Offer the `secret` verdicts (move the value to `.env.hewtd` and leave a pointer in the doc), let the user accept or reject each, apply them with `--apply`, and only then continue to triage. For a false positive, point the user at `reconcile.secrets.allow` in the plugin config (a fingerprint or pattern, with a reason). If there are none, go on to step 1.
+
+Triage repeats the scan and puts any doc with a finding, in itself or in a file it cites, into the `secret` lane. Files with findings are listed under `blocked_files` and dropped from the doc's `cited` list.
+
+**Secret rules.** They bind the judgment pass and every team agent:
+
+- Never open a doc in the `secret` lane, or any file in `blocked_files`.
+- Never echo, quote or paraphrase a value, in chat, review files, drafts, `reason` or `sources`.
+- If a value is seen anyway, stop, and report only the `file:line`.
+
+## 0b. Quick modes
 
 - `--status`: run `hewtd reconcile --status` (add `--next N` to list the next N unreviewed docs), show it, stop.
 - `--next N` with no scope: resume from the ledger. Triage `hewtd reconcile --next N --json` and continue at step 1.
@@ -61,6 +81,9 @@ Spawn one subagent per shard, all in parallel in a single turn (Agent tool), fro
 - It writes ONLY its own review file. It never edits the docs tree, any other review file, or the ledger.
 - It records every file it read in that entry's `sources`.
 - It does not run `hewtd reconcile --apply`.
+- The secret rules from step 0 apply to it: never open a `secret`-lane doc or a `blocked_files` file, never echo a value, and on seeing one stop and report only the `file:line`.
+
+Shards never include `secret`-lane docs (triage enforces this); do not add one by hand.
 
 Wait for all of them, then read every review file and sanity-check: JSON still parses, every filled entry has a verdict, `patch.old` strings are plausible. Only then continue.
 
@@ -97,5 +120,6 @@ Then suggest `hewtd audit` and `hewtd link-check`, and `hewtd reconcile --status
 - Do not edit docs, frontmatter or folders directly. Everything goes through a review file and `--apply`.
 - Do not write or set `last_verified` yourself, and do not commit.
 - Do not tick `accept` without the user's say-so.
-- Do not run the judgment pass on `clean` docs.
+- Do not run the judgment pass on `clean` docs or `secret`-lane docs.
+- Do not skip step 0, and never print a detected value.
 - Do not send repo content to any service other than the Claude session you are in.

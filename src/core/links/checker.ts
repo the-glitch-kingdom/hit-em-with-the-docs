@@ -234,6 +234,9 @@ export async function checkLinks(options: LinkCheckOptions): Promise<LinkCheckRe
       logger.warn(`Broken: ${result.brokenLinks.length}`);
     }
     logger.info(`Cross-domain: ${result.stats.crossDomainLinks}`);
+    for (const w of result.anchorWarnings) {
+      logger.warn(`${w.sourceFile}:${w.lineNumber} ${w.targetPath} - ${w.reason}`);
+    }
   }
 
   return result;

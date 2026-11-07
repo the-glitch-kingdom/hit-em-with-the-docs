@@ -5,7 +5,8 @@
  * (never logged, written, or passed through argv).
  */
 import { createHash } from 'crypto';
-import { readFile } from 'fs/promises';
+import { readFile, writeFile, mkdir } from 'fs/promises';
+import { join, dirname } from 'path';
 import { globToRe } from './references.js';
 import type { SecretsConfig } from '../../utils/config.js';
 
@@ -139,4 +140,37 @@ export function assertNoSecrets(text: string, where: string, cfg: SecretsConfig 
   const hits = scanText(text, where, cfg).filter((f) => f.kind === 'secret');
   if (!hits.length) return;
   throw new Error(`would write a secret to ${where}: ${hits.slice(0, 5).map((f) => `${f.rule} line ${f.line} ${f.masked}`).join(', ')}${hits.length > 5 ? ` (+${hits.length - 5} more)` : ''}`);
+}
+
+// Baseline (#61): committed known false positives. Fingerprints and masked context only, never a value.
+export interface BaselineEntry { fingerprint: string; rule: string; file: string; masked: string; reason: string }
+export const BASELINE_PATH = '.hewtd/secrets-baseline.json';
+
+export async function loadBaseline(root: string): Promise<BaselineEntry[]> {
+  try {
+    const j = JSON.parse(await readFile(join(root, BASELINE_PATH), 'utf-8'));
+    return Array.isArray(j?.entries) ? j.entries.filter((e: BaselineEntry) => typeof e?.fingerprint === 'string' && e.fingerprint.length >= 12) : [];
+  } catch { return []; }
+}
+
+export async function saveBaseline(root: string, entries: BaselineEntry[]): Promise<void> {
+  const text = JSON.stringify({ version: 1, entries }, null, 2) + '\n';
+  assertNoSecrets(text, BASELINE_PATH);
+  await mkdir(dirname(join(root, BASELINE_PATH)), { recursive: true });
+  await writeFile(join(root, BASELINE_PATH), text);
+}
+
+/** Baseline entries as allowlist entries. Fingerprint-only: the same value is the same false positive wherever it appears. */
+export const baselineAllow = (entries: BaselineEntry[]): SecretsConfig['allow'] => entries.map((e) => ({ fingerprint: e.fingerprint, reason: e.reason }));
+
+/** Baseline the findings on one line of `text`. Returns what was added; refuses without a reason or a finding. */
+export async function addBaseline(root: string, file: string, text: string, line: number, reason: string, cfg: SecretsConfig): Promise<BaselineEntry[]> {
+  if (!reason.trim()) throw new Error('--reason is required');
+  const hits = scanText(text, file, cfg).filter((f) => f.line === line);
+  if (!hits.length) throw new Error(`no finding at ${file}:${line}`);
+  const entries = await loadBaseline(root);
+  const added = hits.filter((h) => !entries.some((e) => e.fingerprint === h.fingerprint))
+    .map((h) => ({ fingerprint: h.fingerprint, rule: h.rule, file, masked: h.masked, reason: reason.trim() }));
+  await saveBaseline(root, [...entries, ...added]);
+  return added;
 }

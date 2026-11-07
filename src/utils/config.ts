@@ -301,11 +301,11 @@ export async function loadPluginConfig(projectRoot?: string): Promise<PluginConf
   }
 
   const parsed = pluginConfigSchema.safeParse(raw);
-  if (parsed.success) {
-    return parsed.data;
-  }
-  // Malformed config — return defaults rather than crash.
-  return pluginConfigSchema.parse({});
+  const cfg = parsed.success ? parsed.data : pluginConfigSchema.parse({}); // malformed: defaults, not a crash
+  // The committed secrets baseline joins the allowlist, so every secret check honours it (#61).
+  const { loadBaseline, baselineAllow } = await import('../core/reconcile/secrets.js');
+  cfg.reconcile.secrets.allow = [...cfg.reconcile.secrets.allow, ...baselineAllow(await loadBaseline(root))];
+  return cfg;
 }
 
 /**

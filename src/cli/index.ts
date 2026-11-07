@@ -28,7 +28,9 @@ import {
   getDomainDefinition,
   isValidDomain,
 } from '../core/domains/registry.js';
-import { regenerateIndexes } from '../generators/regenerate.js';
+import { regenerateIndexes, generateKbIndexes } from '../generators/regenerate.js';
+import { stampReports } from '../generators/stamp-reports.js';
+import { readRawConfig, writeRawConfig } from '../utils/config.js';
 import { resolveDocsPath } from '../utils/docs-root.js';
 
 const program = new Command();
@@ -75,6 +77,13 @@ program
     if (!result.success) {
       logger.error('Failed to initialize documentation');
       process.exit(1);
+    }
+
+    // New installs keep reports out of the searched docs tree; never override an existing value.
+    const projectRoot = dirname(docsPath);
+    const raw = await readRawConfig(projectRoot);
+    if (raw.reports_dir === undefined) {
+      await writeRawConfig(projectRoot, { ...raw, reports_dir: '.hewtd/reports' });
     }
   });
 
@@ -156,6 +165,19 @@ program
       );
     }
     logger.newline();
+
+    // Upgrade step: KB indexes and pre-2.13 reports also get rebuilt/stamped here.
+    const kb = await generateKbIndexes(docsPath, options.dryRun);
+    const stamped = await stampReports(docsPath, options.dryRun);
+    if (kb) {
+      logger.info(
+        `Knowledge base: ${kb.facts} facts, ${kb.incidents} incidents${options.dryRun ? ' (would rebuild indexes)' : ' (indexes rebuilt)'}`
+      );
+    }
+    if (stamped.length > 0) {
+      logger.info(`${options.dryRun ? 'Would stamp' : 'Stamped'} generated: true on ${stamped.length} report file(s)`);
+      if (options.dryRun) for (const f of stamped) logger.info(`  ${f}`);
+    }
 
     if (!options.dryRun) {
       logger.success(
@@ -1001,6 +1023,9 @@ program
     for (const c of result.changed) logger.info(`  ${c.file}: ${c.actions.join(', ')}`);
     for (const f of result.conflicts) logger.warn(`  ${f}: purpose and summary/description both set, left alone`);
     for (const e of result.errors) logger.error(`  ${e.file}: could not parse frontmatter, skipped (${e.message})`);
+    if (result.dropped + result.cleared > 0) {
+      logger.info(`  ${result.dropped} filler value(s) dropped, ${result.cleared} generator purpose(s) cleared`);
+    }
     if (result.changed.length === 0) logger.success('Nothing to do.');
     else if (options.apply) logger.success(`Updated ${result.changed.length} file(s).`);
     else logger.info('Dry run, nothing written. Re-run with --apply.');
@@ -1023,9 +1048,6 @@ program
       process.exit(1);
     }
     let accept: unknown;
-    if (result.dropped + result.cleared > 0) {
-      logger.info(`  ${result.dropped} filler value(s) dropped, ${result.cleared} generator purpose(s) cleared`);
-    }
     try {
       accept = JSON.parse(options.accept);
     } catch (err) {

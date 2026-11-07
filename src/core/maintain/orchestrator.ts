@@ -10,18 +10,10 @@ import { checkLinks, type LinkCheckResult } from '../links/checker.js';
 import { auditDocumentation, type AuditResult } from '../audit/auditor.js';
 import { getAllDomains } from '../domains/registry.js';
 import { formatDate } from '../metadata/generator.js';
-import {
-  loadPluginConfig,
-  resolveVaultRoot,
-  resolveReportsDir,
-  resolvePlaybookGlobs,
-} from '../../utils/config.js';
-import { buildCiterIndex } from '../knowledge-base/citers.js';
-import { generateFactsIndex } from '../../generators/facts-index.js';
-import { generateIncidentsIndex } from '../../generators/incidents-index.js';
-import { generateSymptomsIndex } from '../../generators/symptoms-index.js';
+import { loadPluginConfig, resolveReportsDir } from '../../utils/config.js';
 import {
   regenerateIndexes,
+  generateKbIndexes,
   type RegenerateResult,
 } from '../../generators/regenerate.js';
 
@@ -534,65 +526,17 @@ async function maybeGenerateKbIndexes(
   silent: boolean,
   result: MaintainResult
 ): Promise<void> {
-  // Project root is the parent of docsPath (e.g. .documentation/ → project root).
-  // Config and playbook globs are resolved relative to the project root.
-  const projectRoot = dirname(docsPath);
-
-  const config = await loadPluginConfig(projectRoot);
-  const vaultRoot = resolveVaultRoot(projectRoot, config);
-
-  if (!(await pathExists(vaultRoot))) {
-    // No vault — backward-compat path. Don't even log.
-    return;
-  }
+  const kb = await generateKbIndexes(docsPath);
+  if (!kb) return;
 
   if (!silent) {
     logger.subheader('Step 3.5: Knowledge-base Indexes');
-  }
-
-  const playbookGlobs = resolvePlaybookGlobs(projectRoot, config);
-  const index = await buildCiterIndex({ projectRoot, vaultRoot, playbookGlobs });
-
-  const factsPath = await generateFactsIndex({ vaultRoot, index });
-  const incidentsPath = await generateIncidentsIndex({ vaultRoot, index });
-  const symptomsPath = await generateSymptomsIndex({ vaultRoot, index });
-
-  if (!silent) {
-    logger.success(`Generated ${index.facts.size} facts → ${factsPath}`);
-    logger.success(`Generated ${index.incidents.size} incidents → ${incidentsPath}`);
-    logger.success(`Generated symptoms index → ${symptomsPath}`);
+    logger.success(`Generated ${kb.facts} facts → ${kb.factsPath}`);
+    logger.success(`Generated ${kb.incidents} incidents → ${kb.incidentsPath}`);
+    logger.success(`Generated symptoms index → ${kb.symptomsPath}`);
   }
 
   // Suppress unused-var: result is part of the signature for future use
   // (e.g. surfacing KB stats into the maintenance report).
   void result;
-}
-
-/**
- * Quick health check without full maintenance
- */
-export async function quickHealthCheck(docsPath: string): Promise<{
-  healthy: boolean;
-  score: number;
-  issues: string[];
-}> {
-  const domainHealth = await checkDomainHealth(docsPath);
-  const issues: string[] = [];
-
-  if (!domainHealth.healthy) {
-    if (domainHealth.missingDomains.length > 0) {
-      issues.push(`Missing domains: ${domainHealth.missingDomains.join(', ')}`);
-    }
-    if (domainHealth.missingIndexes.length > 0) {
-      issues.push(`Missing INDEX.md in: ${domainHealth.missingIndexes.join(', ')}`);
-    }
-  }
-
-  const score = domainHealth.healthy ? 100 : 100 - issues.length * 10;
-
-  return {
-    healthy: issues.length === 0,
-    score: Math.max(0, score),
-    issues,
-  };
 }

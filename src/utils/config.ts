@@ -335,8 +335,8 @@ export function resolvePlaybookGlobs(
 
 /**
  * Where reports are written. Default `<docsPath>/reports`; `reports_dir`
- * (relative to the repo root, the parent of docsPath) overrides it. Throws if
- * the configured path escapes the repo root.
+ * (relative to the repo root, the parent of docsPath) overrides it. A path
+ * that escapes the repo root warns and falls back to the default.
  */
 export async function resolveReportsDir(docsPath: string): Promise<string> {
   const projectRoot = dirname(docsPath);

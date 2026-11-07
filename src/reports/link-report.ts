@@ -1,5 +1,6 @@
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
+import { resolveReportsDir } from '../utils/config.js';
 import { pathExists } from '../utils/glob.js';
 import { formatDate } from '../core/metadata/generator.js';
 import type { LinkCheckResult } from '../core/links/checker.js';
@@ -39,6 +40,7 @@ domains: [root]
 status: active
 last_updated: '${now}'
 version: '1.0.0'
+generated: true
 ---
 
 # Link Check Report
@@ -175,7 +177,7 @@ export async function saveLinkReport(
   result: LinkCheckResult,
   format: 'markdown' | 'json' = 'markdown'
 ): Promise<string> {
-  const reportsDir = join(docsPath, 'reports');
+  const reportsDir = await resolveReportsDir(docsPath);
 
   if (!(await pathExists(reportsDir))) {
     await mkdir(reportsDir, { recursive: true });

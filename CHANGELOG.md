@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.12.0] — 2026-11-06
+
+Retrieval-ready docs (#50). Additive: existing trees keep working, and the
+reports directory default is unchanged.
+
+- Plain-string `symptoms:` are valid on every tier, not only facts.
+- Generated indexes, registries and reports carry `generated: true`. Root and
+  domain `INDEX.md` tables gain a Purpose column. Run `hewtd index` to refresh.
+- `integrate` no longer writes a "Documentation for <title>" purpose. It leaves
+  `purpose` missing when the first paragraph is not a usable sentence.
+- Fact and doc templates and `extract-facts` carry `purpose` and `symptoms`.
+- `hewtd audit` raises advisory `RETRIEVAL_*` warnings (missing or weak
+  purpose, generic title, missing symptoms, oversized, near-duplicate). They
+  never change the exit code, and the GitHub Action does not count them
+  toward `fail-on-error`. Tune them with the `retrieval` config block.
+- `hewtd fix-retrieval-fields [--apply]` moves `summary`/`description` into
+  `purpose` and merges `keywords` into `tags`.
+- `hewtd report health` shows a Retrieval Coverage table.
+- New optional `reports_dir` config.
+- New page: `docs/retrieval-fields.md`.
+
 ## [2.11.0] — 2026-10-25
 
 Three fixes from using hewtd alongside semantic-memory: `archive` no longer

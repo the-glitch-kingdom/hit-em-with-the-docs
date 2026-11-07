@@ -977,6 +977,26 @@ program
   });
 
 program
+  .command('fix-retrieval-fields')
+  .description('Move summary/description into purpose and fold keywords into tags (dry run unless --apply).')
+  .option('-p, --docs-path <path>', 'Documentation path', '.documentation')
+  .option('--apply', 'Write the changes', false)
+  .action(async (options) => {
+    const { fixRetrievalFields } = await import('../core/metadata/fix-retrieval-fields.js');
+    const result = await fixRetrievalFields({
+      docsPath: resolve(process.cwd(), options.docsPath),
+      apply: options.apply,
+    });
+    logger.header('hewtd fix-retrieval-fields');
+    for (const c of result.changed) logger.info(`  ${c.file}: ${c.actions.join(', ')}`);
+    for (const f of result.conflicts) logger.warn(`  ${f}: purpose and summary/description both set, left alone`);
+    for (const e of result.errors) logger.error(`  ${e.file}: could not parse frontmatter, skipped (${e.message})`);
+    if (result.changed.length === 0) logger.success('Nothing to do.');
+    else if (options.apply) logger.success(`Updated ${result.changed.length} file(s).`);
+    else logger.info('Dry run, nothing written. Re-run with --apply.');
+  });
+
+program
   .command('extract-facts <incident-folder>')
   .description('Write accepted fact specs to <vault>/facts/. Specs come from the /hit-em-with-the-docs:extract-facts slash command.')
   .option(

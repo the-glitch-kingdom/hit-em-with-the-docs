@@ -8,6 +8,8 @@ export interface DocumentTemplateOptions {
   domain?: Domain;
   author?: string;
   tags?: string[];
+  /** One sentence: the question this doc answers. Omitted -> commented guidance. */
+  purpose?: string;
 }
 
 /**
@@ -20,6 +22,7 @@ export function generateDocumentTemplate(options: DocumentTemplateOptions): stri
     domain = 'features',
     author,
     tags = [],
+    purpose,
   } = options;
 
   const now = formatDate(new Date());
@@ -36,6 +39,12 @@ ${tags.length > 0 ? tags.map((t) => `  - ${t}`).join('\n') : '  []'}
 status: draft
 last_updated: '${now}'
 version: '1.0.0'
+${
+  purpose
+    ? `purpose: ${JSON.stringify(purpose)}\n`
+    : `# purpose: One sentence naming the question this doc answers.\n`
+}# symptoms:   # optional: how someone describes the problem, or literal error text
+#   - "plain phrase or error message"
 `;
 
   if (author) {

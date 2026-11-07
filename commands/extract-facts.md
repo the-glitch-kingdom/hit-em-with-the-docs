@@ -25,6 +25,8 @@ This is the **LLM-driven proposer** for the `hewtd extract-facts` workflow. Your
      "claim": "<one-paragraph stating the atomic claim>",
      "howToVerify": "<one paragraph on how to confirm it>",
      "consequences": "<one paragraph on what this means in practice>",
+     "purpose": "<one sentence: the question this fact answers>",
+     "symptoms": ["<how someone would describe the problem before knowing the cause>", "<or literal error text>"],
      "verifyCommand": "<optional one-line shell command that proves the claim>",
      "tags": ["<tag-1>", "<tag-2>"],
      "domains": ["<domain>"]
@@ -34,6 +36,7 @@ This is the **LLM-driven proposer** for the `hewtd extract-facts` workflow. Your
 4. **Present the candidates to the user.** For each one, include:
    - The proposed id, title, confidence
    - A quote from the narrative justifying the fact
+   - The proposed `purpose` and 2-3 plain-string `symptoms` (phrases a person would search with, or exact error text; no invented ones)
    - The proposed verify_command (with caveat: it's LLM-derived, may need refinement)
 
 5. **Let the user accept / edit / reject each.** Don't proceed to step 6 until the user has signed off on the final list.

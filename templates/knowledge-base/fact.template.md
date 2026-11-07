@@ -6,6 +6,10 @@ domains:
   # - <domain-2>   # optional additional domains
 status: active     # one of: draft | active | deprecated | archived | weakened
 last_updated: YYYY-MM-DD
+purpose: <One sentence, the question this fact answers, e.g. "Which process reads VAULT_TOKEN, and when?">
+symptoms:                       # 2-3 plain strings: how someone describes the problem before knowing the cause, or literal error text
+  - <"alloy can't authenticate to vault after restart">
+  - <"literal error message from the logs">
 id: <kebab-case-slug>           # MUST match the filename without `.md`
 confidence: high                # one of: high | medium | low | hypothesis
 last_verified: YYYY-MM-DD       # the date a human (or `hewtd audit-facts --run-verify`) confirmed the claim

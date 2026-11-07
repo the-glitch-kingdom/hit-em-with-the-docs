@@ -1,7 +1,8 @@
 import { dirname, join } from 'path';
 import { writeFile, mkdir } from 'fs/promises';
 import { logger } from '../../utils/logger.js';
-import { pathExists } from '../../utils/glob.js';
+import { pathExists, findMarkdownFiles } from '../../utils/glob.js';
+import { collectRetrievalDocs, retrievalCoverage, type RetrievalCoverage } from '../audit/retrieval.js';
 import { syncMetadata, type SyncResult } from '../metadata/sync.js';
 import { checkLinks, type LinkCheckResult } from '../links/checker.js';
 import { auditDocumentation, type AuditResult } from '../audit/auditor.js';
@@ -10,6 +11,7 @@ import { formatDate } from '../metadata/generator.js';
 import {
   loadPluginConfig,
   resolveVaultRoot,
+  resolveReportsDir,
   resolvePlaybookGlobs,
 } from '../../utils/config.js';
 import { buildCiterIndex } from '../knowledge-base/citers.js';
@@ -35,6 +37,7 @@ export interface MaintainResult {
   indexRegeneration?: RegenerateResult;
   linkCheck?: LinkCheckResult;
   audit?: AuditResult;
+  retrievalCoverage?: RetrievalCoverage;
   healthScore: number;
   reportPath?: string;
   errors: string[];
@@ -189,6 +192,15 @@ export async function runMaintenance(options: MaintainOptions): Promise<Maintain
     result.errors.push(`Audit failed: ${message}`);
   }
 
+  // Retrieval coverage (#50): shown in the health report only, not part of the score.
+  try {
+    const docs = await collectRetrievalDocs(docsPath, await findMarkdownFiles(docsPath));
+    const cfg = await loadPluginConfig(dirname(docsPath));
+    result.retrievalCoverage = retrievalCoverage(docs, cfg.retrieval);
+  } catch (error) {
+    result.errors.push(`Retrieval coverage failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
   // Calculate overall health score
   result.healthScore = calculateHealthScore(result);
 
@@ -336,6 +348,7 @@ domains: [root]
 status: active
 last_updated: '${now}'
 version: '1.0.0'
+generated: true
 ---
 
 # Maintenance Report
@@ -464,7 +477,7 @@ version: '1.0.0'
 `;
 
   // Save report
-  const reportsDir = join(docsPath, 'reports');
+  const reportsDir = await resolveReportsDir(docsPath);
   if (!(await pathExists(reportsDir))) {
     await mkdir(reportsDir, { recursive: true });
   }

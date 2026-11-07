@@ -22,8 +22,12 @@ as required vs. optional.
 When asked to create a new fact / incident / playbook entry:
 
 1. Read the corresponding template.
-2. Replace every `<placeholder>` with concrete content.
-3. Run `hewtd audit --strict` on the parent directory to confirm validity.
+2. Fill in `purpose:` (one sentence: the question the doc answers) and `symptoms:` (plain strings: how the problem is described, or literal error text); they drive retrieval.
+3. Replace every `<placeholder>` with concrete content.
+4. Run `hewtd audit --strict` on the parent directory to confirm validity.
+
+Plain-string `symptoms:` are valid on every tier. The retrieval standard is in
+`docs/retrieval-fields.md`.
 
 ## Validation reference
 

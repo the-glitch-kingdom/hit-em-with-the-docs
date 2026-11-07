@@ -9,7 +9,7 @@
 
 import { readFileSync } from 'fs';
 import { mkdir, readFile, writeFile } from 'fs/promises';
-import { dirname, join, resolve } from 'path';
+import { dirname, join, relative, resolve, isAbsolute, sep } from 'path';
 import { z } from 'zod';
 
 export const DEFAULT_DOCS_ROOT = '.documentation';
@@ -141,6 +141,36 @@ const lenientStatusArray = z
   }, z.array(statusValueSchema))
   .default([]);
 
+const DEFAULT_GENERIC_TITLES = [
+  'Admin', 'Reference', 'Guide', 'Overview', 'Notes', 'README', 'Index', 'Introduction',
+];
+
+/**
+ * Retrieval-readiness audit thresholds (#50). Every key falls back to its
+ * default on an invalid value (`.catch`) so a hand-edited config never throws.
+ * `disabled` lists RETRIEVAL_* codes to silence.
+ */
+const retrievalConfigSchema = z
+  .object({
+    purpose_min_words: z.number().int().positive().catch(8),
+    generic_titles: z.array(z.string()).catch(DEFAULT_GENERIC_TITLES),
+    oversized_chars: z.number().int().positive().catch(15000),
+    oversized_headings: z.number().int().positive().catch(12),
+    near_duplicate: z.boolean().catch(true),
+    near_duplicate_min_chars: z.number().int().positive().catch(300),
+    disabled: z.array(z.string()).catch([]),
+  })
+  .catch({
+    purpose_min_words: 8,
+    generic_titles: DEFAULT_GENERIC_TITLES,
+    oversized_chars: 15000,
+    oversized_headings: 12,
+    near_duplicate: true,
+    near_duplicate_min_chars: 300,
+    disabled: [],
+  })
+  .default({});
+
 const pluginConfigSchema = z
   .object({
     /**
@@ -155,12 +185,16 @@ const pluginConfigSchema = z
     domains: lenientDomainsArray,
     status: lenientStatusArray,
     archive: archiveConfigSchema,
+    retrieval: retrievalConfigSchema,
+    /** Reports directory, relative to the repo root. Unset = `<docs root>/reports`. */
+    reports_dir: z.string().min(1).optional().catch(undefined),
   })
   .passthrough();
 
 export type VaultConfig = z.infer<typeof vaultConfigSchema>;
 export type EnforcementConfig = z.infer<typeof enforcementConfigSchema>;
 export type ArchiveConfig = z.infer<typeof archiveConfigSchema>;
+export type RetrievalConfig = z.infer<typeof retrievalConfigSchema>;
 export type PluginConfig = z.infer<typeof pluginConfigSchema>;
 
 const CONFIG_FILENAME = '.claude/hit-em-with-the-docs.json';
@@ -281,4 +315,23 @@ export function resolvePlaybookGlobs(
   config: PluginConfig
 ): string[] {
   return config.vault.playbook_paths.map((p) => join(projectRoot, p));
+}
+
+/**
+ * Where reports are written. Default `<docsPath>/reports`; `reports_dir`
+ * (relative to the repo root, the parent of docsPath) overrides it. Throws if
+ * the configured path escapes the repo root.
+ */
+export async function resolveReportsDir(docsPath: string): Promise<string> {
+  const projectRoot = dirname(docsPath);
+  const configured = (await loadPluginConfig(projectRoot)).reports_dir;
+  if (!configured) return join(docsPath, 'reports');
+  const dir = resolve(projectRoot, configured);
+  const rel = relative(projectRoot, dir);
+  if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+    // Lenient like the rest of the config: bad value → default, never a crash.
+    console.warn(`hewtd: reports_dir "${configured}" must stay inside the repo root; using ${join(docsPath, 'reports')}`);
+    return join(docsPath, 'reports');
+  }
+  return dir;
 }

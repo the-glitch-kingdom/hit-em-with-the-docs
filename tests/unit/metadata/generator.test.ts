@@ -19,6 +19,19 @@ describe('Metadata Generator', () => {
   });
 
   describe('generateMetadata', () => {
+    it.each([
+      ['code block', '```bash\nnpm install something-long-enough-here\n```'],
+      ['table', '| a | b | c | d |\n| - | - | - | - |\n| 1 | 2 | 3 | 4 |'],
+      ['list', '- first item of a long enough list entry\n- second item'],
+      ['long paragraph', 'word '.repeat(60)],
+    ])('omits purpose (no title echo) when first paragraph is a %s', (_n, first) => {
+      const result = generateMetadata({
+        content: `# Some Title\n\n${first}\n\n## More\n\nText.\n`,
+        filePath: 'docs/some-title.md',
+      });
+      expect(result.purpose).toBeUndefined();
+    });
+
     it('should generate metadata with title from content', () => {
       const content = `
 # Getting Started Guide

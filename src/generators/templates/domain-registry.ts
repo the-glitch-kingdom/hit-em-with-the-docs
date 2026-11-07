@@ -15,6 +15,7 @@ domains:
 status: active
 last_updated: '${now}'
 version: '1.0.0'
+generated: true
 purpose: Quick reference for ${domain} documentation
 ---
 

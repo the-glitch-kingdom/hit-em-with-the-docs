@@ -65,6 +65,7 @@ export function renderSymptomsIndex(index: CiterIndex, symptomsDir?: string): st
   lines.push('status: active');
   lines.push("last_updated: '0000-00-00'");
   lines.push("version: '1.0.0'");
+  lines.push('generated: true');
   lines.push(
     'purpose: Auto-generated mapping of symptom keys (alert names, user phrases, error patterns) to playbook anchors and their fact citations.'
   );

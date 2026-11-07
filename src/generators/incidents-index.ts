@@ -47,6 +47,7 @@ export function renderIncidentsIndex(index: CiterIndex): string {
   lines.push('status: active');
   lines.push("last_updated: '0000-00-00'");
   lines.push("version: '1.0.0'");
+  lines.push('generated: true');
   lines.push('purpose: Auto-generated chronological index of all incidents in the knowledge base.');
   lines.push('---');
   lines.push('');

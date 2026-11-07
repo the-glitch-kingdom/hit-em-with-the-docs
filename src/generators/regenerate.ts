@@ -202,6 +202,7 @@ async function buildDomainEntries(
       tier: typeof data.tier === 'string' ? data.tier : 'guide',
       status: typeof data.status === 'string' ? data.status : 'active',
       lastUpdated: normalizeDate(data.last_updated),
+      ...(typeof data.purpose === 'string' && { purpose: data.purpose }),
       wordCount:
         typeof data.word_count === 'number'
           ? data.word_count

@@ -198,6 +198,27 @@ const lenientRelatedRepos = z
   .transform((a) => a.flatMap((x) => { const r = relatedRepoSchema.safeParse(x); return r.success ? [r.data] : []; }))
   .catch([]);
 
+/** Secret scan (#59). An allow entry needs a `reason` and a `fingerprint` or `pattern`; others are dropped with a warning. */
+export interface SecretAllow { fingerprint?: string | undefined; pattern?: string | undefined; file?: string | undefined; reason: string }
+const lenientSecretAllow = z
+  .array(z.unknown())
+  .transform((a) => a.flatMap((x): SecretAllow[] => {
+    const e = x as Partial<SecretAllow> | null;
+    const ok = !!e && typeof e === 'object' && typeof e.reason === 'string' && e.reason.trim() &&
+      (typeof e.fingerprint === 'string' || typeof e.pattern === 'string') &&
+      (e.file === undefined || typeof e.file === 'string');
+    if (!ok) { console.warn('hewtd: ignoring reconcile.secrets.allow entry without a reason and a fingerprint or pattern'); return []; }
+    return [{ fingerprint: e.fingerprint, pattern: e.pattern, file: e.file, reason: e.reason!.trim() }];
+  }))
+  .catch([]);
+const secretsConfigSchema = z
+  .object({
+    allow: lenientSecretAllow,
+    disabled_rules: z.array(z.string()).catch([]),
+  })
+  .catch({ allow: [] as SecretAllow[], disabled_rules: [] as string[] })
+  .default({});
+
 /** Reconcile (#54). Lenient like `retrieval`: any invalid key falls back to its default. */
 const reconcileConfigSchema = z
   .object({
@@ -205,6 +226,7 @@ const reconcileConfigSchema = z
     ledger_path: z.string().min(1).catch('.hewtd/reconcile.json'),
     schema_sources: z.array(z.string()).catch(DEFAULT_RECONCILE_SCHEMA_SOURCES),
     related_repos: lenientRelatedRepos,
+    secrets: secretsConfigSchema,
     team: z
       .object({
         min_docs: z.number().int().positive().catch(12),
@@ -220,6 +242,7 @@ const reconcileConfigSchema = z
     ledger_path: '.hewtd/reconcile.json',
     schema_sources: DEFAULT_RECONCILE_SCHEMA_SOURCES,
     related_repos: [] as Array<{ name: string; path: string }>,
+    secrets: { allow: [] as SecretAllow[], disabled_rules: [] as string[] },
     team: { min_docs: 12, min_bytes: 250000, max_agents: 4, docs_per_agent: 8 },
   })
   .default({});
@@ -251,6 +274,7 @@ export type EnforcementConfig = z.infer<typeof enforcementConfigSchema>;
 export type ArchiveConfig = z.infer<typeof archiveConfigSchema>;
 export type RetrievalConfig = z.infer<typeof retrievalConfigSchema>;
 export type OverviewConfig = z.infer<typeof overviewConfigSchema>;
+export type SecretsConfig = z.infer<typeof secretsConfigSchema>;
 export type ReconcileConfig = z.infer<typeof reconcileConfigSchema>;
 export type PluginConfig = z.infer<typeof pluginConfigSchema>;
 

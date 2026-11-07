@@ -1136,6 +1136,7 @@ program
   .option('--write-review', 'Write an empty review-file skeleton per shard under .hewtd/reconcile/', false)
   .option('--batch <id>', 'Batch id for --write-review (default: next number)')
   .option('--outside', 'List markdown files outside the docs root by class (tool-read, junk, not-a-doc, misplaced); with --write-review, write an outside review file', false)
+  .option('--secrets', 'Masked secret scan (no scope: whole docs root incl. archive/, the outside lane and .hewtd/); never prints a value', false)
   .option('--apply <files...>', 'Apply the accepted entries of review files (serial, one commit per batch)')
   .action(async (scope: string[], options) => {
     const { loadPluginConfig } = await import('../utils/config.js');
@@ -1160,6 +1161,33 @@ program
         const n = (st: string) => res.outcomes.filter((o) => o.status === st).length;
         logger.info(`applied ${n('applied')}, stale ${n('stale')}, rejected ${n('rejected')}, error ${n('error')}`);
         if (n('error')) process.exitCode = 1;
+        const after = await loadLedger(ledgerFile);
+        if (res.outcomes.some((o) => o.status === 'applied' && after.entries[o.path]?.env_names?.length)) {
+          const { buildSecretsReport, writeSecretsReport } = await import('../core/reconcile/secrets-report.js');
+          // Re-scan, so findings still pending stay in the report instead of being overwritten by the moved ones.
+          const { scanSecrets } = await import('../core/reconcile/triage.js');
+          const pending = await scanSecrets({ root, docsPath, config });
+          const rep = await buildSecretsReport({ root, docsPath, findings: pending, ledger: after, cfg: config.reconcile.secrets });
+          logger.info(`  secrets report with next steps (rotate, then purge): ${relative(root, await writeSecretsReport(root, rep.text))}`);
+        }
+      } catch (e) {
+        logger.error((e as Error).message);
+        process.exitCode = 1;
+      }
+      return;
+    }
+    if (options.secrets) {
+      try {
+        const { scanSecrets } = await import('../core/reconcile/triage.js');
+        const found = await scanSecrets({ root, docsPath, config, scope });
+        const { buildSecretsReport, writeSecretsReport } = await import('../core/reconcile/secrets-report.js');
+        const report = await buildSecretsReport({ root, docsPath, findings: found, ledger: await loadLedger(ledgerFile), cfg: config.reconcile.secrets });
+        const reportFile = relative(root, await writeSecretsReport(root, report.text));
+        if (options.json) { console.log(JSON.stringify(found, null, 2)); return; }
+        logger.header('hewtd reconcile --secrets');
+        for (const f of found) logger.info(`  [${f.kind}] ${f.rule} ${f.file}:${f.line} ${f.masked} (${f.fingerprint.slice(0, 12)})`);
+        logger.info(`  ${found.length} finding(s)`);
+        logger.info(`  report with next steps: ${reportFile}`);
       } catch (e) {
         logger.error((e as Error).message);
         process.exitCode = 1;
@@ -1212,6 +1240,7 @@ program
         for (const [k, v] of Object.entries(t.byLane)) logger.info(`  ${k}: ${v}`);
         for (const d of result.docs) logger.info(`  [${d.lane}] ${d.path}${d.reasons.length ? ` - ${d.reasons.join('; ')}` : ''}`);
         for (const w of result.warnings) logger.warn(w);
+        if (result.peripheral.length) logger.warn(`${result.peripheral.length} secret finding(s) in archive/, the outside lane or .hewtd/ (run: hewtd reconcile --secrets)`);
         logger.info(`  schema files: ${result.schemaFiles.length ? result.schemaFiles.join(', ') : 'none (set reconcile.schema_sources to check tables)'}`);
         logger.info(`  mode: ${result.mode}`);
         for (const s of result.shards) logger.info(`    shard ${s.id}: ${s.docs.length} docs, ${s.bytes} bytes`);

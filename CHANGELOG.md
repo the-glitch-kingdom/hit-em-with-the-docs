@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.17.0] — 2026-11-07
+
+Secrets step for `/reconcile` (#59, part 2).
+
+- `hewtd reconcile --secrets [scope] [--json]`: built-in detector, masked output
+  (first 4 characters, length, fingerprint). Writes `.hewtd/reconcile/secrets-report-<date>.md`.
+- New blocking `secret` triage lane; flagged cited files go to `blocked_files`.
+  Secret-lane docs are never judged or sharded.
+- New `secret` verdict: values move to a git-ignored, 0600 `.env.hewtd`, a pointer
+  stays in the doc, and rollback restores both.
+- Every reconcile write is guarded against secret values; a hit in the staged diff rolls back.
+- Config `reconcile.secrets.allow` (reason required) and `disabled_rules`.
+- `/reconcile` slash command: step 0 "Secrets first".
+
 ## [2.16.0] — 2026-11-07
 
 Field-test fixes for `/reconcile` and related repos (#58). Behaviour changes first.

@@ -7,9 +7,11 @@ import { mkdir, readdir, readFile, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import matter from 'gray-matter';
 import { hashContent } from './ledger.js';
+import { assertNoSecrets, findSecrets, type RawSecret } from './secrets.js';
+import { loadPluginConfig } from '../../utils/config.js';
 import type { Shard, TriageResult } from './triage.js';
 
-export const VERDICTS = ['verify', 'rewrite', 'archive', 'unverifiable', 'fields', 'integrate', 'delete'] as const;
+export const VERDICTS = ['verify', 'rewrite', 'archive', 'unverifiable', 'fields', 'integrate', 'delete', 'secret'] as const;
 export type Verdict = (typeof VERDICTS)[number];
 
 export interface ReviewEntry {
@@ -33,6 +35,8 @@ export interface ReviewEntry {
   outside?: boolean;
   /** integrate: target domain (default: declared or detected). */
   domain?: string;
+  /** secret: masked findings with the proposed env name each value moves to. Never the value. */
+  secrets?: { rule: string; line: number; masked: string; fingerprint: string; env: string }[];
   lane?: string;
   reasons?: string[];
 }
@@ -46,16 +50,36 @@ export interface ReviewFile {
   entries: { entry: ReviewEntry; accepted: boolean }[];
 }
 
+/** HEWTD_SECRET_<NAME>: the assignment name on the value's line, else rule + doc slug; unique within `used`. */
+export function envNames(text: string, doc: string, raws: RawSecret[], used: Set<string>): Map<string, string> {
+  const lines = text.split('\n');
+  const slug = doc.replace(/\.md$/, '');
+  const out = new Map<string, string>();
+  for (const { finding: f } of raws) {
+    if (out.has(f.fingerprint)) continue; // same value twice: one name
+    const before = (lines[f.line - 1] ?? '').slice(0, f.col - 1);
+    const base = /([A-Za-z_][\w.-]*)["'`]?\s*[:=]\s*["'`]?$/.exec(before)?.[1] ?? `${f.rule}_${slug}`;
+    const stem = `HEWTD_SECRET_${base.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').toUpperCase()}`;
+    let name = stem;
+    for (let i = 2; used.has(name); i++) name = `${stem}_${i}`;
+    used.add(name);
+    out.set(f.fingerprint, name);
+  }
+  return out;
+}
+
 export const reviewDir = (root: string): string => join(root, '.hewtd', 'reconcile');
 
 export function renderReview(meta: { batch: string; shard: number; scope: string }, entries: ReviewEntry[]): string {
   const body = entries
     .map((e) => `## ${e.path}\n\n- [ ] accept\n\n\`\`\`json\n${JSON.stringify(e, null, 2)}\n\`\`\`\n`)
     .join('\n');
-  return matter.stringify(
+  const out = matter.stringify(
     `\n# Reconcile review, batch ${meta.batch} shard ${meta.shard}\n\nSet "verdict" (${VERDICTS.join(' | ')}), fill the fields, tick "accept" on entries to apply.\n\n${body}`,
     meta
   );
+  assertNoSecrets(out, `review batch ${meta.batch} shard ${meta.shard}`);
+  return out;
 }
 
 export async function parseReview(file: string): Promise<ReviewFile> {
@@ -104,22 +128,37 @@ export async function writeReviewSkeletons(opts: {
   const byPath = new Map(judged.map((d) => [d.path, d]));
   // Shards hold only fields-only/check docs; archive candidates (and serial mode) ride in shard 1.
   const placed = new Set(triage.shards.flatMap((s) => s.docs));
-  const extra = judged.filter((d) => !placed.has(d.path)).map((d) => d.path);
+  // Secret-lane docs never ride in a judgment shard's file: they get their own review file (id 0,
+  // `review-<batch>-secrets.md`) that is handled before judgment and never handed to an agent.
+  const extra = judged.filter((d) => !placed.has(d.path) && d.lane !== 'secret').map((d) => d.path);
+  const secretDocs = judged.filter((d) => d.lane === 'secret').map((d) => d.path);
   const shards: Shard[] = triage.shards.length ? triage.shards.map((s) => ({ ...s })) : [{ id: 1, docs: [], bytes: 0 }];
   shards[0]!.docs = [...shards[0]!.docs, ...extra];
+  if (secretDocs.length) shards.unshift({ id: 0, docs: secretDocs, bytes: 0 });
   const written: string[] = [];
+  const secretsCfg = (await loadPluginConfig(root)).reconcile.secrets;
+  const usedEnv = new Set<string>();
   for (const s of shards) {
     const entries: ReviewEntry[] = [];
     for (const p of s.docs) {
       const d = byPath.get(p);
+      const text = await readFile(join(docsPath, p), 'utf-8');
+      let secrets: ReviewEntry['secrets'];
+      if (d?.lane === 'secret') {
+        const raws = findSecrets(text, p, secretsCfg).filter((r) => r.finding.kind === 'secret');
+        const names = envNames(text, p, raws, usedEnv);
+        if (raws.length) secrets = raws.map(({ finding: f }) => ({ rule: f.rule, line: f.line, masked: f.masked, fingerprint: f.fingerprint, env: names.get(f.fingerprint)! }));
+      }
       entries.push({
         path: p,
-        content_hash: hashContent(await readFile(join(docsPath, p), 'utf-8')),
-        verdict: null,
+        content_hash: hashContent(text),
+        verdict: secrets ? 'secret' : null,
+        ...(secrets && { secrets }),
         ...(d && { lane: d.lane, reasons: d.reasons }),
       });
     }
-    const file = join(dir, `review-${batch}-${s.id}.md`);
+    if (!entries.length) continue;
+    const file = join(dir, `review-${batch}-${s.id === 0 ? 'secrets' : s.id}.md`);
     await mkdir(dirname(file), { recursive: true });
     await writeFile(file, renderReview({ batch, shard: s.id, scope }, entries), { encoding: 'utf-8', flag: 'wx' });
     written.push(file);

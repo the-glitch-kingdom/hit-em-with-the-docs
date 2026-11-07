@@ -1,4 +1,4 @@
-# Reconcile: check existing docs against the code (2.15.0, updated in 2.16.0)
+# Reconcile: check existing docs against the code (2.15.0, updated in 2.17.0)
 
 `hewtd reconcile` and `/hit-em-with-the-docs:reconcile` bring an existing docs
 tree back in line with the code, in bounded, resumable batches.
@@ -24,6 +24,7 @@ hewtd reconcile security --write-review    # write review-file skeletons
 hewtd reconcile --apply .hewtd/reconcile/review-1-1.md
 hewtd reconcile --status [--next 10]       # ledger progress
 hewtd reconcile --outside [--write-review] # docs outside the docs root
+hewtd reconcile --secrets [scope] [--json] # masked secret scan (2.17.0)
 ```
 
 Flags: `-p/--docs-path`, `--json`, `--serial`, `--team`, `--batch <id>`.
@@ -40,6 +41,7 @@ doc links), resolved against `git ls-files`, one batched `git grep`,
 | `clean` | Already carries `sources` and `last_verified`, nothing missing (a `sources` path that no longer exists counts as missing). |
 | `fields-only` | Only frontmatter fields are missing. |
 | `check` | Needs the judgment pass. |
+| `secret` | The doc, or a file it cites, holds a secret. Blocked: never judged, in no shard (2.17.0). |
 | `archive-candidate` | Cited things are missing. Only `missing` counts; `unknown` is neutral. |
 
 Staleness (commits touching the cited paths since the doc's last body change)
@@ -48,6 +50,51 @@ latest commits whose body (frontmatter stripped) equals the current body, so
 frontmatter-only commits, such as a `last_verified` stamp, do not reset it
 (walk capped at 50 commits). In a shallow clone it is `unknown` and triage warns. It is never
 used to write `last_verified`.
+
+## Secrets first (2.17.0)
+
+Reconcile looks for secrets before it judges anything, so no model ever sees one.
+
+```bash
+hewtd reconcile --secrets [scope] [--json]
+```
+
+- **What is detected**: private-key blocks, Anthropic/OpenAI/AWS/Stripe/GitHub/
+  Slack/Google/Vault keys and tokens, Azure connection strings, JWTs,
+  `user:password@` URLs and generic `secret = "..."` assignments. Emails are
+  `personal` kind: reported for review, never blocking.
+- **Scope**: with a scope, only those docs. With none, the docs root, `archive/`,
+  tracked `*.md` outside the docs root and all of `.hewtd/`. Archive, outside and
+  `.hewtd/` hits are reported, never judged.
+- **Output is masked**: `rule file:line first4...length` plus a fingerprint
+  prefix, e.g. `vault-token docs/ops.md:12 hvs....28`. `--json` prints masked
+  findings only. A value is never printed, logged or passed through argv or temp files.
+- **Placeholders** such as `XXXX`, `<token>`, `${VAR}`, `changeme` and
+  `example` are ignored.
+- **Allowlist**: `reconcile.secrets.allow` is a list of
+  `{ "fingerprint" | "pattern", "file"?, "reason" }`. `reason` is required;
+  `file` is an exact path or glob. `reconcile.secrets.disabled_rules` turns
+  rules off by id. Invalid entries are dropped with a warning.
+- **The `secret` lane**: a doc with its own secret, or one citing a file with
+  one, goes in this lane with masked reasons. It is in no judgment shard (team
+  mode too). The flagged cited file is listed in `blocked_files` and dropped
+  from `cited`.
+- **The `secret` verdict**: `--write-review` proposes it with a masked entry per
+  finding. On accept, `--apply` appends each value to `.env.hewtd` (mode 0600,
+  git-ignored first) and replaces it with a pointer,
+  `<secret: HEWTD_SECRET_NAME, see .env.hewtd>`. The name is the assignment name
+  on that line, else `rule_docslug`. The ledger keeps `env_names` only. A
+  failure rolls back the doc, `.env.hewtd` and `.gitignore`.
+- **Report**: every `--secrets` run, and any apply that moved values, writes
+  `.hewtd/reconcile/secrets-report-<date>.md` (masked; a history yes/no per
+  finding; personal data in its own review-only section).
+- **Next steps** (the report lists them): rotate the secret; put the new value in
+  the real secret store and delete its `.env.hewtd` line; if it was ever
+  committed, git history still holds it, so purge with `git filter-repo` if
+  you need to; then reindex.
+- **Guarantees**: every write (review files, ledger, apply entries, the staged
+  diff, the report) is checked first. A hit in the staged diff rolls the whole
+  batch back.
 
 ## Reference statuses
 
@@ -96,6 +143,7 @@ project root, `name` matching `[\w.-]+`. Invalid entries are dropped one by one.
 ## Review file and apply
 
 `--write-review` writes `<git root>/.hewtd/reconcile/review-<batch>-<shard>.md`
+(secret-lane docs go to their own `review-<batch>-secrets.md`, never into a shard file)
 (never overwrites). Each doc is a `## <path>` heading, a `- [ ] accept` line and
 a JSON entry: `path`, `content_hash`, `verdict`, and optionally `frontmatter`,
 `patch` (`{old,new}` pairs; each `old` must occur exactly once in the body),
@@ -221,6 +269,15 @@ accepted entry. Links from other outside files are not repointed.
   reported error and rerun the same review file.
 - **Config ignored from a subdirectory**: fixed in 2.16.0; config is read from
   the docs path's project root, not the current directory.
+- **False positive flagged as a secret**: add it to `reconcile.secrets.allow`
+  (by `fingerprint` from the report, the full hash or any prefix of at least 12 hex
+  chars as shown there, or a `pattern`) with a `reason`.
+- **"cannot git-ignore .env.hewtd"**: `.gitignore` is not writable; fix its
+  permissions and rerun. Nothing was changed.
+- **"NAME already exists in .env.hewtd with a different value"**: rename or
+  remove the existing line, then rerun.
+- **Apply rolled back with "would write a secret to the staged diff"**: the doc
+  still holds the value; accept its `secret` verdict first.
 - **Nothing applied**: entries need `- [x] accept` and a non-null verdict.
 - **Stray `.hewtd/` in a subdirectory**: state is rooted at the git root; a
   directory created by an older build can be deleted.

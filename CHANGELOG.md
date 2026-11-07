@@ -2,7 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
-## [2.17.0] — 2026-11-07
+## [2.18.0] — 2026-11-07
+
+Question-seeded overviews and one owner per fact for `/reconcile` (#59, part 1).
+
+- `hewtd reconcile --overview "<question>" [--limit N] [--json]`: field-weighted BM25
+  search (optional `reconcile.search_command`), link expansion, member ledger states.
+  Writes `.hewtd/reconcile/overview-<slug>.json` only.
+- `--write-review --overview <members-file>` and the `overview` verdict: applies only
+  when members are reconciled; a member change sends the overview to `check`.
+- Duplicate-section detection (`copy of owner.md#section`), and `merge` and `point`
+  verdicts with a mechanical no-loss check (`missing: <tokens>`).
+- Pointer records and staleness (`pointer target changed: <target>`).
+- `link-check` prints advisory `LINK_BROKEN_ANCHOR` warnings (never affect exit codes).
+- Overview template uses pointer records; `/reconcile` section 3 rewritten (the
+  `integrate -a` path is gone).
+
+## [2.17.0] — 2026-11-07 (not published separately; ships in 2.18.0)
 
 Secrets step for `/reconcile` (#59, part 2).
 

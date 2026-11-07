@@ -1,4 +1,4 @@
-# Reconcile: check existing docs against the code (2.15.0, updated in 2.17.0)
+# Reconcile: check existing docs against the code (2.15.0, updated in 2.18.0)
 
 `hewtd reconcile` and `/hit-em-with-the-docs:reconcile` bring an existing docs
 tree back in line with the code, in bounded, resumable batches.
@@ -25,6 +25,8 @@ hewtd reconcile --apply .hewtd/reconcile/review-1-1.md
 hewtd reconcile --status [--next 10]       # ledger progress
 hewtd reconcile --outside [--write-review] # docs outside the docs root
 hewtd reconcile --secrets [scope] [--json] # masked secret scan (2.17.0)
+hewtd reconcile --overview "<question>" [--limit N] [--json]  # seed an overview (2.18.0)
+hewtd reconcile --write-review --overview <members-file>      # overview review skeleton
 ```
 
 Flags: `-p/--docs-path`, `--json`, `--serial`, `--team`, `--batch <id>`.
@@ -114,6 +116,103 @@ pushes a doc toward `archive-candidate`; `unknown` is neutral.
 - Cited bytes and staleness count resolved path references and `sources`
   only, not symbol hits.
 
+## Overviews and one owner per fact (2.18.0)
+
+Two problems this solves: a question that spans several docs has no single page
+that answers it, and the same fact is copied into several docs so the copies
+drift. Overviews answer the first; merge-then-point answers the second. Both go
+through the same review file, `--apply`, ledger and secret guards as every other
+verdict.
+
+### Overviews from a question
+
+```bash
+hewtd reconcile --overview "how does semantic search retrieve and rank vault documents" --json
+```
+
+- Ranks docs across the whole tree with field-weighted BM25 (title, `purpose`,
+  `symptoms` weigh 3; headings 2; body 1), expands by linked docs that also
+  scored, and keeps at most `--limit` members (default 12). `archive/`,
+  `drafts/`, `INDEX`/`REGISTRY`, generated, plan-tier and secret-lane docs are
+  skipped, and `sources` is never indexed.
+- Optional `reconcile.search_command` (an argv template with `{query}`, split on
+  whitespace, run without a shell, 30 s timeout) puts its results first. Only
+  paths that are indexed docs are kept. If it fails, reconcile warns and uses BM25.
+- Each member is tagged `reconciled`, `unreviewed`, `stale` or `secret` from the
+  ledger, and an existing `kind: overview` doc that already covers enough members is reported.
+- The only file written is `.hewtd/reconcile/overview-<slug>.json`
+  (overwritten on a re-seed of the same question). Search hits can be noise, so
+  confirm the member list before going on; drop members by editing that file.
+- Members that hold a copy of another member's section carry `duplicates`.
+
+```bash
+hewtd reconcile --write-review --overview .hewtd/reconcile/overview-<slug>.json
+```
+
+writes a review skeleton with an `overview` entry (`verdict: null`, empty
+`draft`, the target in the first member's folder as `overview-<slug>.md`). The
+judging step fills `draft` and `frontmatter`, then `--apply`.
+
+The `overview` verdict:
+
+- Applies only when every member is **reconciled**: verdict `verify`, or lane
+  `clean`, with a matching content hash. A member that is not yet reconciled needs
+  `allow_unreviewed: true` and an `(unreviewed)` mark on its link line. A
+  secret-lane member is always refused.
+- The target must not exist (`overview target already exists` otherwise).
+- The new doc gets `kind: overview` and no `last_validated`. The ledger entry stores
+  each member's hash.
+- **Staleness**: when a member changes, the overview goes to the `check` lane with
+  reason `member changed: <path>` and its verdict is dropped, so it stays queued
+  under `--next` until re-applied.
+
+### One owner per fact: merge, then point
+
+A fact lives in one doc, its owner. Every other doc keeps a one-line summary and
+a pointer. Reconcile finds copies, then proposes two entries:
+
+- **Detection.** Sections are compared across the whole tree by 5-word shingle
+  Jaccard (>= 0.5, sections at least `retrieval.near_duplicate_min_chars`). The
+  owner is the doc whose own heading, title, `purpose` and filename best match the
+  shared text, then the older first commit. On a tie, tied docs are flagged and
+  the owner is not. Triage flags the holder in the `check` lane with reason
+  `copy of <owner>#<section>` (plus ` (tie: a, b)`).
+- **`merge`** on the owner: `{path, section, patch}` adds whatever the copy had that
+  the owner lacks. Apply checks the section exists before and after.
+- **`point`** on the copy: `{path, remove: {old}, pointer: {summary, target}}`
+  replaces the copied text with the pointer record. `target` is `domain/owner.md#anchor`
+  (docs-root-relative). `target_hash` (the owner's hash) is required unless the entry
+  has `depends_on_merge` naming the merge entry's `id` (default: its path).
+  Apply runs merges first, then points.
+
+Pointer record format:
+
+```
+<one-line summary>. Details: [<owner title>: <heading>](<relative path>#<anchor>)
+```
+
+**No-loss check (mechanical).** Before a point is written, the tokens of the removed
+text (numbers, paths, identifiers, code spans) must all appear in the owner section
+or the summary. Otherwise the entry is refused with `missing: <tokens>`: merge the
+detail into the owner first. The check never relies on the model's judgment.
+
+**Anchors.** The anchor must exist in the owner at apply time (checked strictly,
+GitHub-style slugs, `{#id}` honored, duplicates `-1`, `-2`). The general
+`hewtd link-check` also reports `LINK_BROKEN_ANCHOR` warnings (advisory only).
+
+**Staleness.** Applying a point stores a pointer record (`target` plus a hash of the
+owner section) in the copy's ledger entry. If that section changes, triage sends the
+copy to `check` with `pointer target changed: <target>`; if the heading was renamed
+or removed, `pointer target changed: <target> (section missing)`. The verdict is
+dropped until a point (or new review) is applied again; a plain `verify` does not
+clear it. Pointers not written by reconcile are not tracked, and editing the pointing
+doc by hand drops its record.
+
+**Related repos.** A pointer target outside the docs tree is accepted only inside a
+configured `reconcile.related_repos` path. That owner is read for the anchor and
+no-loss checks and never written: the sibling-repo rule (summarize and
+cross-link) is the same one-owner rule across repos.
+
 ## Related repos (2.16.0)
 
 Projects that split code across repos keep each repo's docs in that repo.
@@ -149,8 +248,8 @@ a JSON entry: `path`, `content_hash`, `verdict`, and optionally `frontmatter`,
 `patch` (`{old,new}` pairs; each `old` must occur exactly once in the body),
 `draft`, `sources`, `reason`.
 
-Verdicts: `verify`, `rewrite`, `archive`, `unverifiable`, `fields`; outside
-entries use `integrate` and `delete`.
+Verdicts: `verify`, `rewrite`, `archive`, `unverifiable`, `fields`, `secret`,
+`overview`, `merge`, `point` (2.18.0); outside entries use `integrate` and `delete`.
 
 `--apply <files...>`:
 
@@ -281,6 +380,16 @@ accepted entry. Links from other outside files are not repointed.
 - **Nothing applied**: entries need `- [x] accept` and a non-null verdict.
 - **Stray `.hewtd/` in a subdirectory**: state is rooted at the git root; a
   directory created by an older build can be deleted.
+
+- **`copy of owner.md#section` flag**: the doc repeats another doc's section. Merge any
+  missing detail into the owner, then point.
+- **Point refused with `missing: ...`**: the removed text holds facts the owner section and
+  summary lack. Merge them into the owner (or the summary) and rerun.
+- **`pointer target changed: ...`**: re-read the owner section; re-apply a `point` if the
+  summary still holds, or rewrite the summary.
+- **`overview target already exists` / member not reconciled**: pick another target, or
+  reconcile the members first (or mark `(unreviewed)` with `allow_unreviewed`).
+- **`LINK_BROKEN_ANCHOR: no heading #x`**: warning only; the heading was renamed or removed.
 
 ## Limitations
 

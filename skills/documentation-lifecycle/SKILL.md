@@ -26,6 +26,9 @@ hewtd integrate path/to/new-doc.md          # classifies + moves + registers it
 hewtd integrate path/to/new-doc.md --dry-run  # preview the chosen domain first
 ```
 
+`integrate` refuses a file already inside the docs tree at a different path
+("already in the docs tree"); use `maintain --fix` or `metadata-sync` for it.
+
 `integrate` picks the domain from `--domain <id>` if given, else the doc's own
 first `domains:` entry, else by keyword-matching the content. It moves the file
 into `.documentation/<domain>/`, stamps frontmatter (`status: draft`, `tier:
@@ -169,7 +172,7 @@ hewtd index --dry-run      # what the indexes would become
 `audit` also raises advisory `RETRIEVAL_*` warnings (never a failing exit
 code). How to clear each:
 
-- `MISSING_PURPOSE`: add `purpose:`. If the doc has `summary` or `description`, run `hewtd fix-retrieval-fields --apply`.
+- `MISSING_PURPOSE`: add `purpose:`. If the doc has `summary` or `description`, run `hewtd fix-retrieval-fields --apply` (it also drops filler and clears `Documentation for <title>` purposes).
 - `WEAK_PURPOSE`: rewrite it as the question the doc answers.
 - `GENERIC_TITLE`: rename to the specific subject; make titles unique.
 - `MISSING_SYMPTOMS`: add `symptoms:` to runbook and troubleshooting docs.
@@ -181,7 +184,7 @@ Details: `docs/retrieval-fields.md`.
 `audit` also raises advisory `OVERVIEW_*` warnings (2.13.0+) for a flow of
 `min_cluster_size` or more linked docs:
 
-- `OVERVIEW_MISSING`: write an overview from `templates/overview.template.md` (`kind: overview`, one link per stage) and link at least 60% of the cluster's docs. A `kind: overview` doc that links too few also lands here.
+- `OVERVIEW_MISSING` (one per dense flow, not per domain): write an overview from `templates/overview.template.md` (`kind: overview`, one link per stage) and link at least 60% of the cluster's docs. A `kind: overview` doc that links too few also lands here.
 - `OVERVIEW_STALE_LINKS`: the overview exists but misses some docs; add the links the warning lists.
 
 When you document a cross-cutting flow, write an overview rather than another

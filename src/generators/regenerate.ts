@@ -5,7 +5,16 @@ import { getAllDomains } from '../core/domains/registry.js';
 import { parseFrontmatter } from '../utils/frontmatter.js';
 import { formatDate } from '../core/metadata/generator.js';
 import { pathExists } from '../utils/glob.js';
-import { loadPluginConfigSync, resolveVaultRoot } from '../utils/config.js';
+import {
+  loadPluginConfig,
+  loadPluginConfigSync,
+  resolveVaultRoot,
+  resolvePlaybookGlobs,
+} from '../utils/config.js';
+import { buildCiterIndex } from '../core/knowledge-base/citers.js';
+import { generateFactsIndex } from './facts-index.js';
+import { generateIncidentsIndex } from './incidents-index.js';
+import { generateSymptomsIndex } from './symptoms-index.js';
 import { logger } from '../utils/logger.js';
 import {
   generateRootIndex,
@@ -300,4 +309,42 @@ export async function regenerateIndexes(
   }
 
   return result;
+}
+
+export interface KbIndexResult {
+  facts: number;
+  incidents: number;
+  factsPath: string;
+  incidentsPath: string;
+  symptomsPath: string;
+}
+
+/**
+ * Rebuild the facts/incidents/symptoms indexes when a vault root exists; null
+ * (and no writes) when it doesn't. With `dryRun` only counts the facts and
+ * incidents; nothing is written.
+ */
+export async function generateKbIndexes(
+  docsPath: string,
+  dryRun = false
+): Promise<KbIndexResult | null> {
+  // Config and playbook globs resolve relative to the project root (parent of docsPath).
+  const projectRoot = dirname(docsPath);
+  const config = await loadPluginConfig(projectRoot);
+  const vaultRoot = resolveVaultRoot(projectRoot, config);
+  if (!(await pathExists(vaultRoot))) return null;
+
+  const playbookGlobs = resolvePlaybookGlobs(projectRoot, config);
+  const index = await buildCiterIndex({ projectRoot, vaultRoot, playbookGlobs });
+  const factsPath = join(vaultRoot, 'facts', 'INDEX.md');
+  const base = { facts: index.facts.size, incidents: index.incidents.size };
+  if (dryRun) {
+    return { ...base, factsPath, incidentsPath: '', symptomsPath: '' };
+  }
+  return {
+    ...base,
+    factsPath: await generateFactsIndex({ vaultRoot, index }),
+    incidentsPath: await generateIncidentsIndex({ vaultRoot, index }),
+    symptomsPath: await generateSymptomsIndex({ vaultRoot, index }),
+  };
 }

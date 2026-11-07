@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { join, resolve } from 'path';
+import { dirname, join, resolve } from 'path';
 import { readFile } from 'fs/promises';
 import { createRequire } from 'node:module';
 import { registerUpdateCommands } from '@theglitchking/claude-plugin-runtime';
@@ -28,7 +28,10 @@ import {
   getDomainDefinition,
   isValidDomain,
 } from '../core/domains/registry.js';
-import { regenerateIndexes } from '../generators/regenerate.js';
+import { regenerateIndexes, generateKbIndexes } from '../generators/regenerate.js';
+import { stampReports } from '../generators/stamp-reports.js';
+import { writeRawConfig } from '../utils/config.js';
+import { resolveDocsPath } from '../utils/docs-root.js';
 
 const program = new Command();
 
@@ -36,6 +39,15 @@ program
   .name('hit-em-with-the-docs')
   .description('Self-managing documentation system with hierarchical structure and intelligent automation')
   .version(pkg.version);
+
+// Every command except `init` finds the docs tree from a subdirectory when -p is the default.
+program.hook('preAction', (_this, action) => {
+  if (action.name() === 'init') return;
+  for (const key of ['path', 'docsPath']) {
+    if (action.getOptionValueSource(key) !== 'default') continue;
+    action.setOptionValue(key, resolveDocsPath(process.cwd(), String(action.getOptionValue(key)), false));
+  }
+});
 
 registerUpdateCommands(program, {
   packageName: '@theglitchking/hit-em-with-the-docs',
@@ -52,7 +64,8 @@ program
   .action(async (options) => {
     const docsPath = resolve(process.cwd(), options.path);
 
-    if (await scaffoldExists(docsPath) && !options.force) {
+    const existed = await scaffoldExists(docsPath);
+    if (existed && !options.force) {
       logger.warn('Documentation structure already exists. Use --force to overwrite.');
       process.exit(1);
     }
@@ -65,6 +78,23 @@ program
     if (!result.success) {
       logger.error('Failed to initialize documentation');
       process.exit(1);
+    }
+
+    // New installs only: keep reports out of the searched docs tree. A re-init (--force) keeps
+    // where reports already go, and an unreadable config is never overwritten.
+    if (!existed) {
+      const projectRoot = dirname(docsPath);
+      let raw: Record<string, unknown> | null = {};
+      try {
+        raw = JSON.parse(await readFile(join(projectRoot, '.claude/hit-em-with-the-docs.json'), 'utf-8'));
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') raw = null;
+      }
+      if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+        logger.warn('Could not parse .claude/hit-em-with-the-docs.json; left it alone (reports_dir not set).');
+      } else if (raw.reports_dir === undefined) {
+        await writeRawConfig(projectRoot, { ...raw, reports_dir: '.hewtd/reports' });
+      }
     }
   });
 
@@ -146,6 +176,19 @@ program
       );
     }
     logger.newline();
+
+    // Upgrade step: KB indexes and pre-2.13 reports also get rebuilt/stamped here.
+    const kb = await generateKbIndexes(docsPath, options.dryRun);
+    const stamped = await stampReports(docsPath, options.dryRun);
+    if (kb) {
+      logger.info(
+        `Knowledge base: ${kb.facts} facts, ${kb.incidents} incidents${options.dryRun ? ' (would rebuild indexes)' : ' (indexes rebuilt)'}`
+      );
+    }
+    if (stamped.length > 0) {
+      logger.info(`${options.dryRun ? 'Would stamp' : 'Stamped'} generated: true on ${stamped.length} report file(s)`);
+      if (options.dryRun) for (const f of stamped) logger.info(`  ${f}`);
+    }
 
     if (!options.dryRun) {
       logger.success(
@@ -495,7 +538,7 @@ domain
     };
 
     const result = await addDomain({
-      projectRoot: process.cwd(),
+      projectRoot: dirname(docsPath),
       docsPath,
       spec,
       dryRun: options.dryRun,
@@ -532,7 +575,7 @@ domain
     const docsPath = resolve(process.cwd(), options.path);
 
     const result = await removeDomain({
-      projectRoot: process.cwd(),
+      projectRoot: dirname(docsPath),
       docsPath,
       id,
       dryRun: options.dryRun,
@@ -572,7 +615,7 @@ program
     const { archiveDoc } = await import('../core/archive/manage.js');
     const docsPath = resolve(process.cwd(), options.path);
     const result = await archiveDoc({
-      projectRoot: process.cwd(),
+      projectRoot: dirname(docsPath),
       docsPath,
       file,
       reason: options.reason,
@@ -617,7 +660,7 @@ program
     const { unarchiveDoc } = await import('../core/archive/manage.js');
     const docsPath = resolve(process.cwd(), options.path);
     const result = await unarchiveDoc({
-      projectRoot: process.cwd(),
+      projectRoot: dirname(docsPath),
       docsPath,
       file,
       dryRun: options.dryRun,
@@ -647,11 +690,11 @@ program
     const { loadPluginConfig } = await import('../utils/config.js');
     const { findArchiveCandidates } = await import('../core/archive/candidates.js');
     const docsPath = resolve(process.cwd(), options.path);
-    const config = await loadPluginConfig(process.cwd());
+    const config = await loadPluginConfig(dirname(docsPath));
 
     const candidates = await findArchiveCandidates({
       docsPath,
-      projectRoot: process.cwd(),
+      projectRoot: dirname(docsPath),
       config: config.archive,
     });
 
@@ -991,6 +1034,9 @@ program
     for (const c of result.changed) logger.info(`  ${c.file}: ${c.actions.join(', ')}`);
     for (const f of result.conflicts) logger.warn(`  ${f}: purpose and summary/description both set, left alone`);
     for (const e of result.errors) logger.error(`  ${e.file}: could not parse frontmatter, skipped (${e.message})`);
+    if (result.dropped + result.cleared > 0) {
+      logger.info(`  ${result.dropped} filler value(s) dropped, ${result.cleared} generator purpose(s) cleared`);
+    }
     if (result.changed.length === 0) logger.success('Nothing to do.');
     else if (options.apply) logger.success(`Updated ${result.changed.length} file(s).`);
     else logger.info('Dry run, nothing written. Re-run with --apply.');

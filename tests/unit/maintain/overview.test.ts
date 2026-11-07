@@ -102,7 +102,8 @@ describe('maintain overview integration', () => {
 
 describe('health report overview coverage', () => {
   it('counts clusters with and without an overview', async () => {
-    for (const n of names) await put(`ops/${n}.md`, `${FM(n)}\nText\n`);
+    // Members link the next two, so ops is a dense flow with no overview.
+    for (const [i, n] of names.entries()) await put(`ops/${n}.md`, `${FM(n)}\nText [x](${names[(i + 1) % 5]}.md) [y](${names[(i + 2) % 5]}.md)\n`);
     await setup();
     const result = await runMaintenance({ docsPath: docs, quick: true, silent: true });
     expect(result.overviewCoverage!.withOverview).toBe(1);

@@ -10,6 +10,8 @@
 > You still need to remember to use this plugin when creating documentation! As projects grow, documentation needs to be created and maintained. You'll need to invoke this plugin or ask an LLM to create documentation for your features, workflows, or infrastructure. This plugin must be invoked to create, update, or maintain your docs.
 
 > [!NOTE]
+> **2.14.0 — follow-ups.** `integrate` now refuses a file already inside the docs tree at a path other than its target (use `maintain --fix` / `metadata-sync`). Commands find `.documentation` from any subdirectory. `fix-retrieval-fields` drops filler. `hewtd index` rebuilds KB indexes and stamps old reports. `OVERVIEW_MISSING` fires per flow, not per domain. See [CHANGELOG](./CHANGELOG.md).
+>
 > **2.5.0 — INDEX/REGISTRY regeneration fix.** `integrate` could only append a row to an INDEX.md that already had a table, so the *first* document into any domain was never registered — and the failure was silently swallowed. `integrate` and `maintain` now rebuild domain + root `INDEX.md`/`REGISTRY.md` from the documents on disk via the real generators. New `hewtd index` (alias `reindex`) command regenerates all indexes on demand; `maintain` self-heals them every run; `audit` gains an `index-drift` rule that `--strict` gates CI on. Closes [#7](https://github.com/TheGlitchKing/hit-em-with-the-docs/issues/7). See [CHANGELOG](./CHANGELOG.md#250--2026-05-16).
 >
 > **2.4.0 — `migrate-incident` path bug fix + recovery command.** `migrate-incident` now correctly writes to `<vault-root>/incidents/<slug>/` (the location `hewtd maintain`'s incidents-index generator scans). In 2.3.0 the target was derived from the source flat file's parent dir, which silently bypassed the canonical layout when the flat file lived at the vault root. New `hewtd fix-legacy-layout` command relocates 2.3.0-buggy folders and rewrites fact `provenance:` refs. Idempotent, dry-run supported. See [CHANGELOG](./CHANGELOG.md#240--2026-05-15).
@@ -347,6 +349,12 @@ for file in old-docs/*.md; do
   hewtd integrate "$file" --auto
 done
 ```
+
+A file already inside the docs tree at a path different from its target is
+refused ("already in the docs tree"; nothing is written): use
+`hewtd maintain --fix` or `hewtd metadata-sync` for it. All commands find
+`.documentation` by walking up from the current directory (stopping at the
+git root); an explicit `-p` is taken as given.
 
 **When to use it**: When you have markdown files outside the `.documentation` folder that you want to organize.
 

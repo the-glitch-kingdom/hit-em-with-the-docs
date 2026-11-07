@@ -170,12 +170,18 @@ To move old `summary`/`description` values into `purpose`, run
 `hewtd fix-retrieval-fields` (dry run) then `--apply`. Fixes for each code are
 in `docs/retrieval-fields.md`.
 
+`fix-retrieval-fields` also drops filler `summary`/`description` and clears a
+`Documentation for <title>` purpose. `hewtd index` is the upgrade step for
+pre-2.13 trees (rebuilds KB indexes, stamps old reports). Commands find
+`.documentation` from any subdirectory; `integrate` refuses a file already in
+the docs tree at a different path (use `maintain --fix` / `metadata-sync`).
+
 ### Overview docs (2.13.0+)
 
 `kind: overview` marks a doc that links every stage of a cross-cutting flow
 (template: `templates/overview.template.md`; `kind` accepts only `overview`).
 `hewtd audit` raises advisory `OVERVIEW_MISSING` and `OVERVIEW_STALE_LINKS`
-warnings (never a failing exit code) for flows of `min_cluster_size` docs
+warnings (never a failing exit code), one per dense flow, for flows of `min_cluster_size` docs
 or more. Config: an `overview` block (`min_cluster_size` 5, `min_link_coverage`
 0.6, `backlinks` true, `disabled` []). `hewtd maintain --fix` now edits doc
 bodies, inserting `Part of: [Title](...)` back-links to the overview.

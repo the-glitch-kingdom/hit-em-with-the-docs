@@ -33,12 +33,11 @@ export async function checkOverview(docsPath: string, cfg: OverviewConfig): Prom
     if (!c.overview) {
       if (!wantMissing) continue;
       issues.push({
-        // Domain clusters are reported on the domain; components on their first member.
-        file: c.kind === 'domain' ? c.id : c.members[0]!,
+        file: c.top,
         rule: O.OVERVIEW_MISSING,
         severity: 'warning',
         message:
-          `${c.members.length} related docs have no overview` +
+          `Flow${c.sharedTags.length ? `: ${c.sharedTags.join(', ')}` : ''} — ${c.members.length} docs (${c.members.slice(0, 5).join(', ')}${c.members.length > 5 ? ', ...' : ''}) have no overview` +
           (c.generatedOnlyHub ? '; only a generated index links them all' : ''),
         fixable: false,
         suggestion: `Write a \`kind: overview\` doc linking each member, starting from ${TEMPLATE}`,

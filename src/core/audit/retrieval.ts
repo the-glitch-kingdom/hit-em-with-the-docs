@@ -58,13 +58,18 @@ const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').
 const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
 const wordCount = (s: string): number => (s ? s.split(/\s+/).length : 0);
 
+/** The weak-purpose rule, shared with `fix-retrieval-fields`. Expects a non-empty value. */
+export function isWeakPurpose(value: string, title: string, cfg: RetrievalConfig): boolean {
+  const p = norm(value);
+  const t = norm(title);
+  const echoes = t !== '' && p.startsWith(t) && wordCount(p) <= wordCount(t) + 2;
+  return echoes || wordCount(p) < cfg.purpose_min_words || p.startsWith('documentation for ');
+}
+
 function purposeProblem(d: RetrievalDoc, cfg: RetrievalConfig): 'missing' | 'weak' | null {
   const purpose = str(d.data.purpose);
   if (!purpose) return 'missing';
-  const p = norm(purpose);
-  const t = norm(str(d.data.title));
-  const echoes = t !== '' && p.startsWith(t) && wordCount(p) <= wordCount(t) + 2;
-  return echoes || wordCount(p) < cfg.purpose_min_words || p.startsWith('documentation for ') ? 'weak' : null;
+  return isWeakPurpose(purpose, str(d.data.title), cfg) ? 'weak' : null;
 }
 
 function needsSymptoms(d: RetrievalDoc): boolean {

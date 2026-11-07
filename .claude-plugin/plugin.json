@@ -1,7 +1,7 @@
 {
   "name": "hit-em-with-the-docs",
   "description": "Self-managing documentation system with hierarchical structure, intelligent automation, pattern discovery, and agent orchestration",
-  "version": "2.13.0",
+  "version": "2.14.0",
   "author": {
     "name": "TheGlitchKing",
     "email": "theglitchking@users.noreply.github.com"

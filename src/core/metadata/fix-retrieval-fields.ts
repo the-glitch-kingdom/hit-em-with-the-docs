@@ -7,6 +7,9 @@
 import { readFile, writeFile } from 'fs/promises';
 import { parseFrontmatter, stringifyFrontmatter } from '../../utils/frontmatter.js';
 import { glob } from '../../utils/glob.js';
+import { dirname } from 'path';
+import { loadPluginConfig } from '../../utils/config.js';
+import { isWeakPurpose } from '../audit/retrieval.js';
 
 export interface FixRetrievalFieldsResult {
   /** Files rewritten (or that would be, on a dry run). */
@@ -15,6 +18,10 @@ export interface FixRetrievalFieldsResult {
   conflicts: string[];
   /** Files that could not be parsed; skipped, the run continues. */
   errors: { file: string; message: string }[];
+  /** Filler summary/description values deleted instead of moved into purpose. */
+  dropped: number;
+  /** Existing `Documentation for <title>` generator purposes removed. */
+  cleared: number;
 }
 
 const isStr = (v: unknown): v is string => typeof v === 'string' && v.trim() !== '';
@@ -25,7 +32,8 @@ export async function fixRetrievalFields(opts: {
   docsPath: string;
   apply?: boolean;
 }): Promise<FixRetrievalFieldsResult> {
-  const result: FixRetrievalFieldsResult = { changed: [], conflicts: [], errors: [] };
+  const result: FixRetrievalFieldsResult = { changed: [], conflicts: [], errors: [], dropped: 0, cleared: 0 };
+  const cfg = (await loadPluginConfig(dirname(opts.docsPath))).retrieval;
   const files = (await glob('**/*.md', { cwd: opts.docsPath, absolute: true })).sort();
 
   for (const file of files) {
@@ -42,10 +50,24 @@ export async function fixRetrievalFields(opts: {
     if (data.generated === true) continue;
 
     const actions: string[] = [];
-    const src = isStr(data.summary) ? 'summary' : isStr(data.description) ? 'description' : null;
-    if (src) {
+    const title = isStr(data.title) ? data.title.trim() : '';
+    // Only the exact generator fallback is cleared; any other weak purpose is a person's words.
+    if (isStr(data.purpose) && data.purpose.trim().toLowerCase() === `documentation for ${title}`.toLowerCase()) {
+      delete data.purpose;
+      result.cleared++;
+      actions.push('purpose was generator filler, cleared');
+    }
+    // summary first, then description: a dropped filler summary falls through to description.
+    for (const src of ['summary', 'description'] as const) {
+      if (!isStr(data[src])) continue;
       if (isStr(data.purpose)) {
         result.conflicts.push(file);
+        break;
+      }
+      if (isWeakPurpose((data[src] as string).trim(), title, cfg)) {
+        delete data[src];
+        result.dropped++;
+        actions.push(`${src} was filler, dropped`);
       } else {
         data.purpose = (data[src] as string).trim();
         delete data[src];

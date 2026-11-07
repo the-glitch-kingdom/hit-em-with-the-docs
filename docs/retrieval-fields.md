@@ -67,7 +67,7 @@ other members. A generated `INDEX.md` never counts as an overview.
 
 | Code | Raised when | Fix |
 |---|---|---|
-| `OVERVIEW_MISSING` | A cluster has no qualifying overview. Reported on the domain name for a domain cluster, on the first member for a component. A `kind: overview` doc below the coverage bar also lands here. | Write an overview from the template and link the members, or add the missing links to an existing one. |
+| `OVERVIEW_MISSING` | A cluster has no qualifying overview. Fires once per dense flow (not once per domain), as `Flow: tags — N docs (up to 5 paths, ...) have no overview`, reported on the most-linked member. Hubs (docs linking at least max(20, 10% of docs)) are excluded, a domain held together only by a generated `INDEX.md` does not fire, and a domain with 2+ sub-flows is reported as those flows. A flow needs members that link each other; a long chain is not a flow. A `kind: overview` doc below the coverage bar also lands here. | Write an overview from the template and link the members, or add the missing links to an existing one. |
 | `OVERVIEW_STALE_LINKS` | A qualifying overview misses some members. | Add a link to each member listed. |
 
 Both are advisory warnings with no `code`: they never change the exit code
@@ -113,6 +113,20 @@ comments in that block may be normalised. A file whose frontmatter does not
 parse is skipped and reported, and the rest of the run continues.
 `integrate` no longer invents a purpose: if the first paragraph is not a
 usable sentence, `purpose` stays missing and the audit says so.
+
+Filler is handled too (2.14.0). A `summary` or `description` that fails the
+same weak-purpose rule `audit` uses is dropped (`<src> was filler, dropped`)
+instead of moved into `purpose`, and a `purpose` that is exactly
+`Documentation for <title>` (the old generator fallback) is cleared
+(`purpose was generator filler, cleared`). The summary line prints `dropped`
+and `cleared` counts. Retrieval config is read from the project root, the
+parent of the docs path.
+
+**Upgrading from before 2.13:** run `hewtd index` once. It rebuilds the facts,
+incidents and symptoms indexes (when a vault exists) and stamps
+`generated: true` on unstamped `maintenance-*`, `health-*`, `audit-*` and
+`links-*` `.md` reports. `.json` reports are skipped, and a file that already
+has a `generated:` key is left alone. `--dry-run` lists them without writing.
 
 ## Config
 

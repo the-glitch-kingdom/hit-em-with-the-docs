@@ -1023,6 +1023,9 @@ program
       process.exit(1);
     }
     let accept: unknown;
+    if (result.dropped + result.cleared > 0) {
+      logger.info(`  ${result.dropped} filler value(s) dropped, ${result.cleared} generator purpose(s) cleared`);
+    }
     try {
       accept = JSON.parse(options.accept);
     } catch (err) {

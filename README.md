@@ -1242,6 +1242,18 @@ they never fail the audit. Generated files carry `generated: true`, and
 `<docs root>/reports`). `hewtd report health` adds a Retrieval Coverage table.
 Full standard, codes and fixes: [docs/retrieval-fields.md](docs/retrieval-fields.md).
 
+### Overview docs (2.13.0+)
+
+A doc with `kind: overview` (start from `templates/overview.template.md`) links
+every stage of a cross-cutting flow. `hewtd audit` raises advisory
+`OVERVIEW_MISSING` and `OVERVIEW_STALE_LINKS` warnings for flows of
+`min_cluster_size` or more docs; they never change the exit code. Config in
+`.claude/hit-em-with-the-docs.json`: an `overview` block (`min_cluster_size` 5,
+`min_link_coverage` 0.6, `backlinks` true, `disabled` []). `hewtd report
+health` shows overview coverage. **`hewtd maintain --fix` now edits doc
+bodies**, adding `Part of: [Title](...)` back-links to cluster members; set
+`overview.backlinks` to `false` to turn it off.
+
 ### Documentation root
 
 `docs_root` in `.claude/hit-em-with-the-docs.json` declares where this project's

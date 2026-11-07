@@ -96,8 +96,17 @@ Generated files, drafts, reports, archive and plan docs are excluded.
 ${row('Non-weak purpose', c.withPurpose)}
 ${row('Symptoms', c.withSymptoms)}
 ${row('Unique title', c.withUniqueTitle)}
-
+${renderOverviews(result)}
 `;
+}
+
+function renderOverviews(result: MaintainResult): string {
+  const o = result.overviewCoverage;
+  if (!o) return '';
+  const rows = o.missing.map((m) => `| ${m.id} | ${m.size} | ${m.generatedOnlyHub ? 'yes' : 'no'} |`).join('\n');
+  return `
+Overview docs: ${o.withOverview} cluster(s) with an overview, ${o.withoutOverview} without.
+${rows ? `\n| Cluster missing an overview | Docs | Generated-only hub |\n|---|---|---|\n${rows}\n` : ''}`;
 }
 
 /**
@@ -133,6 +142,7 @@ function generateJsonReport(result: MaintainResult): string {
       stats: result.audit.stats,
     } : null,
     retrievalCoverage: result.retrievalCoverage ?? null,
+    overviewCoverage: result.overviewCoverage ?? null,
     errors: result.errors,
   }, null, 2);
 }

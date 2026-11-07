@@ -2,7 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
-## [2.12.0] — 2026-11-06
+## [2.13.0] — 2026-11-06
+
+Overview docs (#51). Additive, with one behaviour change: **`maintain --fix`
+now edits doc bodies** (see below).
+
+- New optional `kind: overview` frontmatter field (only value `overview`; any
+  other value fails the audit) and `templates/overview.template.md`.
+- Cluster detection: domains and cross-domain connected components of linked
+  docs. New `overview` config block (`min_cluster_size` 5,
+  `min_link_coverage` 0.6, `backlinks` true, `disabled` []).
+- `hewtd audit` raises advisory `OVERVIEW_MISSING` and `OVERVIEW_STALE_LINKS`
+  warnings. They never change the exit code or `--strict`, and the GitHub
+  Action does not count them toward `fail-on-error`.
+- `hewtd report health` shows overview coverage and a table of clusters
+  missing an overview (`overviewCoverage` in JSON).
+- **`maintain --fix` now edits doc bodies:** it inserts a
+  `Part of: [Title](rel.md)` back-link in each member of a cluster that has an
+  overview. Without `--fix`, `maintain` only lists pending back-links.
+  Idempotent; skips the docs clusters ignore (generated, plan-tier, drafts,
+  reports, archived, `status: draft`). Turn it off with
+  `"overview": {"backlinks": false}`. Review the diff before committing in CI.
+- Fix: `--fix` and `integrate` no longer drop unmodelled frontmatter keys
+  (`kind`, `generated`, `symptoms`).
+- Fix: one `maintain --fix` run now converges (back-links run before the
+  metadata sync); a second run changes nothing.
+
+## [2.12.0] — 2026-11-06 (not published separately; its changes ship in 2.13.0)
 
 Retrieval-ready docs (#50). Additive: existing trees keep working, and the
 reports directory default is unchanged.

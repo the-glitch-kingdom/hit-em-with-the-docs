@@ -171,6 +171,20 @@ const retrievalConfigSchema = z
   })
   .default({});
 
+/**
+ * Overview-doc cluster thresholds (#51). Lenient like `retrieval`: any invalid
+ * key falls back to its default. `disabled` lists OVERVIEW_* codes to silence.
+ */
+const overviewConfigSchema = z
+  .object({
+    min_cluster_size: z.number().int().positive().catch(5),
+    min_link_coverage: z.number().gt(0).lte(1).catch(0.6),
+    backlinks: z.boolean().catch(true),
+    disabled: z.array(z.string()).catch([]),
+  })
+  .catch({ min_cluster_size: 5, min_link_coverage: 0.6, backlinks: true, disabled: [] })
+  .default({});
+
 const pluginConfigSchema = z
   .object({
     /**
@@ -186,6 +200,7 @@ const pluginConfigSchema = z
     status: lenientStatusArray,
     archive: archiveConfigSchema,
     retrieval: retrievalConfigSchema,
+    overview: overviewConfigSchema,
     /** Reports directory, relative to the repo root. Unset = `<docs root>/reports`. */
     reports_dir: z.string().min(1).optional().catch(undefined),
   })
@@ -195,6 +210,7 @@ export type VaultConfig = z.infer<typeof vaultConfigSchema>;
 export type EnforcementConfig = z.infer<typeof enforcementConfigSchema>;
 export type ArchiveConfig = z.infer<typeof archiveConfigSchema>;
 export type RetrievalConfig = z.infer<typeof retrievalConfigSchema>;
+export type OverviewConfig = z.infer<typeof overviewConfigSchema>;
 export type PluginConfig = z.infer<typeof pluginConfigSchema>;
 
 const CONFIG_FILENAME = '.claude/hit-em-with-the-docs.json';

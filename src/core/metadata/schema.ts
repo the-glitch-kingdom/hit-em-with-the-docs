@@ -81,7 +81,19 @@ const statusSchema = z.object({
   version: z.string().regex(/^\d+\.\d+\.\d+$/, 'Must be semver format (X.Y.Z)').optional(),
 });
 
+export const DOC_KIND_VALUES = ['overview'] as const;
+
 const discoverySchema = z.object({
+  kind: z
+    .enum(DOC_KIND_VALUES, {
+      errorMap: (issue, ctx) => ({
+        message:
+          issue.code === 'invalid_enum_value'
+            ? `Invalid kind "${String(ctx.data)}". Allowed values: ${DOC_KIND_VALUES.join(', ')}`
+            : ctx.defaultError,
+      }),
+    })
+    .optional(),
   purpose: z.string().optional(),
   related_docs: z.array(z.string()).optional(),
   load_priority: z.number().min(1).max(10).optional(),

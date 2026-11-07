@@ -3,6 +3,8 @@ import { writeFile, mkdir } from 'fs/promises';
 import { logger } from '../../utils/logger.js';
 import { pathExists, findMarkdownFiles } from '../../utils/glob.js';
 import { collectRetrievalDocs, retrievalCoverage, type RetrievalCoverage } from '../audit/retrieval.js';
+import { findClusters } from '../links/clusters.js';
+import { addOverviewBacklinks, type BacklinkChange } from '../links/backlinks.js';
 import { syncMetadata, type SyncResult } from '../metadata/sync.js';
 import { checkLinks, type LinkCheckResult } from '../links/checker.js';
 import { auditDocumentation, type AuditResult } from '../audit/auditor.js';
@@ -38,9 +40,18 @@ export interface MaintainResult {
   linkCheck?: LinkCheckResult;
   audit?: AuditResult;
   retrievalCoverage?: RetrievalCoverage;
+  overviewCoverage?: OverviewCoverage;
+  /** Back-links added under --fix, or that would be added without it. */
+  overviewBacklinks?: BacklinkChange[];
   healthScore: number;
   reportPath?: string;
   errors: string[];
+}
+
+export interface OverviewCoverage {
+  withOverview: number;
+  withoutOverview: number;
+  missing: Array<{ id: string; size: number; generatedOnlyHub: boolean }>;
 }
 
 export interface DomainHealthResult {
@@ -105,6 +116,17 @@ export async function runMaintenance(options: MaintainOptions): Promise<Maintain
         logger.warn(`  Missing REGISTRY.md: ${result.domainHealth.missingRegistries.join(', ')}`);
       }
     }
+  }
+
+  // Overview back-links (#51): body edits, so only written under --fix; always listed.
+  // Runs before metadata sync so word_count/read-time and the indexes see the edit in the same run.
+  try {
+    const cfg = await loadPluginConfig(dirname(docsPath));
+    if (cfg.overview.backlinks) {
+      result.overviewBacklinks = await addOverviewBacklinks(docsPath, { dryRun: !fix });
+    }
+  } catch (error) {
+    result.errors.push(`Overview back-links failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   // Step 1: Metadata Sync
@@ -199,6 +221,20 @@ export async function runMaintenance(options: MaintainOptions): Promise<Maintain
     result.retrievalCoverage = retrievalCoverage(docs, cfg.retrieval);
   } catch (error) {
     result.errors.push(`Retrieval coverage failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  // Overview coverage (#51): clusters with and without an overview.
+  try {
+    const cfg = await loadPluginConfig(dirname(docsPath));
+    const clusters = await findClusters(docsPath, cfg.overview);
+    const missing = clusters.filter((c) => !c.overview);
+    result.overviewCoverage = {
+      withOverview: clusters.length - missing.length,
+      withoutOverview: missing.length,
+      missing: missing.map((c) => ({ id: c.id, size: c.members.length, generatedOnlyHub: c.generatedOnlyHub })),
+    };
+  } catch (error) {
+    result.errors.push(`Overview coverage failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   // Calculate overall health score

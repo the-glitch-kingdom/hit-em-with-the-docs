@@ -876,3 +876,35 @@ describe('Metadata Schema', () => {
     });
   });
 });
+
+describe('kind: overview', () => {
+  const base = {
+    title: 'Deploy flow',
+    domains: ['ops'],
+    status: 'active',
+    last_updated: '2026-11-06',
+    version: '1.0.0',
+  };
+  const facts = {
+    id: 'a-fact',
+    confidence: 'high',
+    last_verified: '2026-11-06',
+    provenance: ['x'],
+  };
+
+  it.each(['guide', 'reference', 'fact', 'admin'])('passes on %s', (tier) => {
+    const extra = tier === 'fact' ? facts : {};
+    expect(validateMetadata({ ...base, ...extra, tier, kind: 'overview' }).valid).toBe(true);
+  });
+
+  it('rejects a misspelled kind and lists allowed values', () => {
+    const r = validatePartialMetadata({ ...base, tier: 'guide', kind: 'overveiw' });
+    expect(r.valid).toBe(false);
+    expect(r.errors.join()).toContain('Allowed values: overview');
+    expect(r.errors.join()).toContain('overveiw');
+  });
+
+  it('leaves docs without kind unaffected', () => {
+    expect(validateMetadata({ ...base, tier: 'guide' }).valid).toBe(true);
+  });
+});

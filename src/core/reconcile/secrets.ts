@@ -122,3 +122,12 @@ export const scanText = (text: string, file: string, cfg: SecretsConfig): Secret
 export async function scanFile(abs: string, file: string, cfg: SecretsConfig): Promise<SecretFinding[]> {
   try { return scanText(await readFile(abs, 'utf-8'), file, cfg); } catch { return []; }
 }
+
+const NO_CFG: SecretsConfig = { allow: [], disabled_rules: [] };
+
+/** Write guard: throws (masked findings only) if `text` holds a secret, so the caller refuses that write. */
+export function assertNoSecrets(text: string, where: string, cfg: SecretsConfig = NO_CFG): void {
+  const hits = scanText(text, where, cfg).filter((f) => f.kind === 'secret');
+  if (!hits.length) return;
+  throw new Error(`would write a secret to ${where}: ${hits.slice(0, 5).map((f) => `${f.rule} line ${f.line} ${f.masked}`).join(', ')}${hits.length > 5 ? ` (+${hits.length - 5} more)` : ''}`);
+}

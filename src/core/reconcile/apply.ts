@@ -14,6 +14,8 @@ import { regenerateIndexes } from '../../generators/regenerate.js';
 import { getAllDomains } from '../domains/registry.js';
 import { hashContent, recordEntry, saveLedger, type Ledger } from './ledger.js';
 import { gitRoot } from './triage.js';
+import { assertNoSecrets } from './secrets.js';
+import { loadPluginConfig } from '../../utils/config.js';
 import { applyOutsideEntry, outsideKey } from './outside.js';
 import { parseReview, reviewDir, type ReviewEntry } from './review.js';
 
@@ -30,7 +32,7 @@ export interface ApplyResult {
 }
 
 const exists = (p: string) => stat(p).then(() => true, () => false);
-const git = (cwd: string, args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+const git = (cwd: string, args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 1 << 28 }).trim();
 
 /**
  * Files that differ from HEAD before the batch starts (dirty tracked files anywhere, plus
@@ -102,6 +104,7 @@ export async function applyReviews(opts: {
 }): Promise<ApplyResult> {
   const { root, docsPath, ledger } = opts;
   const today = opts.today ?? formatDate(new Date());
+  const secretsCfg = (await loadPluginConfig(root)).reconcile.secrets;
   const reviews = await Promise.all(opts.files.map((f) => parseReview(f)));
   const top0 = gitRoot(root);
   const snap = top0 ? snapshot(top0, relative(top0, docsPath) || '.') : new Map<string, Buffer>();
@@ -163,6 +166,8 @@ export async function applyReviews(opts: {
         continue;
       }
       try {
+        // Nothing the review proposes to write may carry a secret.
+        assertNoSecrets([...(e.patch ?? []).map((p) => p.new), e.draft ?? '', JSON.stringify(e.frontmatter ?? {})].join('\n'), e.path, secretsCfg);
         if (e.verdict === 'archive') {
           const res = await archiveDoc({ projectRoot: root, docsPath, file: e.path, today, ...(e.reason && { reason: e.reason }) });
           if (!res.ok) throw new Error(res.errors.join('; '));
@@ -206,6 +211,9 @@ export async function applyReviews(opts: {
       if (present.length) git(top, ['add', '-A', '-f', '--', ...present]);
       const gone = paths.filter((p) => !present.includes(p));
       if (gone.length) git(top, ['rm', '-q', '--cached', '--ignore-unmatch', '--', ...gone]);
+      // Last line of defence: the staged diff may not add a secret.
+      const added = git(top, ['diff', '--cached', '-U0', '--no-color', '--', ...paths]).split('\n').filter((l) => l.startsWith('+') && !l.startsWith('+++')).join('\n');
+      assertNoSecrets(added, 'the staged diff', secretsCfg);
       const first = reviews[0]!;
       if (git(top, ['status', '--porcelain', '--', ...paths])) git(top, ['commit', '-q', '--only', '-m', `docs(reconcile): ${first.scope || 'docs'} batch ${first.batch}`, '--', ...paths]);
       commit = git(top, ['rev-parse', '--short', 'HEAD']);

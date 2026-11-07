@@ -7,6 +7,7 @@ import { mkdir, readdir, readFile, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import matter from 'gray-matter';
 import { hashContent } from './ledger.js';
+import { assertNoSecrets } from './secrets.js';
 import type { Shard, TriageResult } from './triage.js';
 
 export const VERDICTS = ['verify', 'rewrite', 'archive', 'unverifiable', 'fields', 'integrate', 'delete'] as const;
@@ -52,10 +53,12 @@ export function renderReview(meta: { batch: string; shard: number; scope: string
   const body = entries
     .map((e) => `## ${e.path}\n\n- [ ] accept\n\n\`\`\`json\n${JSON.stringify(e, null, 2)}\n\`\`\`\n`)
     .join('\n');
-  return matter.stringify(
+  const out = matter.stringify(
     `\n# Reconcile review, batch ${meta.batch} shard ${meta.shard}\n\nSet "verdict" (${VERDICTS.join(' | ')}), fill the fields, tick "accept" on entries to apply.\n\n${body}`,
     meta
   );
+  assertNoSecrets(out, `review batch ${meta.batch} shard ${meta.shard}`);
+  return out;
 }
 
 export async function parseReview(file: string): Promise<ReviewFile> {

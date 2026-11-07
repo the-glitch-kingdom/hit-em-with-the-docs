@@ -5,6 +5,7 @@
 import { createHash } from 'crypto';
 import { mkdir, readFile, rename, writeFile } from 'fs/promises';
 import { dirname } from 'path';
+import { assertNoSecrets } from './secrets.js';
 
 export interface LedgerEntry {
   path: string;
@@ -39,9 +40,11 @@ export async function loadLedger(file: string): Promise<Ledger> {
 
 /** Atomic: write a unique temp file, then rename over the target. */
 export async function saveLedger(file: string, ledger: Ledger): Promise<void> {
+  const text = JSON.stringify(ledger, null, 2) + '\n';
+  assertNoSecrets(text, 'the reconcile ledger');
   await mkdir(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
-  await writeFile(tmp, JSON.stringify(ledger, null, 2) + '\n', 'utf-8');
+  await writeFile(tmp, text, 'utf-8');
   await rename(tmp, file);
 }
 

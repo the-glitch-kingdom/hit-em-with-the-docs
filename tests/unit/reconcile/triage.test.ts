@@ -191,3 +191,53 @@ describe('triage cited files (#58)', () => {
     expect(r.mode).toBe('serial');
   });
 });
+
+describe('secret lane (#59)', () => {
+  // Built at runtime so the repo never holds a scannable literal.
+  const tok = () => 'hv' + 's.' + 'q7Zr3LmP9xVb2NcK5tYw8HdJ';
+  const key = () => 'sk' + '_live_' + 'q7Zr3LmP9xVb2NcK5tYw8HdJ';
+  const lanes = async (rels: string[], mode?: 'serial' | 'team') => run(rels, mode);
+
+  it('a doc holding a token goes to the secret lane, masked, in no shard', async () => {
+    put('ops/leak.md', fm() + `See \`src/a.ts\`. token ${tok()}\n`);
+    const r = await lanes(['ops/leak.md', 'ops/clean.md', 'ops/fields.md'], 'team');
+    const d = r.docs.find((x) => x.path === 'ops/leak.md')!;
+    expect(d.lane).toBe('secret');
+    expect(d.findings![0]).toMatchObject({ rule: 'vault-token', masked: 'hvs.…28' });
+    expect(JSON.stringify(r)).not.toContain(tok());
+    expect(r.shards.flatMap((s) => s.docs)).not.toContain('ops/leak.md');
+    expect(r.totals.byLane.secret).toBe(1);
+    expect(r.totals.judgmentDocs).toBe(1);
+    expect(r.docs.find((x) => x.path === 'ops/clean.md')!.lane).toBe('clean');
+  });
+
+  it('a clean doc citing a file with a key is blocked and the file is not cited', async () => {
+    put('src/prod.env', `STRIPE=${key()}\n`);
+    g('add', '-A');
+    g('commit', '-m', 'env');
+    put('ops/cites.md', fm().replace('[src/a.ts]', '[src/a.ts, src/prod.env]') + 'See `src/a.ts`.\n');
+    const r = await lanes(['ops/cites.md']);
+    const d = r.docs[0]!;
+    expect(d.lane).toBe('secret');
+    expect(d.blocked_files).toEqual(['src/prod.env']);
+    expect(d.reasons.join()).toContain('stripe-key');
+    expect(JSON.stringify(r)).not.toContain(key());
+    // not counted as read: only the doc's own bytes plus src/a.ts
+    expect(d.bytes).toBeLessThan(400);
+  });
+
+  it('archive/, outside markdown and .hewtd/ are scanned and reported', async () => {
+    put('archive/old.md', `token ${tok()}\n`);
+    writeFileSync(join(dir, 'notes.md'), `key ${key()}\n`);
+    mkdirSync(join(dir, '.hewtd'), { recursive: true });
+    writeFileSync(join(dir, '.hewtd', 'x.txt'), `token ${tok()}\n`);
+    g('add', 'notes.md');
+    const r = await lanes(['ops/clean.md']);
+    expect(r.peripheral.map((f) => f.file).sort()).toEqual(['.documentation/archive/old.md', '.hewtd/x.txt', 'notes.md']);
+    expect(r.docs[0]!.lane).toBe('clean');
+    const { scanSecrets } = await import('../../../src/core/reconcile/triage');
+    const all = await scanSecrets({ root: dir, docsPath: docs, config: await loadPluginConfig(dir) });
+    expect(all).toHaveLength(3);
+    expect(JSON.stringify(all)).not.toContain(tok());
+  });
+});

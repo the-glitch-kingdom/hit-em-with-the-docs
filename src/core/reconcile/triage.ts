@@ -14,8 +14,9 @@ import { findClusters } from '../links/clusters.js';
 import { buildRepoIndex, extractReferences, primeSymbols, relatedIndex, resolveReferences, type RelatedRepo, type ResolvedReference } from './references.js';
 import { bodyChange, siblingCommits, stalenessSignal } from './staleness.js';
 import { hashContent, isReviewed, recordEntry, type Ledger } from './ledger.js';
+import { findSecrets, scanFile, type SecretFinding } from './secrets.js';
 
-export type Lane = 'clean' | 'fields-only' | 'check' | 'archive-candidate';
+export type Lane = 'clean' | 'fields-only' | 'check' | 'archive-candidate' | 'secret';
 
 /** Commits to cited files since the doc last changed that push a doc to `check`. */
 export const STALE_COMMITS_BAR = 10;
@@ -34,6 +35,10 @@ export interface TriageDoc {
   staleCommits?: number;
   /** related repo whose docs should own this doc's details (summarize and cross-link) */
   owner?: string;
+  /** masked secret findings in the doc itself (never values) */
+  findings?: SecretFinding[];
+  /** cited files holding a secret: never read by the judgment pass, dropped from the cited list */
+  blocked_files?: string[];
 }
 
 export interface Shard {
@@ -50,6 +55,60 @@ export interface TriageResult {
   warnings: string[];
   /** schema files parsed for table/column checks (empty = tables are unknown) */
   schemaFiles: string[];
+  /** masked findings in archive/, the outside lane and .hewtd/: scanned and reported, never judged */
+  peripheral: SecretFinding[];
+}
+
+const MAX_SCAN_BYTES = 2 * 1024 * 1024;
+const fmtFinding = (f: SecretFinding): string => `${f.rule} ${f.file}:${f.line} ${f.masked}`;
+
+async function walkFiles(dir: string, keep: (name: string) => boolean): Promise<string[]> {
+  const out: string[] = [];
+  const walk = async (d: string): Promise<void> => {
+    let ents;
+    try { ents = await readdir(d, { withFileTypes: true }); } catch { return; }
+    for (const e of ents) {
+      if (e.name === '.git' || e.name === 'node_modules') continue;
+      const p = join(d, e.name);
+      if (e.isDirectory()) await walk(p);
+      else if (keep(e.name)) out.push(p);
+    }
+  };
+  await walk(dir);
+  return out;
+}
+
+/** Findings (kind secret or personal) in archive/, tracked markdown outside the docs root, and .hewtd/. */
+export async function scanPeripheral(root: string, docsPath: string, config: PluginConfig): Promise<SecretFinding[]> {
+  const cfg = config.reconcile.secrets;
+  const top = gitRoot(docsPath) ?? root;
+  const files = new Map<string, string>(); // abs -> label
+  for (const f of await walkFiles(join(docsPath, 'archive'), (n) => n.endsWith('.md'))) files.set(f, posix(relative(top, f)));
+  for (const f of await walkFiles(join(top, '.hewtd'), () => true)) files.set(f, posix(relative(top, f)));
+  try {
+    const docsRel = posix(relative(top, docsPath));
+    const tracked = execFileSync('git', ['ls-files', '*.md'], { cwd: top, encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }).split('\n');
+    for (const f of tracked) if (f && !(docsRel && (f === docsRel || f.startsWith(`${docsRel}/`)))) files.set(join(top, f), f);
+  } catch { /* not a git repo: no outside lane */ }
+  const out: SecretFinding[] = [];
+  for (const [abs, label] of [...files].sort((a, b) => a[1].localeCompare(b[1]))) {
+    try { if (statSync(abs).size > MAX_SCAN_BYTES) continue; } catch { continue; }
+    out.push(...(await scanFile(abs, label, cfg)));
+  }
+  return out;
+}
+
+/** Standalone masked scan for `reconcile --secrets`: no scope = the whole docs root (archive included) plus the periphery. */
+export async function scanSecrets(opts: { root: string; docsPath: string; config: PluginConfig; scope?: string[] }): Promise<SecretFinding[]> {
+  const { root, docsPath, config } = opts;
+  const cfg = config.reconcile.secrets;
+  const abs = opts.scope?.length
+    ? (await resolveScope(docsPath, opts.scope)).map((r) => join(docsPath, r))
+    : (await walkFiles(docsPath, (n) => n.endsWith('.md'))).filter((f) => !f.startsWith(join(docsPath, 'archive') + '/')); // archive/ comes with the periphery
+  const out: SecretFinding[] = [];
+  for (const f of abs.sort()) out.push(...(await scanFile(f, posix(relative(docsPath, f)), cfg)));
+  if (!opts.scope?.length) out.push(...(await scanPeripheral(root, docsPath, config)));
+  return out;
 }
 
 const posix = (p: string): string => p.split('\\').join('/');
@@ -159,6 +218,21 @@ export async function triage(opts: {
   );
   const needsFields = new Set(retrieval.filter((i) => /MISSING_PURPOSE|WEAK_PURPOSE|MISSING_SYMPTOMS/.test(i.rule)).map((i) => i.file));
 
+  const cfg = config.reconcile.secrets;
+  // A file a judgment agent would read is scanned once; a finding blocks it (masked results only).
+  const fileScans = new Map<string, Promise<SecretFinding[]>>();
+  const scanCited = (abs: string, label: string): Promise<SecretFinding[]> => {
+    if (LOCKFILE.test(label)) return Promise.resolve([]); // never read by the pass
+    let p = fileScans.get(abs);
+    if (!p) {
+      let big = false;
+      try { big = statSync(abs).size > MAX_SCAN_BYTES; } catch { /* gone: scanFile yields [] */ }
+      fileScans.set(abs, (p = big ? Promise.resolve([]) : scanFile(abs, label, cfg)));
+    }
+    return p;
+  };
+  const peripheral = await scanPeripheral(opts.root, docsPath, config);
+
   const docs: TriageDoc[] = [];
   let staleWarned = false;
   for (const d of loaded) {
@@ -178,7 +252,14 @@ export async function triage(opts: {
     const checkable = resolved.filter((r) => r.status !== 'unknown').length + pathSources.length + relSources.filter((s) => relatedIndex(relOf(s)!)).length;
 
     // Symbol hits are not cited files: a common name living in a data file must not add bytes or staleness.
-    const cited = [...new Set([...resolved.filter((r) => r.kind === 'path').map((r) => r.where), ...sources].filter((p): p is string => !!p && idx.files.has(p)))].sort();
+    let cited = [...new Set([...resolved.filter((r) => r.kind === 'path').map((r) => r.where), ...sources].filter((p): p is string => !!p && idx.files.has(p)))].sort();
+    const ownFindings = findSecrets(d.raw, d.rel, cfg).map((r) => r.finding).filter((f) => f.kind === 'secret');
+    const blocked = new Map<string, SecretFinding[]>();
+    for (const c of cited) {
+      const fs = (await scanCited(join(repo, c), c)).filter((f) => f.kind === 'secret');
+      if (fs.length) blocked.set(c, fs);
+    }
+    cited = cited.filter((c) => !blocked.has(c));
     let bytes = Buffer.byteLength(d.raw);
     for (const c of cited) {
       if (LOCKFILE.test(c)) continue; // a symbol hit in a lockfile is not something the pass reads
@@ -189,6 +270,10 @@ export async function triage(opts: {
     const relCited = new Map<RelatedRepo, string[]>();
     for (const w of [...resolved.filter((r) => r.kind === 'path').map((r) => r.where), ...relSources]) {
       const rel = relOf(w);
+      if (rel && w) {
+        const fs = (await scanCited(join(rel.root, w.slice(w.indexOf(':') + 1)), w)).filter((f) => f.kind === 'secret');
+        if (fs.length) { blocked.set(w, fs); continue; }
+      }
       if (rel && w) relCited.set(rel, [...(relCited.get(rel) ?? []), w.slice(w.indexOf(':') + 1)]);
     }
     for (const [rel, paths] of relCited) {
@@ -209,7 +294,11 @@ export async function triage(opts: {
     const reasons: string[] = [];
     let lane: Lane;
     const attributed = isAttributed(d.data);
-    if (checkable >= ARCHIVE_MIN_CHECKABLE && missing.length / checkable >= ARCHIVE_MISSING_SHARE) {
+    if (ownFindings.length || blocked.size) {
+      lane = 'secret';
+      for (const f of ownFindings) reasons.push(`secret: ${fmtFinding(f)}`);
+      for (const [c, fs] of blocked) reasons.push(`cited file blocked: ${c} (${fs.map(fmtFinding).join('; ')})`);
+    } else if (checkable >= ARCHIVE_MIN_CHECKABLE && missing.length / checkable >= ARCHIVE_MISSING_SHARE) {
       lane = 'archive-candidate';
       reasons.push(`${missing.length} of ${checkable} checkable references are missing`);
     } else if (!attributed || missing.length || (staleCommits ?? 0) >= STALE_COMMITS_BAR) {
@@ -232,17 +321,17 @@ export async function triage(opts: {
       const linked = resolved.some((r) => r.kind === 'doc-link' && r.status === 'ok' && relOf(r.where) === rel);
       if (hits.length >= 2 && hits.length / checked.length > 0.5 && !linked) owner = rel.name;
     }
-    if (owner) {
+    if (owner && lane !== 'secret') {
       if (lane === 'clean' || lane === 'fields-only') lane = 'check';
       reasons.push(`details owned by ${owner}: summarize and cross-link`);
     }
-    docs.push({ path: d.rel, lane, reasons, missing, bytes, ...(staleCommits !== undefined && { staleCommits }), ...(owner && { owner }) });
+    docs.push({ path: d.rel, lane, reasons, missing, bytes, ...(staleCommits !== undefined && { staleCommits }), ...(owner && { owner }), ...(ownFindings.length && { findings: ownFindings }), ...(blocked.size && { blocked_files: [...blocked.keys()].sort() }) });
 
     if (opts.ledger) recordEntry(opts.ledger, { path: d.rel, lane, content_hash: hashContent(d.raw) });
   }
   docs.sort((a, b) => a.path.localeCompare(b.path));
 
-  const byLane: Record<Lane, number> = { clean: 0, 'fields-only': 0, check: 0, 'archive-candidate': 0 };
+  const byLane: Record<Lane, number> = { clean: 0, 'fields-only': 0, check: 0, 'archive-candidate': 0, secret: 0 };
   for (const d of docs) byLane[d.lane]++;
   const judged = docs.filter((d) => d.lane === 'fields-only' || d.lane === 'check');
   const judgmentBytes = judged.reduce((s, d) => s + d.bytes, 0);
@@ -260,6 +349,7 @@ export async function triage(opts: {
     shards,
     warnings,
     schemaFiles: idx.schemaFiles,
+    peripheral,
   };
 }
 

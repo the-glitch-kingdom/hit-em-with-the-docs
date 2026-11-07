@@ -165,11 +165,11 @@ symptoms:
 
 Optional: `severity` (`low|medium|high|critical`).
 
-### Plain strings on facts (2.11.0)
+### Plain strings on every tier (2.12.0; facts only in 2.11.0)
 
-On a `fact` doc, an entry may also be a plain string: a literal error text
-for the fact itself. It needs no `target` (the fact is the target) and no
-`cites` (a fact is what gets cited). semantic-memory indexes each string as
+On any tier, an entry may also be a plain string: a phrase or literal error
+text for the doc itself. It needs no `target` (the doc is the target) and no
+`cites`. semantic-memory indexes each string as
 its own search chunk, so a terse error query finds the fact directly.
 
 ```yaml
@@ -179,10 +179,13 @@ symptoms:
   - "pkill -f: Exit code 144"
 ```
 
-Strings and object entries can be mixed on a fact; object entries keep the
-rules above. Any other tier rejects a plain string
-(`PLAYBOOK_SYMPTOM_MISSING_KEY`). `cite` and the citer index skip string
-entries.
+Strings and object entries can be mixed; object entries keep the rules above
+(`PLAYBOOK_SYMPTOM_MISSING_KEY` now applies only to object entries without a
+key). `cite` and the citer index skip string entries.
+
+Facts also take an optional `purpose` (one sentence: the question the fact
+answers). The `extract-facts` command and the fact template write both.
+See `retrieval-fields.md`.
 
 ## Validation behavior
 

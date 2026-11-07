@@ -82,6 +82,21 @@ rows and let the indexer own the file.** If you find yourself wanting to add a
 row by hand, that is a signal the document is being excluded — work the
 diagnostic ladder below instead.
 
+## Generated marker, Purpose column, reports directory (2.12.0)
+
+Every generated file (root and domain `INDEX.md` and `REGISTRY.md`, the facts,
+incidents and symptoms indexes, and the health, audit, links and maintenance
+reports) carries `generated: true` in its frontmatter. Search tools can use it
+to skip them.
+
+Root and domain `INDEX.md` tables have a Purpose column, taken from each
+doc's `purpose`. It is empty when the doc has none. Pipes and newlines are
+escaped.
+
+Reports go to `<docs root>/reports` by default. Set `reports_dir` in
+`.claude/hit-em-with-the-docs.json` (relative to the repo root) to move them.
+See `retrieval-fields.md`.
+
 ## Where this lives in the code
 
 `listDomainDocFiles()` in `src/generators/regenerate.ts` is the single shared

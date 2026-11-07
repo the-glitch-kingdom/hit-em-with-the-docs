@@ -33,6 +33,11 @@ guide`, `version: 1.0.0`, `last_updated`, `word_count`), and regenerates the
 indexes. It never overwrites frontmatter you wrote yourself — it only fills what
 is missing.
 
+Write `purpose:` (one sentence: the question the doc answers) and `symptoms:`
+(plain strings: how a person would describe the problem, or the exact error
+text) on every new doc. `integrate` does not invent a purpose; a missing one
+shows up as a warning. Titles must name the specific subject.
+
 A markdown file left outside `.documentation/` is invisible to hewtd: not
 indexed, not link-checked, not validated. Don't hand-create `docs/` folders.
 
@@ -160,6 +165,18 @@ hewtd audit                # policy + drift violations, health score
 hewtd link-check           # broken internal links
 hewtd index --dry-run      # what the indexes would become
 ```
+
+`audit` also raises advisory `RETRIEVAL_*` warnings (never a failing exit
+code). How to clear each:
+
+- `MISSING_PURPOSE`: add `purpose:`. If the doc has `summary` or `description`, run `hewtd fix-retrieval-fields --apply`.
+- `WEAK_PURPOSE`: rewrite it as the question the doc answers.
+- `GENERIC_TITLE`: rename to the specific subject; make titles unique.
+- `MISSING_SYMPTOMS`: add `symptoms:` to runbook and troubleshooting docs.
+- `OVERSIZED`: split into one topic per doc.
+- `NEAR_DUPLICATE`: merge, or archive one.
+
+Details: `docs/retrieval-fields.md`.
 
 `audit`'s `index-drift` rule reports any document on disk that its domain's
 `INDEX.md` fails to list — the fix is always `hewtd index`.

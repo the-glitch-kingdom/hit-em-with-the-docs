@@ -259,6 +259,7 @@ These commands run in your terminal and manage your documentation.
 | `hewtd archive <file>` | Retire a doc into `archive/` (reversible, link-safe) |
 | `hewtd unarchive <file>` | Restore an archived doc to where it came from |
 | `hewtd archive-candidates` | List docs that may warrant archiving (advisory) |
+| `hewtd fix-retrieval-fields [--apply]` | Move `summary`/`description` into `purpose`, merge `keywords` into `tags` (dry run by default) |
 
 ##### Command Examples and Details
 
@@ -1228,6 +1229,18 @@ load_priority: 8                          # Override default domain priority (1-
 prerequisites: ["setup.md", "auth.md"]    # Required reading
 difficulty: intermediate                  # beginner|intermediate|advanced
 ```
+
+### Retrieval fields (2.12.0+)
+
+Write `title`, `purpose`, `symptoms` and `tags` on every doc so search tools
+can find it. `hewtd audit` raises advisory `RETRIEVAL_*` warnings for gaps;
+they never fail the audit. Generated files carry `generated: true`, and
+`INDEX.md` tables have a Purpose column. Config keys in
+`.claude/hit-em-with-the-docs.json`: a `retrieval` block (`purpose_min_words`,
+`generic_titles`, `oversized_chars`, `oversized_headings`, `near_duplicate`,
+`near_duplicate_min_chars`, `disabled`) and `reports_dir` (default
+`<docs root>/reports`). `hewtd report health` adds a Retrieval Coverage table.
+Full standard, codes and fixes: [docs/retrieval-fields.md](docs/retrieval-fields.md).
 
 ### Documentation root
 

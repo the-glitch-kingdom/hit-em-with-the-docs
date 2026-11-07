@@ -26,6 +26,9 @@ When asked to create a new fact / incident / playbook entry:
 3. Replace every `<placeholder>` with concrete content.
 4. Run `hewtd audit --strict` on the parent directory to confirm validity.
 
+Plain-string `symptoms:` are valid on every tier. The retrieval standard is in
+`docs/retrieval-fields.md`.
+
 ## Validation reference
 
 See `docs/knowledge-base-primitives.md` (in the plugin repo) for the full

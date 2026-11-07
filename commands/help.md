@@ -53,6 +53,7 @@ CLI (via `npx --no @theglitchking/hit-em-with-the-docs <cmd>` or `hewtd <cmd>` i
 - `unarchive <file>` — restore an archived doc to its domain folder (2.7.0+)
 - `archive-candidates` — advisory list of docs worth retiring (2.7.0+)
 - `search <query>` — search documentation
+- `fix-retrieval-fields [--apply]` — move `summary`/`description` into `purpose`, merge `keywords` into `tags` (dry run by default) (2.12.0+)
 
 Slash commands (Claude Code):
 - `/hit-em-with-the-docs:domain` — add/remove/list custom domains (2.6.0+)
@@ -72,6 +73,8 @@ Slash commands (Claude Code):
 - `incident-narrative`: `id`, `date`, `severity`, `resolution_status`, `components`
 - `incident-facts`: `incident_id`, `produced` (may be empty)
 
+**Retrieval fields (2.12.0+):** write `purpose` (one sentence) and `symptoms` (plain strings, any tier) on every doc. `hewtd audit` raises advisory `RETRIEVAL_*` warnings when they are missing, weak, generic or duplicated; they never fail the audit. See `docs/retrieval-fields.md`.
+
 Full reference: `docs/knowledge-base-primitives.md` and `docs/plan-tier-frontmatter.md`.
 
 ## Templates
@@ -89,6 +92,7 @@ When asked to create one of these, **read the template first**, replace every `<
 - **README.md** — full reference (long; use the index)
 - **docs/LLM-GUIDE.md** — concise agent-facing guide (this is the cheat sheet)
 - **docs/knowledge-base-primitives.md** — KB schema reference + error codes table
+- **docs/retrieval-fields.md** — retrieval fields, `RETRIEVAL_*` codes and fixes, config
 - **docs/plan-tier-frontmatter.md** — plan-tier reference (added in 2.2.0)
 - **CHANGELOG.md** — recent changes, version history
 

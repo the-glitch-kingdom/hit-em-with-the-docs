@@ -160,6 +160,16 @@ When `hewtd audit` reports an `AuditIssue.code`, it's one of the 2.3.0 KB error 
 - `PLAYBOOK_SYMPTOM_MISSING_TARGET` — a `symptoms[]` entry has no `target`
 - `PLAYBOOK_SYMPTOM_MISSING_CITES` — a `symptoms[]` entry has empty `cites`
 
+### Retrieval warnings (2.12.0+)
+
+`hewtd audit` also raises advisory warnings, never errors and never a failing
+exit code: `RETRIEVAL_MISSING_PURPOSE`, `RETRIEVAL_WEAK_PURPOSE`,
+`RETRIEVAL_GENERIC_TITLE`, `RETRIEVAL_MISSING_SYMPTOMS`, `RETRIEVAL_OVERSIZED`,
+`RETRIEVAL_NEAR_DUPLICATE`. Write `purpose` and `symptoms` on every new doc.
+To move old `summary`/`description` values into `purpose`, run
+`hewtd fix-retrieval-fields` (dry run) then `--apply`. Fixes for each code are
+in `docs/retrieval-fields.md`.
+
 ## What NOT to do
 
 - **Don't write to `<vault-root>/{facts,incidents,symptoms}/INDEX.md`** — those are auto-generated. Edits will be overwritten on the next `hewtd maintain`.
@@ -170,6 +180,8 @@ When `hewtd audit` reports an `AuditIssue.code`, it's one of the 2.3.0 KB error 
 - **Don't manually quote dates in YAML if you don't have to** — as of 2.3.0, both `last_updated: 2026-05-14` and `last_updated: '2026-05-14'` are accepted.
 
 ## Where to dig deeper
+
+- `docs/retrieval-fields.md` — the retrieval standard, warning codes, config
 
 - **Reference docs:** `docs/plan-tier-frontmatter.md`, `docs/knowledge-base-primitives.md`
 - **Templates:** `templates/knowledge-base/{fact,incident-narrative,incident-facts,playbook-symptoms}.template.md`

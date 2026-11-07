@@ -295,7 +295,10 @@ async function citedSources(
         const dir = idx.scripts.get(r.ref.replace(/^\S+ run /, ''));
         if (r.where) add(r.where, r.ref);
         else if (dir !== undefined) add(dir ? `${dir}/package.json` : 'package.json', r.ref);
-      } else if ((r.kind === 'symbol' || r.kind === 'env') && r.where && !/^[\w.-]+:/.test(r.where) && uniqueFile(root, r.ref)) add(r.where, r.ref);
+      } else if ((r.kind === 'symbol' || r.kind === 'env') && r.where && !/^[\w.-]+:/.test(r.where)) {
+        const only = uniqueFile(root, r.ref);
+        if (only) add(only, r.ref);
+      }
     }
   } catch {
     return []; // not a git checkout: nothing resolvable
@@ -309,13 +312,17 @@ async function citedSources(
     .map(([path, c]) => ({ path, count: c.count }));
 }
 
-/** A name counts as a citation of a file only when exactly one tracked non-markdown file holds it (#58). */
-function uniqueFile(root: string, name: string): boolean {
+/** Data and generated files: a name found there is not a citation of that file (#58). */
+const NOT_CODE = ['*.md', '*.mdx', '*.json', '*.jsonl', '*.csv', '*.tsv', '*.txt', '*.log', '*.svg', '*.xml', '*.lock', '*.min.js', '*.map', '*.snap'];
+
+/** The one tracked code file holding `name`, or undefined when it is in none or several (#58). */
+function uniqueFile(root: string, name: string): string | undefined {
   try {
-    const out = execFileSync('git', ['grep', '-I', '-l', '-w', '-F', '-e', name, '--', '.', ':!*.md', ':!*.mdx'], { cwd: root, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
-    return out.split('\n').filter(Boolean).length === 1;
+    const out = execFileSync('git', ['grep', '-I', '-l', '-w', '-F', '-e', name, '--', '.', ...NOT_CODE.map((g) => `:!${g}`)], { cwd: root, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const files = out.split('\n').filter(Boolean);
+    return files.length === 1 ? files[0] : undefined;
   } catch {
-    return false;
+    return undefined;
   }
 }
 

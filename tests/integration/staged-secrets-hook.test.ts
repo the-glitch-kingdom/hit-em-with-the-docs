@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, chmodSync } from 'fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, chmodSync, symlinkSync } from 'fs';
 import { execFileSync, spawnSync } from 'child_process';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
@@ -67,4 +67,36 @@ describe('staged secret scan + pre-commit hook', () => {
     hewtd('hooks', 'uninstall');
     expect(existsSync(hook())).toBe(false);
   });
+
+  it('an added line starting with "++ " does not hide a secret on the next line (review fix)', () => {
+    expect(hewtd('hooks', 'install').status).toBe(0);
+    writeFileSync(d('p.md'), '# p\n'); git('add', '.'); expect(git('commit', '-qm', 'p').status).toBe(0);
+    writeFileSync(d('p.md'), `# p\n++ note\nkey: ${val}\n`); git('add', '.');
+    const r = git('commit', '-qm', 'sneaky');
+    expect(r.status).not.toBe(0);
+    expect(r.stdout + r.stderr).toContain('p.md:3');
+  });
+
+  it('the block runs first even when the existing hook ends with exit 0 (review fix)', () => {
+    mkdirSync(join(root, '.git/hooks'), { recursive: true });
+    const mine = '#!/bin/sh\necho mine\nexit 0\n';
+    writeFileSync(hook(), mine); chmodSync(hook(), 0o755);
+    expect(hewtd('hooks', 'install').status).toBe(0);
+    writeFileSync(d('q.md'), `# q\nkey: ${val}\n`); git('add', '.');
+    expect(git('commit', '-qm', 'blocked').status).not.toBe(0);
+    expect(hewtd('hooks', 'uninstall').status).toBe(0);
+    expect(readFileSync(hook(), 'utf8')).toBe(mine);
+  });
+
+  it('refuses to install into a non-shell or symlinked hook (review fix)', () => {
+    mkdirSync(join(root, '.git/hooks'), { recursive: true });
+    writeFileSync(hook(), '#!/usr/bin/env python3\nprint(1)\n'); chmodSync(hook(), 0o755);
+    expect(hewtd('hooks', 'install').status).not.toBe(0);
+    expect(readFileSync(hook(), 'utf8')).toBe('#!/usr/bin/env python3\nprint(1)\n');
+    rmSync(hook());
+    writeFileSync(join(root, 'real-hook'), '#!/bin/sh\n'); symlinkSync(join(root, 'real-hook'), hook());
+    expect(hewtd('hooks', 'install').status).not.toBe(0);
+    expect(readFileSync(join(root, 'real-hook'), 'utf8')).toBe('#!/bin/sh\n');
+  });
 });
+

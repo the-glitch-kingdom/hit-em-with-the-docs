@@ -101,8 +101,15 @@ describe('integrate records sources', () => {
     const src = fm(r.targetPath!).sources as string[];
     expect(src).toContain('package.json');
     expect(src).toContain('https://vendor.example/docs');
-    expect(src).not.toContain('src/a.ts'); // doThing also lives in data.json
+    expect(src).toContain('src/a.ts'); // data.json also holds doThing, but a data file is not a citation (review fix)
     expect(src).not.toContain('src/nope.ts');
+  });
+
+  it('a name found only in a data file is never cited (review fix)', async () => {
+    writeFileSync(join(root, 'fixtures.json'), '{"onlyInData": 1}\n');
+    execFileSync('git', ['add', '-A'], { cwd: root });
+    const r = await run('dd.md', doc('Set `onlyInData`.'));
+    expect(fm(r.targetPath!).sources).toBeUndefined();
   });
 
   it('a symbol in exactly one code file is cited', async () => {

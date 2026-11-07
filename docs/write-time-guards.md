@@ -35,7 +35,7 @@ hewtd secrets --baseline-prune     # drop entries that no longer match anything
 
 ```bash
 hewtd secrets --staged      # scans only lines the staged diff adds under .documentation
-hewtd hooks install         # opt-in: appends a marked block to pre-commit
+hewtd hooks install         # opt-in: adds a marked block to pre-commit
 hewtd hooks uninstall       # removes exactly that block (byte-exact)
 ```
 
@@ -43,8 +43,14 @@ hewtd hooks uninstall       # removes exactly that block (byte-exact)
   secret-kind findings block; emails do not.
 - The hook block is `# >>> hewtd secrets >>>` ... `# <<< hewtd secrets <<<` and
   runs `npx --no-install hewtd secrets --staged || exit 1`. It resolves
-  `core.hooksPath` or `.git/hooks`, is idempotent, is appended to an existing
-  hook (never overwritten), and uninstall deletes a hook file it created.
+  `core.hooksPath` or `.git/hooks` and is idempotent. In an existing hook the block
+  goes right after the shebang (never overwriting anything), so a later `exit 0` or
+  `exec` cannot skip it. A hook that is a symlink or not a POSIX shell script is
+  refused with a one-line snippet to add yourself. Uninstall removes exactly the
+  block and deletes a hook file it created.
+- The hook fails closed: if `hewtd` cannot run (not installed), the commit is
+  refused; uninstall the hook to bypass it deliberately.
+- Baseline entries need a fingerprint and a reason; others are ignored with a warning.
 - The hook scans the default docs path (`.documentation`). Nothing installs it
   for you.
 - Speed: 12000 added lines across 300 files scan in about 0.3 s.

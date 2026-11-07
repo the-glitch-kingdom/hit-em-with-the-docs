@@ -11,7 +11,7 @@ Write-time guards (#61). Ships 2.17.0 and 2.18.0 too.
 - `integrate` records up to `integrate.sources_max` (default 10, `0` = off)
   file-level `sources` for a new doc; never `last_verified`; never indexed by search.
 - `hewtd secrets --staged` scans only added lines of the staged diff.
-- `hewtd hooks install|uninstall`: opt-in pre-commit block, appended, byte-exact removal.
+- `hewtd hooks install|uninstall`: opt-in pre-commit block inserted after the shebang (runs before any `exit`), refuses symlinked or non-shell hooks, byte-exact removal; fails closed if `hewtd` cannot run.
 - `.hewtd/secrets-baseline.json` and `hewtd secrets --baseline-add|--baseline-prune`:
   fingerprints only, merged into `reconcile.secrets.allow`.
 - No backfill: upgrading changes no existing doc.

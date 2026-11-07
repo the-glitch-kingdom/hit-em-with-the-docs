@@ -149,7 +149,10 @@ export const BASELINE_PATH = '.hewtd/secrets-baseline.json';
 export async function loadBaseline(root: string): Promise<BaselineEntry[]> {
   try {
     const j = JSON.parse(await readFile(join(root, BASELINE_PATH), 'utf-8'));
-    return Array.isArray(j?.entries) ? j.entries.filter((e: BaselineEntry) => typeof e?.fingerprint === 'string' && e.fingerprint.length >= 12) : [];
+    if (!Array.isArray(j?.entries)) return [];
+    const ok = j.entries.filter((e: BaselineEntry) => typeof e?.fingerprint === 'string' && e.fingerprint.length >= 12 && typeof e.reason === 'string' && e.reason.trim() !== '');
+    if (ok.length < j.entries.length) console.warn(`hewtd: ignoring ${j.entries.length - ok.length} ${BASELINE_PATH} entr${j.entries.length - ok.length === 1 ? 'y' : 'ies'} without a fingerprint and a reason`);
+    return ok;
   } catch { return []; }
 }
 

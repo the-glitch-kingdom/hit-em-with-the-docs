@@ -1137,6 +1137,8 @@ program
   .option('--batch <id>', 'Batch id for --write-review (default: next number)')
   .option('--outside', 'List markdown files outside the docs root by class (tool-read, junk, not-a-doc, misplaced); with --write-review, write an outside review file', false)
   .option('--secrets', 'Masked secret scan (no scope: whole docs root incl. archive/, the outside lane and .hewtd/); never prints a value', false)
+  .option('--overview <question>', 'Propose a cross-domain member list for a flow or question; writes only .hewtd/reconcile/overview-<slug>.json. With --write-review: the members file to turn into an overview review skeleton', undefined)
+  .option('--limit <n>', 'With --overview: member cap (default 12)')
   .option('--apply <files...>', 'Apply the accepted entries of review files (serial, one commit per batch)')
   .action(async (scope: string[], options) => {
     const { loadPluginConfig } = await import('../utils/config.js');
@@ -1188,6 +1190,36 @@ program
         for (const f of found) logger.info(`  [${f.kind}] ${f.rule} ${f.file}:${f.line} ${f.masked} (${f.fingerprint.slice(0, 12)})`);
         logger.info(`  ${found.length} finding(s)`);
         logger.info(`  report with next steps: ${reportFile}`);
+      } catch (e) {
+        logger.error((e as Error).message);
+        process.exitCode = 1;
+      }
+      return;
+    }
+    if (options.overview && options.writeReview) {
+      try {
+        const { writeOverviewReview } = await import('../core/reconcile/overview.js');
+        logger.info(`  wrote ${relative(root, await writeOverviewReview({ root, docsPath, membersFile: resolve(root, options.overview), batch: options.batch }))}`);
+      } catch (e) {
+        logger.error((e as Error).message);
+        process.exitCode = 1;
+      }
+      return;
+    }
+    if (options.overview) {
+      try {
+        const { seedOverview, writeMembersFile } = await import('../core/reconcile/overview.js');
+        const seed = await seedOverview({
+          docsPath, config, ledger: await loadLedger(ledgerFile), question: options.overview,
+          limit: options.limit ? parseInt(options.limit, 10) || undefined : undefined,
+        });
+        const file = relative(root, await writeMembersFile(root, seed));
+        if (options.json) { console.log(JSON.stringify({ ...seed, file }, null, 2)); return; }
+        logger.header('hewtd reconcile --overview');
+        for (const m of seed.members) logger.info(`  [${m.state}] ${m.path} (${m.via})`);
+        if (seed.existingOverview) logger.info(`  existing overview covers ${Math.round(seed.existingOverview.coverage * 100)}% of these: ${seed.existingOverview.path} (update it instead of adding one)`);
+        if (seed.members.some((m) => m.state !== 'reconciled')) logger.warn('  reconcile the non-reconciled members first, or mark them in the overview');
+        logger.info(`  members file (confirm before drafting): ${file}`);
       } catch (e) {
         logger.error((e as Error).message);
         process.exitCode = 1;

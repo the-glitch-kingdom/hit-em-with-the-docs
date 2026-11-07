@@ -4,10 +4,12 @@ import { findMarkdownFiles, pathExists } from '../../utils/glob.js';
 import { extractLinks } from '../../utils/markdown.js';
 import { logger } from '../../utils/logger.js';
 import { detectDomainFromPath } from '../domains/detector.js';
+import { headingAnchors, LINK_BROKEN_ANCHOR } from './anchors.js';
 import type { Domain } from '../domains/constants.js';
 
 // Re-export types from utils/markdown.js
 export { type MarkdownLink } from '../../utils/markdown.js';
+export { headingAnchors, sectionOf, LINK_BROKEN_ANCHOR } from './anchors.js';
 
 export interface LinkCheckOptions {
   docsPath: string;
@@ -21,6 +23,8 @@ export interface LinkCheckResult {
   totalLinks: number;
   validLinks: number;
   brokenLinks: BrokenLink[];
+  /** Advisory LINK_BROKEN_ANCHOR warnings (#59); never counted as broken links. */
+  anchorWarnings: BrokenLink[];
   crossDomainLinks: CrossDomainLink[];
   externalLinks: ExternalLink[];
   stats: LinkStats;
@@ -73,6 +77,7 @@ export async function checkLinks(options: LinkCheckOptions): Promise<LinkCheckRe
     totalLinks: 0,
     validLinks: 0,
     brokenLinks: [],
+    anchorWarnings: [],
     crossDomainLinks: [],
     externalLinks: [],
     stats: {
@@ -121,7 +126,7 @@ export async function checkLinks(options: LinkCheckOptions): Promise<LinkCheckRe
           result.stats.internalLinks++;
 
           // Resolve the link path
-          const targetPath = resolveLink(link.url, fileDir, docsPath);
+          const targetPath = resolveLink(link.url, fileDir, docsPath, file);
 
           // Check if target exists
           const exists = await pathExists(targetPath);
@@ -136,6 +141,20 @@ export async function checkLinks(options: LinkCheckOptions): Promise<LinkCheckRe
             });
           } else {
             result.validLinks++;
+
+            const anchor = anchorOf(link.url);
+            if (anchor && targetPath.endsWith('.md')) {
+              const md = targetPath === file ? content : await readFile(targetPath, 'utf-8').catch(() => null);
+              if (md !== null && !headingAnchors(md).has(anchor)) {
+                result.anchorWarnings.push({
+                  sourceFile: relFile,
+                  targetPath: link.url,
+                  lineNumber: link.lineNumber,
+                  linkText: link.text,
+                  reason: `${LINK_BROKEN_ANCHOR}: no heading #${anchor}`,
+                });
+              }
+            }
 
             // Track cross-domain links
             const sourceDomain = detectDomainFromPath(file, docsPath).domain;
@@ -157,6 +176,17 @@ export async function checkLinks(options: LinkCheckOptions): Promise<LinkCheckRe
             }
           }
         } else {
+          // extractLinks treats `#x` as non-internal; check it against the doc itself (counts unchanged)
+          const self = link.url.startsWith('#') ? anchorOf(link.url) : null;
+          if (self && !headingAnchors(content).has(self)) {
+            result.anchorWarnings.push({
+              sourceFile: relFile,
+              targetPath: link.url,
+              lineNumber: link.lineNumber,
+              linkText: link.text,
+              reason: `${LINK_BROKEN_ANCHOR}: no heading #${self}`,
+            });
+          }
           // External link
           result.stats.externalLinks++;
           result.externalLinks.push({
@@ -204,21 +234,34 @@ export async function checkLinks(options: LinkCheckOptions): Promise<LinkCheckRe
       logger.warn(`Broken: ${result.brokenLinks.length}`);
     }
     logger.info(`Cross-domain: ${result.stats.crossDomainLinks}`);
+    for (const w of result.anchorWarnings) {
+      logger.warn(`${w.sourceFile}:${w.lineNumber} ${w.targetPath} - ${w.reason}`);
+    }
   }
 
   return result;
 }
 
+function anchorOf(url: string): string | null {
+  const raw = url.split('#')[1];
+  if (!raw) return null;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
 /**
  * Resolve a relative link to an absolute path
  */
-function resolveLink(linkUrl: string, fileDir: string, docsPath: string): string {
+function resolveLink(linkUrl: string, fileDir: string, docsPath: string, sourceFile = fileDir): string {
   // Remove anchor
   const pathPart = linkUrl.split('#')[0] ?? '';
 
   if (!pathPart) {
-    // Link is just an anchor, it's valid
-    return fileDir;
+    // Same-doc anchor: the caller resolves it to the doc itself
+    return sourceFile;
   }
 
   // Handle absolute links (from docs root)

@@ -1,7 +1,7 @@
 ---
 description: Reconcile existing docs with the code - triage, judge each doc against what it cites, propose fixes for you to accept, apply serially
 allowed-tools: Bash(npx:*), Read, Write, Agent
-argument-hint: "<domain|folder|files...> | --next N | --status | --outside  [--serial|--team]"
+argument-hint: "<domain|folder|files...> | --overview \"<question>\" | --next N | --status | --outside  [--serial|--team]"
 ---
 
 Arguments: $ARGUMENTS
@@ -58,7 +58,7 @@ It prints one review file per shard under `.hewtd/reconcile/review-<batch>-<shar
 
 Each review file has, per doc, a heading `## <docs-relative path>`, a `- [ ] accept` line, and a ```json block holding a ReviewEntry. For every entry fill:
 
-- `verdict`: `verify` (doc matches the code; stamps `last_verified`), `rewrite` (needs a larger rewrite; put the full proposed body in `draft`), `archive` (obsolete; put the why in `reason`), `unverifiable` (cannot be checked from the repo; sets `confidence: low`), or `fields` (frontmatter only).
+- `verdict`: `verify` (doc matches the code; stamps `last_verified`), `rewrite` (needs a larger rewrite; put the full proposed body in `draft`), `archive` (obsolete; put the why in `reason`), `merge`, `point` and `overview` (step 3), `unverifiable` (cannot be checked from the repo; sets `confidence: low`), or `fields` (frontmatter only).
 - `frontmatter`: keys to set, for example `purpose` and `symptoms`. Never `last_verified`; only the `verify` verdict stamps it.
 - `patch`: `[{old, new}]` exact-text body edits. Each `old` must occur exactly once in the body.
 - `sources`: every file you actually read to decide. Do not list files you did not open. A file read in a related repo (`reconcile.related_repos`) is listed as `<name>:<path>`.
@@ -87,15 +87,41 @@ Shards never include `secret`-lane docs (triage enforces this); do not add one b
 
 Wait for all of them, then read every review file and sanity-check: JSON still parses, every filled entry has a verdict, `patch.old` strings are plausible. Only then continue.
 
-## 3. Overviews
+## 3. Overviews and owners
 
-Clusters of 5+ linked docs with no `kind: overview` doc show up as `OVERVIEW_MISSING` warnings in `hewtd audit`. For clusters in scope, draft one overview per cluster:
+One owner per fact: a fact lives in one doc, and every other doc holds a one-line summary plus a link to it. Overviews are pointer records, not copies. All writes go through a review entry and `--apply`; never use `hewtd integrate -a`, and never place a file by hand. The step 0 secret rules hold: members and owners in the `secret` lane are never opened, and no value goes into a draft or `pointer.summary`.
 
-1. Read the cluster's docs.
-2. Copy `templates/overview.template.md`, fill every placeholder: `kind: overview`, a `purpose` that starts with the flow, 2-3 real `symptoms` (broad questions), and one link per member doc, in flow order, linking rather than copying content.
-3. Write the draft to `.hewtd/reconcile/overviews/<slug>.md`, outside the docs tree, and show it in the report.
+### 3a. Overview from a question
 
-On acceptance create it with `hewtd integrate .hewtd/reconcile/overviews/<slug>.md -a` (never place it by hand); on rejection delete the draft file.
+```bash
+hewtd reconcile --overview "<question>" [--limit N] --json
+```
+
+This ranks docs across the whole docs tree, adds linked docs that also scored, writes `.hewtd/reconcile/overview-<slug>.json` (the members file, returned as `file`), and changes no doc. Each member has a `state` (`reconciled`, `unreviewed`, `stale`, `secret`) and may carry `duplicates`. A returned `existingOverview` means update or point at it instead of drafting a second one.
+
+1. **Confirm members with the user.** Show the list with states. Drop wrong members from the members file, add missing ones, and re-run with a better question if the list is off. Do not continue until they confirm.
+2. **Unreviewed or stale members first.** Run them through steps 1-2 and 6 so they are reconciled before the overview cites them. If the user would rather not, they stay in with a `(unreviewed)` mark on that member's line and `allow_unreviewed: true` on the entry. `secret` members cannot be included at all.
+3. **Skeleton.** `hewtd reconcile --write-review --overview <members-file> [--batch N]` prints a review file holding one `overview` entry (`verdict: null`, empty `draft`), placed in the first member's folder as `overview-<slug>.md`. The target must not already exist.
+4. **Draft** from `templates/overview.template.md`. Put the body in `draft` and the fields in `frontmatter`: `kind: overview`, a `purpose` that starts with the flow, and 2-3 real `symptoms` in the words a reader would use (taken from the question and the members' own symptoms, never invented). One pointer record per stage: a one-line summary in your words, then a link to the section that owns it (`[title](path.md#anchor)`). Check each anchor exists in the member. Never copy a section's text. Set `verdict: overview`; read every member you cite and list it in `sources`.
+5. Show the draft in the report, then continue at step 5.
+
+Apply refuses an overview whose target exists, whose member changed since the review, or which has an unreviewed member without its mark. If a member changes later, triage sends the overview back to `check`; redraft it.
+
+### 3b. Owners: merge, then point
+
+When a triage entry or members file carries `duplicates` (reason `copy of <owner>#<section>`), the holder carries text another doc owns. For each:
+
+1. Read both sections. The owner is the doc triage named; on a `tie`, ask the user which owns it.
+2. **Merge first.** If the copy holds a fact the owner lacks (a step, a flag, a caveat), add an entry on the owner: `verdict: merge`, `path` the owner, `section` its anchor, `patch` folding in only those facts. If the owner already has everything, skip the merge.
+3. **Then point.** Add an entry on the holder: `verdict: point`, `remove: {old}` the exact duplicated text (occurs once), `pointer: {summary, target: "<owner path>#<anchor>"}` with a one-line summary, and `depends_on_merge` naming the merge entry's `id` if there is one. Without a merge, set `target_hash` to the owner's current content hash.
+4. **Never remove text before the owner holds it.** Apply checks mechanically that every identifier, number, path, flag and command in the removed text appears in the owner's section or in the summary, and refuses otherwise. Expect it: if a token would be lost, fold it into the merge or the summary rather than dropping it. The detected overlap can be part of a section, so run this check yourself on the full `remove` text before proposing.
+5. The holder's text is replaced by `<summary> Details: [<owner title>: <heading>](<path>#<anchor>)`. If the owner section later changes, the pointer goes stale and the holder is re-queued.
+
+In an overview, propose merge-then-point for members marked `duplicates` alongside the overview entry, so the overview links the owner's section.
+
+### 3c. Related repos
+
+If the owner is in a sibling repo (`reconcile.related_repos`), the holder keeps a short summary and a cross-link to that repo's doc, as a `point` entry whose `target` is the path inside that repo plus `#anchor`. Read the owner to check the anchor and the no-loss expectations, and list it in `sources` as `<name>:<path>`. Never copy, move or edit anything in the sibling repo; there is no merge into it, so the details must already be there.
 
 ## 4. Domains
 

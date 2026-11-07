@@ -16,6 +16,10 @@ export interface LedgerEntry {
   review_file?: string;
   /** secret verdict: env names the values moved to (never the values). */
   env_names?: string[];
+  /** overview verdict: member path -> content hash when the overview was written; triage re-checks them. */
+  members?: Record<string, string>;
+  /** point verdict: the owner section this doc's pointer line summarizes, and its hash when applied. */
+  pointer?: { target: string; section_hash: string };
   content_hash: string;
 }
 
@@ -64,7 +68,10 @@ export function recordEntry(
 ): LedgerEntry {
   const prev = ledger.entries[entry.path];
   const base = prev && prev.content_hash === entry.content_hash ? prev : undefined;
-  const next = { ...base, ...entry } as LedgerEntry;
+  // What a doc points at (pointer target, overview members) is about the doc's links, not its
+  // review: it survives a content change (a verify, any edit) so staleness keeps firing.
+  const tracking = prev && !base ? { ...(prev.pointer && { pointer: prev.pointer }), ...(prev.members && { members: prev.members }) } : {};
+  const next = { ...tracking, ...base, ...entry } as LedgerEntry;
   ledger.entries[entry.path] = next;
   return next;
 }

@@ -54,6 +54,9 @@ function isExempt(d: RetrievalDoc): boolean {
   return d.rel.split(/[\\/]/).some((seg) => SKIP_DIRS.has(seg));
 }
 
+/** The paragraph normalisation behind the near-duplicate hash; reconcile's duplicate detection reuses it. */
+export const normalizeBlock = (block: string): string => block.replace(/\s+/g, ' ').trim().toLowerCase();
+
 const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
 const wordCount = (s: string): number => (s ? s.split(/\s+/).length : 0);
@@ -124,7 +127,7 @@ function findNearDuplicates(docs: RetrievalDoc[], minChars: number): DuplicatePa
   const byHash = new Map<string, { docs: Set<number>; snippet: string }>();
   docs.forEach((d, i) => {
     for (const block of d.body.split(/\n\s*\n/)) {
-      const text = block.replace(/\s+/g, ' ').trim().toLowerCase();
+      const text = normalizeBlock(block);
       if (text.length < minChars) continue;
       const h = createHash('sha1').update(text).digest('hex');
       const e = byHash.get(h) ?? { docs: new Set<number>(), snippet: text.slice(0, 80) };

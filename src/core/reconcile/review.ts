@@ -11,7 +11,7 @@ import { assertNoSecrets, findSecrets, type RawSecret } from './secrets.js';
 import { loadPluginConfig } from '../../utils/config.js';
 import type { Shard, TriageResult } from './triage.js';
 
-export const VERDICTS = ['verify', 'rewrite', 'archive', 'unverifiable', 'fields', 'integrate', 'delete', 'secret'] as const;
+export const VERDICTS = ['verify', 'rewrite', 'archive', 'unverifiable', 'fields', 'integrate', 'delete', 'secret', 'merge', 'point', 'overview'] as const;
 export type Verdict = (typeof VERDICTS)[number];
 
 export interface ReviewEntry {
@@ -37,6 +37,22 @@ export interface ReviewEntry {
   domain?: string;
   /** secret: masked findings with the proposed env name each value moves to. Never the value. */
   secrets?: { rule: string; line: number; masked: string; fingerprint: string; env: string }[];
+  /** merge/point: id other entries may name in `depends_on_merge` (default: the path). */
+  id?: string;
+  /** merge: anchor of the owner section the patch folds copy-only content into. */
+  section?: string;
+  /** point: the copied text (exactly once in the doc) that becomes a one-line pointer. */
+  remove?: { old: string };
+  /** point: one-line summary plus the owner's section, `docs-relative/owner.md#anchor` (a sibling repo's doc may sit outside the docs tree: cross-link only). */
+  pointer?: { summary: string; target: string };
+  /** point: id (or path) of a merge entry applied first in the same batch. */
+  depends_on_merge?: string;
+  /** point without depends_on_merge: hash of the owner doc when the review was written. */
+  target_hash?: string;
+  /** overview: the reconciled docs the overview points at, with the hash each had when it was drafted. `path` is the new overview, `draft` its body, `frontmatter` its fields. */
+  members?: { path: string; content_hash: string }[];
+  /** overview: allow members that are not reconciled; the draft must mark each link `(unreviewed)`. */
+  allow_unreviewed?: boolean;
   lane?: string;
   reasons?: string[];
 }

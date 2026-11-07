@@ -55,7 +55,10 @@ and plan-tier docs are not checked.
 An overview doc walks a cross-cutting flow end to end and links every stage,
 so a search for the flow lands on one page. Mark it `kind: overview` and start
 from `templates/overview.template.md` (tier `guide`; a numbered "How it fits
-together" list, one link per stage). `kind` accepts only `overview`; any other
+together" list, one pointer record per stage: a one-line summary plus
+`Details: [Title: Heading](path#anchor)`, no copied text; mark unreconciled
+members `(unreviewed)`). `hewtd reconcile --overview "<question>"` can seed one
+from a question (see [reconcile.md](./reconcile.md)). `kind` accepts only `overview`; any other
 value fails the audit as `metadata-invalid` and lists the allowed values.
 
 hewtd finds the flows itself. A cluster is a domain, or a cross-domain
@@ -68,6 +71,7 @@ other members. A generated `INDEX.md` never counts as an overview.
 | Code | Raised when | Fix |
 |---|---|---|
 | `OVERVIEW_MISSING` | A cluster has no qualifying overview. Fires once per dense flow (not once per domain), as `Flow: tags — N docs (up to 5 paths, ...) have no overview`, reported on the most-linked member. Overlapping flows merge (Jaccard >= 0.6, or the smaller 80% inside the larger). Root-level README, INDEX and OVERVIEW docs are always hubs: never flow members, but can be the overview. Hubs (docs linking at least max(20, 10% of docs)) are excluded, a domain held together only by a generated `INDEX.md` does not fire, and a domain with 2+ sub-flows is reported as those flows. A flow needs members that link each other; a long chain is not a flow. A `kind: overview` doc below the coverage bar also lands here. | Write an overview from the template and link the members, or add the missing links to an existing one. |
+| `LINK_BROKEN_ANCHOR` (2.18.0, `hewtd link-check`) | A link's `#anchor` matches no heading in the target (or same) doc. Advisory warning in the link-check summary: never changes the exit code, `--strict` or the Action, and is not in the saved report. | Fix the anchor or the heading. |
 | `OVERVIEW_STALE_LINKS` | A qualifying overview misses some members. | Add a link to each member listed. |
 
 Both are advisory warnings with no `code`: they never change the exit code

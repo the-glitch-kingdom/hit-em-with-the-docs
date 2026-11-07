@@ -227,6 +227,8 @@ const reconcileConfigSchema = z
     schema_sources: z.array(z.string()).catch(DEFAULT_RECONCILE_SCHEMA_SOURCES),
     related_repos: lenientRelatedRepos,
     secrets: secretsConfigSchema,
+    /** Optional doc search hook (#59): argv template with a `{query}` placeholder; stdout lines are doc paths. */
+    search_command: z.string().min(1).optional().catch(undefined),
     team: z
       .object({
         min_docs: z.number().int().positive().catch(12),

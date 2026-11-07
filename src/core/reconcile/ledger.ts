@@ -14,6 +14,8 @@ export interface LedgerEntry {
   reviewed_on?: string;
   applied_commit?: string;
   review_file?: string;
+  /** secret verdict: env names the values moved to (never the values). */
+  env_names?: string[];
   content_hash: string;
 }
 

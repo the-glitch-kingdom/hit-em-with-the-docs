@@ -4,7 +4,7 @@
  * commits once per batch.
  */
 import { execFileSync } from 'child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, statSync, writeFileSync } from 'fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, statSync, writeFileSync } from 'fs';
 import { mkdir, readFile, stat, writeFile } from 'fs/promises';
 import { dirname, isAbsolute, join, relative } from 'path';
 import { parseFrontmatter, setFrontmatter } from '../../utils/frontmatter.js';
@@ -14,10 +14,10 @@ import { regenerateIndexes } from '../../generators/regenerate.js';
 import { getAllDomains } from '../domains/registry.js';
 import { hashContent, recordEntry, saveLedger, type Ledger } from './ledger.js';
 import { gitRoot } from './triage.js';
-import { assertNoSecrets } from './secrets.js';
+import { assertNoSecrets, findSecrets } from './secrets.js';
 import { loadPluginConfig } from '../../utils/config.js';
 import { applyOutsideEntry, outsideKey } from './outside.js';
-import { parseReview, reviewDir, type ReviewEntry } from './review.js';
+import { envNames, parseReview, reviewDir, type ReviewEntry } from './review.js';
 
 export interface ApplyOutcome {
   path: string;
@@ -29,6 +29,67 @@ export interface ApplyResult {
   outcomes: ApplyOutcome[];
   commit?: string;
   touched: string[];
+}
+
+const ENV = '.env.hewtd';
+
+function parseEnv(text: string): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const l of text.split('\n')) {
+    const k = /^([A-Za-z_]\w*)=(.*)$/.exec(l);
+    if (k) m.set(k[1]!, k[2]!.startsWith('"') ? JSON.parse(k[2]!) : k[2]!);
+  }
+  return m;
+}
+
+/** Make sure .env.hewtd is git-ignored (append to the root .gitignore if not); returns the .gitignore path if it changed. */
+function ensureIgnored(top: string): string | undefined {
+  const ignored = () => { try { git(top, ['check-ignore', '-q', ENV]); return true; } catch { return false; } };
+  if (ignored()) return undefined;
+  const gi = join(top, '.gitignore');
+  let cur = '';
+  try {
+    cur = existsSync(gi) ? readFileSync(gi, 'utf-8') : '';
+    writeFileSync(gi, `${cur}${cur && !cur.endsWith('\n') ? '\n' : ''}${ENV}\n`);
+    if (!ignored()) throw new Error(`${ENV} still not ignored`);
+  } catch (err) {
+    if (existsSync(gi) && statSync(gi).isFile()) writeFileSync(gi, cur);
+    throw new Error(`cannot git-ignore ${ENV}: ${(err as Error).message}`);
+  }
+  return gi;
+}
+
+/**
+ * secret verdict: move every value in the doc into .env.hewtd (0600) and leave a pointer.
+ * Values are re-read from the doc here, never from the review. Returns the new doc text,
+ * the env names, and what to touch/roll back.
+ */
+function moveSecrets(top: string, raw: string, e: ReviewEntry, cfg: Parameters<typeof findSecrets>[2]) {
+  const raws = findSecrets(raw, e.path, cfg).filter((r) => r.finding.kind === 'secret');
+  if (!raws.length) throw new Error('no secrets found in the doc');
+  const envPath = join(top, ENV);
+  const existing = existsSync(envPath) ? readFileSync(envPath, 'utf-8') : '';
+  const env = parseEnv(existing);
+  const proposed = new Map((e.secrets ?? []).map((s) => [s.fingerprint, s.env]));
+  const fresh = envNames(raw, e.path, raws.filter((r) => !proposed.has(r.finding.fingerprint)), new Set(env.keys()));
+  const lines: string[] = [];
+  let next = raw;
+  const names: string[] = [];
+  for (const { finding: f, value } of raws) {
+    const name = proposed.get(f.fingerprint) ?? fresh.get(f.fingerprint)!;
+    if (!/^[A-Za-z_]\w*$/.test(name)) throw new Error(`bad env name ${JSON.stringify(name)}`);
+    if (env.has(name) && env.get(name) !== value) throw new Error(`${name} already exists in ${ENV} with a different value`);
+    if (!env.has(name)) { env.set(name, value); lines.push(`${name}=${/^[\w.\/+=:@-]+$/.test(value) ? value : JSON.stringify(value)}`); }
+    names.push(name);
+    next = next.split(value).join(`<secret: ${name}, see ${ENV}>`);
+  }
+  if (findSecrets(next, e.path, cfg).some((r) => r.finding.kind === 'secret')) throw new Error('doc still holds a secret after the move');
+  const gi = ensureIgnored(top);
+  if (lines.length) {
+    writeFileSync(envPath, `${existing}${existing && !existing.endsWith('\n') ? '\n' : ''}${lines.join('\n')}\n`, { mode: 0o600 });
+    chmodSync(envPath, 0o600);
+  }
+  return { next, names: [...new Set(names)], gi, envPath };
 }
 
 const exists = (p: string) => stat(p).then(() => true, () => false);
@@ -53,7 +114,8 @@ function snapshot(top: string, docsRel: string): Map<string, Buffer> {
     }
     return out;
   };
-  const rels = [...paths(['--untracked-files=no']), ...paths(['--untracked-files=all', '--ignored', '--', docsRel])];
+  // The secret verdict appends to .env.hewtd and may edit .gitignore, so both come back on rollback.
+  const rels = [...new Set([...paths(['--untracked-files=no']), ...paths(['--untracked-files=all', '--ignored', '--', docsRel]), ENV, '.gitignore'])];
   for (const r of rels) {
     try { if (statSync(join(top, r)).isFile()) snap.set(r, readFileSync(join(top, r))); } catch { /* deleted in the worktree */ }
   }
@@ -123,7 +185,8 @@ export async function applyReviews(opts: {
   const outcomes: ApplyOutcome[] = [];
   const touched = new Set<string>(); // repo-relative via absolute paths
   const domains = new Set<string>();
-  const applied: { entry: ReviewEntry; file: string; abs: string; outside?: boolean }[] = [];
+  const applied: { entry: ReviewEntry; file: string; abs: string; outside?: boolean; envNames?: string[] }[] = [];
+  let envPath: string | undefined; // set once .env.hewtd was written, so a rollback restores it
   const known = new Set<string>(getAllDomains());
 
   for (const r of reviews) {
@@ -165,6 +228,7 @@ export async function applyReviews(opts: {
         outcomes.push({ path: e.path, status: 'stale', detail: 'doc changed since the review was written' });
         continue;
       }
+      let envNamesFor: string[] | undefined;
       try {
         // Nothing the review proposes to write may carry a secret.
         assertNoSecrets([...(e.patch ?? []).map((p) => p.new), e.draft ?? '', JSON.stringify(e.frontmatter ?? {})].join('\n'), e.path, secretsCfg);
@@ -173,6 +237,14 @@ export async function applyReviews(opts: {
           if (!res.ok) throw new Error(res.errors.join('; '));
           touched.add(abs);
           touched.add(join(docsPath, res.to ?? ''));
+        } else if (e.verdict === 'secret') {
+          if (!top0) throw new Error('the secret verdict needs a git repo');
+          const m = moveSecrets(top0, raw, e, secretsCfg);
+          if (m.gi) touched.add(m.gi);
+          envPath = m.envPath;
+          await writeFile(abs, m.next, 'utf-8');
+          touched.add(abs);
+          envNamesFor = m.names;
         } else if (e.verdict === 'rewrite') {
           const draft = join(reviewDir(root), 'drafts', e.path);
           await mkdir(dirname(draft), { recursive: true });
@@ -182,7 +254,7 @@ export async function applyReviews(opts: {
           touched.add(abs);
         }
         if (e.verdict !== 'rewrite') domains.add(e.path.split('/')[0] ?? '');
-        applied.push({ entry: e, file: reviewRef, abs });
+        applied.push({ entry: e, file: reviewRef, abs, ...(envNamesFor && { envNames: envNamesFor }) });
         outcomes.push({ path: e.path, status: 'applied' });
       } catch (err) {
         outcomes.push({ path: e.path, status: 'error', detail: (err as Error).message });
@@ -221,7 +293,7 @@ export async function applyReviews(opts: {
   } catch (err) {
     let msg = (err as Error).message;
     if (top) {
-      try { rollback(top, [...touched], snap); } catch (rbErr) { msg += `; rollback also failed: ${(rbErr as Error).message}`; }
+      try { rollback(top, [...touched, ...(envPath ? [envPath] : [])], snap); } catch (rbErr) { msg += `; rollback also failed: ${(rbErr as Error).message}`; }
     }
     const failed = new Set(applied.map((a) => a.entry.path));
     return { outcomes: outcomes.map((o) => (failed.has(o.path) && o.status === 'applied' ? { ...o, status: 'error' as const, detail: `rolled back: ${msg}` } : o)), touched: [] };
@@ -237,7 +309,7 @@ export async function applyReviews(opts: {
       lane: prev?.lane ?? a.entry.lane ?? 'check',
       content_hash: raw !== undefined ? hashContent(raw) : a.entry.content_hash,
     });
-    Object.assign(rec, { verdict: a.entry.verdict ?? '', reviewed_on: today, review_file: a.file, ...(commit && { applied_commit: commit }) });
+    Object.assign(rec, { verdict: a.entry.verdict ?? '', reviewed_on: today, review_file: a.file, ...(a.envNames && { env_names: a.envNames }), ...(commit && { applied_commit: commit }) });
   }
   await saveLedger(opts.ledgerFile, ledger);
   return { ...result, ...(commit && { commit }), touched: [...touched] };

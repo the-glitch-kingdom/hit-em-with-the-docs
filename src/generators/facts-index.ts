@@ -58,6 +58,7 @@ export function renderFactsIndex(index: CiterIndex): string {
   lines.push('status: active');
   lines.push("last_updated: '0000-00-00'");
   lines.push("version: '1.0.0'");
+  lines.push('generated: true');
   lines.push('purpose: Auto-generated index of all facts in the knowledge base, grouped by tag then confidence.');
   lines.push('---');
   lines.push('');

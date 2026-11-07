@@ -1,16 +1,41 @@
+---
+title: Security Documentation Index
+tier: reference
+domains: [security]
+status: active
+last_updated: '2026-11-07'
+version: '1.0.0'
+generated: true
+purpose: Complete listing of security documentation
+---
+
 # Security Documentation
 
-Documentation for security, authentication, and authorization.
-
-## Documents
-
-| Document | Tier | Status | Description |
-|----------|------|--------|-------------|
-| [auth-guide.md](./auth-guide.md) | guide | active | Authentication implementation guide |
+> Security, auth, Vault, Keycloak, RLS
 
 ## Overview
 
-This domain covers:
-- Authentication (OAuth2, JWT, sessions)
-- Authorization (RBAC, permissions)
-- Security best practices
+- **Total Documents:** 1
+- **Domain:** `security/`
+- **Category:** core
+- **Load Priority:** 9/10
+
+## Documents
+
+### Guides
+
+| Document | Status | Updated | Words | Purpose |
+|----------|--------|---------|-------|---------|
+| [Authentication Guide](auth-guide.md) | active | 2025-01-15 | 77 | Guide for implementing authentication |
+
+## Keywords
+
+This domain covers: security, auth, authentication, authorization, oauth, jwt, keycloak, vault, secrets, rls
+
+## Related Domains
+
+- [API](../api/) - API endpoints, routes, specifications, contracts
+
+---
+
+*Last updated: 2026-11-07*

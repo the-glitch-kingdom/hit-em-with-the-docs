@@ -10,6 +10,12 @@ export interface IndexEntry {
   lastUpdated: string;
   wordCount?: number;
   description?: string;
+  purpose?: string;
+}
+
+/** One-line, pipe-safe table cell; empty when missing. */
+export function purposeCell(purpose?: string): string {
+  return (purpose ?? '').replace(/\s+/g, ' ').trim().replace(/\|/g, '\\|');
 }
 
 /**
@@ -25,6 +31,7 @@ domains: [root]
 status: active
 last_updated: '${now}'
 version: '1.0.0'
+generated: true
 purpose: Navigation hub for all documentation
 ---
 
@@ -59,11 +66,11 @@ purpose: Navigation hub for all documentation
     if (domainEntries.length === 0) {
       content += `*No documents yet.*\n\n`;
     } else {
-      content += `| Document | Tier | Status | Updated |\n`;
-      content += `|----------|------|--------|----------|\n`;
+      content += `| Document | Tier | Status | Updated | Purpose |\n`;
+      content += `|----------|------|--------|----------|---------|\n`;
 
       for (const entry of domainEntries) {
-        content += `| [${entry.title}](${entry.path}) | ${entry.tier} | ${entry.status} | ${entry.lastUpdated} |\n`;
+        content += `| [${entry.title}](${entry.path}) | ${entry.tier} | ${entry.status} | ${entry.lastUpdated} | ${purposeCell(entry.purpose)} |\n`;
       }
       content += `\n`;
     }
@@ -99,6 +106,7 @@ domains: [${domain}]
 status: active
 last_updated: '${now}'
 version: '1.0.0'
+generated: true
 purpose: Complete listing of ${domain} documentation
 ---
 
@@ -131,12 +139,12 @@ purpose: Complete listing of ${domain} documentation
       if (tierEntries.length === 0) continue;
 
       content += `### ${capitalize(tier)}s\n\n`;
-      content += `| Document | Status | Updated | Words |\n`;
-      content += `|----------|--------|---------|-------|\n`;
+      content += `| Document | Status | Updated | Words | Purpose |\n`;
+      content += `|----------|--------|---------|-------|---------|\n`;
 
       for (const entry of tierEntries) {
         const words = entry.wordCount ? entry.wordCount.toLocaleString() : '-';
-        content += `| [${entry.title}](${entry.path}) | ${entry.status} | ${entry.lastUpdated} | ${words} |\n`;
+        content += `| [${entry.title}](${entry.path}) | ${entry.status} | ${entry.lastUpdated} | ${words} | ${purposeCell(entry.purpose)} |\n`;
       }
       content += `\n`;
     }

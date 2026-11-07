@@ -43,6 +43,7 @@ domains: [root]
 status: active
 last_updated: '${now}'
 version: '1.0.0'
+generated: true
 ---
 
 # Documentation Audit Report

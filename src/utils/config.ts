@@ -9,7 +9,7 @@
 
 import { readFileSync } from 'fs';
 import { mkdir, readFile, writeFile } from 'fs/promises';
-import { dirname, join, resolve } from 'path';
+import { dirname, join, relative, resolve, isAbsolute } from 'path';
 import { z } from 'zod';
 
 export const DEFAULT_DOCS_ROOT = '.documentation';
@@ -186,6 +186,8 @@ const pluginConfigSchema = z
     status: lenientStatusArray,
     archive: archiveConfigSchema,
     retrieval: retrievalConfigSchema,
+    /** Reports directory, relative to the repo root. Unset = `<docs root>/reports`. */
+    reports_dir: z.string().min(1).optional().catch(undefined),
   })
   .passthrough();
 
@@ -313,4 +315,21 @@ export function resolvePlaybookGlobs(
   config: PluginConfig
 ): string[] {
   return config.vault.playbook_paths.map((p) => join(projectRoot, p));
+}
+
+/**
+ * Where reports are written. Default `<docsPath>/reports`; `reports_dir`
+ * (relative to the repo root, the parent of docsPath) overrides it. Throws if
+ * the configured path escapes the repo root.
+ */
+export async function resolveReportsDir(docsPath: string): Promise<string> {
+  const projectRoot = dirname(docsPath);
+  const configured = (await loadPluginConfig(projectRoot)).reports_dir;
+  if (!configured) return join(docsPath, 'reports');
+  const dir = resolve(projectRoot, configured);
+  const rel = relative(projectRoot, dir);
+  if (rel.startsWith('..') || isAbsolute(rel)) {
+    throw new Error(`reports_dir "${configured}" must stay inside the repo root`);
+  }
+  return dir;
 }

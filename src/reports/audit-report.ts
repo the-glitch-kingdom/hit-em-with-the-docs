@@ -1,5 +1,6 @@
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
+import { resolveReportsDir } from '../utils/config.js';
 import { pathExists } from '../utils/glob.js';
 import { formatDate } from '../core/metadata/generator.js';
 import type { AuditResult } from '../core/audit/auditor.js';
@@ -163,7 +164,7 @@ export async function saveAuditReport(
   result: AuditResult,
   format: 'markdown' | 'json' = 'markdown'
 ): Promise<string> {
-  const reportsDir = join(docsPath, 'reports');
+  const reportsDir = await resolveReportsDir(docsPath);
 
   if (!(await pathExists(reportsDir))) {
     await mkdir(reportsDir, { recursive: true });

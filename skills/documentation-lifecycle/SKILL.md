@@ -26,6 +26,8 @@ hewtd integrate path/to/new-doc.md          # classifies + moves + registers it
 hewtd integrate path/to/new-doc.md --dry-run  # preview the chosen domain first
 ```
 
+`integrate` also refuses any input that contains a secret (masked findings, not bypassed by `--force`; fix the value or use `hewtd secrets --baseline-add`). For a new doc it records up to `integrate.sources_max` file-level `sources`, never `last_verified`.
+
 `integrate` refuses a file already inside the docs tree at a different path
 ("already in the docs tree"); use `maintain --fix` or `metadata-sync` for it.
 

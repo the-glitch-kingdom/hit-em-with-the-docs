@@ -133,6 +133,8 @@ Upgrading hewtd, its postinstall, the SessionStart hooks and the routine command
 (`index`, `maintain`, `metadata-sync`, `audit`) never add `sources` to, or otherwise change, an existing doc.
 Existing docs gain `sources` only through `/reconcile` batches; `hewtd integrate` records them for new docs only.
 
+Write-time secret scan and `sources` recording at integrate: see [`write-time-guards.md`](./write-time-guards.md).
+
 ## Where this lives in the code
 
 `listDomainDocFiles()` in `src/generators/regenerate.ts` is the single shared

@@ -26,6 +26,20 @@ tags: [vault, auth]
 object entry (`alert_name`, `user_phrase`, `error_pattern`) still needs
 `target` and `cites`. See `knowledge-base-primitives.md`.
 
+## `sources` (2.19.0)
+
+`sources` is a file-level list of the code a doc was written from, used only to
+verify the doc (`hewtd reconcile`). It is not a search field: search never
+indexes it. `integrate` records up to `integrate.sources_max` entries (default
+10, `0` turns it off) for a new doc and never writes `last_verified`. Hand-written
+entries are kept. It differs from a pointer record (a section replaced by a link
+to its owner) and from cross-links (prose links between docs): it names code
+files, not docs. See [`write-time-guards.md`](./write-time-guards.md).
+
+```json
+{ "integrate": { "sources_max": 10 } }
+```
+
 ## Generated files
 
 Generated indexes, registries and reports carry `generated: true` in their

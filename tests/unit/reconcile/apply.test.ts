@@ -147,6 +147,22 @@ describe('applyReviews', () => {
     expect((await run([f])).outcomes.map((o) => o.status)).toEqual(['applied', 'applied']);
   });
 
+  it('rollback restores uncommitted edits and pre-existing untracked files, not HEAD (review fix)', async () => {
+    const dirty = doc('b') + '\nmy uncommitted edit\n';
+    writeFileSync(join(docs, 'backend/b.md'), dirty);
+    writeFileSync(join(docs, 'INDEX.md'), '# my hand-made index, never committed\n');
+    const f = review('review-1-1.md', [entry('backend/b.md', { sources: ['x.ts'] })]);
+    const hook = join(root, '.git/hooks/pre-commit');
+    writeFileSync(hook, '#!/bin/sh\nexit 1\n');
+    chmodSync(hook, 0o755);
+    const res = await run([f]);
+    expect(res.outcomes[0]).toMatchObject({ status: 'error' });
+    expect(res.outcomes[0]!.detail).toMatch(/rolled back/);
+    expect(read('backend/b.md')).toBe(dirty);
+    expect(read('INDEX.md')).toBe('# my hand-made index, never committed\n');
+    expect(g('diff', '--cached', '--name-only')).toBe('');
+  });
+
   it('refuses an entry that resolves outside the project root and writes nothing', async () => {
     const outside = mkdtempSync(join(tmpdir(), 'sibling-'));
     try {

@@ -11,13 +11,15 @@ Field-test fixes for `/reconcile` and related repos (#58). Behaviour changes fir
 - `reconcile.schema_sources` now defaults to `[]`: tables are checked only when
   you configure it. Triage lists the schema files it found.
 - More references are `unknown` instead of `missing`: leading-slash paths,
-  host-like URLs, markdown-only names, and links that leave the project root.
+  host-like URLs, names no code defines that another doc also mentions, and
+  links that leave the project root.
 - `--apply` exits 1 on any error and prints a summary line. It is all-or-nothing:
-  a failure rolls the batch back, commits nothing and does not save the ledger.
+  a failure restores every touched file to its pre-apply state, commits nothing
+  and does not save the ledger.
   It stages with `-f`, so a gitignored `archive/` commits. `rewrite` verdicts no
   longer count as reviewed.
 - Outside lane: config-referenced files are `not-a-doc`, files under
-  `archive/old` folders are `junk`; integrated docs get git `last_updated` and no `last_validated`.
+  `archive`/`_archive`/`archived` folders are `junk`; integrated docs get git `last_updated` and no `last_validated`.
 - Staleness counts from the last body change; frontmatter-only commits no longer reset it.
 
 **Added and fixed**

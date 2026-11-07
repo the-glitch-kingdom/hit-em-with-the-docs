@@ -127,7 +127,8 @@ export interface RepoIndex {
   /** schema files actually parsed (from `schema_sources`) */
   schemaFiles: string[];
   /** names with no code hit that do appear in markdown (docs neither prove nor disprove them) */
-  mdNames: Set<string>;
+  /** name -> up to two markdown files that mention it (names with no code hit only) */
+  mdNames: Map<string, Set<string>>;
   /** symbol -> first file it appears in (non-markdown); filled by primeSymbols */
   symbols: Map<string, string | null>;
 }
@@ -217,7 +218,7 @@ export function buildRepoIndex(root: string, schemaSources: string[] = []): Repo
     if (f.endsWith('.sql')) parseSql(read(f), schema);
     else if (f.endsWith('.prisma')) parsePrisma(read(f), schema);
   }
-  return { root, files, scripts, makeTargets, deps, schema, schemaFiles, mdNames: new Set(), symbols: new Map() };
+  return { root, files, scripts, makeTargets, deps, schema, schemaFiles, mdNames: new Map(), symbols: new Map() };
 }
 
 const BIG_FILE = 512 * 1024;
@@ -273,8 +274,12 @@ export function primeSymbols(idx: RepoIndex, names: Iterable<string>): void {
       const unfound = chunk.filter((n) => !idx.symbols.get(n));
       if (unfound.length) {
         writeFileSync(pf, unfound.join('\n') + '\n');
-        for (const tok of run(['grep', '-I', '-h', '-o', '-w', '-F', '-f', pf, '--', '*.md', '*.mdx']).split('\n')) {
-          if (want.has(tok)) idx.mdNames.add(tok);
+        for (const l of run(['grep', '-I', '-o', '-w', '-F', '-f', pf, '--', '*.md', '*.mdx']).split('\n')) {
+          const c = l.lastIndexOf(':');
+          const tok = l.slice(c + 1);
+          if (c <= 0 || !want.has(tok)) continue;
+          const files = idx.mdNames.get(tok) ?? idx.mdNames.set(tok, new Set()).get(tok)!;
+          if (files.size < 2) files.add(l.slice(0, c));
         }
       }
     } finally { rmSync(dir, { recursive: true, force: true }); }
@@ -283,6 +288,11 @@ export function primeSymbols(idx: RepoIndex, names: Iterable<string>): void {
 }
 
 // ---------- resolution ----------
+
+function mentionedElsewhere(idx: RepoIndex, name: string, self: string | undefined): boolean {
+  const files = idx.mdNames.get(name);
+  return !!files && [...files].some((f) => f !== self);
+}
 
 /** A sibling checkout, read-only. `idx` is built lazily, only when a ref misses locally. */
 export interface RelatedRepo { name: string; root: string; idx?: RepoIndex | null }
@@ -343,6 +353,7 @@ export async function resolveReferences(idx: RepoIndex, refs: Reference[], opts:
   const lost = symNames.filter((n) => !idx.symbols.get(n));
   if (related.length && lost.length) for (const rel of related) { const sib = relatedIndex(rel); if (sib) primeSymbols(sib, lost); }
   const haveSchema = idx.schema.tables.size > 0;
+  const self = opts.docFile ? relative(idx.root, opts.docFile).split('\\').join('/') : undefined;
   const out: ResolvedReference[] = [];
   for (const r of refs) {
     let status: RefStatus = 'unknown';
@@ -356,7 +367,8 @@ export async function resolveReferences(idx: RepoIndex, refs: Reference[], opts:
         break;
       case 'symbol': case 'env':
         where = idx.symbols.get(r.ref) ?? undefined;
-        status = where ? 'ok' : idx.mdNames.has(r.ref) ? 'unknown' : 'missing';
+        // Only another doc's mention makes a code-less name `unknown` (an external name); the citing doc itself proves nothing.
+        status = where ? 'ok' : mentionedElsewhere(idx, r.ref, self) ? 'unknown' : 'missing';
         break;
       case 'command': {
         const [tool, name] = [r.ref.split(' ')[0]!, r.ref.replace(/^\S+( run)? /, '')];

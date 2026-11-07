@@ -57,8 +57,8 @@ pushes a doc toward `archive-candidate`; `unknown` is neutral.
 - Scripts are collected from every tracked `package.json`, not just the root.
 - `unknown` (never `missing`): a link or path that leaves the project root
   (including a leading-slash path), a host-like URL that does not resolve in the
-  repo (`example.com/docs/x`), a name that appears only in markdown and not in
-  code, and a reference into a related repo that is not checked out.
+  repo (`example.com/docs/x`), a name that no code defines but another doc also
+  mentions (an external name; the citing doc's own mention does not count), and a reference into a related repo that is not checked out.
 - Tables and columns are checked only against `schema_sources`. It defaults to
   `[]`, so nothing is checked until you list globs, for example
   `["**/migrations/**/*.sql", "**/schema.prisma"]`. Triage lists the schema
@@ -123,7 +123,8 @@ entries use `integrate` and `delete`.
 - Touched domains have their indexes regenerated.
 - **All or nothing.** Files are staged with `git add -A -f` (so a gitignored
   `archive/` still commits). If anything fails after the first write (index
-  regeneration, stage, commit) the batch is restored from HEAD, files and
+  regeneration, stage, commit) every touched file returns to its pre-apply
+  state (uncommitted edits and pre-existing untracked files included), files and
   directories the batch created are removed, nothing is committed and the
   ledger is not saved. Rolled-back entries are reported as `error`
   (`rolled back: <msg>`).
@@ -178,7 +179,8 @@ key is optional and invalid values fall back to the defaults:
 
 Files named inside tracked config (`*.json`, `*.yaml`, `*.yml`, `*.toml`) are
 classed `not-a-doc` ("referenced by <file>"); files under `archive`,
-`_archive`, `archived` or `old` folders are `junk` ("archived copy").
+`_archive` or `archived` folders are `junk` ("archived copy"). A config or
+script must name the exact path (`docs/release-notes.md` does not claim `notes.md`).
 `keep_in_place` always wins, also at apply time. An integrated doc gets
 `last_updated` from git (today if untracked) and no `last_validated`. An accepted `integrate` moves
 the file into the tree and removes the original in one commit, with

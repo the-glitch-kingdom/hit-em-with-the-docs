@@ -63,6 +63,19 @@ describe('reconcile references', () => {
     expect(st(rs, 'orders.total')).toBe('ok');
   });
 
+  it("the citing doc's own mention never makes a code-less name unknown (review fix)", async () => {
+    put('docs/self.md', 'Calls `removedHelperFn` and reads `GONE_SETTING_VAR`.\n');
+    execFileSync('git', ['add', '-A'], { cwd: root });
+    const fresh = buildRepoIndex(root, []);
+    const body = 'Calls `removedHelperFn` and reads `GONE_SETTING_VAR`.\n';
+    const rs = await checkDocReferences(fresh, body, { docFile: join(root, 'docs/self.md'), docsPath: join(root, 'docs') });
+    expect(st(rs, 'removedHelperFn')).toBe('missing');
+    expect(st(rs, 'GONE_SETTING_VAR')).toBe('missing');
+    // mentioned by another doc too: an external name, so unknown
+    const other = await checkDocReferences(fresh, 'See `ghostSymbolName`.\n', { docFile: join(root, 'docs/self.md'), docsPath: join(root, 'docs') });
+    expect(st(other, 'ghostSymbolName')).toBe('unknown');
+  });
+
   it('example-output fences are ignored', () => {
     const rs = extractReferences('```text output\nnpm run phantom `src/x/y.ts`\n```\n```bash\nnpm run real\n```');
     expect(rs.map((r) => r.ref)).toEqual(['npm run real']);

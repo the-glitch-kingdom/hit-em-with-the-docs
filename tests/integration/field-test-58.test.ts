@@ -68,7 +68,8 @@ beforeAll(() => {
   put(root, 'packages/web/package.json', JSON.stringify({ scripts: { 'web-build': 'tsc' } }));
   put(root, 'config/app.yaml', 'docs: notes/used.md\n');
   put(root, 'notes/used.md', '# Used by config\n\n' + 'word '.repeat(60) + '\n');
-  put(root, 'old/legacy.md', '# Legacy\n\n' + 'word '.repeat(60) + '\n');
+  put(root, '_archive/legacy.md', '# Legacy\n\n' + 'word '.repeat(60) + '\n');
+  put(root, 'product/old/plan.md', '# Plan\n\n' + 'word '.repeat(60) + '\n'); // `old/` is not an archive folder
   put(root, 'notes/design.md', '# Design of the cache layer\n\n' + 'word '.repeat(60) + '\n');
   put(root, 'README.md', '# Readme\n');
 
@@ -78,6 +79,8 @@ beforeAll(() => {
   put(docs, 'beta-ops/stale.md', doc('beta-ops', 'stale', 'See `src/gone1.ts`, `src/gone2.ts`, `src/gone3.ts`.'));
   put(docs, 'beta-ops/ext.md', doc('beta-ops', 'ext', 'Call `/api/v1/things`, see `example.com/docs/page` and the `SOME_EXTERNAL_ENV` setting. Also `src/real.ts`.'));
   put(docs, 'alpha-ops/yaml.md', doc('alpha-ops', 'yaml', 'See `src/real.ts`.', 'tags:\n- one\n- two\n'));
+  // an external name: no code defines it, but another doc names it too, so it is `unknown` (the citing doc alone proves nothing)
+  put(docs, 'beta-ops/ext-ref.md', doc('beta-ops', 'ext-ref', 'Set `SOME_EXTERNAL_ENV` in the provider console. See `src/real.ts`.'));
   for (let i = 1; i <= 5; i++) put(docs, `gamma-ops/f${i}.md`, doc('gamma-ops', `f${i}`, [1, 2].map((k) => ((i + k - 1) % 5) + 1).map((j) => `[f${j}](f${j}.md)`).join(' ') + ' See `src/real.ts`.'));
   put(docs, 'README.md', '# Docs readme\n\n' + [1, 2].map((j) => `[f${j}](gamma-ops/f${j}.md)`).join(' ') + '\n');
   commit(root, 'init', '2001-01-01T00:00:00');
@@ -160,7 +163,8 @@ describe('field test #58 fixture (built CLI)', () => {
     const r = hewtd(['reconcile', '--outside', '--json']);
     const cls = Object.fromEntries(JSON.parse(r.stdout).map((d: { path: string; cls: string }) => [d.path, d.cls]));
     expect(cls['notes/used.md']).toBe('not-a-doc');
-    expect(cls['old/legacy.md']).toBe('junk');
+    expect(cls['_archive/legacy.md']).toBe('junk');
+    expect(cls['product/old/plan.md']).toBe('misplaced');
     expect(cls['notes/design.md']).toBe('misplaced');
     expect(cls['README.md']).toBe('tool-read');
 
@@ -177,7 +181,7 @@ describe('field test #58 fixture (built CLI)', () => {
 
   it('#8 apply: a rewrite stays queued, an error exits 1 with a summary, YAML diff is limited to the changed field', () => {
     const yamlBefore = readFileSync(join(docs, 'alpha-ops/yaml.md'), 'utf-8');
-    const f = review('alpha-ops', 'beta-ops', 'gamma-ops')[0]!;
+    const f = review('alpha-ops', 'beta-ops', 'gamma-ops', '--serial')[0]!;
     fill(f, (p) => (p === 'beta-ops/ext.md' ? { verdict: 'rewrite', draft: 'x' } : p === 'alpha-ops/yaml.md' ? { verdict: 'fields', frontmatter: { purpose: 'Explains how the yaml fixture keeps its list indentation intact' } } : p === 'gamma-ops/f1.md' ? { verdict: 'integrate' } : null));
     const r = hewtd(['reconcile', '--apply', f]);
     expect(r.status).toBe(1);

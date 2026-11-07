@@ -51,6 +51,16 @@ describe('discoverOutside', () => {
     expect((await discoverOutside(docs, ['notes/**'])).find((d) => d.path === 'notes/copy.md')!.cls).toBe('tool-read');
   });
 
+  it('a config naming a longer file does not claim a shorter one; old/ is not an archive folder (review fix)', async () => {
+    put('notes.md', `# Notes\n\n${words(50)}\n`);
+    put('product/old/plan.md', `# Plan\n\n${words(50)}\n`);
+    put('tools/release.json', '{"changelog": "docs/release-notes.md"}\n');
+    g('add', '-A'); g('commit', '-qm', 'more');
+    const found = await discoverOutside(docs, []);
+    expect(found.find((d) => d.path === 'notes.md')).toMatchObject({ cls: 'misplaced' });
+    expect(found.find((d) => d.path === 'product/old/plan.md')!.cls).toBe('misplaced');
+  });
+
   it('classes config-referenced files as not-a-doc and archive folders as junk', async () => {
     put('.design-sync/conventions.md', `# Conventions\n\n${words(50)}\n`);
     put('tools/config.json', '{"conventions": "./.design-sync/conventions.md"}\n');

@@ -37,7 +37,13 @@ function parseEnv(text: string): Map<string, string> {
   const m = new Map<string, string>();
   for (const l of text.split('\n')) {
     const k = /^([A-Za-z_]\w*)=(.*)$/.exec(l);
-    if (k) m.set(k[1]!, k[2]!.startsWith('"') ? JSON.parse(k[2]!) : k[2]!);
+    if (!k) continue;
+    let v = k[2]!;
+    if (v.startsWith('"')) {
+      // A JSON.parse error message quotes the input, so never let it escape.
+      try { v = JSON.parse(v); } catch { throw new Error(`${ENV}: line for ${k[1]} is malformed (fix it by hand)`); }
+    }
+    m.set(k[1]!, v);
   }
   return m;
 }
@@ -73,15 +79,41 @@ function moveSecrets(top: string, raw: string, e: ReviewEntry, cfg: Parameters<t
   const proposed = new Map((e.secrets ?? []).map((s) => [s.fingerprint, s.env]));
   const fresh = envNames(raw, e.path, raws.filter((r) => !proposed.has(r.finding.fingerprint)), new Set(env.keys()));
   const lines: string[] = [];
-  let next = raw;
   const names: string[] = [];
+  const lineStarts = [0];
+  for (let i = 0; i < raw.length; i++) if (raw[i] === '\n') lineStarts.push(i + 1);
+  const fmEnd = raw.startsWith('---') ? raw.indexOf('\n---', 3) : -1;
+  const edits: { at: number; len: number; text: string; line: number }[] = [];
   for (const { finding: f, value } of raws) {
     const name = proposed.get(f.fingerprint) ?? fresh.get(f.fingerprint)!;
     if (!/^[A-Za-z_]\w*$/.test(name)) throw new Error(`bad env name ${JSON.stringify(name)}`);
     if (env.has(name) && env.get(name) !== value) throw new Error(`${name} already exists in ${ENV} with a different value`);
     if (!env.has(name)) { env.set(name, value); lines.push(`${name}=${/^[\w./+=:@-]+$/.test(value) ? value : JSON.stringify(value)}`); }
     names.push(name);
+    // Replace only where the finding is, never other occurrences of the same text in prose.
+    const at = lineStarts[f.line - 1]! + f.col - 1;
+    if (raw.slice(at, at + value.length) !== value) throw new Error(`finding at line ${f.line} moved; re-run triage`);
+    edits.push({ at, len: value.length, text: `<secret: ${name}, see ${ENV}>`, line: f.line - 1 });
+  }
+  let next = raw;
+  for (const ed of edits.sort((x, y) => y.at - x.at)) next = next.slice(0, ed.at) + ed.text + next.slice(ed.at + ed.len);
+  // A long value repeated elsewhere (outside a rule's context) is still the same secret; short weak
+  // values like a url password may be ordinary words in prose, so only long ones are chased.
+  for (const { finding: f, value } of raws) {
+    if (value.length < 16) continue;
+    const name = proposed.get(f.fingerprint) ?? fresh.get(f.fingerprint)!;
     next = next.split(value).join(`<secret: ${name}, see ${ENV}>`);
+  }
+  // In YAML frontmatter the pointer (': ', ', ') must sit inside a quoted scalar, or the doc stops parsing.
+  const fmLines = new Set(edits.filter((ed) => fmEnd > 0 && ed.at < fmEnd).map((ed) => ed.line));
+  if (fmLines.size) {
+    const ls = next.split('\n');
+    for (const i of fmLines) {
+      const m = /^(\s*(?:-\s+)?(?:[^:#\s][^:#]*?:\s+)?)(.*)$/.exec(ls[i]!);
+      if (m && !/^["']/.test(m[2]!)) ls[i] = m[1]! + JSON.stringify(m[2]!);
+    }
+    next = ls.join('\n');
+    try { parseFrontmatter(next); } catch { throw new Error('frontmatter would not parse after the move; move this value by hand'); }
   }
   if (findSecrets(next, e.path, cfg).some((r) => r.finding.kind === 'secret')) throw new Error('doc still holds a secret after the move');
   const gi = ensureIgnored(top);

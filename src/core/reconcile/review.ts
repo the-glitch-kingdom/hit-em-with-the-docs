@@ -128,9 +128,13 @@ export async function writeReviewSkeletons(opts: {
   const byPath = new Map(judged.map((d) => [d.path, d]));
   // Shards hold only fields-only/check docs; archive candidates (and serial mode) ride in shard 1.
   const placed = new Set(triage.shards.flatMap((s) => s.docs));
-  const extra = judged.filter((d) => !placed.has(d.path)).map((d) => d.path);
+  // Secret-lane docs never ride in a judgment shard's file: they get their own review file (id 0,
+  // `review-<batch>-secrets.md`) that is handled before judgment and never handed to an agent.
+  const extra = judged.filter((d) => !placed.has(d.path) && d.lane !== 'secret').map((d) => d.path);
+  const secretDocs = judged.filter((d) => d.lane === 'secret').map((d) => d.path);
   const shards: Shard[] = triage.shards.length ? triage.shards.map((s) => ({ ...s })) : [{ id: 1, docs: [], bytes: 0 }];
   shards[0]!.docs = [...shards[0]!.docs, ...extra];
+  if (secretDocs.length) shards.unshift({ id: 0, docs: secretDocs, bytes: 0 });
   const written: string[] = [];
   const secretsCfg = (await loadPluginConfig(root)).reconcile.secrets;
   const usedEnv = new Set<string>();
@@ -153,7 +157,8 @@ export async function writeReviewSkeletons(opts: {
         ...(d && { lane: d.lane, reasons: d.reasons }),
       });
     }
-    const file = join(dir, `review-${batch}-${s.id}.md`);
+    if (!entries.length) continue;
+    const file = join(dir, `review-${batch}-${s.id === 0 ? 'secrets' : s.id}.md`);
     await mkdir(dirname(file), { recursive: true });
     await writeFile(file, renderReview({ batch, shard: s.id, scope }, entries), { encoding: 'utf-8', flag: 'wx' });
     written.push(file);

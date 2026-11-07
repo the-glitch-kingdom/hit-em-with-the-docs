@@ -143,6 +143,7 @@ project root, `name` matching `[\w.-]+`. Invalid entries are dropped one by one.
 ## Review file and apply
 
 `--write-review` writes `<git root>/.hewtd/reconcile/review-<batch>-<shard>.md`
+(secret-lane docs go to their own `review-<batch>-secrets.md`, never into a shard file)
 (never overwrites). Each doc is a `## <path>` heading, a `- [ ] accept` line and
 a JSON entry: `path`, `content_hash`, `verdict`, and optionally `frontmatter`,
 `patch` (`{old,new}` pairs; each `old` must occur exactly once in the body),
@@ -269,7 +270,8 @@ accepted entry. Links from other outside files are not repointed.
 - **Config ignored from a subdirectory**: fixed in 2.16.0; config is read from
   the docs path's project root, not the current directory.
 - **False positive flagged as a secret**: add it to `reconcile.secrets.allow`
-  (by `fingerprint` from the report, or a `pattern`) with a `reason`.
+  (by `fingerprint` from the report, the full hash or any prefix of at least 12 hex
+  chars as shown there, or a `pattern`) with a `reason`.
 - **"cannot git-ignore .env.hewtd"**: `.gitignore` is not writable; fix its
   permissions and rerun. Nothing was changed.
 - **"NAME already exists in .env.hewtd with a different value"**: rename or

@@ -75,3 +75,31 @@ describe('config', () => {
     expect(c.reconcile.secrets).toEqual({ allow: [{ fingerprint: 'a', pattern: undefined, file: undefined, reason: 'ok' }], disabled_rules: ['email'] });
   });
 });
+
+describe('review fixes (#59)', () => {
+  it('stays linear on long single-line input (no catastrophic backtracking)', () => {
+    for (const text of ['a-'.repeat(40000), 'a.token'.repeat(20000), 'x://' + 'a'.repeat(50000), 'a.'.repeat(40000)]) {
+      const t0 = performance.now();
+      scan(text);
+      expect(performance.now() - t0).toBeLessThan(1500);
+    }
+  });
+
+  it('flags every non-trivial AppRole uuid, whatever its entropy', () => {
+    let x = 12345;
+    const hex = () => { x = (x * 1103515245 + 12345) & 0x7fffffff; return ((x >> 16) % 16).toString(16); };
+    const id = () => [8, 4, 4, 4, 12].map((n) => Array.from({ length: n }, hex).join('')).join('-');
+    for (let i = 0; i < 2000; i++) {
+      const u = id();
+      expect(scan(`VAULT_SECRET_ID=${u}`).length, u).toBe(1);
+      expect(scan(`secret_id: "${u}"`).length, u).toBe(1);
+    }
+    expect(scan('ROLE_ID=00000000-0000-0000-0000-000000000000')).toEqual([]);
+  });
+
+  it('allowlist accepts the 12-char fingerprint prefix shown in reports', () => {
+    const fp = fingerprint(hvs);
+    expect(scan(`t ${hvs}`, { allow: [{ fingerprint: fp.slice(0, 12), reason: 'fixture' }], disabled_rules: [] })).toEqual([]);
+    expect(scan(`t ${hvs}`, { allow: [{ fingerprint: fp.slice(0, 8), reason: 'too short' }], disabled_rules: [] })).toHaveLength(1);
+  });
+});

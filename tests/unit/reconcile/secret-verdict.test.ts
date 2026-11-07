@@ -107,4 +107,47 @@ describe('secret verdict', () => {
     expect(readFileSync(join(root, '.gitignore'), 'utf-8')).toBe(gi);
     expect(readdirSync(join(docs, 'backend'))).toContain('a.md');
   });
+
+  it('a value in YAML frontmatter leaves frontmatter that still parses (review fix)', async () => {
+    writeFileSync(join(docs, 'backend/a.md'), `---\ntitle: a\ndomains:\n  - backend\napi_token: ${tok}\n---\n\n# a\n\nbody\n`);
+    writeFileSync(join(root, '.gitignore'), '.hewtd/\n');
+    g('add', '-A'); g('commit', '-qm', 'seed');
+    const res = await run(entry());
+    expect(res.outcomes[0]!.status).toBe('applied');
+    const { parseFrontmatter } = await import('../../../src/utils/frontmatter');
+    const fm = parseFrontmatter<Record<string, unknown>>(read('backend/a.md')).data;
+    expect(fm.api_token).toMatch(/^<secret: HEWTD_SECRET_\w+, see \.env\.hewtd>$/);
+    expect(read('backend/a.md')).not.toContain(tok);
+  });
+
+  it('a short url password is replaced only where it was found, not in prose (review fix)', async () => {
+    const pw = 'hunter' + '2';
+    seed(`Connect with postgres://app:${pw}@db/main.\n\nThe ${pw} account is a ${pw} test persona.`);
+    const res = await run(entry());
+    expect(res.outcomes[0]!.status).toBe('applied');
+    const t = read('backend/a.md');
+    expect(t).toContain('postgres://app:<secret: ');
+    expect(t).toContain(`The ${pw} account is a ${pw} test persona.`);
+  });
+
+  it('a malformed .env.hewtd line errors without quoting any of it (review fix)', async () => {
+    seed(`VAULT_TOKEN=${tok}`);
+    writeFileSync(env(), `HEWTD_SECRET_X="${tok2}\n`);
+    const res = await run(entry());
+    expect(res.outcomes[0]!.status).toBe('error');
+    expect(res.outcomes[0]!.detail).toMatch(/malformed/);
+    expect(JSON.stringify(res)).not.toContain(tok2.slice(4));
+  });
+
+  it('secret-lane docs get their own review file, never a shard file (review fix)', async () => {
+    seed(`VAULT_TOKEN=${tok}`);
+    writeFileSync(join(docs, 'backend/b.md'), doc('plain text, no secrets here at all'));
+    g('add', '-A'); g('commit', '-qm', 'b');
+    const triage = { docs: [{ path: 'backend/a.md', lane: 'secret', reasons: ['x'] }, { path: 'backend/b.md', lane: 'check', reasons: ['y'] }], shards: [{ id: 1, docs: ['backend/b.md'], bytes: 1 }] } as unknown as TriageResult;
+    const files = await writeReviewSkeletons({ root, docsPath: docs, triage, scope: 's' });
+    const names = files.map((f) => f.split('/').pop());
+    expect(names.sort()).toEqual(['review-1-1.md', 'review-1-secrets.md']);
+    expect(readFileSync(files.find((f) => f.endsWith('-1.md'))!, 'utf-8')).not.toContain('backend/a.md');
+  });
 });
+

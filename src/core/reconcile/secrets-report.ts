@@ -21,7 +21,7 @@ export async function valuesInHistory(cwd: string, path: string, values: string[
   if (!values.length) return hit;
   const keep = Math.max(...values.map((v) => v.length));
   await new Promise<void>((done) => {
-    const p = spawn('git', ['log', '--all', '-p', '-U0', '--format=', '--', path], { cwd, stdio: ['ignore', 'pipe', 'ignore'] });
+    const p = spawn('git', ['log', '--all', '--follow', '-p', '-U0', '--format=', '--', path], { cwd, stdio: ['ignore', 'pipe', 'ignore'] });
     let tail = '';
     p.stdout.setEncoding('utf-8');
     p.stdout.on('data', (c: string) => {

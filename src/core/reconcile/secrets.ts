@@ -46,6 +46,8 @@ const jwtOk = (v: string): boolean => {
   try { return typeof JSON.parse(Buffer.from(v.split('.')[0]!, 'base64url').toString()).alg === 'string'; } catch { return false; }
 };
 const NAME = 'SECRET|TOKEN|PASSWORD|PASSWD|API_?KEY|PRIVATE_?KEY|ACCESS_?KEY|SECRET_?ID|ROLE_?ID|CLIENT_?SECRET';
+const NAME_RE = new RegExp(`(?:${NAME})`, 'i');
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const looksLikePathOrUrl = (v: string) => /^(\/|\.{1,2}\/|~)/.test(v) || /^[a-z][a-z0-9+.-]*:\/\/[^@]*$/i.test(v);
 
 // Order matters: specific shapes first, so the generic rule skips what they already found.
@@ -65,16 +67,23 @@ const RULES: Rule[] = [
   { id: 'vault-token', re: /\bhv[sb]\.[A-Za-z0-9_-]{20,}/g },
   { id: 'vault-token-legacy', re: /(?<![\w.])s\.[A-Za-z0-9]{24}\b/g, accept: (v) => /\d/.test(v) && entropy(v) >= 3.5 },
   { id: 'jwt', re: /\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}/g, accept: jwtOk },
-  { id: 'url-password', re: /\b[a-z][a-z0-9+.-]*:\/\/([^\s:@/]+):([^\s@/]+)@/gi, group: 2, weak: true, accept: (v, m) => v !== m[1] }, // user:user is a local-dev default
-  { id: 'generic-secret', re: new RegExp(`["'\`]?\\b[\\w.-]*(?:${NAME})[\\w.-]*["'\`]?\\s*[:=]\\s*["'\`]?([^\\s"'\`,;]+)`, 'gi'), group: 1, weak: true,
-    accept: (v) => v.length >= 16 && entropy(v) >= 3.5 && !looksLikePathOrUrl(v) },
+  // Bounded quantifiers keep every rule linear on long single-line files (minified/base64 markdown).
+  { id: 'url-password', re: /\b[a-z][a-z0-9+.-]{0,30}:\/\/([^\s:@/]{1,256}):([^\s@/]{1,256})@/gi, group: 2, weak: true, accept: (v, m) => v !== m[1] }, // user:user is a local-dev default
+  // Key matched as one bounded token starting at a token boundary, then checked for a secret-ish name in code:
+  // the old `[\w.-]*(?:NAME)[\w.-]*` form backtracked quadratically on long lines.
+  { id: 'generic-secret', re: /(?<![\w.-])["'`]?([A-Za-z_][\w.-]{0,80})["'`]?[ \t]{0,8}[:=][ \t]{0,8}["'`]?([^\s"'`,;]{1,512})/g, group: 2, weak: true,
+    accept: (v, m) => NAME_RE.test(m[1]!) && !looksLikePathOrUrl(v) &&
+      // AppRole role/secret ids are uuids, which often fall under the entropy bar: a non-trivial uuid always counts.
+      ((UUID.test(v) && new Set(v.replace(/-/g, '')).size > 4) || (v.length >= 16 && entropy(v) >= 3.5)) },
 ];
-const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
+// Start only at a token boundary and bound each part (RFC limits), so long runs without '@' stay linear.
+const EMAIL = /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}/g;
 
 const allowed = (cfg: SecretsConfig, file: string, value: string, fp: string): boolean =>
   cfg.allow.some((a) => {
     if (a.file && a.file !== file && !globToRe(a.file).test(file)) return false;
-    if (a.fingerprint && a.fingerprint === fp) return true;
+    // The report and text output show a 12-char prefix; accept any prefix that long, or the full hash.
+    if (a.fingerprint && a.fingerprint.length >= 12 && fp.startsWith(a.fingerprint.toLowerCase())) return true;
     if (a.pattern) { try { return new RegExp(a.pattern).test(value); } catch { return false; } }
     return false;
   });

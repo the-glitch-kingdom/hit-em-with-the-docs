@@ -1164,7 +1164,10 @@ program
         const after = await loadLedger(ledgerFile);
         if (res.outcomes.some((o) => o.status === 'applied' && after.entries[o.path]?.env_names?.length)) {
           const { buildSecretsReport, writeSecretsReport } = await import('../core/reconcile/secrets-report.js');
-          const rep = await buildSecretsReport({ root, docsPath, findings: [], ledger: after, cfg: config.reconcile.secrets });
+          // Re-scan, so findings still pending stay in the report instead of being overwritten by the moved ones.
+          const { scanSecrets } = await import('../core/reconcile/triage.js');
+          const pending = await scanSecrets({ root, docsPath, config });
+          const rep = await buildSecretsReport({ root, docsPath, findings: pending, ledger: after, cfg: config.reconcile.secrets });
           logger.info(`  secrets report with next steps (rotate, then purge): ${relative(root, await writeSecretsReport(root, rep.text))}`);
         }
       } catch (e) {

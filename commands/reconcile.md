@@ -52,7 +52,7 @@ Then write the skeletons:
 hewtd reconcile <same scope and flags> --write-review
 ```
 
-It prints one review file per shard under `.hewtd/reconcile/review-<batch>-<shard>.md` and never overwrites an existing file. In serial mode there is one file; archive candidates go in shard 1.
+It prints one review file per shard under `.hewtd/reconcile/review-<batch>-<shard>.md` and never overwrites an existing file. In serial mode there is one file; archive candidates go in shard 1. Secret-lane docs get their own `review-<batch>-secrets.md`: handle it in step 0 yourself and never hand it to an agent.
 
 ## 2. Judgment
 

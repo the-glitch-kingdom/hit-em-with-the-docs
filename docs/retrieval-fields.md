@@ -9,6 +9,7 @@ text. Four fields carry that match. Write them on every doc.
 | `purpose` | One sentence: the question this doc answers, or when to read it. |
 | `symptoms` | Plain strings: how a person describes the problem, or the literal error text. Any tier. |
 | `tags` | Short topic words. |
+| `kind` | Optional. `overview` marks a doc that walks a cross-cutting flow end to end and links every stage. Validated on every tier; any other value fails the audit. Template: `templates/overview.template.md`. |
 
 ```yaml
 ---

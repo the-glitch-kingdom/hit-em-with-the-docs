@@ -33,3 +33,5 @@ Plain-string `symptoms:` are valid on every tier. The retrieval standard is in
 
 See `docs/knowledge-base-primitives.md` (in the plugin repo) for the full
 schema reference, the list of error codes, and worked examples.
+
+For cross-cutting flows, see `../overview.template.md` (`kind: overview`).

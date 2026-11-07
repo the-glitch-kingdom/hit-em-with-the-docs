@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { dirname, join, resolve } from 'path';
+import { dirname, join, relative, resolve } from 'path';
 import { readFile } from 'fs/promises';
 import { createRequire } from 'node:module';
 import { registerUpdateCommands } from '@theglitchking/claude-plugin-runtime';
@@ -1109,6 +1109,9 @@ program
   .option('--json', 'Machine-readable triage output (for the slash command)', false)
   .option('--serial', 'Force a serial plan regardless of job size', false)
   .option('--team', 'Force an agent-team plan regardless of job size', false)
+  .option('--write-review', 'Write an empty review-file skeleton per shard under .hewtd/reconcile/', false)
+  .option('--batch <id>', 'Batch id for --write-review (default: next number)')
+  .option('--apply <files...>', 'Apply the accepted entries of review files (serial, one commit per batch)')
   .action(async (scope: string[], options) => {
     const { loadPluginConfig } = await import('../utils/config.js');
     const { loadLedger, ledgerStatus, hashContent } = await import('../core/reconcile/ledger.js');
@@ -1117,6 +1120,22 @@ program
     const config = await loadPluginConfig(root);
     const docsPath = resolve(root, options.docsPath);
     const ledgerFile = resolve(root, config.reconcile.ledger_path);
+    if (options.apply) {
+      try {
+        const { applyReviews } = await import('../core/reconcile/apply.js');
+        const res = await applyReviews({
+          root, docsPath, ledger: await loadLedger(ledgerFile), ledgerFile,
+          files: (options.apply as string[]).map((f) => resolve(root, f)),
+        });
+        logger.header('hewtd reconcile --apply');
+        for (const o of res.outcomes) logger.info(`  [${o.status}] ${o.path}${o.detail ? ` - ${o.detail}` : ''}`);
+        if (res.commit) logger.info(`  committed ${res.commit}`);
+      } catch (e) {
+        logger.error((e as Error).message);
+        process.exitCode = 1;
+      }
+      return;
+    }
     if (!options.status) {
       const { resolveScope, dirtyInScope, triage } = await import('../core/reconcile/triage.js');
       const { saveLedger } = await import('../core/reconcile/ledger.js');
@@ -1134,6 +1153,11 @@ program
           ...((options.serial && { mode: 'serial' }) || (options.team && { mode: 'team' }) || {}),
         });
         await saveLedger(ledgerFile, ledger);
+        if (options.writeReview) {
+          const { writeReviewSkeletons } = await import('../core/reconcile/review.js');
+          const files = await writeReviewSkeletons({ root, docsPath, triage: result, scope: scope.join(' ') || `next ${options.next}`, batch: options.batch });
+          files.forEach((f) => logger.info(`  wrote ${relative(root, f)}`));
+        }
         if (options.json) {
           console.log(JSON.stringify(result, null, 2));
           return;

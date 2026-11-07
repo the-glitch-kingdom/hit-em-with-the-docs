@@ -171,7 +171,10 @@ export async function applyReviews(opts: {
       const paths = [...touched].map((p) => relative(top, p));
       const present = paths.filter((p) => existsSync(join(top, p)));
       // -f: apply wrote these itself, so an ignored target (archive/) must still be staged.
-      git(top, ['add', '-A', '-f', '--', ...present]);
+      // An empty pathspec would stage the whole tree (ignored files included).
+      if (present.length) git(top, ['add', '-A', '-f', '--', ...present]);
+      const gone = paths.filter((p) => !present.includes(p));
+      if (gone.length) git(top, ['rm', '-q', '--cached', '--ignore-unmatch', '--', ...gone]);
       const first = reviews[0]!;
       if (git(top, ['status', '--porcelain', '--', ...paths])) git(top, ['commit', '-q', '--only', '-m', `docs(reconcile): ${first.scope || 'docs'} batch ${first.batch}`, '--', ...paths]);
       commit = git(top, ['rev-parse', '--short', 'HEAD']);

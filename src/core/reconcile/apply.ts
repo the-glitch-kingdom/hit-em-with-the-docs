@@ -19,6 +19,7 @@ import { loadPluginConfig } from '../../utils/config.js';
 import { applyOutsideEntry, outsideKey } from './outside.js';
 import { headingAnchors, sectionOf } from '../links/anchors.js';
 import { missingTokens } from './noloss.js';
+import { memberState } from './overview.js';
 import { envNames, parseReview, reviewDir, type ReviewEntry } from './review.js';
 
 export interface ApplyOutcome {
@@ -210,6 +211,28 @@ function pointDoc(o: { raw: string; e: ReviewEntry; abs: string; ownerAbs: strin
   return editDoc(raw, { path: e.path, content_hash: e.content_hash, verdict: 'point', patch: [{ old, new: line }] }, today);
 }
 
+/** overview: every member current and reconciled (or explicitly marked), then the new doc with kind: overview and no last_validated. */
+async function overviewDoc(e: ReviewEntry, docsPath: string, ledger: Ledger): Promise<string> {
+  if (!e.path.endsWith('.md') || !e.members?.length || !e.draft?.trim()) throw new Error('overview needs a .md path, members and a draft');
+  const stale: string[] = [], open: string[] = [];
+  for (const m of e.members) {
+    let hash: string;
+    try { hash = hashContent(await readFile(join(docsPath, m.path), 'utf-8')); } catch { stale.push(m.path); continue; }
+    if (hash !== m.content_hash) { stale.push(m.path); continue; }
+    const st = memberState(ledger, m.path, hash);
+    if (st !== 'reconciled') open.push(m.path);
+    if (st === 'secret') throw new Error(`member is in the secret lane: ${m.path}`);
+  }
+  if (stale.length) throw new Error(`member changed since the review was written: ${stale.join(', ')}`);
+  if (open.length) {
+    if (!e.allow_unreviewed) throw new Error(`members not reconciled: ${open.join(', ')}`);
+    const unmarked = open.filter((p) => !e.draft!.split('\n').some((l) => l.includes(`](`) && l.includes(p.split('/').pop()!) && l.includes('(unreviewed)')));
+    if (unmarked.length) throw new Error(`draft must mark these links "(unreviewed)": ${unmarked.join(', ')}`);
+  }
+  const { last_verified: _v, last_validated: _l, ...fm } = e.frontmatter ?? {};
+  return setFrontmatter(e.draft!, { ...fm, kind: 'overview', ...(e.sources && { sources: e.sources }) });
+}
+
 export async function applyReviews(opts: {
   root: string;
   docsPath: string;
@@ -247,6 +270,7 @@ export async function applyReviews(opts: {
   const queue = reviews.flatMap((r) => r.entries.map((x) => ({ ...x, r })));
   queue.sort((a, b) => Number(a.entry.verdict === 'point') - Number(b.entry.verdict === 'point'));
   const mergedIds = new Set<string>();
+  const overviewMembers = new Map<string, Record<string, string>>();
   const relatedRoots = (await loadPluginConfig(root)).reconcile.related_repos.map((x) => resolve(root, x.path));
   {
       for (const { entry: e, accepted, r } of queue) {
@@ -281,8 +305,10 @@ export async function applyReviews(opts: {
       }
       if (!accepted) { outcomes.push({ path: e.path, status: 'rejected' }); continue; }
       if (!e.verdict) { outcomes.push({ path: e.path, status: 'skipped', detail: 'no verdict' }); continue; }
-      if (!present) { outcomes.push({ path: e.path, status: 'error', detail: 'file not found' }); continue; }
-      const raw = await readFile(abs, 'utf-8');
+      if (e.verdict === 'overview' && present) { outcomes.push({ path: e.path, status: 'error', detail: 'overview target already exists' }); continue; }
+      if (!present && e.verdict !== 'overview') { outcomes.push({ path: e.path, status: 'error', detail: 'file not found' }); continue; }
+      const raw = present ? await readFile(abs, 'utf-8') : ''; // a new overview is hashed as empty
+
       if (hashContent(raw) !== e.content_hash) {
         outcomes.push({ path: e.path, status: 'stale', detail: 'doc changed since the review was written' });
         continue;
@@ -300,6 +326,10 @@ export async function applyReviews(opts: {
           await writeFile(abs, next, 'utf-8');
           touched.add(abs);
           mergedIds.add(e.id ?? e.path);
+        } else if (e.verdict === 'overview') {
+          await writeFile(abs, await overviewDoc(e, docsPath, ledger), 'utf-8');
+          touched.add(abs);
+          overviewMembers.set(e.path, Object.fromEntries((e.members ?? []).map((m) => [m.path, m.content_hash])));
         } else if (e.verdict === 'point') {
           const target = e.pointer?.target ?? '';
           const ownerAbs = resolve(docsPath, target.split('#')[0] ?? '');
@@ -392,7 +422,7 @@ export async function applyReviews(opts: {
       lane: prev?.lane ?? a.entry.lane ?? 'check',
       content_hash: raw !== undefined ? hashContent(raw) : a.entry.content_hash,
     });
-    Object.assign(rec, { verdict: a.entry.verdict ?? '', reviewed_on: today, review_file: a.file, ...(a.envNames && { env_names: a.envNames }), ...(commit && { applied_commit: commit }) });
+    Object.assign(rec, { verdict: a.entry.verdict ?? '', reviewed_on: today, review_file: a.file, ...(a.envNames && { env_names: a.envNames }), ...(overviewMembers.has(a.entry.path) && { members: overviewMembers.get(a.entry.path)! }), ...(commit && { applied_commit: commit }) });
   }
   await saveLedger(opts.ledgerFile, ledger);
   return { ...result, ...(commit && { commit }), touched: [...touched] };

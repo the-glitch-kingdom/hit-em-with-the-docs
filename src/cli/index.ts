@@ -1137,7 +1137,7 @@ program
   .option('--batch <id>', 'Batch id for --write-review (default: next number)')
   .option('--outside', 'List markdown files outside the docs root by class (tool-read, junk, not-a-doc, misplaced); with --write-review, write an outside review file', false)
   .option('--secrets', 'Masked secret scan (no scope: whole docs root incl. archive/, the outside lane and .hewtd/); never prints a value', false)
-  .option('--overview <question>', 'Propose a cross-domain member list for a flow or question; writes only .hewtd/reconcile/overview-<slug>.json', undefined)
+  .option('--overview <question>', 'Propose a cross-domain member list for a flow or question; writes only .hewtd/reconcile/overview-<slug>.json. With --write-review: the members file to turn into an overview review skeleton', undefined)
   .option('--limit <n>', 'With --overview: member cap (default 12)')
   .option('--apply <files...>', 'Apply the accepted entries of review files (serial, one commit per batch)')
   .action(async (scope: string[], options) => {
@@ -1190,6 +1190,16 @@ program
         for (const f of found) logger.info(`  [${f.kind}] ${f.rule} ${f.file}:${f.line} ${f.masked} (${f.fingerprint.slice(0, 12)})`);
         logger.info(`  ${found.length} finding(s)`);
         logger.info(`  report with next steps: ${reportFile}`);
+      } catch (e) {
+        logger.error((e as Error).message);
+        process.exitCode = 1;
+      }
+      return;
+    }
+    if (options.overview && options.writeReview) {
+      try {
+        const { writeOverviewReview } = await import('../core/reconcile/overview.js');
+        logger.info(`  wrote ${relative(root, await writeOverviewReview({ root, docsPath, membersFile: resolve(root, options.overview), batch: options.batch }))}`);
       } catch (e) {
         logger.error((e as Error).message);
         process.exitCode = 1;

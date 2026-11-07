@@ -11,7 +11,7 @@ import { assertNoSecrets, findSecrets, type RawSecret } from './secrets.js';
 import { loadPluginConfig } from '../../utils/config.js';
 import type { Shard, TriageResult } from './triage.js';
 
-export const VERDICTS = ['verify', 'rewrite', 'archive', 'unverifiable', 'fields', 'integrate', 'delete', 'secret', 'merge', 'point'] as const;
+export const VERDICTS = ['verify', 'rewrite', 'archive', 'unverifiable', 'fields', 'integrate', 'delete', 'secret', 'merge', 'point', 'overview'] as const;
 export type Verdict = (typeof VERDICTS)[number];
 
 export interface ReviewEntry {
@@ -49,6 +49,10 @@ export interface ReviewEntry {
   depends_on_merge?: string;
   /** point without depends_on_merge: hash of the owner doc when the review was written. */
   target_hash?: string;
+  /** overview: the reconciled docs the overview points at, with the hash each had when it was drafted. `path` is the new overview, `draft` its body, `frontmatter` its fields. */
+  members?: { path: string; content_hash: string }[];
+  /** overview: allow members that are not reconciled; the draft must mark each link `(unreviewed)`. */
+  allow_unreviewed?: boolean;
   lane?: string;
   reasons?: string[];
 }

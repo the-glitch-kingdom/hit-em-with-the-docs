@@ -325,6 +325,16 @@ export async function triage(opts: {
       if (lane === 'clean' || lane === 'fields-only') lane = 'check';
       reasons.push(`details owned by ${owner}: summarize and cross-link`);
     }
+    // An overview whose members changed since it was written goes back to check; the verdict is dropped so it stays queued.
+    const led = opts.ledger?.entries[d.rel];
+    if (led?.members) {
+      const changed = Object.entries(led.members).filter(([p, h]) => { try { return hashContent(readFileSync(join(docsPath, p), 'utf-8')) !== h; } catch { return true; } }).map(([p]) => p);
+      if (changed.length && lane !== 'secret') {
+        if (lane === 'clean' || lane === 'fields-only') lane = 'check';
+        reasons.push(`member changed: ${changed.join(', ')}`);
+        delete led.verdict;
+      }
+    }
     docs.push({ path: d.rel, lane, reasons, missing, bytes, ...(staleCommits !== undefined && { staleCommits }), ...(owner && { owner }), ...(ownFindings.length && { findings: ownFindings }), ...(blocked.size && { blocked_files: [...blocked.keys()].sort() }) });
 
     if (opts.ledger) recordEntry(opts.ledger, { path: d.rel, lane, content_hash: hashContent(d.raw) });

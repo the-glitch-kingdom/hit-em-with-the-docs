@@ -4,13 +4,13 @@
  * .hewtd/reconcile/ (never the docs tree).
  */
 import { readFileSync } from 'fs';
-import { mkdir, readdir, writeFile } from 'fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'fs/promises';
 import { dirname, join, posix, relative } from 'path';
 import type { PluginConfig } from '../../utils/config.js';
 import { parseFrontmatter } from '../../utils/frontmatter.js';
 import { extractLinks, slugify } from '../../utils/markdown.js';
 import { hashContent, type Ledger } from './ledger.js';
-import { reviewDir } from './review.js';
+import { renderReview, reviewDir, nextBatch } from './review.js';
 import { searchDocs } from './search.js';
 import { assertNoSecrets } from './secrets.js';
 
@@ -97,5 +97,26 @@ export async function writeMembersFile(root: string, seed: OverviewSeed): Promis
   assertNoSecrets(text, 'the overview members file');
   await mkdir(dirname(file), { recursive: true });
   await writeFile(file, text, 'utf-8');
+  return file;
+}
+
+/** `--write-review --overview <members-file>`: a one-entry review skeleton, members hashed now; the draft is filled by the slash command. */
+export async function writeOverviewReview(opts: { root: string; docsPath: string; membersFile: string; batch?: string | undefined }): Promise<string> {
+  const seed = JSON.parse(await readFile(opts.membersFile, 'utf-8')) as OverviewSeed;
+  const members = await Promise.all(seed.members.filter((m) => m.state !== 'secret').map(async (m) => ({
+    path: m.path, content_hash: hashContent(await readFile(join(opts.docsPath, m.path), 'utf-8')),
+  })));
+  if (!members.length) throw new Error('members file has no usable members');
+  const dir = reviewDir(opts.root);
+  const batch = opts.batch ?? (await nextBatch(dir));
+  const folder = posix.dirname(members[0]!.path);
+  const slug = slugify(seed.question).slice(0, 60) || 'overview';
+  const entry = {
+    path: posix.join(folder === '.' ? '' : folder, `overview-${slug}.md`), content_hash: hashContent(''), verdict: null,
+    members, draft: '', frontmatter: { title: seed.question, purpose: '', symptoms: [seed.question] },
+  };
+  const file = join(dir, `review-${batch}-1.md`);
+  await mkdir(dir, { recursive: true });
+  await writeFile(file, renderReview({ batch, shard: 1, scope: 'overview' }, [entry]), { encoding: 'utf-8', flag: 'wx' });
   return file;
 }

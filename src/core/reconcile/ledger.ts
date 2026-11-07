@@ -16,6 +16,8 @@ export interface LedgerEntry {
   review_file?: string;
   /** secret verdict: env names the values moved to (never the values). */
   env_names?: string[];
+  /** overview verdict: member path -> content hash when the overview was written; triage re-checks them. */
+  members?: Record<string, string>;
   content_hash: string;
 }
 

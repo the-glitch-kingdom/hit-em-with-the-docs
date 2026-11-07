@@ -249,6 +249,12 @@ const reconcileConfigSchema = z
   })
   .default({});
 
+/** Integrate (#61). Lenient: an invalid cap falls back to 10; 0 turns `sources` recording off. */
+const integrateConfigSchema = z
+  .object({ sources_max: z.number().int().nonnegative().catch(10) })
+  .catch({ sources_max: 10 })
+  .default({});
+
 const pluginConfigSchema = z
   .object({
     /**
@@ -266,6 +272,7 @@ const pluginConfigSchema = z
     retrieval: retrievalConfigSchema,
     overview: overviewConfigSchema,
     reconcile: reconcileConfigSchema,
+    integrate: integrateConfigSchema,
     /** Reports directory, relative to the repo root. Unset = `<docs root>/reports`. */
     reports_dir: z.string().min(1).optional().catch(undefined),
   })

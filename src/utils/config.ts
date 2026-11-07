@@ -9,7 +9,7 @@
 
 import { readFileSync } from 'fs';
 import { mkdir, readFile, writeFile } from 'fs/promises';
-import { dirname, join, relative, resolve, isAbsolute } from 'path';
+import { dirname, join, relative, resolve, isAbsolute, sep } from 'path';
 import { z } from 'zod';
 
 export const DEFAULT_DOCS_ROOT = '.documentation';
@@ -328,8 +328,10 @@ export async function resolveReportsDir(docsPath: string): Promise<string> {
   if (!configured) return join(docsPath, 'reports');
   const dir = resolve(projectRoot, configured);
   const rel = relative(projectRoot, dir);
-  if (rel.startsWith('..') || isAbsolute(rel)) {
-    throw new Error(`reports_dir "${configured}" must stay inside the repo root`);
+  if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+    // Lenient like the rest of the config: bad value → default, never a crash.
+    console.warn(`hewtd: reports_dir "${configured}" must stay inside the repo root; using ${join(docsPath, 'reports')}`);
+    return join(docsPath, 'reports');
   }
   return dir;
 }

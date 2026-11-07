@@ -3,7 +3,7 @@ import { resolve } from 'path';
 import { createScaffold } from '../generators/scaffold.js';
 import { syncMetadata } from '../core/metadata/sync.js';
 import { checkLinks } from '../core/links/checker.js';
-import { auditDocumentation } from '../core/audit/auditor.js';
+import { auditDocumentation, countActionableIssues } from '../core/audit/auditor.js';
 import { runMaintenance } from '../core/maintain/orchestrator.js';
 import { discoverPatterns } from '../core/discover/patterns.js';
 import { discoverAntiPatterns } from '../core/discover/antipatterns.js';
@@ -61,7 +61,7 @@ async function run(): Promise<void> {
 
         healthScore = result.healthScore;
         totalDocuments = result.metadataSync?.totalFiles ?? 0;
-        issuesFound = result.audit?.issues.length ?? 0;
+        issuesFound = countActionableIssues(result.audit?.issues ?? []);
         issuesFixed = result.metadataSync?.fixedFiles ?? 0;
         brokenLinks = result.linkCheck?.brokenLinks.length ?? 0;
         metadataCompliance = result.audit?.stats.metadataCompliance ?? 100;
@@ -121,7 +121,7 @@ async function run(): Promise<void> {
 
         healthScore = result.healthScore;
         totalDocuments = result.totalFiles;
-        issuesFound = result.issues.length;
+        issuesFound = countActionableIssues(result.issues);
         metadataCompliance = result.stats.metadataCompliance;
 
         const errors = result.issues.filter((i) => i.severity === 'error');

@@ -5,7 +5,7 @@
  */
 
 import { readFile, writeFile } from 'fs/promises';
-import matter from 'gray-matter';
+import { parseFrontmatter, stringifyFrontmatter } from '../../utils/frontmatter.js';
 import { glob } from '../../utils/glob.js';
 
 export interface FixRetrievalFieldsResult {
@@ -13,6 +13,8 @@ export interface FixRetrievalFieldsResult {
   changed: { file: string; actions: string[] }[];
   /** purpose and summary/description both present: left alone. */
   conflicts: string[];
+  /** Files that could not be parsed; skipped, the run continues. */
+  errors: { file: string; message: string }[];
 }
 
 const isStr = (v: unknown): v is string => typeof v === 'string' && v.trim() !== '';
@@ -23,14 +25,20 @@ export async function fixRetrievalFields(opts: {
   docsPath: string;
   apply?: boolean;
 }): Promise<FixRetrievalFieldsResult> {
-  const result: FixRetrievalFieldsResult = { changed: [], conflicts: [] };
+  const result: FixRetrievalFieldsResult = { changed: [], conflicts: [], errors: [] };
   const files = (await glob('**/*.md', { cwd: opts.docsPath, absolute: true })).sort();
 
   for (const file of files) {
     if (/(^|[\\/])(INDEX|REGISTRY)\.md$/.test(file)) continue;
     const raw = await readFile(file, 'utf-8');
-    const parsed = matter(raw);
-    const data = parsed.data as Record<string, unknown>;
+    let parsed;
+    try {
+      parsed = parseFrontmatter(raw);
+    } catch (err) {
+      result.errors.push({ file, message: (err as Error).message });
+      continue;
+    }
+    const data = parsed.data;
     if (data.generated === true) continue;
 
     const actions: string[] = [];
@@ -53,7 +61,11 @@ export async function fixRetrievalFields(opts: {
     if (actions.length === 0) continue;
 
     result.changed.push({ file, actions });
-    if (opts.apply) await writeFile(file, matter.stringify(parsed.content, data), 'utf-8');
+    if (opts.apply) {
+      // Replace only the frontmatter block; the body is written back byte for byte.
+      const body = raw.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
+      await writeFile(file, `---\n${stringifyFrontmatter(data)}---\n${body}`, 'utf-8');
+    }
   }
   return result;
 }

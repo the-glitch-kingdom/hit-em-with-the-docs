@@ -42,6 +42,13 @@ describe('INDEX purpose column (#50)', () => {
     expect(row[0]).toContain('a \\| b c');
   });
 
+  it('keeps a purpose containing a backslash-pipe in one cell (review fix)', () => {
+    const out = generateDomainIndexContent('api', [entry('Match a \\| b')]);
+    const row = out.split('\n').find((l) => l.includes('[A](a.md)'))!;
+    // GFM: unescaped pipes split cells; every pipe in the purpose must be preceded by an odd run of backslashes.
+    expect(row).toContain('Match a \\\\\\| b');
+  });
+
   it('leaves the cell empty when purpose is missing (domain + root)', () => {
     expect(generateDomainIndexContent('api', [entry()])).toMatch(/\| - \| {2}\|/);
     const root = generateRootIndex({ api: [entry()] } as never);

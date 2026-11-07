@@ -990,6 +990,7 @@ program
     logger.header('hewtd fix-retrieval-fields');
     for (const c of result.changed) logger.info(`  ${c.file}: ${c.actions.join(', ')}`);
     for (const f of result.conflicts) logger.warn(`  ${f}: purpose and summary/description both set, left alone`);
+    for (const e of result.errors) logger.error(`  ${e.file}: could not parse frontmatter, skipped (${e.message})`);
     if (result.changed.length === 0) logger.success('Nothing to do.');
     else if (options.apply) logger.success(`Updated ${result.changed.length} file(s).`);
     else logger.info('Dry run, nothing written. Re-run with --apply.');

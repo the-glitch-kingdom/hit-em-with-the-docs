@@ -75,6 +75,11 @@ export interface DomainAuditStats {
 /**
  * Audit documentation for compliance and issues
  */
+/** Issues that should count toward CI failure: advisory RETRIEVAL_* warnings (#50) never do. */
+export function countActionableIssues(issues: { rule: string }[]): number {
+  return issues.filter((i) => !i.rule.startsWith('RETRIEVAL_')).length;
+}
+
 export async function auditDocumentation(options: AuditOptions): Promise<AuditResult> {
   const {
     docsPath,

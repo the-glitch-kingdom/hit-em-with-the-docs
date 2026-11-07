@@ -56,4 +56,22 @@ describe('fixRetrievalFields', () => {
     expect(r.changed).toHaveLength(1);
     expect(await readFile(join(dir, 'f.md'), 'utf-8')).toBe(before);
   });
+
+  it('keeps unquoted dates as dates and the body byte-identical (review fix)', async () => {
+    const body = '\n# T\n\n  indented line\n\n```\ncode\n```\n';
+    await writeFile(join(dir, 'e.md'), `---\ntitle: E\nlast_updated: 2024-01-05\nsummary: S\n---\n${body}`);
+    await fixRetrievalFields({ docsPath: dir, apply: true });
+    const raw = await readFile(join(dir, 'e.md'), 'utf-8');
+    expect(raw).toContain("last_updated: '2024-01-05'");
+    expect(raw).not.toContain('T00:00:00');
+    expect(raw.endsWith(`---\n${body}`)).toBe(true);
+  });
+
+  it('skips a file with malformed YAML and still fixes the others', async () => {
+    await writeFile(join(dir, 'bad.md'), '---\ntitle: [unclosed\n---\nx\n');
+    await put('ok.md', 'title: OK\nsummary: S');
+    const r = await fixRetrievalFields({ docsPath: dir, apply: true });
+    expect(r.errors.map((e) => e.file)).toEqual([join(dir, 'bad.md')]);
+    expect((await read('ok.md')).data).toMatchObject({ purpose: 'S' });
+  });
 });

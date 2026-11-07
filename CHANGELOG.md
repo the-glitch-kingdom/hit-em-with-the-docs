@@ -15,7 +15,8 @@ reports directory default is unchanged.
 - Fact and doc templates and `extract-facts` carry `purpose` and `symptoms`.
 - `hewtd audit` raises advisory `RETRIEVAL_*` warnings (missing or weak
   purpose, generic title, missing symptoms, oversized, near-duplicate). They
-  never change the exit code. Tune them with the `retrieval` config block.
+  never change the exit code, and the GitHub Action does not count them
+  toward `fail-on-error`. Tune them with the `retrieval` config block.
 - `hewtd fix-retrieval-fields [--apply]` moves `summary`/`description` into
   `purpose` and merges `keywords` into `tags`.
 - `hewtd report health` shows a Retrieval Coverage table.

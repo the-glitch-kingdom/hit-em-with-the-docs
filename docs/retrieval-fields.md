@@ -59,8 +59,11 @@ hewtd fix-retrieval-fields -p docs      # docs path other than .documentation
 
 It moves `summary` (else `description`) into `purpose` when `purpose` is
 absent. When both exist it reports a conflict and changes nothing. It also
-merges `keywords` into `tags` and removes `keywords`. Files are rewritten
-with gray-matter, so YAML quoting and comments may be normalised.
+merges `keywords` into `tags` and removes `keywords`. Only the frontmatter
+block is rewritten (with hewtd's own YAML writer, which keeps dates as quoted
+strings); the body is left byte for byte. YAML quoting, list style and
+comments in that block may be normalised. A file whose frontmatter does not
+parse is skipped and reported, and the rest of the run continues.
 `integrate` no longer invents a purpose: if the first paragraph is not a
 usable sentence, `purpose` stays missing and the audit says so.
 
@@ -85,7 +88,8 @@ In `.claude/hit-em-with-the-docs.json`:
 
 Invalid values fall back to the defaults shown. `disabled` lists codes to
 silence, for example `["RETRIEVAL_OVERSIZED"]`. `reports_dir` is relative to
-the repo root and may not escape it. Unset, reports go to `<docs root>/reports`.
+the repo root. A value that escapes the repo prints a warning and falls back to
+the default. Unset, reports go to `<docs root>/reports`.
 Reports outside the docs root are not scanned by hewtd.
 
 ## Coverage report

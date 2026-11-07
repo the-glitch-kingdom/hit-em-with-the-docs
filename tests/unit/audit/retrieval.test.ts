@@ -134,3 +134,16 @@ describe('audit integration', () => {
     });
   });
 });
+
+describe('countActionableIssues (Action fail-on-error, review fix)', () => {
+  it('ignores advisory RETRIEVAL_* warnings', async () => {
+    const { countActionableIssues } = await import('../../../src/core/audit/auditor.js');
+    expect(
+      countActionableIssues([
+        { rule: 'RETRIEVAL_MISSING_PURPOSE' },
+        { rule: 'RETRIEVAL_OVERSIZED' },
+        { rule: 'metadata-validation' },
+      ])
+    ).toBe(1);
+  });
+});

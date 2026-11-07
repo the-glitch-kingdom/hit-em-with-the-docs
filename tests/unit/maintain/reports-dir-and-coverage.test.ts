@@ -41,9 +41,14 @@ describe('reports_dir', () => {
     expect((await readdir(join(root, '.hewtd/reports'))).length).toBeGreaterThanOrEqual(2);
   });
 
-  it('rejects a path that escapes the repo', async () => {
+  it('falls back to the default for a path that escapes the repo', async () => {
     await setConfig({ reports_dir: '../outside' });
-    await expect(resolveReportsDir(docs)).rejects.toThrow(/inside the repo root/);
+    expect(await resolveReportsDir(docs)).toBe(join(docs, 'reports'));
+  });
+
+  it('accepts a directory whose name starts with two dots', async () => {
+    await setConfig({ reports_dir: '..reports' });
+    expect(await resolveReportsDir(docs)).toBe(join(root, '..reports'));
   });
 });
 

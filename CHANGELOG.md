@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.15.0] — 2026-11-07
+
+`/reconcile` (#54). Additive. Check existing docs against the code, in scoped,
+resumable batches. Full reference: `docs/reconcile.md`.
+
+- **`hewtd reconcile <scope...>`**: deterministic triage (no LLM). Sorts docs
+  into `clean`, `fields-only`, `check` and `archive-candidate` from the paths,
+  symbols, env vars, commands, tables and doc links they cite, plus a git
+  staleness signal (priority only; never writes `last_verified`). Refuses with
+  no scope and no `--next`, and on uncommitted changes in scope. `--json`.
+- **Review files and `--apply`**: `--write-review` writes skeletons to
+  `.hewtd/reconcile/`; `--apply <files>` is the only writer. Serial, one commit
+  per batch, hash-checked (stale entries skipped), idempotent. Only the `verify`
+  verdict stamps `last_verified`.
+- **Team mode**: auto at 12 judged docs or 250 KB; `--serial` / `--team`
+  override. Agents only write review files. Defaults are provisional.
+- **Outside lane**: `--outside` classifies tracked markdown outside the docs
+  root (tool-read, junk, not-a-doc, misplaced); accepted integrate-and-remove
+  keeps history in `provenance:`. `keep_in_place` always wins.
+- **Ledger** (`.hewtd/reconcile.json`) and `--status` / `--next N` to resume.
+- New optional frontmatter field `moved_from`. New `reconcile` config block.
+- New slash command `/hit-em-with-the-docs:reconcile`. It supersedes the
+  drafting commands deferred in #50 (E) and #51 (section 3).
+- Also: lockfiles are excluded from byte estimates.
+
 ## [2.14.0] — 2026-11-07
 
 Follow-ups to 2.13 (#55) and two `integrate` traps (#54). Behaviour changes:

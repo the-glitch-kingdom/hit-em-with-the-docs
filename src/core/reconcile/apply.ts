@@ -271,6 +271,7 @@ export async function applyReviews(opts: {
   queue.sort((a, b) => Number(a.entry.verdict === 'point') - Number(b.entry.verdict === 'point'));
   const mergedIds = new Set<string>();
   const overviewMembers = new Map<string, Record<string, string>>();
+  const pointers = new Map<string, { target: string; section_hash: string }>();
   const relatedRoots = (await loadPluginConfig(root)).reconcile.related_repos.map((x) => resolve(root, x.path));
   {
       for (const { entry: e, accepted, r } of queue) {
@@ -344,6 +345,7 @@ export async function applyReviews(opts: {
           const ownerRaw = await readFile(ownerAbs, 'utf-8');
           if (!e.depends_on_merge && hashContent(ownerRaw) !== e.target_hash) throw new Error('owner doc changed since the review was written (or target_hash missing)');
           await writeFile(abs, pointDoc({ raw, e, abs, ownerAbs, ownerRaw, today }), 'utf-8');
+          pointers.set(e.path, { target, section_hash: hashContent(sectionOf(parseFrontmatter<Record<string, unknown>>(ownerRaw).content, target.split('#')[1] ?? '') ?? '') });
           touched.add(abs);
         } else if (e.verdict === 'archive') {
           const res = await archiveDoc({ projectRoot: root, docsPath, file: e.path, today, ...(e.reason && { reason: e.reason }) });
@@ -422,7 +424,7 @@ export async function applyReviews(opts: {
       lane: prev?.lane ?? a.entry.lane ?? 'check',
       content_hash: raw !== undefined ? hashContent(raw) : a.entry.content_hash,
     });
-    Object.assign(rec, { verdict: a.entry.verdict ?? '', reviewed_on: today, review_file: a.file, ...(a.envNames && { env_names: a.envNames }), ...(overviewMembers.has(a.entry.path) && { members: overviewMembers.get(a.entry.path)! }), ...(commit && { applied_commit: commit }) });
+    Object.assign(rec, { verdict: a.entry.verdict ?? '', reviewed_on: today, review_file: a.file, ...(a.envNames && { env_names: a.envNames }), ...(pointers.has(a.entry.path) && { pointer: pointers.get(a.entry.path)! }), ...(overviewMembers.has(a.entry.path) && { members: overviewMembers.get(a.entry.path)! }), ...(commit && { applied_commit: commit }) });
   }
   await saveLedger(opts.ledgerFile, ledger);
   return { ...result, ...(commit && { commit }), touched: [...touched] };

@@ -14,6 +14,7 @@ import { findClusters } from '../links/clusters.js';
 import { buildRepoIndex, extractReferences, primeSymbols, relatedIndex, resolveReferences, type RelatedRepo, type ResolvedReference } from './references.js';
 import { bodyChange, siblingCommits, stalenessSignal } from './staleness.js';
 import { hashContent, isReviewed, recordEntry, type Ledger } from './ledger.js';
+import { sectionOf } from '../links/anchors.js';
 import { findDuplicates, type Duplicate } from './duplicates.js';
 import { findSecrets, scanFile, type SecretFinding } from './secrets.js';
 
@@ -341,6 +342,17 @@ export async function triage(opts: {
       if (changed.length && lane !== 'secret') {
         if (lane === 'clean' || lane === 'fields-only') lane = 'check';
         reasons.push(`member changed: ${changed.join(', ')}`);
+        delete led.verdict;
+      }
+    }
+    // A pointer written by reconcile: re-verify the summary when the owner section changed or vanished.
+    if (led?.pointer && lane !== 'secret') {
+      const [tp, anchor = ''] = led.pointer.target.split('#');
+      let now: string | undefined;
+      try { const sec = sectionOf(parseFrontmatter<Record<string, unknown>>(readFileSync(resolve(docsPath, tp!), 'utf-8')).content, anchor); now = sec === null ? undefined : hashContent(sec); } catch { /* owner gone */ }
+      if (now !== led.pointer.section_hash) {
+        if (lane === 'clean' || lane === 'fields-only') lane = 'check';
+        reasons.push(now === undefined ? `pointer target changed: ${led.pointer.target} (section missing)` : `pointer target changed: ${led.pointer.target}`);
         delete led.verdict;
       }
     }

@@ -18,6 +18,8 @@ export interface LedgerEntry {
   env_names?: string[];
   /** overview verdict: member path -> content hash when the overview was written; triage re-checks them. */
   members?: Record<string, string>;
+  /** point verdict: the owner section this doc's pointer line summarizes, and its hash when applied. */
+  pointer?: { target: string; section_hash: string };
   content_hash: string;
 }
 

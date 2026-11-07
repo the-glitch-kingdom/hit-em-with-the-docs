@@ -14,7 +14,7 @@ export interface IndexEntry {
 }
 
 /** One-line, pipe-safe table cell; empty when missing. */
-export function purposeCell(purpose?: string): string {
+function purposeCell(purpose?: string): string {
   return (purpose ?? '').replace(/\s+/g, ' ').trim().replace(/\|/g, '\\|');
 }
 

@@ -141,7 +141,7 @@ const lenientStatusArray = z
   }, z.array(statusValueSchema))
   .default([]);
 
-export const DEFAULT_GENERIC_TITLES = [
+const DEFAULT_GENERIC_TITLES = [
   'Admin', 'Reference', 'Guide', 'Overview', 'Notes', 'README', 'Index', 'Introduction',
 ];
 

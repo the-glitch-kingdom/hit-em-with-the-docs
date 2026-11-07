@@ -6,6 +6,8 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/**/*.test.ts'],
     globalSetup: ['./tests/global-setup.ts'],
+    // CI runners have no git identity; reconcile --apply commits in fixture repos.
+    env: { GIT_AUTHOR_NAME: 'hewtd-test', GIT_AUTHOR_EMAIL: 'test@example.com', GIT_COMMITTER_NAME: 'hewtd-test', GIT_COMMITTER_EMAIL: 'test@example.com' },
     exclude: ['node_modules', 'dist'],
     coverage: {
       provider: 'v8',

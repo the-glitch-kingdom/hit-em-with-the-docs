@@ -9,7 +9,7 @@ import { discoverOutside, writeOutsideReview } from '../../../src/core/reconcile
 import { hashContent, loadLedger } from '../../../src/core/reconcile/ledger';
 
 let root: string, docs: string, ledgerFile: string;
-const g = (...a: string[]) => execFileSync('git', ['-c', 'user.name=Ann', '-c', 'user.email=t@t', ...a], { cwd: root, encoding: 'utf-8' }).trim();
+const g = (...a: string[]) => execFileSync('git', ['-c', 'user.name=Ann', '-c', 'user.email=t@t', ...a], { cwd: root, encoding: 'utf-8', env: { ...process.env, GIT_AUTHOR_NAME: 'Ann' } }).trim();
 const words = (n: number) => Array.from({ length: n }, (_, i) => `word${i}`).join(' ');
 const put = (rel: string, text: string) => { mkdirSync(join(root, rel, '..'), { recursive: true }); writeFileSync(join(root, rel), text); };
 const entry = (rel: string, verdict: ReviewEntry['verdict'], over: Partial<ReviewEntry> = {}): ReviewEntry =>

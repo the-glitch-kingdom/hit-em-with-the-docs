@@ -67,7 +67,7 @@ other members. A generated `INDEX.md` never counts as an overview.
 
 | Code | Raised when | Fix |
 |---|---|---|
-| `OVERVIEW_MISSING` | A cluster has no qualifying overview. Fires once per dense flow (not once per domain), as `Flow: tags — N docs (up to 5 paths, ...) have no overview`, reported on the most-linked member. Hubs (docs linking at least max(20, 10% of docs)) are excluded, a domain held together only by a generated `INDEX.md` does not fire, and a domain with 2+ sub-flows is reported as those flows. A flow needs members that link each other; a long chain is not a flow. A `kind: overview` doc below the coverage bar also lands here. | Write an overview from the template and link the members, or add the missing links to an existing one. |
+| `OVERVIEW_MISSING` | A cluster has no qualifying overview. Fires once per dense flow (not once per domain), as `Flow: tags — N docs (up to 5 paths, ...) have no overview`, reported on the most-linked member. Overlapping flows merge (Jaccard >= 0.6, or the smaller 80% inside the larger). Root-level README, INDEX and OVERVIEW docs are always hubs: never flow members, but can be the overview. Hubs (docs linking at least max(20, 10% of docs)) are excluded, a domain held together only by a generated `INDEX.md` does not fire, and a domain with 2+ sub-flows is reported as those flows. A flow needs members that link each other; a long chain is not a flow. A `kind: overview` doc below the coverage bar also lands here. | Write an overview from the template and link the members, or add the missing links to an existing one. |
 | `OVERVIEW_STALE_LINKS` | A qualifying overview misses some members. | Add a link to each member listed. |
 
 Both are advisory warnings with no `code`: they never change the exit code
@@ -170,6 +170,11 @@ health score. `hewtd maintain` writes its own `maintenance-*.md` report.
 - A trap buried in a runbook becomes a fact with `symptoms`, so a search for
   the error finds it directly.
 - Do not copy a paragraph between docs. Link to it.
+
+## Frontmatter style (2.16.0)
+
+Rewrites keep the file's YAML list style: lists that were unindented stay
+unindented, indented stay indented.
 
 ## Troubleshooting
 

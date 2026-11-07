@@ -1,4 +1,4 @@
-# Reconcile: check existing docs against the code (2.15.0)
+# Reconcile: check existing docs against the code (2.15.0, updated in 2.16.0)
 
 `hewtd reconcile` and `/hit-em-with-the-docs:reconcile` bring an existing docs
 tree back in line with the code, in bounded, resumable batches.
@@ -42,9 +42,56 @@ doc links), resolved against `git ls-files`, one batched `git grep`,
 | `check` | Needs the judgment pass. |
 | `archive-candidate` | Cited things are missing. Only `missing` counts; `unknown` is neutral. |
 
-Staleness (commits touching the cited paths since the doc's last commit) raises
-priority only. In a shallow clone it is `unknown` and triage warns. It is never
+Staleness (commits touching the cited paths since the doc's last body change)
+raises priority only. The body-change point is the oldest of the consecutive
+latest commits whose body (frontmatter stripped) equals the current body, so
+frontmatter-only commits, such as a `last_verified` stamp, do not reset it
+(walk capped at 50 commits). In a shallow clone it is `unknown` and triage warns. It is never
 used to write `last_verified`.
+
+## Reference statuses
+
+Each cited thing resolves to `ok`, `missing` or `unknown`. Only `missing`
+pushes a doc toward `archive-candidate`; `unknown` is neutral.
+
+- Scripts are collected from every tracked `package.json`, not just the root.
+- `unknown` (never `missing`): a link or path that leaves the project root
+  (including a leading-slash path), a host-like URL that does not resolve in the
+  repo (`example.com/docs/x`), a name that appears only in markdown and not in
+  code, and a reference into a related repo that is not checked out.
+- Tables and columns are checked only against `schema_sources`. It defaults to
+  `[]`, so nothing is checked until you list globs, for example
+  `["**/migrations/**/*.sql", "**/schema.prisma"]`. Triage lists the schema
+  files it found (`schemaFiles` in JSON, `schema files:` in text) so you can
+  pick the globs.
+- Cited bytes and staleness count resolved path references and `sources`
+  only, not symbol hits.
+
+## Related repos (2.16.0)
+
+Projects that split code across repos keep each repo's docs in that repo.
+Reconcile follows that rule: **docs stay in the owning repo. Summarize and
+cross-link, never copy or move.**
+
+`reconcile.related_repos` is `[{ "name", "path" }]`, `path` relative to the
+project root, `name` matching `[\w.-]+`. Invalid entries are dropped one by one.
+
+- Sibling repos are read-only. Reconcile never writes there; `--apply` reports
+  an error for any entry that resolves outside the project root, and the
+  outside lane scans only this project.
+- A reference that misses locally is looked up in the siblings and resolves with
+  `where: "<name>:<path>"`. Names found only in a sibling's code count too.
+  `sources` may list `<name>:<path>`; links into `<sibling>/.documentation` are checked.
+- A sibling's bytes and commits since the doc's last body change count toward
+  the doc's size and staleness.
+- If a configured sibling is not checked out, triage warns and unresolved
+  references become `unknown`.
+- **Ownership hint**: when at least 2 references resolve in one sibling, they
+  are more than 50% of the checkable references, and the doc has no `ok` link
+  into that sibling's docs, the doc moves from `clean` or `fields-only` up to
+  `check` and carries `owner: <name>` ("details owned by <name>: summarize and
+  cross-link"). An `archive-candidate` keeps its lane. The fix is a short
+  summary plus a link to the owning doc; the hint clears once that link exists.
 
 ## Review file and apply
 
@@ -74,6 +121,16 @@ entries use `integrate` and `delete`.
 - `rewrite` drafts are written to `.hewtd/reconcile/drafts/`, outside the tree.
   Rewrite entries alone do not produce a commit.
 - Touched domains have their indexes regenerated.
+- **All or nothing.** Files are staged with `git add -A -f` (so a gitignored
+  `archive/` still commits). If anything fails after the first write (index
+  regeneration, stage, commit) the batch is restored from HEAD, files and
+  directories the batch created are removed, nothing is committed and the
+  ledger is not saved. Rolled-back entries are reported as `error`
+  (`rolled back: <msg>`).
+- **Exit code**: 1 on any error outcome (also for rollback and for entries
+  resolving outside the project root), with a summary line; 0 otherwise.
+- `rewrite` is not a review: the doc stays unreviewed and stays in `--next`.
+  Its draft is rewritten on a rerun.
 
 ## Ledger
 
@@ -101,7 +158,8 @@ key is optional and invalid values fall back to the defaults:
 { "reconcile": {
     "keep_in_place": ["README.md", ".github/**", ".claude/**"],
     "ledger_path": ".hewtd/reconcile.json",
-    "schema_sources": ["**/migrations/**/*.sql", "**/schema.prisma"],
+    "schema_sources": [],
+    "related_repos": [{ "name": "api", "path": "../api" }],
     "team": { "min_docs": 12, "min_bytes": 250000, "max_agents": 4, "docs_per_agent": 8 }
 } }
 ```
@@ -118,7 +176,11 @@ key is optional and invalid values fall back to the defaults:
 | `not-a-doc` | Not documentation | `delete` |
 | `misplaced` | A real doc outside the tree | `integrate` (you or the slash command decide) |
 
-`keep_in_place` always wins, also at apply time. An accepted `integrate` moves
+Files named inside tracked config (`*.json`, `*.yaml`, `*.yml`, `*.toml`) are
+classed `not-a-doc` ("referenced by <file>"); files under `archive`,
+`_archive`, `archived` or `old` folders are `junk` ("archived copy").
+`keep_in_place` always wins, also at apply time. An integrated doc gets
+`last_updated` from git (today if untracked) and no `last_validated`. An accepted `integrate` moves
 the file into the tree and removes the original in one commit, with
 `moved_from` and a `provenance:` line (first and last commit date, authors),
 and repoints links from docs in the tree. Nothing is deleted without an
@@ -143,6 +205,20 @@ accepted entry. Links from other outside files are not repointed.
   already in the chosen domain. Pick another `domain` in the entry, or merge by hand.
 - **Outside entry: "uncommitted changes in docs that link here"**: the move would
   repoint links in those docs and commit them; commit or stash them first.
+- **Many refs show `unknown` for URLs or `/abs/paths`**: by design. Only
+  `missing` counts against a doc.
+- **Tables reported nowhere / not checked**: set `reconcile.schema_sources`
+  (default `[]`); triage prints the schema files it found.
+- **A reference to another repo shows missing or unknown**: add that repo to
+  `reconcile.related_repos`, check it out, and rerun.
+- **`owner: <name>` hint on a clean doc**: summarize the details and link to the
+  owning repo's doc; do not copy it.
+- **Staleness resets after a `last_verified` stamp**: it does not; only body
+  changes reset it.
+- **Apply exits 1 with "rolled back"**: nothing was committed; fix the
+  reported error and rerun the same review file.
+- **Config ignored from a subdirectory**: fixed in 2.16.0; config is read from
+  the docs path's project root, not the current directory.
 - **Nothing applied**: entries need `- [x] accept` and a non-null verdict.
 - **Stray `.hewtd/` in a subdirectory**: state is rooted at the git root; a
   directory created by an older build can be deleted.

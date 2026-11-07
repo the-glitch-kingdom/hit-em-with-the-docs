@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.16.0] — 2026-11-07
+
+Field-test fixes for `/reconcile` and related repos (#58). Behaviour changes first.
+
+**Behaviour changes**
+
+- `reconcile.schema_sources` now defaults to `[]`: tables are checked only when
+  you configure it. Triage lists the schema files it found.
+- More references are `unknown` instead of `missing`: leading-slash paths,
+  host-like URLs, markdown-only names, and links that leave the project root.
+- `--apply` exits 1 on any error and prints a summary line. It is all-or-nothing:
+  a failure rolls the batch back, commits nothing and does not save the ledger.
+  It stages with `-f`, so a gitignored `archive/` commits. `rewrite` verdicts no
+  longer count as reviewed.
+- Outside lane: config-referenced files are `not-a-doc`, files under
+  `archive/old` folders are `junk`; integrated docs get git `last_updated` and no `last_validated`.
+- Staleness counts from the last body change; frontmatter-only commits no longer reset it.
+
+**Added and fixed**
+
+- `reconcile.related_repos`: read-only sibling lookup, `<name>:<path>` sources,
+  cross-links into `<sibling>/.documentation`, and an ownership hint (summarize and cross-link).
+- Config is loaded from the docs path's project root, so subdirectory runs match root runs.
+- Scripts are collected from every tracked `package.json`.
+- Symbol lookup is fast on large files (a 9 MB single-line file resolves in seconds).
+- Overview flows merge near-duplicates; root README/INDEX/OVERVIEW are never flow members.
+- YAML list indentation is preserved on frontmatter writes.
+
 ## [2.15.0] — 2026-11-07
 
 `/reconcile` (#54). Additive. Check existing docs against the code, in scoped,

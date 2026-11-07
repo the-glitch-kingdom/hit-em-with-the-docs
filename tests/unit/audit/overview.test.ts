@@ -14,7 +14,7 @@ const put = (rel: string, links: string[] = [], fm = '') => {
 };
 const members = ['b', 'c', 'd', 'e', 'f'];
 const setup = (overviewLinks: string[] | null) => {
-  members.forEach((n) => put(`guides/${n}.md`));
+  members.forEach((n, i) => put(`guides/${n}.md`, [`${members[(i + 1) % 5]}.md`, `${members[(i + 2) % 5]}.md`], 'tags: [deploy, rollback]\n'));
   put('guides/INDEX.md', ['a.md', ...members.map((n) => `${n}.md`)], 'generated: true\n');
   if (overviewLinks) put('guides/a.md', overviewLinks, 'kind: overview\n');
   else put('guides/a.md');
@@ -28,9 +28,10 @@ describe('checkOverview', () => {
     setup(null);
     const issues = await checkOverview(root, cfg);
     expect(issues).toHaveLength(1);
-    expect(issues[0]).toMatchObject({ rule: 'OVERVIEW_MISSING', severity: 'warning', file: 'guides' });
+    expect(issues[0]).toMatchObject({ rule: 'OVERVIEW_MISSING', severity: 'warning', });
     expect(issues[0]!.code).toBeUndefined();
-    expect(issues[0]!.message).toContain('6 related docs');
+    expect(issues[0]!.file).toMatch(/^guides\//);
+    expect(issues[0]!.message).toMatch(/^Flow: deploy, rollback — 6 docs \(guides\/a\.md, .*, \.\.\.\) have no overview/);
     expect(issues[0]!.message).toContain('generated index');
     expect(issues[0]!.suggestion).toContain('overview.template.md');
   });

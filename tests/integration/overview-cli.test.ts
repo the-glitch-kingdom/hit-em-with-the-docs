@@ -49,7 +49,7 @@ const snapshot = async (dir = docs): Promise<Record<string, string>> => {
 };
 
 const writeMembers = async () => {
-  for (const n of NAMES) await put(`api/${n}.md`, `${FM(`Doc ${n}`)}\n# Doc ${n}\n\nText.\n`);
+  for (const [i, n] of NAMES.entries()) await put(`api/${n}.md`, `${FM(`Doc ${n}`)}\n# Doc ${n}\n\n[x](${NAMES[(i + 1) % 5]}.md) [y](${NAMES[(i + 2) % 5]}.md)\n`);
 };
 const writeOverview = (linked = NAMES) =>
   put(
@@ -76,14 +76,14 @@ describe('overview docs end to end (built CLI)', () => {
     expect(existsSync(join(docs, 'api/INDEX.md'))).toBe(true);
     const before = overviewIssues();
     expect(before).toHaveLength(1);
-    expect(before[0]).toMatch(/^OVERVIEW_MISSING\|api\|5 related docs have no overview; only a generated index links them all$/);
+    expect(before[0]).toMatch(/^OVERVIEW_MISSING\|api\/a\.md\|Flow — 5 docs \(api\/a\.md, api\/b\.md, api\/c\.md, api\/d\.md, api\/e\.md\) have no overview; only a generated index links them all$/);
 
     await writeOverview();
     expect(overviewIssues()).toEqual([]);
 
     // Partial coverage of the cluster (1 of 5 others) is not an overview.
     await writeOverview(['a']);
-    expect(overviewIssues()[0]).toMatch(/^OVERVIEW_MISSING\|api\|/);
+    expect(overviewIssues()[0]).toMatch(/^OVERVIEW_MISSING\|api\//);
   });
 
   it('OVERVIEW_STALE_LINKS names the members an overview misses', async () => {

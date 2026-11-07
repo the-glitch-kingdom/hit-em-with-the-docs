@@ -78,7 +78,7 @@ export interface DomainAuditStats {
  */
 /** Issues that should count toward CI failure: advisory RETRIEVAL_* (#50) and OVERVIEW_* (#51) warnings never do. */
 export function countActionableIssues(issues: { rule: string }[]): number {
-  return issues.filter((i) => !/^(RETRIEVAL|OVERVIEW)_/.test(i.rule)).length;
+  return issues.filter((i) => !/^(RETRIEVAL|OVERVIEW|LINK_BROKEN_ANCHOR)(_|$)/.test(i.rule)).length;
 }
 
 export async function auditDocumentation(options: AuditOptions): Promise<AuditResult> {

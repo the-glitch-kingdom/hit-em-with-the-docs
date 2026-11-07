@@ -76,6 +76,17 @@ describe('hewtd init reports_dir', () => {
     hewtd('init');
     expect(JSON.parse(await read(cfg()))).toEqual({ updatePolicy: 'off', reports_dir: '.hewtd/reports' });
   });
+
+  it('never overwrites an unparseable config, and --force re-init keeps reports where they were (review fix)', async () => {
+    await rm(docs, { recursive: true });
+    await mkdir(join(root, '.claude'));
+    await writeFile(cfg(), '{ "updatePolicy": "off", }');
+    hewtd('init');
+    expect(await read(cfg())).toBe('{ "updatePolicy": "off", }');
+    await writeFile(cfg(), JSON.stringify({ updatePolicy: 'off' }));
+    hewtd('init', '--force');
+    expect(JSON.parse(await read(cfg()))).toEqual({ updatePolicy: 'off' });
+  });
 });
 
 describe('stampGenerated', () => {

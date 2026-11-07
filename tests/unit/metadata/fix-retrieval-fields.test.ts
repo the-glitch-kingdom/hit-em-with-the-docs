@@ -75,6 +75,14 @@ describe('fixRetrievalFields', () => {
     expect((await read('ok.md')).data).toMatchObject({ purpose: 'Explains how the nightly export job retries failed uploads' });
   });
 
+  it('falls through to a real description when the summary is filler, in one run (review fix)', async () => {
+    await put('f.md', 'title: Foo\nsummary: Documentation for Foo\ndescription: Explains how the nightly export job retries failed uploads');
+    const r = await fixRetrievalFields({ docsPath: dir, apply: true });
+    expect((await read('f.md')).data).toEqual({ title: 'Foo', purpose: 'Explains how the nightly export job retries failed uploads' });
+    expect(r.dropped).toBe(1);
+    expect((await fixRetrievalFields({ docsPath: dir, apply: true })).changed).toEqual([]);
+  });
+
   it('drops a filler summary instead of writing it to purpose', async () => {
     await put('g.md', 'title: Gee\nsummary: Documentation for Gee');
     const r = await fixRetrievalFields({ docsPath: dir, apply: true });

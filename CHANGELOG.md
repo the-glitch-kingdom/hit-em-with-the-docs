@@ -15,7 +15,8 @@ Follow-ups to 2.13 (#55) and two `integrate` traps (#54). Behaviour changes:
   `.documentation`, stopping at the git root. Explicit `-p` is unchanged; `init`
   is excluded. For docs-path commands the config root is the parent of the docs path.
 - **`hewtd init` writes `reports_dir: ".hewtd/reports"`** when the key is absent
-  (new installs; existing settings are kept).
+  (only when it creates a new docs tree, never on `--force`; existing settings and
+  an unparseable config file are left alone).
 - **`hewtd index` stamps `generated: true`** on unstamped `maintenance-`,
   `health-`, `audit-` and `links-` `.md` reports and rebuilds the facts,
   incidents and symptoms indexes. `--dry-run` only reports.

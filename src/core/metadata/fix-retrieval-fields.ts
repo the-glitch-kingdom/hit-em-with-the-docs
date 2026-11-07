@@ -57,11 +57,14 @@ export async function fixRetrievalFields(opts: {
       result.cleared++;
       actions.push('purpose was generator filler, cleared');
     }
-    const src = isStr(data.summary) ? 'summary' : isStr(data.description) ? 'description' : null;
-    if (src) {
+    // summary first, then description: a dropped filler summary falls through to description.
+    for (const src of ['summary', 'description'] as const) {
+      if (!isStr(data[src])) continue;
       if (isStr(data.purpose)) {
         result.conflicts.push(file);
-      } else if (isWeakPurpose((data[src] as string).trim(), title, cfg)) {
+        break;
+      }
+      if (isWeakPurpose((data[src] as string).trim(), title, cfg)) {
         delete data[src];
         result.dropped++;
         actions.push(`${src} was filler, dropped`);

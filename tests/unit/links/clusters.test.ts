@@ -87,6 +87,13 @@ describe('findClusters communities', () => {
     expect(sets.sort()).toEqual(['x0,x1,x2,x3,x4', 'y0,y1,y2,y3,y4']);
   });
 
+  it('a lone flow inside an already-reported domain is not reported twice (review fix)', async () => {
+    clique('guides', 'x');
+    names.forEach((n) => put(`guides/z${n}.md`));
+    const cl = await findClusters(root, cfg);
+    expect(cl.map((c) => [c.kind, c.id])).toEqual([['domain', 'guides']]);
+  });
+
   it('a long chain is not a flow', async () => {
     const ids = Array.from({ length: 40 }, (_, i) => `n${i}`);
     ids.forEach((a, i) => put(`d${i % 4}/${a}.md`, i + 1 < ids.length ? [`../d${(i + 1) % 4}/${ids[i + 1]}.md`] : []));

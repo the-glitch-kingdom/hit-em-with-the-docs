@@ -130,11 +130,14 @@ export async function findClusters(
     if (domains.size > 1) groups.push({ id: `component:${members[0]}`, kind: 'component', members });
     else if (members.length * 2 <= (byDomain.get([...domains][0]!)?.length ?? 0)) subs.push({ id: `component:${members[0]}`, kind: 'component', members });
   }
-  // A domain split into 2+ flows is reported as those flows, not also as the whole domain.
+  // A domain split into 2+ flows is reported as those flows, not also as the whole domain;
+  // a lone flow inside a domain that is already reported adds nothing.
   for (const sub of subs) {
     const d = info.get(sub.members[0]!)!.domain;
     const n = subs.filter((o) => info.get(o.members[0]!)!.domain === d).length;
-    if (n >= 2) { const i = groups.findIndex((g) => g.id === d && g.kind === 'domain'); if (i >= 0) groups.splice(i, 1); }
+    const i = groups.findIndex((g) => g.id === d && g.kind === 'domain');
+    if (n < 2 && i >= 0) continue;
+    if (i >= 0) groups.splice(i, 1);
     groups.push(sub);
   }
 

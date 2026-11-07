@@ -30,7 +30,7 @@ import {
 } from '../core/domains/registry.js';
 import { regenerateIndexes, generateKbIndexes } from '../generators/regenerate.js';
 import { stampReports } from '../generators/stamp-reports.js';
-import { readRawConfig, writeRawConfig } from '../utils/config.js';
+import { writeRawConfig } from '../utils/config.js';
 import { resolveDocsPath } from '../utils/docs-root.js';
 
 const program = new Command();
@@ -64,7 +64,8 @@ program
   .action(async (options) => {
     const docsPath = resolve(process.cwd(), options.path);
 
-    if (await scaffoldExists(docsPath) && !options.force) {
+    const existed = await scaffoldExists(docsPath);
+    if (existed && !options.force) {
       logger.warn('Documentation structure already exists. Use --force to overwrite.');
       process.exit(1);
     }
@@ -79,11 +80,21 @@ program
       process.exit(1);
     }
 
-    // New installs keep reports out of the searched docs tree; never override an existing value.
-    const projectRoot = dirname(docsPath);
-    const raw = await readRawConfig(projectRoot);
-    if (raw.reports_dir === undefined) {
-      await writeRawConfig(projectRoot, { ...raw, reports_dir: '.hewtd/reports' });
+    // New installs only: keep reports out of the searched docs tree. A re-init (--force) keeps
+    // where reports already go, and an unreadable config is never overwritten.
+    if (!existed) {
+      const projectRoot = dirname(docsPath);
+      let raw: Record<string, unknown> | null = {};
+      try {
+        raw = JSON.parse(await readFile(join(projectRoot, '.claude/hit-em-with-the-docs.json'), 'utf-8'));
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') raw = null;
+      }
+      if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+        logger.warn('Could not parse .claude/hit-em-with-the-docs.json; left it alone (reports_dir not set).');
+      } else if (raw.reports_dir === undefined) {
+        await writeRawConfig(projectRoot, { ...raw, reports_dir: '.hewtd/reports' });
+      }
     }
   });
 

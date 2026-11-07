@@ -216,7 +216,8 @@ export async function triage(opts: {
 
 /**
  * Group judged docs so linked docs share a shard (overview clusters, merged if they overlap;
- * the rest chunked per domain), then bin-pack by bytes into at most `max_agents` shards.
+ * the rest chunked per domain), split any group larger than a fair share, then bin-pack by
+ * bytes into at most `max_agents` shards.
  */
 export async function planShards(docsPath: string, judged: Pick<TriageDoc, 'path' | 'bytes'>[], config: PluginConfig): Promise<Shard[]> {
   if (!judged.length) return [];
@@ -254,7 +255,11 @@ export async function planShards(docsPath: string, judged: Pick<TriageDoc, 'path
   const n = Math.max(1, Math.min(max_agents, judged.length, Math.max(Math.ceil(judged.length / docs_per_agent), Math.ceil(judged.reduce((x, d) => x + d.bytes, 0) / min_bytes))));
   const shards: Shard[] = Array.from({ length: n }, (_, id) => ({ id: id + 1, docs: [], bytes: 0 }));
   const size = (u: string[]): number => u.reduce((s, p) => s + bytes.get(p)!, 0);
-  for (const u of units.sort((a, b) => size(b) - size(a) || a[0]!.localeCompare(b[0]!))) {
+  // A cluster bigger than a fair share is split in path order (same-folder docs stay together),
+  // or one agent would carry most of a big job. Safe: apply is serial and hash-checked.
+  const fair = Math.ceil(judged.length / n);
+  const fitted = units.flatMap((u) => (u.length <= fair ? [u] : Array.from({ length: Math.ceil(u.length / fair) }, (_, i) => u.slice(i * fair, (i + 1) * fair))));
+  for (const u of fitted.sort((a, b) => size(b) - size(a) || a[0]!.localeCompare(b[0]!))) {
     const s = shards.reduce((m, x) => (x.bytes < m.bytes ? x : m));
     s.docs.push(...u);
     s.bytes += size(u);

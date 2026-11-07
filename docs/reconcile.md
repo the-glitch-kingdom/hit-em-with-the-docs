@@ -89,8 +89,9 @@ Auto when judged docs (`fields-only` + `check`) reach `team.min_docs` (12) or
 judged bytes reach `team.min_bytes` (250 KB). Lockfiles do not count toward
 bytes. Shards: `max(ceil(docs/docs_per_agent), ceil(bytes/min_bytes))`, capped
 at `team.max_agents` and the doc count; a plan that would be one shard runs
-serial. `--serial` and `--team` override. Overlapping link clusters are never
-split, so one huge cluster is one big shard; run per domain instead.
+serial. `--serial` and `--team` override. Linked docs share a shard when
+they fit a fair share of the job; a larger cluster is split in path order so no
+agent carries most of it.
 Agents only write review files; `--apply` stays serial.
 
 Config lives in `.claude/hit-em-with-the-docs.json` under `reconcile`; every
@@ -149,7 +150,6 @@ accepted entry. Links from other outside files are not repointed.
 ## Limitations
 
 - No read log for `sources`: the slash command must only list files it read.
-- Clusters are not size-capped.
 - Team defaults are provisional. Triage was measured on one real tree (121
   docs, whole-tree plan: 4 shards); wall time versus serial was not measured.
   Retune from the ledger's `reviewed_on` dates after real runs.

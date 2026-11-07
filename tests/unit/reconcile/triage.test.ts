@@ -147,10 +147,10 @@ describe('team plan', () => {
     expect(JSON.stringify(await planShards(docs, judged, config))).toBe(JSON.stringify(shards));
   });
 
-  it('keeps linked (clustered) docs in one shard', async () => {
+  it('keeps linked (clustered) docs in one shard when the cluster fits a fair share', async () => {
     const config = await loadPluginConfig(dir);
     config.reconcile.team.docs_per_agent = 2;
-    const names = Array.from({ length: 6 }, (_, i) => `flow/f${i}.md`);
+    const names = Array.from({ length: 3 }, (_, i) => `flow/f${i}.md`);
     for (const n of names) {
       const links = names.filter((m) => m !== n).map((m) => `[x](${m.replace('flow/', '')})`).join(' ');
       put(n, `---\ntitle: ${n}\n---\n${links}\n`);
@@ -160,5 +160,18 @@ describe('team plan', () => {
     const shards = await planShards(docs, judged, config);
     const homes = new Set(shards.filter((s) => s.docs.some((d) => names.includes(d))).map((s) => s.id));
     expect(homes.size).toBe(1);
+  });
+
+  it('splits a cluster bigger than a fair share across agents', async () => {
+    const config = await loadPluginConfig(dir);
+    const names = Array.from({ length: 24 }, (_, i) => `flow/f${String(i).padStart(2, '0')}.md`);
+    for (const n of names) {
+      const links = names.filter((m) => m !== n).map((m) => `[x](${m.replace('flow/', '')})`).join(' ');
+      put(n, `---\ntitle: ${n}\n---\n${links}\n`);
+    }
+    const shards = await planShards(docs, names.map((path) => ({ path, bytes: 100 })), config);
+    expect(shards.length).toBe(3);
+    expect(Math.max(...shards.map((s) => s.docs.length))).toBe(8);
+    expect(shards.flatMap((s) => s.docs).sort()).toEqual(names);
   });
 });

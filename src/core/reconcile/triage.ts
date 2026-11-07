@@ -19,6 +19,7 @@ export type Lane = 'clean' | 'fields-only' | 'check' | 'archive-candidate';
 
 /** Commits to cited files since the doc last changed that push a doc to `check`. */
 export const STALE_COMMITS_BAR = 10;
+const LOCKFILE = /(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|poetry\.lock|Cargo\.lock|composer\.lock)$/;
 const ARCHIVE_MIN_CHECKABLE = 3;
 const ARCHIVE_MISSING_SHARE = 0.6;
 
@@ -158,6 +159,7 @@ export async function triage(opts: {
     const cited = [...new Set([...resolved.map((r) => r.where), ...sources].filter((p): p is string => !!p && idx.files.has(p)))].sort();
     let bytes = Buffer.byteLength(d.raw);
     for (const c of cited) {
+      if (LOCKFILE.test(c)) continue; // a symbol hit in a lockfile is not something the pass reads
       try { bytes += statSync(join(repo, c)).size; } catch { /* deleted or unreadable */ }
     }
 
@@ -195,8 +197,10 @@ export async function triage(opts: {
   const judgmentBytes = judged.reduce((s, d) => s + d.bytes, 0);
   const t = config.reconcile.team;
   const auto = judged.length >= t.min_docs || judgmentBytes >= t.min_bytes ? 'team' : 'serial';
-  const mode = opts.mode ?? auto;
-  const shards = mode === 'team' ? await planShards(docsPath, judged, config) : [];
+  let mode = opts.mode ?? auto;
+  let shards = mode === 'team' ? await planShards(docsPath, judged, config) : [];
+  // One shard is just a serial run with agent overhead.
+  if (mode === 'team' && !opts.mode && shards.length < 2) (mode = 'serial'), (shards = []);
 
   return {
     docs,
@@ -213,7 +217,7 @@ export async function triage(opts: {
  */
 export async function planShards(docsPath: string, judged: Pick<TriageDoc, 'path' | 'bytes'>[], config: PluginConfig): Promise<Shard[]> {
   if (!judged.length) return [];
-  const { max_agents, docs_per_agent } = config.reconcile.team;
+  const { max_agents, docs_per_agent, min_bytes } = config.reconcile.team;
   const bytes = new Map(judged.map((d) => [d.path, d.bytes]));
 
   // union-find over cluster members
@@ -244,7 +248,7 @@ export async function planShards(docsPath: string, judged: Pick<TriageDoc, 'path
   }
   for (const list of loose.values()) for (let i = 0; i < list.length; i += docs_per_agent) units.push(list.slice(i, i + docs_per_agent));
 
-  const n = Math.max(1, Math.min(max_agents, Math.ceil(judged.length / docs_per_agent)));
+  const n = Math.max(1, Math.min(max_agents, judged.length, Math.max(Math.ceil(judged.length / docs_per_agent), Math.ceil(judged.reduce((x, d) => x + d.bytes, 0) / min_bytes))));
   const shards: Shard[] = Array.from({ length: n }, (_, id) => ({ id: id + 1, docs: [], bytes: 0 }));
   const size = (u: string[]): number => u.reduce((s, p) => s + bytes.get(p)!, 0);
   for (const u of units.sort((a, b) => size(b) - size(a) || a[0]!.localeCompare(b[0]!))) {

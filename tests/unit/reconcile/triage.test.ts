@@ -97,8 +97,26 @@ describe('team plan', () => {
   it('triggers on bytes alone', async () => {
     const config = await loadPluginConfig(dir);
     config.reconcile.team.min_bytes = 50;
-    const r = await triage({ root: dir, docsPath: docs, rels: ['ops/gone.md'], config });
+    config.reconcile.team.docs_per_agent = 1;
+    const r = await triage({ root: dir, docsPath: docs, rels: ['ops/gone.md', 'ops/fields.md'], config });
     expect(r.mode).toBe('team');
+    expect(r.shards.length).toBe(2);
+  });
+
+  it('falls back to serial when the team plan would be a single shard', async () => {
+    const config = await loadPluginConfig(dir);
+    config.reconcile.team.min_bytes = 50;
+    const r = await triage({ root: dir, docsPath: docs, rels: ['ops/gone.md'], config });
+    expect(r.mode).toBe('serial');
+    expect(r.shards).toEqual([]);
+  });
+
+  it('ignores lockfiles when estimating bytes', async () => {
+    put('package-lock.json', 'x'.repeat(50000));
+    put('ops/lock.md', fm() + 'See `package-lock.json` and `src/nope.ts`.\n');
+    g('add', '-A'); g('commit', '-m', 'lock');
+    const r = await run(['ops/lock.md']);
+    expect(r.docs[0]!.bytes).toBeLessThan(5000);
   });
 
   it('shards are disjoint, cover every doc and respect max_agents', async () => {

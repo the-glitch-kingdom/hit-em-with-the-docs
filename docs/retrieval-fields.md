@@ -50,6 +50,51 @@ counts; read the issues through the auditor API or `hewtd report audit`.
 Generated files, `INDEX.md`/`REGISTRY.md`, `drafts/`, `reports/`, `archive/`
 and plan-tier docs are not checked.
 
+## Overview docs (HEWTD 2.13.0+)
+
+An overview doc walks a cross-cutting flow end to end and links every stage,
+so a search for the flow lands on one page. Mark it `kind: overview` and start
+from `templates/overview.template.md` (tier `guide`; a numbered "How it fits
+together" list, one link per stage). `kind` accepts only `overview`; any other
+value fails the audit as `metadata-invalid` and lists the allowed values.
+
+hewtd finds the flows itself. A cluster is a domain, or a cross-domain
+connected component of linked docs. Generated files, `archive/`, `drafts/`,
+`reports/`, plan-tier docs and draft or archived docs are ignored. A cluster
+of `min_cluster_size` or more docs needs an overview. A `kind: overview` doc
+qualifies as its overview only if it links at least `min_link_coverage` of the
+other members. A generated `INDEX.md` never counts as an overview.
+
+| Code | Raised when | Fix |
+|---|---|---|
+| `OVERVIEW_MISSING` | A cluster has no qualifying overview. Reported on the domain name for a domain cluster, on the first member for a component. A `kind: overview` doc below the coverage bar also lands here. | Write an overview from the template and link the members, or add the missing links to an existing one. |
+| `OVERVIEW_STALE_LINKS` | A qualifying overview misses some members. | Add a link to each member listed. |
+
+Both are advisory warnings with no `code`: they never change the exit code
+(with or without `--strict`) and the GitHub Action ignores them.
+
+`hewtd maintain` lists pending back-links as a dry run. `hewtd maintain --fix`
+**edits doc bodies**: it inserts `Part of: [Title](rel.md)` after the first H1
+(or at the top of the body when there is no H1) in each member. It is
+idempotent, skips generated and plan-tier docs, and runs before the metadata
+sync so one `--fix` run converges. Set `overview.backlinks` to `false` to turn
+it off.
+
+```json
+{
+  "overview": {
+    "min_cluster_size": 5,
+    "min_link_coverage": 0.6,
+    "backlinks": true,
+    "disabled": []
+  }
+}
+```
+
+Invalid values fall back to these defaults. `disabled` silences the audit
+rules only (`["OVERVIEW_MISSING"]`); health-report coverage and back-links do
+not consult it.
+
 ## Migrating old fields
 
 ```bash
@@ -97,7 +142,9 @@ Reports outside the docs root are not scanned by hewtd.
 
 `hewtd report health` adds a Retrieval Coverage table (and a
 `retrievalCoverage` object in JSON): docs with a purpose, docs with symptoms,
-docs with a unique title, each as `n/total | pct%`. It does not change the
+docs with a unique title, each as `n/total | pct%`. It also reports
+"N cluster(s) with an overview, M without" and a table of clusters missing one
+(Docs, Generated-only hub columns; `overviewCoverage` in JSON). It does not change the
 health score. `hewtd maintain` writes its own `maintenance-*.md` report.
 
 ## Writing guidance

@@ -75,6 +75,8 @@ Slash commands (Claude Code):
 
 **Retrieval fields (2.12.0+):** write `purpose` (one sentence) and `symptoms` (plain strings, any tier) on every doc. `hewtd audit` raises advisory `RETRIEVAL_*` warnings when they are missing, weak, generic or duplicated; they never fail the audit. See `docs/retrieval-fields.md`.
 
+**Overview docs (2.13.0+):** a `kind: overview` doc (template `templates/overview.template.md`) links every stage of a cross-cutting flow. `hewtd audit` raises advisory `OVERVIEW_MISSING` / `OVERVIEW_STALE_LINKS` warnings for flows of 5+ docs; they never fail the audit. Config: `overview` block (`min_cluster_size`, `min_link_coverage`, `backlinks`, `disabled`). `hewtd maintain --fix` edits doc bodies to add `Part of:` back-links; set `overview.backlinks: false` to stop it.
+
 Full reference: `docs/knowledge-base-primitives.md` and `docs/plan-tier-frontmatter.md`.
 
 ## Templates

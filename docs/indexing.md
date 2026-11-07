@@ -97,6 +97,16 @@ Reports go to `<docs root>/reports` by default. Set `reports_dir` in
 `.claude/hit-em-with-the-docs.json` (relative to the repo root) to move them.
 See `retrieval-fields.md`.
 
+## Overview back-links (2.13.0)
+
+`hewtd maintain` also checks overview back-links. Without `--fix` it only lists
+pending ones. With `--fix` it edits doc bodies: each member of a cluster that
+has a `kind: overview` doc gets `Part of: [Title](rel.md)` after its first H1
+(top of the body when there is no H1). The step is idempotent, skips generated
+and plan-tier docs, and runs before the metadata sync and index regeneration,
+so word counts and INDEX rows settle in the same run. Disable it with
+`"overview": {"backlinks": false}`. See `retrieval-fields.md`.
+
 ## Where this lives in the code
 
 `listDomainDocFiles()` in `src/generators/regenerate.ts` is the single shared

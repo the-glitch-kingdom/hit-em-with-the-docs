@@ -170,6 +170,17 @@ To move old `summary`/`description` values into `purpose`, run
 `hewtd fix-retrieval-fields` (dry run) then `--apply`. Fixes for each code are
 in `docs/retrieval-fields.md`.
 
+### Overview docs (2.13.0+)
+
+`kind: overview` marks a doc that links every stage of a cross-cutting flow
+(template: `templates/overview.template.md`; `kind` accepts only `overview`).
+`hewtd audit` raises advisory `OVERVIEW_MISSING` and `OVERVIEW_STALE_LINKS`
+warnings (never a failing exit code) for flows of `min_cluster_size` docs
+or more. Config: an `overview` block (`min_cluster_size` 5, `min_link_coverage`
+0.6, `backlinks` true, `disabled` []). `hewtd maintain --fix` now edits doc
+bodies, inserting `Part of: [Title](...)` back-links to the overview.
+Details: `docs/retrieval-fields.md`.
+
 ## What NOT to do
 
 - **Don't write to `<vault-root>/{facts,incidents,symptoms}/INDEX.md`** — those are auto-generated. Edits will be overwritten on the next `hewtd maintain`.

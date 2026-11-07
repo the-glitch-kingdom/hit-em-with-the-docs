@@ -1098,7 +1098,7 @@ program
     }
   });
 
-// Search command
+// Reconcile command
 program
   .command('reconcile')
   .description('Scoped, resumable doc-vs-code reconciliation (deterministic; the judgment pass is the /reconcile slash command).')
@@ -1204,6 +1204,7 @@ program
     if (st.nextUnreviewed.length) logger.info(`  next unreviewed:\n${st.nextUnreviewed.map((p) => `    ${p}`).join('\n')}`);
   });
 
+// Search command
 program
   .command('search <query>')
   .description('Search documentation')

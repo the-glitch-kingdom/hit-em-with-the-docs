@@ -29,6 +29,7 @@ export * from './generators/regenerate.js';
 
 // Core automation
 export * from './core/metadata/sync.js';
+export * from './core/metadata/fix-retrieval-fields.js';
 export * from './core/links/checker.js';
 export * from './core/links/tracker.js';
 export * from './core/audit/auditor.js';

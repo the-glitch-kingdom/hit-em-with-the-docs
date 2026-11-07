@@ -58,8 +58,10 @@ const jaccard = (a: Set<string>, b: Set<string>): number => {
 /**
  * Copy-holding docs keyed by docs-relative path. The whole tree is read, so a scoped triage
  * still finds owners outside its scope. Sections under the size floor are ignored.
- * shortcut: inverted index over shingles is quadratic on pervasive boilerplate; fine below a few thousand sections.
+ * Shingles found in more than MAX_POSTING sections are skipped (boilerplate), which bounds the pairwise work.
  */
+const MAX_POSTING = 20;
+
 export async function findDuplicates(docsPath: string, config: PluginConfig): Promise<Map<string, Duplicate[]>> {
   const floor = config.retrieval.near_duplicate_min_chars;
   const secs: Sec[] = [];
@@ -86,7 +88,11 @@ export async function findDuplicates(docsPath: string, config: PluginConfig): Pr
   const find = (x: number): number => (parent[x] === x ? x : (parent[x] = find(parent[x]!)));
   for (let i = 0; i < secs.length; i++) {
     const shared = new Map<number, number>();
-    for (const sh of secs[i]!.shingles) for (const j of index.get(sh)!) if (j > i && secs[j]!.doc !== secs[i]!.doc) shared.set(j, (shared.get(j) ?? 0) + 1);
+    for (const sh of secs[i]!.shingles) {
+      const post = index.get(sh)!;
+      if (post.length > MAX_POSTING) continue; // boilerplate shared by many sections is not a copied procedure
+      for (const j of post) if (j > i && secs[j]!.doc !== secs[i]!.doc) shared.set(j, (shared.get(j) ?? 0) + 1);
+    }
     for (const [j, n] of shared) {
       if (n / (secs[i]!.shingles.size + secs[j]!.shingles.size - n) >= BAR) parent[find(j)] = find(i);
     }

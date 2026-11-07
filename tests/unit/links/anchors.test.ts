@@ -40,3 +40,17 @@ describe('checkLinks anchors', () => {
     expect(countActionableIssues([{ rule: 'LINK_BROKEN_ANCHOR' }])).toBe(0);
   });
 });
+
+describe('anchor scanning matches GitHub more closely (review fixes)', () => {
+  it('setext headings, blockquoted headings and combining marks get anchors; frontmatter comments do not', async () => {
+    const { headingAnchors } = await import('../../../src/core/links/anchors');
+    const md = '---\ntitle: x\n# foo\n---\n\nTag the release\n---------------\n\nIntro\n=====\n\n> ## Quoted part\n\n# foo\n\n# Café\n';
+    const a = headingAnchors(md);
+    expect(a.has('tag-the-release')).toBe(true);
+    expect(a.has('intro')).toBe(true);
+    expect(a.has('quoted-part')).toBe(true);
+    expect(a.has('foo')).toBe(true);
+    expect(a.has('foo-1')).toBe(false); // the YAML comment is not a heading
+    expect(a.has('café')).toBe(true);
+  });
+});

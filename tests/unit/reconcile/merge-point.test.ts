@@ -42,8 +42,36 @@ afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 describe('no-loss tokens', () => {
   it('lists flags and durations absent from owner and summary', () => {
-    expect(missingTokens(OLD, 'Run `deploy.sh` first.', 'Canary release.').sort()).toEqual(['--canary', '30 minutes', 'deploy.sh --canary']);
+    expect(missingTokens(OLD, 'Run `deploy.sh` first.', 'Canary release.').sort()).toEqual(['--canary', '30']);
     expect(missingTokens(OLD, 'x', 'Use `deploy.sh --canary`, 30 minutes.')).toEqual([]);
+  });
+});
+
+describe('no-loss tokens (review fixes)', () => {
+  const none = 'Unrelated owner text about something else.';
+  it('bare numbers, quoted strings, URLs, table cells and code-block commands all count', () => {
+    expect(missingTokens('Listens on port 8080 with 3 retries.', none, '')).toEqual(expect.arrayContaining(['8080', '3']));
+    expect(missingTokens('Set the "Staging Gate" toggle to "on".', none, '')).toEqual(expect.arrayContaining(['Staging', 'Gate', 'on']));
+    expect(missingTokens('| env | url |\n|---|---|\n| prod | https://x.example.com |', none, '')).toEqual(expect.arrayContaining(['prod', 'https://x.example.com']));
+    expect(missingTokens('```sh\nmake release\nkubectl rollout undo web\n```', none, '')).toEqual(expect.arrayContaining(['kubectl', 'rollout', 'undo', 'web']));
+  });
+  it('matches whole tokens only, never fragments of other words', () => {
+    expect(missingTokens('run with -v and a 30s timeout', 'Use --verbose and a 130s timeout.', '')).toEqual(expect.arrayContaining(['-v', '30s']));
+    expect(missingTokens('run with -v and a 30s timeout', 'Use -v and a 30s timeout.', '')).toEqual([]);
+  });
+  it('plain prose words may be reworded', () => {
+    expect(missingTokens('Then simply wait for the release to finish.', 'Wait until it completes.', '')).toEqual([]);
+  });
+});
+
+describe('merge (review fix)', () => {
+  it('refuses a patch that deletes owner text', async () => {
+    const before = read('backend/deploy.md');
+    const merge: ReviewEntry = { path: 'backend/deploy.md', content_hash: h('backend/deploy.md'), verdict: 'merge', section: 'release', patch: [{ old: 'Run `deploy.sh` first.', new: '' }] };
+    const res = await run([merge]);
+    expect(res.outcomes[0]).toMatchObject({ status: 'error' });
+    expect(res.outcomes[0]!.detail).toMatch(/merge would drop owner text; missing: .*deploy\.sh/);
+    expect(read('backend/deploy.md')).toBe(before);
   });
 });
 

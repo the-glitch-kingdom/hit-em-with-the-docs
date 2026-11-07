@@ -1,25 +1,38 @@
-/** Mechanical no-loss check (#59): what a `point` removes must survive in the owner section or the pointer summary. */
+/**
+ * Mechanical no-loss check (#59): what a `point` (or a `merge` patch) removes must survive, as whole
+ * tokens, in the owner section or the pointer summary. Plain prose words may be reworded; anything a
+ * reader acts on may not: every token in code, tables and quotes, and elsewhere every token with a
+ * digit, symbol or code-like casing, plus every resolved reference.
+ */
 import { extractReferences } from './references.js';
 
-const FLAG = /(?<![\w-])--?[A-Za-z][\w-]*(?:=\S+)?/g;
-const NUM_UNIT = /\b\d+(?:\.\d+)?\s?(?:ms|s|sec|seconds?|mins?|minutes?|h|hours?|days?|[KMGT]i?B|kb|mb|gb|tb|%|x|rpm|rps|qps)\b/gi;
-const IDENT = /\b(?:[a-z]+(?:[A-Z][a-z0-9]+)+|[A-Za-z]\w*_\w+|[A-Z][A-Z0-9_]{2,})\b/g;
-const CODE_SPAN = /`([^`\n]+)`/g;
+/** Split on whitespace and markup punctuation; trim sentence punctuation; drop pure-punctuation tokens. */
+const tokens = (text: string): string[] =>
+  text.split(/[\s()[\]{}<>,;"'`|*“”‘’]+/)
+    .map((t) => t.replace(/^[.:!?]+|[.:!?]+$/g, ''))
+    .filter((t) => /[\p{L}\p{N}]/u.test(t));
 
-/** Tokens a reader would lose: references, flags, numbers with units, identifiers, inline-code spans. */
+/** Prose tokens that still carry facts: numbers, flags, paths, URLs, ids, CONSTANTS, camelCase. */
+const factLike = (t: string): boolean =>
+  /\d/.test(t) || /[-_./:@=$~#%+]/.test(t) || /[a-z][A-Z]/.test(t) || /^[A-Z][A-Z0-9]+$/.test(t);
+
+/** Tokens a reader would lose if `removed` disappeared. */
 export function lossTokens(removed: string): string[] {
   const out = new Set<string>();
-  for (const r of extractReferences(removed)) if (r.kind !== 'doc-link') out.add(r.ref);
-  for (const re of [FLAG, NUM_UNIT, IDENT]) for (const m of removed.matchAll(re)) out.add(m[0].replace(/\s+/g, ' '));
-  for (const m of removed.matchAll(CODE_SPAN)) out.add(m[1]!.trim());
-  out.delete('');
+  let rest = removed;
+  // Fenced code: every token matters (a command's plain words are part of it).
+  rest = rest.replace(/^(\s*)(```|~~~)[^\n]*\n([\s\S]*?)^\1\2[ \t]*$/gm, (_m, _i, _f, body: string) => { tokens(body).forEach((t) => out.add(t)); return ' '; });
+  // Inline code, quoted strings and table rows: every token.
+  rest = rest.replace(/`([^`\n]+)`/g, (_m, c: string) => { tokens(c).forEach((t) => out.add(t)); return ' '; });
+  rest = rest.replace(/"([^"\n]+)"|“([^”\n]+)”/g, (_m, a?: string, b?: string) => { tokens(a ?? b ?? '').forEach((t) => out.add(t)); return ' '; });
+  rest = rest.replace(/^\s*\|.*\|\s*$/gm, (row) => { if (!/^\s*\|[\s:|-]+\|\s*$/.test(row)) tokens(row).forEach((t) => out.add(t)); return ' '; });
+  for (const t of tokens(rest)) if (factLike(t)) out.add(t);
+  for (const r of extractReferences(removed)) if (r.kind !== 'doc-link') for (const t of tokens(r.ref)) out.add(t);
   return [...out];
 }
 
-/** Tokens of `removed` found in neither the owner section nor the pointer summary (empty = nothing lost). */
+/** Tokens of `removed` found as whole tokens in neither the owner section nor the pointer summary (empty = nothing lost). */
 export function missingTokens(removed: string, ownerSection: string, summary: string): string[] {
-  const keep = `${ownerSection}\n${summary}`;
-  const norm = (s: string) => s.replace(/\s+/g, ' ');
-  const hay = norm(keep);
-  return lossTokens(removed).filter((t) => !hay.includes(norm(t)));
+  const keep = new Set(tokens(`${ownerSection}\n${summary}`).map((t) => t.toLowerCase()));
+  return lossTokens(removed).filter((t) => !keep.has(t.toLowerCase()));
 }

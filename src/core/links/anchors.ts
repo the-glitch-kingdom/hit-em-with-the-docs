@@ -7,6 +7,8 @@ interface Heading {
   level: number;
   line: number;
   ids: string[];
+  /** setext headings span two lines (text + underline) */
+  span: number;
 }
 
 function slugify(text: string): string {
@@ -14,13 +16,18 @@ function slugify(text: string): string {
     .toLowerCase()
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1') // link text only
     .replace(/[`*~]/g, '')
-    .replace(/[^\p{L}\p{N}\s_-]/gu, '')
+    .replace(/[^\p{L}\p{M}\p{N}\s_-]/gu, '') // GitHub keeps combining marks
     .trim()
     .replace(/\s/g, '-');
 }
 
 function scan(markdown: string): { headings: Heading[]; lines: string[]; extra: string[] } {
   const lines = markdown.split('\n');
+  // Frontmatter is not content: blank it (keeping line numbers) so a YAML `# comment` is no heading.
+  if (lines[0]?.trim() === '---') {
+    const end = lines.findIndex((l, i) => i > 0 && /^(---|\.\.\.)\s*$/.test(l));
+    if (end > 0) for (let i = 0; i <= end; i++) lines[i] = '';
+  }
   const headings: Heading[] = [];
   const extra: string[] = [];
   const seen = new Map<string, number>();
@@ -35,9 +42,13 @@ function scan(markdown: string): { headings: Heading[]; lines: string[]; extra: 
     }
     if (fence) return;
     for (const m of line.matchAll(/<a\s[^>]*?\b(?:id|name)=["']([^"']+)["']/gi)) extra.push(m[1]!);
-    const h = line.match(/^ {0,3}(#{1,6})\s+(.+?)\s*#*\s*$/);
-    if (!h) return;
-    let text = h[2]!;
+    // ATX headings, also inside blockquotes (`> ## x`); setext headings (text underlined with === / ---).
+    const h = line.match(/^(?: {0,3}>\s?)* {0,3}(#{1,6})\s+(.+?)\s*#*\s*$/);
+    const under = lines[i + 1]?.match(/^ {0,3}(=+|-+)\s*$/);
+    const setext = !h && under && line.trim() !== '' && !/^ {0,3}([-*+>|#]|\d+[.)])(\s|$)/.test(line) && (i === 0 || lines[i - 1]!.trim() === '' || /^ {0,3}#/.test(lines[i - 1]!));
+    if (!h && !setext) return;
+    const level = h ? h[1]!.length : under![1]![0] === '=' ? 1 : 2;
+    let text = h ? h[2]! : line.trim();
     const ids: string[] = [];
     const custom = text.match(/\s*\{#([^}\s]+)\}\s*$/);
     if (custom) {
@@ -48,7 +59,7 @@ function scan(markdown: string): { headings: Heading[]; lines: string[]; extra: 
     const n = seen.get(base) ?? 0;
     seen.set(base, n + 1);
     ids.push(n === 0 ? base : `${base}-${n}`);
-    headings.push({ level: h[1]!.length, line: i, ids });
+    headings.push({ level, line: i, ids, span: h ? 1 : 2 });
   });
   return { headings, lines, extra };
 }
@@ -73,7 +84,7 @@ export function flatSections(markdown: string): { anchor: string; heading: strin
   const { headings, lines } = scan(markdown);
   return headings.map((h, i) => ({
     anchor: h.ids[0]!,
-    heading: lines[h.line]!.replace(/^\s*#+\s*|\s*#*\s*$/g, ''),
-    text: lines.slice(h.line + 1, headings[i + 1]?.line ?? lines.length).join('\n'),
+    heading: lines[h.line]!.replace(/^(?:\s*>)*\s*#+\s*|\s*#*\s*$/g, ''),
+    text: lines.slice(h.line + h.span, headings[i + 1]?.line ?? lines.length).join('\n'),
   }));
 }

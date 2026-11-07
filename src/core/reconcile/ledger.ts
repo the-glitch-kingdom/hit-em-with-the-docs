@@ -68,7 +68,10 @@ export function recordEntry(
 ): LedgerEntry {
   const prev = ledger.entries[entry.path];
   const base = prev && prev.content_hash === entry.content_hash ? prev : undefined;
-  const next = { ...base, ...entry } as LedgerEntry;
+  // What a doc points at (pointer target, overview members) is about the doc's links, not its
+  // review: it survives a content change (a verify, any edit) so staleness keeps firing.
+  const tracking = prev && !base ? { ...(prev.pointer && { pointer: prev.pointer }), ...(prev.members && { members: prev.members }) } : {};
+  const next = { ...tracking, ...base, ...entry } as LedgerEntry;
   ledger.entries[entry.path] = next;
   return next;
 }

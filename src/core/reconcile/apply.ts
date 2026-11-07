@@ -324,6 +324,9 @@ export async function applyReviews(opts: {
           if (!e.patch?.length) throw new Error('merge needs a patch');
           const next = editDoc(raw, e, today);
           if (!headingAnchors(parseFrontmatter(next).content).has(e.section)) throw new Error(`section #${e.section} gone after the merge`);
+          // A merge only adds to the owner: whatever a patch replaces must still be there afterwards.
+          const lost = [...new Set(e.patch.flatMap((pt) => missingTokens(pt.old, parseFrontmatter(next).content, '')))];
+          if (lost.length) throw new Error(`merge would drop owner text; missing: ${lost.join(', ')}`);
           await writeFile(abs, next, 'utf-8');
           touched.add(abs);
           mergedIds.add(e.id ?? e.path);

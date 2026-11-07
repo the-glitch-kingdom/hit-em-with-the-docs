@@ -191,10 +191,15 @@ Pointer record format:
 <one-line summary>. Details: [<owner title>: <heading>](<relative path>#<anchor>)
 ```
 
-**No-loss check (mechanical).** Before a point is written, the tokens of the removed
-text (numbers, paths, identifiers, code spans) must all appear in the owner section
-or the summary. Otherwise the entry is refused with `missing: <tokens>`: merge the
-detail into the owner first. The check never relies on the model's judgment.
+**No-loss check (mechanical).** Before a point is written, every token a reader
+would act on must appear, as a whole token (`-v` is not satisfied by `--verbose`,
+`30s` not by `130s`), in the owner section or the summary: every token inside code
+blocks, inline code, quoted strings and table rows, and elsewhere every token with a
+digit, a symbol (`-_./:@=$~#%+`), code-like casing or ALL CAPS, plus every resolved
+reference. Plain prose words may be reworded. Otherwise the entry is refused with
+`missing: <tokens>`: merge the detail into the owner first. A `merge` patch is held
+to the same check against the owner after the merge, so a merge only ever adds.
+The check never relies on the model's judgment.
 
 **Anchors.** The anchor must exist in the owner at apply time (checked strictly,
 GitHub-style slugs, `{#id}` honored, duplicates `-1`, `-2`). The general

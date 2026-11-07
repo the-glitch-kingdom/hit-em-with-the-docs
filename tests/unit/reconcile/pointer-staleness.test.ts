@@ -63,3 +63,17 @@ describe('pointer staleness', () => {
     expect(d.reasons.join()).toMatch(/pointer target changed: backend\/deploy.md#release \(section missing\)/);
   });
 });
+
+describe('pointer tracking survives later edits (review fix)', () => {
+  it('a verify on the pointing doc does not end tracking; an owner change still sends it to check', async () => {
+    const f = join(root, '.hewtd/reconcile/review-2-1.md');
+    const verify: ReviewEntry = { path: 'backend/admin.md', content_hash: hashContent(read('backend/admin.md')), verdict: 'verify', sources: ['backend/deploy.md'] };
+    writeFileSync(f, renderReview({ batch: '2', shard: 1, scope: 'backend' }, [verify]).replace(/- \[ \] accept/g, '- [x] accept'));
+    const res = await applyReviews({ root, docsPath: docs, files: [f], ledger: await loadLedger(ledgerFile), ledgerFile, today: '2026-11-08' });
+    expect(res.outcomes[0]!.status).toBe('applied');
+    expect((await loadLedger(ledgerFile)).entries['backend/admin.md']!.pointer).toMatchObject({ target: 'backend/deploy.md#release' });
+    writeFileSync(join(docs, 'backend/deploy.md'), read('backend/deploy.md').replace('30 minutes', '45 minutes'));
+    expect((await tri()).reasons).toContain('pointer target changed: backend/deploy.md#release');
+  });
+});
+

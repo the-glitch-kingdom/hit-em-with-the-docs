@@ -76,3 +76,15 @@ describe('triage and overview integration', () => {
     expect(admin?.duplicates?.[0]?.owner).toBe('procedures/release-procedure.md');
   });
 });
+
+describe('findDuplicates on boilerplate-heavy trees (review fix)', () => {
+  it('600 docs sharing a long footer finish quickly and are not called copies of each other', async () => {
+    const footer = Array.from({ length: 30 }, (_, i) => `Shared footer line ${i}: escalate through the standard on-call channel and file a ticket.`).join('\n');
+    for (let i = 0; i < 600; i++) put(`bulk/doc-${i}.md`, `---\ntitle: Doc ${i}\n---\n# Doc ${i}\n\nUnique intro ${i} about subsystem ${i * 13}.\n\n## Footer\n\n${footer}\n`);
+    const t0 = performance.now();
+    const d = await findDuplicates(docs, await loadPluginConfig(root));
+    expect(performance.now() - t0).toBeLessThan(15000);
+    expect([...d.keys()].filter((k) => k.startsWith('bulk/'))).toEqual([]);
+  }, 30000);
+});
+

@@ -6,6 +6,7 @@
  * corpus check (RETRIEVAL_NEAR_DUPLICATE, reserved) can be added beside them.
  */
 
+import { createHash } from 'crypto';
 import { readFile } from 'fs/promises';
 import { basename, relative } from 'path';
 import { parseFrontmatter } from '../../utils/frontmatter.js';
@@ -102,6 +103,45 @@ export function retrievalCoverage(allDocs: RetrievalDoc[], cfg: RetrievalConfig)
   };
 }
 
+interface DuplicatePair {
+  a: RetrievalDoc;
+  b: RetrievalDoc;
+  shared: number;
+  snippet: string;
+}
+
+/**
+ * Doc pairs sharing an identical normalised paragraph of >= minChars. One hash map pass,
+ * no pairwise body compare. shortcut: paragraph blocks only, so a passage straddling a
+ * blank line is missed; switch to rolling-hash shingles if users report misses.
+ */
+function findNearDuplicates(docs: RetrievalDoc[], minChars: number): DuplicatePair[] {
+  const byHash = new Map<string, { docs: Set<number>; snippet: string }>();
+  docs.forEach((d, i) => {
+    for (const block of d.body.split(/\n\s*\n/)) {
+      const text = block.replace(/\s+/g, ' ').trim().toLowerCase();
+      if (text.length < minChars) continue;
+      const h = createHash('sha1').update(text).digest('hex');
+      const e = byHash.get(h) ?? { docs: new Set<number>(), snippet: text.slice(0, 80) };
+      e.docs.add(i);
+      byHash.set(h, e);
+    }
+  });
+  const pairs = new Map<string, DuplicatePair>();
+  for (const { docs: set, snippet } of byHash.values()) {
+    const ids = [...set].sort((x, y) => x - y);
+    for (let x = 0; x < ids.length; x++) {
+      for (let y = x + 1; y < ids.length; y++) {
+        const key = `${ids[x]}:${ids[y]}`;
+        const p = pairs.get(key);
+        if (p) p.shared++;
+        else pairs.set(key, { a: docs[ids[x]!]!, b: docs[ids[y]!]!, shared: 1, snippet });
+      }
+    }
+  }
+  return [...pairs.values()];
+}
+
 export function checkRetrieval(allDocs: RetrievalDoc[], cfg: RetrievalConfig): AuditIssue[] {
   const docs = allDocs.filter((d) => !isExempt(d));
   const issues: AuditIssue[] = [];
@@ -161,6 +201,17 @@ export function checkRetrieval(allDocs: RetrievalDoc[], cfg: RetrievalConfig): A
         R.RETRIEVAL_OVERSIZED,
         `Body is ${d.body.length} chars with ${h2} H2 sections`,
         'Split into self-contained docs, one topic each'
+      );
+    }
+  }
+
+  if (cfg.near_duplicate) {
+    for (const p of findNearDuplicates(docs, cfg.near_duplicate_min_chars)) {
+      warn(
+        p.b,
+        R.RETRIEVAL_NEAR_DUPLICATE,
+        `Shares ${p.shared} passage(s) of ${cfg.near_duplicate_min_chars}+ chars with ${p.a.rel}: "${p.snippet}..."`,
+        `Merge into one doc or archive one of ${p.a.rel} and ${p.b.rel}`
       );
     }
   }

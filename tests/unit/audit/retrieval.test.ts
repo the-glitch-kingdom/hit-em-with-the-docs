@@ -102,4 +102,35 @@ describe('audit integration', () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  describe('near duplicates', () => {
+    const para = 'The deploy pipeline promotes a build through staging before production. '.repeat(6);
+    const dup = (docs: RetrievalDoc[], c = cfg) =>
+      checkRetrieval(docs, c).filter((i) => i.rule === 'RETRIEVAL_NEAR_DUPLICATE');
+
+    it('one warning per pair, whitespace-insensitive, one per pair for many shared passages', () => {
+      const a = doc('a/x.md', {}, `intro one\n\n${para}\n\n${para}x`);
+      const b = doc('b/y.md', {}, `other\n\n${para.replace(/ /g, '  \n')}\n\n${para}x`);
+      const w = dup([a, b]);
+      expect(w).toHaveLength(1);
+      expect(w[0]?.file).toBe('b/y.md');
+      expect(w[0]?.message).toContain('Shares 2 passage(s)');
+      expect(w[0]?.message).toContain('a/x.md');
+    });
+
+    it('ignores short shared text, generated docs, and the toggle', () => {
+      const short = 'Shared boilerplate line.';
+      expect(dup([doc('a/x.md', {}, short), doc('b/y.md', {}, short)])).toEqual([]);
+      expect(dup([doc('a/x.md', {}, para), doc('b/y.md', { generated: true }, para)])).toEqual([]);
+      expect(dup([doc('a/x.md', {}, para), doc('b/y.md', {}, para)], { ...cfg, near_duplicate: false })).toEqual([]);
+    });
+
+    it('stays fast on 1000 docs', () => {
+      const docs = Array.from({ length: 1000 }, (_, i) => doc(`d/${i}.md`, {}, `${para}\n\nunique ${i} `.concat('z'.repeat(400))));
+      const t0 = Date.now();
+      const w = dup(docs);
+      expect(Date.now() - t0).toBeLessThan(5000);
+      expect(w.length).toBe(1000 * 999 / 2);
+    });
+  });
 });

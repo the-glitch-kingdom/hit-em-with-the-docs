@@ -118,4 +118,24 @@ describe('field test 69: false positives and recall', () => {
     expect(scan(`ADMIN_PASSWORD = "admin@corp.io"`).map((f) => f.kind)).toEqual(['personal']);
   });
 
+  it.each([
+    ['short hvs', 'hv' + 's.' + 'q7Zr3LmP9xVb2NcK'],
+    ['role-id flag', `vault write auth/approle/login --role-id ${uuid}`],
+    ['Role ID label', `Role ID: ${uuid}`],
+    ['secret id under plain key', `Secret ID = ${uuid}`],
+    ['kv put value', `vault kv put secret/app value=${real}`],
+  ])('flags %s', (_n, t) => expect(scan(t).length).toBe(1));
+
+  it.each([
+    'vault kv put secret/app value=<VALUE>', 'vault kv put secret/app value=$VALUE_FROM_ENV_VAR_X', '--role-id $ROLE_ID',
+    'vault write auth/x path=/etc/some/long/file/path.pem', 'hv' + 's.' + 'a'.repeat(16),
+  ])('ignores %s', (t) => expect(scan(t)).toEqual([]));
+
+  it('new rules stay linear on long lines', () => {
+    for (const text of ['vault kv put ' + 'a=b '.repeat(20000), 'vault write ' + 'k='.repeat(30000), '--role-id '.repeat(20000), 'hvs.' + 'a'.repeat(60000)]) {
+      const t0 = performance.now();
+      scan(text);
+      expect(performance.now() - t0).toBeLessThan(1500);
+    }
+  });
 });

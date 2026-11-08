@@ -42,7 +42,8 @@ export function isPlaceholder(v: string, weak: boolean): boolean {
   return weak && /password|passwd|secret|(^|[^a-z])test([^a-z]|$)/.test(l);
 }
 
-interface Rule { id: string; re: RegExp; group?: number; weak?: boolean; accept?: (v: string, m: RegExpMatchArray) => boolean }
+interface Rule { id: string; re: RegExp; group?: number; weak?: boolean; accept?: (v: string, m: RegExpMatchArray) => boolean;
+  /** one match yields several values: [value, offset in m[0]] */ expand?: (m: RegExpMatchArray) => Array<[string, number]> }
 const jwtOk = (v: string): boolean => {
   try { return typeof JSON.parse(Buffer.from(v.split('.')[0]!, 'base64url').toString()).alg === 'string'; } catch { return false; }
 };
@@ -68,7 +69,7 @@ const RULES: Rule[] = [
   { id: 'github-token', re: /\b(?:gh[pos]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,})/g },
   { id: 'slack-token', re: /\bxox[abpors]-[A-Za-z0-9-]{10,}/g },
   { id: 'google-api-key', re: /\bAIza[0-9A-Za-z_-]{35}/g },
-  { id: 'vault-token', re: /\bhv[sb]\.[A-Za-z0-9_-]{20,}/g },
+  { id: 'vault-token', re: /\bhv[sb]\.[A-Za-z0-9_-]{16,}/g, accept: (v) => v.length >= 24 || entropy(v.slice(4)) >= 3.5 },
   { id: 'vault-token-legacy', re: /(?<![\w.])s\.[A-Za-z0-9]{24}\b/g, accept: (v) => /\d/.test(v) && entropy(v) >= 3.5 },
   { id: 'jwt', re: /\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}/g, accept: jwtOk },
   // Bounded quantifiers keep every rule linear on long single-line files (minified/base64 markdown).
@@ -79,6 +80,14 @@ const RULES: Rule[] = [
     accept: (v, m) => NAME_RE.test(m[1]!) && !looksLikePathOrUrl(v) && !looksLikeCode(v) && !looksLikeEmail(v) &&
       // AppRole role/secret ids are uuids, which often fall under the entropy bar: a non-trivial uuid always counts.
       ((UUID.test(v) && new Set(v.replace(/-/g, '')).size > 4) || (v.length >= 16 && entropy(v) >= 3.5)) },
+  // After generic-secret, so a secret-named key keeps that rule; this one also catches ids under plain keys.
+  { id: 'approle-id', re: /(?:--role-id|--secret-id|role_id|secret_id|role id|secret id)(?:[ \t]{0,3}[:=][ \t]{0,3}|[ \t]{1,3})["']?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi, group: 1,
+    accept: (v) => new Set(v.replace(/-/g, '')).size > 4 },
+  // `vault kv put path k=v ...` / `vault write path k=v ...`: every long high-entropy value.
+  { id: 'vault-kv-value', re: /\bvault[ \t]{1,4}(?:kv[ \t]{1,4}put|write)\b[^\n]{0,1000}/g,
+    expand: (m) => [...m[0].matchAll(/(?<![\w-])[\w.-]{1,64}=["']?([^\s"']{16,512})/g)]
+      .map((p): [string, number] => [p[1]!, p.index! + p[0].length - p[1]!.length])
+      .filter(([v]) => entropy(v) >= 3.5 && !v.startsWith('@') && !looksLikePathOrUrl(v) && !looksLikeCode(v)) },
 ];
 // Start only at a token boundary and bound each part (RFC limits), so long runs without '@' stay linear.
 const EMAIL = /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}/g;
@@ -114,6 +123,10 @@ export function findSecrets(text: string, file: string, cfg: SecretsConfig): Raw
   for (const r of RULES) {
     if (cfg.disabled_rules.includes(r.id)) continue;
     for (const m of text.matchAll(r.re)) {
+      if (r.expand) {
+        for (const [v, off] of r.expand(m)) if (!isPlaceholder(v, true)) push(r.id, 'secret', v, m.index! + off);
+        continue;
+      }
       const v = m[r.group ?? 0];
       if (!v || (r.accept && !r.accept(v, m)) || isPlaceholder(v, !!r.weak)) continue;
       push(r.id, 'secret', v, m.index! + (r.group ? m[0].lastIndexOf(v) : 0));

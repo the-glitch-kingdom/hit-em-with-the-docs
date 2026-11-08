@@ -214,6 +214,8 @@ program
       if (options.dryRun) for (const f of stamped) logger.info(`  ${f}`);
     }
 
+    await exportGraph(docsPath, options.dryRun);
+
     if (!options.dryRun) {
       logger.success(
         `${result.filesWritten.length} index files written · ${result.totalDocuments} documents total`
@@ -233,6 +235,23 @@ program
     }
     logger.info('Nothing was written. Re-run without --dry-run to apply.');
   });
+
+/** Write .hewtd/graph.json (#65). Never fails the caller: the export is a side product. */
+async function exportGraph(docsPath: string, dryRun: boolean): Promise<void> {
+  try {
+    const { loadPluginConfig } = await import('../utils/config.js');
+    const { projectRootOf } = await import('../core/reconcile/outside.js');
+    const { writeGraph } = await import('../core/graph/export.js');
+    const root = projectRootOf(docsPath);
+    const r = await writeGraph({ root, docsPath, config: await loadPluginConfig(root), dryRun });
+    if (r.status === 'no-git') logger.info('Graph export skipped: not a git checkout.');
+    else if (r.status === 'written') logger.info('Graph export written: .hewtd/graph.json');
+    else if (r.status === 'would-write') logger.info('Would update .hewtd/graph.json');
+    if (r.hint) logger.info('Tip: .hewtd/graph.json is not git-ignored; add it to .gitignore unless you want it committed.');
+  } catch (e) {
+    logger.warn(`Graph export failed: ${(e as Error).message}`);
+  }
+}
 
 /** How many document rows a generated INDEX.md currently lists (0 if absent). */
 async function countIndexedDocRows(indexPath: string): Promise<number> {
@@ -1163,6 +1182,7 @@ program
         const n = (st: string) => res.outcomes.filter((o) => o.status === st).length;
         logger.info(`applied ${n('applied')}, stale ${n('stale')}, rejected ${n('rejected')}, error ${n('error')}`);
         if (n('error')) process.exitCode = 1;
+        if (n('applied')) await exportGraph(docsPath, false); // a rolled-back batch has no 'applied' outcome
         const after = await loadLedger(ledgerFile);
         if (res.outcomes.some((o) => o.status === 'applied' && after.entries[o.path]?.env_names?.length)) {
           const { buildSecretsReport, writeSecretsReport } = await import('../core/reconcile/secrets-report.js');

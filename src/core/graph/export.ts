@@ -3,11 +3,12 @@
  * duplicates and git dates. Read-only on the docs tree; deterministic for an unchanged tree.
  */
 import { execFileSync } from 'child_process';
-import { readFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join, relative, resolve } from 'path';
 import type { PluginConfig } from '../../utils/config.js';
 import { parseFrontmatter } from '../../utils/frontmatter.js';
 import { hashContent, loadLedger } from '../reconcile/ledger.js';
+import { assertNoSecrets } from '../reconcile/secrets.js';
 import { gitRoot, mdFiles, resolveDocs, STALE_COMMITS_BAR, type TriageDoc } from '../reconcile/triage.js';
 import { bodyChangedDates, lastChanged } from './dates.js';
 import { GRAPH_VERSION, type GraphDoc, type GraphRef, type GraphRefKind, type GraphSymbol, type GraphV1, type GraphVerdict } from './schema.js';
@@ -106,4 +107,29 @@ export function serializeGraph(g: GraphV1): string {
   const sort = (v: unknown): unknown =>
     Array.isArray(v) ? v.map(sort) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort(cmp).map((k) => [k, sort((v as Record<string, unknown>)[k])])) : v;
   return JSON.stringify(sort(g), null, 2) + '\n';
+}
+
+export interface WriteGraphResult {
+  status: 'disabled' | 'no-git' | 'unchanged' | 'written' | 'would-write';
+  file?: string;
+  /** True when a new file was created and git does not ignore it (print a hint; never edit .gitignore). */
+  hint?: boolean;
+}
+
+/** Build and write `<git root>/.hewtd/graph.json`; a byte-identical file is left alone (mtime kept). */
+export async function writeGraph(opts: { root: string; docsPath: string; config: PluginConfig; dryRun?: boolean }): Promise<WriteGraphResult> {
+  if (!opts.config.graph_export) return { status: 'disabled' };
+  const top = gitRoot(opts.docsPath);
+  if (!top) return { status: 'no-git' };
+  const file = join(top, '.hewtd', 'graph.json');
+  const text = serializeGraph(await buildGraph(opts));
+  assertNoSecrets(text, 'the graph export', opts.config.reconcile.secrets);
+  const had = existsSync(file);
+  if (had && readFileSync(file, 'utf-8') === text) return { status: 'unchanged', file };
+  if (opts.dryRun) return { status: 'would-write', file };
+  mkdirSync(join(top, '.hewtd'), { recursive: true });
+  writeFileSync(file, text);
+  let ignored = true;
+  try { execFileSync('git', ['check-ignore', '-q', file], { cwd: top, stdio: 'ignore' }); } catch { ignored = false; }
+  return { status: 'written', file, ...(!had && !ignored && { hint: true }) };
 }

@@ -273,6 +273,8 @@ const pluginConfigSchema = z
     overview: overviewConfigSchema,
     reconcile: reconcileConfigSchema,
     integrate: integrateConfigSchema,
+    /** Write `.hewtd/graph.json` on `hewtd index` and after `reconcile --apply` (#65). */
+    graph_export: z.boolean().catch(true).default(true),
     /** Reports directory, relative to the repo root. Unset = `<docs root>/reports`. */
     reports_dir: z.string().min(1).optional().catch(undefined),
   })

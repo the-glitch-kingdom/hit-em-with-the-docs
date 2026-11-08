@@ -29,7 +29,9 @@ object entry (`alert_name`, `user_phrase`, `error_pattern`) still needs
 Since 2.21.0, `hewtd reconcile --gaps <file>` proposes `user_phrase` entries from real
 missed search queries (see [reconcile.md](./reconcile.md#search-gaps-2210) and
 [gaps-format.md](./gaps-format.md)). Applied phrases are real reader wording, capped
-per doc by `reconcile.gaps.max_phrases_per_doc`.
+per doc by `reconcile.gaps.max_phrases_per_doc`. Phrases are written as plain strings, or
+appended to the first object `symptoms` entry's `user_phrase` (2.22.0 correction to the
+2.21.0 notes).
 
 ## `sources` (2.19.0)
 

@@ -1,4 +1,4 @@
-# Reconcile: check existing docs against the code (2.15.0, updated in 2.21.0)
+# Reconcile: check existing docs against the code (2.15.0, updated in 2.22.0)
 
 `hewtd reconcile` and `/hit-em-with-the-docs:reconcile` bring an existing docs
 tree back in line with the code, in bounded, resumable batches.
@@ -64,7 +64,19 @@ hewtd reconcile --secrets [scope] [--json]
 - **What is detected**: private-key blocks, Anthropic/OpenAI/AWS/Stripe/GitHub/
   Slack/Google/Vault keys and tokens, Azure connection strings, JWTs,
   `user:password@` URLs and generic `secret = "..."` assignments. Emails are
-  `personal` kind: reported for review, never blocking.
+  `personal` kind: reported for review, never blocking. Since 2.22.0 it also
+  finds short `hvs.`/`hvb.` Vault tokens (16+ chars after the prefix), AppRole
+  ids (`approle-id`: a UUID after `--role-id`, `--secret-id`, `role_id`,
+  `secret_id`, `Role ID` or `Secret ID`) and values in `vault kv put` /
+  `vault write` lines (`vault-kv-value`: key=value with 16+ chars, high entropy,
+  not a placeholder, path, URL, code expression or `@file`). A kv key named
+  like a secret (`password=`) reports as `generic-secret`. Turn the new rules
+  off with `disabled_rules` ids `approle-id` and `vault-kv-value`.
+- **Not secrets (2.22.0)**: `generic-secret` ignores code-shaped values (dotted
+  identifier chains such as `self.token`, calls such as `get(`, `{name}` template
+  slots) and email-shaped values; a secret-named key holding an email still gives
+  an email finding (personal, never blocking). Any value starting with `<` is a
+  placeholder, so pointer records like `<secret: NAME, see .env.hewtd>` are clean.
 - **Scope**: with a scope, only those docs. With none, the docs root, `archive/`,
   tracked `*.md` outside the docs root and all of `.hewtd/`. Archive, outside and
   `.hewtd/` hits are reported, never judged.
@@ -80,7 +92,13 @@ hewtd reconcile --secrets [scope] [--json]
 - **The `secret` lane**: a doc with its own secret, or one citing a file with
   one, goes in this lane with masked reasons. It is in no judgment shard (team
   mode too). The flagged cited file is listed in `blocked_files` and dropped
-  from `cited`.
+  from `cited`. **Weak hits in cited code (2.22.0)**: a cited non-markdown file
+  whose findings are all `generic-secret` or `url-password` is withheld, not
+  blocking: it leaves `cited`, is listed in `blocked_files`, and the doc gets the
+  reason `cited file withheld: <file> (<masked>)` but keeps its normal lane. A
+  cited file with any other secret rule, or any finding in a cited `.md`/`.mdx`
+  file, still puts the doc in the secret lane (`cited file blocked`). The doc's
+  own findings of any rule always do. Related-repo cited files follow the same rule.
 - **The `secret` verdict**: `--write-review` proposes it with a masked entry per
   finding. On accept, `--apply` appends each value to `.env.hewtd` (mode 0600,
   git-ignored first) and replaces it with a pointer,
@@ -274,6 +292,11 @@ Verdicts: `verify`, `rewrite`, `archive`, `unverifiable`, `fields`, `secret`,
 - `rewrite` drafts are written to `.hewtd/reconcile/drafts/`, outside the tree.
   Rewrite entries alone do not produce a commit.
 - Touched domains have their indexes regenerated.
+- Only the frontmatter keys an entry changes are rewritten (2.22.0): `symptoms` for phrases;
+  the keys in `frontmatter`, plus `sources` and `last_verified` (verify) and
+  `confidence: low` (unverifiable). Every other frontmatter byte (quoting, dates,
+  comments, spacing, CRLF) and the body stay byte-identical, so apply no longer
+  churns the whole header. A comment sitting between a changed key and its value is lost.
 - When at least one entry was applied, `.hewtd/graph.json` is rebuilt (2.20.0; see [graph-export.md](./graph-export.md)). Rolled-back batches leave it as it was. `graph_export: false` disables it.
 - **All or nothing.** Files are staged with `git add -A -f` (so a gitignored
   `archive/` still commits). If anything fails after the first write (index
@@ -303,8 +326,8 @@ Each query ends in one of three places:
   Never created automatically: a person writes the doc, then `hewtd integrate`.
 - **Open question**: anything else.
 
-Phrase rules: whitespace collapsed, trailing punctuation dropped, 3 to 20 words,
-wording kept. Near-duplicates merge (highest count, then shortest): same keywords after stop
+Phrase rules: whitespace collapsed, trailing punctuation dropped, 3 words to 200 characters
+(2.22.0; it was 20 words), wording kept. Near-duplicates merge (highest count, then shortest): same keywords after stop
 words, or one adding a single keyword to two or more shared ones, so questions sharing just one
 keyword stay apart. Counts of the same
 query add up. At most `reconcile.gaps.max_phrases_per_doc` (default 5) per doc, counting
@@ -315,7 +338,8 @@ characters, length); it never reaches the report, review file or commit.
 `--gaps` writes only `.hewtd/reconcile/gaps-report-<date>.md`. With `--write-review` it
 also writes `review-<batch>-gaps.md`, one entry per doc (verdict `phrases`). Edit the
 phrases, tick `- [x] accept`, then `hewtd reconcile --apply <review>`: the phrases are
-added as `user_phrase` symptoms in one commit. A rerun reports `skipped` ("no new
+added to `symptoms` in one commit (2.22.0 correction: as plain strings, or appended to the
+first object symptom entry's `user_phrase` when the doc has one). A rerun reports `skipped` ("no new
 phrases to add") and commits nothing. Without `--gaps`, reconcile is unchanged.
 The slash command runs this as step 4b.
 
@@ -409,6 +433,7 @@ accepted entry. Links from other outside files are not repointed.
   reported error and rerun the same review file.
 - **Config ignored from a subdirectory**: fixed in 2.16.0; config is read from
   the docs path's project root, not the current directory.
+- **Docs in the secret lane for code like `self.token` or `settings.X`**: fixed in 2.22.0; code references, `{name}` slots, emails and `<...>` pointer records are no longer findings.
 - **False positive flagged as a secret**: add it to `reconcile.secrets.allow`
   (by `fingerprint` from the report, the full hash or any prefix of at least 12 hex
   chars as shown there, or a `pattern`) with a `reason`.

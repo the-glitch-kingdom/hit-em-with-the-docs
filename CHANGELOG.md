@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.22.0] — 2026-11-07
+
+Fixes from the 2.21.0 field test (#69).
+
+- Graph: a symbol's `file` is the source file that defines it (regex patterns, not a parser), with a new
+  additive `file_kind` (`definition` | `reference`) on symbol refs and `symbols[name]`; `version` stays 1.
+  Fallbacks report `reference`. JSON, lockfiles, generated, minified, `dist/`, `build/`, markdown and files
+  over 512KB are never definition sites.
+- Graph export covers exactly the docs triage judges: `drafts/`, `generated: true` and `tier: plan` docs are
+  no longer left out (missing refs show `resolved: false`).
+- `hewtd index --no-graph` skips the export (no file, no export line). `graph_export: false` and
+  `--dry-run` are unchanged.
+- Secrets: code references (`self.x`, `settings.X`, calls, `{name}` slots), emails and `<...>` pointer
+  records are no longer findings or secret-lane reasons. A cited code file with only weak hits
+  (`generic-secret`, `url-password`) is withheld (`blocked_files`) without blocking the doc.
+- Secrets recall: `hvs.`/`hvb.` tokens from 16 chars, new rules `approle-id` and `vault-kv-value`.
+- Gaps: `reconcile --gaps` keeps queries up to 200 characters (was 20 words); 3-word minimum kept.
+- Apply: only changed frontmatter keys are rewritten (new `setFrontmatterKeys`); other frontmatter bytes
+  and the body stay byte-identical.
+- Correction to 2.21.0: applied phrases are plain strings under `symptoms`, or appended to the first
+  object entry's `user_phrase`, not always `user_phrase` entries.
+- Cost: triage is roughly 10 to 15% slower (definition-site lookup).
+
 ## [2.21.0] — 2026-11-07
 
 Search gaps to docs (#66). Ships 2.20.0 too.

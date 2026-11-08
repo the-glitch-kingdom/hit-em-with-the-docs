@@ -22,7 +22,7 @@ The scan covers the docs in scope, `archive/`, the outside lane, `.hewtd/` and e
 
 If there are findings, show that masked list and stop. Offer the `secret` verdicts (move the value to `.env.hewtd` and leave a pointer in the doc), let the user accept or reject each, apply them with `--apply`, and only then continue to triage. For a false positive, point the user at `reconcile.secrets.allow` in the plugin config (a fingerprint or pattern, with a reason). If there are none, go on to step 1.
 
-Triage repeats the scan and puts any doc with a finding, in itself or in a file it cites, into the `secret` lane. Files with findings are listed under `blocked_files` and dropped from the doc's `cited` list.
+Triage repeats the scan and puts any doc with a finding, in itself or in a file it cites, into the `secret` lane. Files with findings are listed under `blocked_files` and dropped from the doc's `cited` list. Since 2.22.0 `blocked_files` also lists cited code files withheld for weak hits only (`generic-secret`, `url-password`) on docs that are not in the secret lane; those docs keep their lane, and you still never open the withheld files.
 
 **Secret rules.** They bind the judgment pass and every team agent:
 

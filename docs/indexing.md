@@ -68,7 +68,7 @@ generator-owned subtrees, not to the whole vault.
 
 ## The graph export
 
-Since 2.20.0 `hewtd index` also writes `.hewtd/graph.json`, a versioned doc-to-code map for other tools. It adds seconds on a large tree; `graph_export: false` turns it off. See [graph-export.md](./graph-export.md).
+Since 2.20.0 `hewtd index` also writes `.hewtd/graph.json`, a versioned doc-to-code map for other tools. It adds seconds on a large tree; `graph_export: false` turns it off, and `hewtd index --no-graph` skips it for one run (2.22.0). See [graph-export.md](./graph-export.md).
 
 ## Indexes are generated, never hand-edited
 

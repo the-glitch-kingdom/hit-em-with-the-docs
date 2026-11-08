@@ -204,7 +204,7 @@ Details: `docs/retrieval-fields.md`.
 
 - `docs/reconcile.md` — reconciling existing docs with the code
 - `docs/gaps-format.md` — the `gaps.v1` search-gaps file read by `hewtd reconcile --gaps` (2.21.0)
-- `docs/graph-export.md` — the `.hewtd/graph.json` doc-to-code export (2.20.0; written by `hewtd index` and `reconcile --apply`, `graph_export: false` disables)
+- `docs/graph-export.md` — the `.hewtd/graph.json` doc-to-code export (2.20.0; written by `hewtd index` and `reconcile --apply`, `graph_export: false` disables; `hewtd index --no-graph` skips it for one run, 2.22.0; each symbol carries `file_kind`)
 - `docs/retrieval-fields.md` — the retrieval standard, warning codes, config
 
 - **Reference docs:** `docs/plan-tier-frontmatter.md`, `docs/knowledge-base-primitives.md`

@@ -20,6 +20,8 @@ export interface Reference {
 export interface ResolvedReference extends Reference {
   status: RefStatus;
   where?: string;
+  /** symbol refs only: `where` defines the name, or merely mentions it */
+  whereKind?: 'definition' | 'reference';
 }
 
 // ---------- extraction ----------
@@ -131,6 +133,8 @@ export interface RepoIndex {
   mdNames: Map<string, Set<string>>;
   /** symbol -> first file it appears in (non-markdown); filled by primeSymbols */
   symbols: Map<string, string | null>;
+  /** symbol -> whether `symbols` holds a defining file; filled by primeSymbols */
+  symbolKinds: Map<string, 'definition' | 'reference'>;
 }
 
 const git = (root: string, args: string[]): string =>
@@ -218,11 +222,14 @@ export function buildRepoIndex(root: string, schemaSources: string[] = []): Repo
     if (f.endsWith('.sql')) parseSql(read(f), schema);
     else if (f.endsWith('.prisma')) parsePrisma(read(f), schema);
   }
-  return { root, files, scripts, makeTargets, deps, schema, schemaFiles, mdNames: new Map(), symbols: new Map() };
+  return { root, files, scripts, makeTargets, deps, schema, schemaFiles, mdNames: new Map(), symbols: new Map(), symbolKinds: new Map() };
 }
 
 const BIG_FILE = 512 * 1024;
 const WORD = /\w/;
+/** Not a place a symbol is defined: data and generated files. Used as a last resort for `reference`. */
+const NOT_SOURCE = /(?:\.json|\.lock|[-.]lock\.[\w]+|\.generated\.[\w]+|\.min\.[\w]+)$|(?:^|\/)(?:dist|build)\//;
+const esc = (n: string): string => n.replace(/\$/g, '\\$');
 
 /** First file (in order) containing `name` as a whole word, read in Node; for files too big for `git grep -o`. */
 function hasWord(text: string, name: string): boolean {
@@ -230,6 +237,43 @@ function hasWord(text: string, name: string): boolean {
     if (!WORD.test(text[i - 1] ?? '') && !WORD.test(text[i + name.length] ?? '')) return true;
   }
   return false;
+}
+
+/**
+ * One `git grep` per chunk (two: SQL is case-insensitive) for lines that define a name; the first defining
+ * file in path order wins. Names without one keep their referencing file and are marked `reference`.
+ */
+function definitionPass(idx: RepoIndex, names: string[], files: string[]): void {
+  const run = (args: string[]): string => { try { return git(idx.root, args); } catch { return ''; } };
+  const want = new Set(names);
+  const defs = new Map<string, string>();
+  // a defining file mentions the name, so only the existence pass's candidates are searched
+  const src = files.filter((f) => !NOT_SOURCE.test(f) && !/\.mdx?$/.test(f));
+  if (names.length && src.length) {
+    const alt = `(${names.map(esc).join('|')})`;
+    const jobs: Array<[string[], Array<[RegExp, number]>]> = [
+      [['-e', `\\b(def|class|function|const|let|var|interface|type|enum|struct|fn|func)\\s+${alt}\\b`, '-e', `\\b${alt}\\s*[:=]\\s*(async\\s+)?(function|\\()`, '-e', `__tablename__\\s*=\\s*["']${alt}["']`],
+        [[/^(?:def|class|function|const|let|var|interface|type|enum|struct|fn|func)\s+([\w$]+)$/, 1], [/^([\w$]+)\s*[:=]/, 1], [/^__tablename__\s*=\s*["']([\w$]+)["']$/, 1]]],
+      [['-i', '-e', `CREATE (OR REPLACE )?(TABLE|VIEW|FUNCTION|POLICY|TYPE)\\s+(IF NOT EXISTS\\s+)?([[:alnum:]_."]+\\.)?"?${alt}\\b`], [[/([\w$]+)$/, 1]]],
+    ];
+    for (const [flags, nameRes] of jobs) {
+      for (let j = 0; j < src.length; j += 500) {
+        const out = run(['grep', '-I', '-n', '-o', '-E', ...flags, '--', ...src.slice(j, j + 500).map((f) => `:(literal)${f}`)]);
+        for (const l of out.split('\n')) {
+          const m = /^(.*?):\d+:(.*)$/.exec(l);
+          const name = m && nameRes.map(([re]) => re.exec(m[2]!)?.[1]).find((n) => n && want.has(n));
+          if (!name) continue;
+          const cur = defs.get(name);
+          if (cur === undefined || m![1]! < cur) defs.set(name, m![1]!);
+        }
+      }
+    }
+  }
+  for (const n of names) {
+    const d = defs.get(n);
+    if (d) idx.symbols.set(n, d);
+    idx.symbolKinds.set(n, d ? 'definition' : 'reference');
+  }
 }
 
 /**
@@ -261,16 +305,19 @@ export function primeSymbols(idx: RepoIndex, names: Iterable<string>): void {
         for (const l of out.split('\n')) {
           const c = l.lastIndexOf(':');
           const tok = l.slice(c + 1);
-          if (c > 0 && want.has(tok) && !idx.symbols.get(tok)) idx.symbols.set(tok, l.slice(0, c));
+          const f = l.slice(0, c);
+          const cur = idx.symbols.get(tok);
+          if (c > 0 && want.has(tok) && (!cur || (NOT_SOURCE.test(cur) && !NOT_SOURCE.test(f)))) idx.symbols.set(tok, f);
         }
       }
       for (const f of big) {
-        const left = chunk.filter((n) => !idx.symbols.get(n));
-        if (!left.length) break;
+        const left = chunk.filter((n) => !idx.symbols.get(n) || (NOT_SOURCE.test(idx.symbols.get(n)!) && !NOT_SOURCE.test(f)));
+        if (!left.length) continue;
         let text = '';
         try { text = readFileSync(join(idx.root, f), 'utf-8'); } catch { continue; }
         for (const n of left) if (hasWord(text, n)) idx.symbols.set(n, f);
       }
+      definitionPass(idx, chunk.filter((n) => idx.symbols.get(n)), small); // shortcut: files over 512KB are not searched for definitions (git grep -o crawls on them)
       const unfound = chunk.filter((n) => !idx.symbols.get(n));
       if (unfound.length) {
         writeFileSync(pf, unfound.join('\n') + '\n');
@@ -328,20 +375,21 @@ function resolvePath(idx: RepoIndex, ref: string): string | undefined {
   return undefined;
 }
 
-/** `<name>:<where>` for the first sibling that has the ref; undefined if none does. */
-function inRelated(related: RelatedRepo[], r: Reference): string | undefined {
+/** `<name>:<where>` for the first sibling that has the ref (and how it holds a symbol); undefined if none does. */
+function inRelated(related: RelatedRepo[], r: Reference): { where: string; kind?: 'definition' | 'reference' } | undefined {
   for (const rel of related) {
     const sib = relatedIndex(rel);
     if (!sib) continue;
     let where: string | undefined;
+    let kind: 'definition' | 'reference' | undefined;
     if (r.kind === 'path') where = resolvePath(sib, r.ref);
-    else if (r.kind === 'symbol' || r.kind === 'env') where = sib.symbols.get(r.ref) ?? undefined;
+    else if (r.kind === 'symbol' || r.kind === 'env') { where = sib.symbols.get(r.ref) ?? undefined; kind = sib.symbolKinds.get(r.ref); }
     else if (r.kind === 'command') {
       const name = r.ref.replace(/^\S+( run)? /, '');
       if (r.ref.startsWith('npm') && sib.scripts.has(name)) where = join(sib.scripts.get(name)!, 'package.json');
       else if (r.ref.startsWith('make') && sib.makeTargets.has(name)) where = 'Makefile';
     }
-    if (where) return `${rel.name}:${where}`;
+    if (where) return { where: `${rel.name}:${where}`, ...(kind && { kind }) };
   }
   return undefined;
 }
@@ -358,6 +406,7 @@ export async function resolveReferences(idx: RepoIndex, refs: Reference[], opts:
   for (const r of refs) {
     let status: RefStatus = 'unknown';
     let where: string | undefined;
+    let whereKind: 'definition' | 'reference' | undefined;
     switch (r.kind) {
       case 'path':
         // `/docs/x/` and `/api/v1/x` are URL paths, not repo paths
@@ -367,6 +416,7 @@ export async function resolveReferences(idx: RepoIndex, refs: Reference[], opts:
         break;
       case 'symbol': case 'env':
         where = idx.symbols.get(r.ref) ?? undefined;
+        if (where) whereKind = idx.symbolKinds.get(r.ref);
         // Only another doc's mention makes a code-less name `unknown` (an external name); the citing doc itself proves nothing.
         status = where ? 'ok' : mentionedElsewhere(idx, r.ref, self) ? 'unknown' : 'missing';
         break;
@@ -404,11 +454,13 @@ export async function resolveReferences(idx: RepoIndex, refs: Reference[], opts:
     // markdown-only names are unknown locally, but code in a sibling still proves them
     const lookup = status === 'missing' || (status === 'unknown' && !where && (r.kind === 'symbol' || r.kind === 'env'));
     if (lookup && related.length && r.kind !== 'doc-link' && r.kind !== 'table' && r.kind !== 'column') {
-      where = inRelated(related, r);
+      const hit = inRelated(related, r);
+      where = hit?.where;
+      whereKind = hit?.kind;
       // a sibling that is not checked out might own it: unknown, not missing
       status = where ? 'ok' : related.some((x) => !relatedIndex(x)) ? 'unknown' : status;
     }
-    out.push(where ? { ...r, status, where } : { ...r, status });
+    out.push(where ? { ...r, status, where, ...(r.kind === 'symbol' && whereKind && { whereKind }) } : { ...r, status });
   }
   return out;
 }

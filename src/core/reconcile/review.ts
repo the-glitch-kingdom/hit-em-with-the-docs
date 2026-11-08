@@ -135,12 +135,12 @@ export async function find_next_batch(dir_path: string): Promise<string> {
 /** Turn a triage result into one empty review file per shard (one file in serial mode). */
 export async function write_review_skeletons(options: {
   root: string;
-  docs_path: string;
+  docs_root: string;
   triage: TriageResult;
   scope: string;
   batch?: string;
 }): Promise<string[]> {
-  const { root: repo_root, docs_path, triage, scope } = options;
+  const { root: repo_root, docs_root: docs_root, triage, scope } = options;
   const dir_path = resolve_review_dir(repo_root);
   const batch = options.batch ?? (await find_next_batch(dir_path));
   const judged = triage.docs.filter((doc) => doc.lane !== 'clean');
@@ -161,7 +161,7 @@ export async function write_review_skeletons(options: {
     const entries: ReviewEntry[] = [];
     for (const doc_path of shard.docs) {
       const doc = by_path.get(doc_path);
-      const doc_text = await readFile(join(docs_path, doc_path), 'utf-8');
+      const doc_text = await readFile(join(docs_root, doc_path), 'utf-8');
       let secrets: ReviewEntry['secrets'];
       if (doc?.lane === 'secret') {
         const raws = find_secrets(doc_text, doc_path, secrets_config).filter((raw_secret) => raw_secret.finding.kind === 'secret');
@@ -187,14 +187,14 @@ export async function write_review_skeletons(options: {
 }
 
 /** gaps: one unticked `phrases` entry per doc with proposals, as `review-<batch>-gaps.md`. */
-export async function write_gaps_review(options: { root: string; docs_path: string; proposals: { doc: string; accepted: { query: string }[] }[]; batch?: string }): Promise<string | undefined> {
-  const { root: repo_root, docs_path, proposals } = options;
+export async function write_gaps_review(options: { root: string; docs_root: string; proposals: { doc: string; accepted: { query: string }[] }[]; batch?: string }): Promise<string | undefined> {
+  const { root: repo_root, docs_root: docs_root, proposals } = options;
   if (!proposals.length) return undefined;
   const dir_path = resolve_review_dir(repo_root);
   const batch = options.batch ?? (await find_next_batch(dir_path));
   const entries: ReviewEntry[] = [];
   for (const proposal of proposals) {
-    entries.push({ path: proposal.doc, content_hash: compute_content_hash(await readFile(join(docs_path, proposal.doc), 'utf-8')), verdict: 'phrases', phrases: proposal.accepted.map((a) => a.query) });
+    entries.push({ path: proposal.doc, content_hash: compute_content_hash(await readFile(join(docs_root, proposal.doc), 'utf-8')), verdict: 'phrases', phrases: proposal.accepted.map((a) => a.query) });
   }
   const file = join(dir_path, `review-${batch}-gaps.md`);
   await mkdir(dirname(file), { recursive: true });

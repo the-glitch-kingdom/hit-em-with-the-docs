@@ -83,18 +83,18 @@ describe('addOverviewBacklinks', () => {
 describe('maintain overview integration', () => {
   it('--fix writes back-links; without it only lists; backlinks:false does nothing', async () => {
     await setup();
-    let r = await run_maintenance({ docs_path: docs, quick: true, silent: true });
+    let r = await run_maintenance({ docs_root: docs, quick: true, silent: true });
     expect(r.overview_backlinks!.length).toBe(5);
     expect(await readFile(join(docs, 'api/a.md'), 'utf-8')).not.toContain('Part of:');
-    await run_maintenance({ docs_path: docs, quick: true, silent: true, fix: true });
+    await run_maintenance({ docs_root: docs, quick: true, silent: true, fix: true });
     expect(await readFile(join(docs, 'api/a.md'), 'utf-8')).toContain('Part of:');
-    r = await run_maintenance({ docs_path: docs, quick: true, silent: true, fix: true });
+    r = await run_maintenance({ docs_root: docs, quick: true, silent: true, fix: true });
     expect(r.overview_backlinks).toEqual([]);
 
     await writeFile(join(root, '.claude/hit-em-with-the-docs.json'), JSON.stringify({ overview: { backlinks: false } }));
     await put('api/z.md', `${FM('z')}\n# Z\n`);
     await put('api/ov.md', (await readFile(join(docs, 'api/ov.md'), 'utf-8')) + '[z](z.md)\n');
-    r = await run_maintenance({ docs_path: docs, quick: true, silent: true, fix: true });
+    r = await run_maintenance({ docs_root: docs, quick: true, silent: true, fix: true });
     expect(r.overview_backlinks).toBeUndefined();
     expect(await readFile(join(docs, 'api/z.md'), 'utf-8')).not.toContain('Part of:');
   });
@@ -105,22 +105,22 @@ describe('health report overview coverage', () => {
     // Members link the next two, so ops is a dense flow with no overview.
     for (const [i, n] of names.entries()) await put(`ops/${n}.md`, `${FM(n)}\nText [x](${names[(i + 1) % 5]}.md) [y](${names[(i + 2) % 5]}.md)\n`);
     await setup();
-    const result = await run_maintenance({ docs_path: docs, quick: true, silent: true });
+    const result = await run_maintenance({ docs_root: docs, quick: true, silent: true });
     expect(result.overview_coverage!.withOverview).toBe(1);
     expect(result.overview_coverage!.withoutOverview).toBe(1);
     expect(result.overview_coverage!.missing[0]).toMatchObject({ id: 'ops', size: 5 });
-    const md = await generate_health_report({ docs_path: docs, result, format: 'markdown' });
+    const md = await generate_health_report({ docs_root: docs, result, format: 'markdown' });
     expect(md).toContain('1 cluster(s) with an overview, 1 without');
     expect(md).toContain('| ops | 5 |');
-    const json = JSON.parse(await generate_health_report({ docs_path: docs, result, format: 'json' }));
+    const json = JSON.parse(await generate_health_report({ docs_root: docs, result, format: 'json' }));
     expect(json.overviewCoverage.withoutOverview).toBe(1);
   });
 
   it('renders on an empty tree', async () => {
     await mkdir(docs, { recursive: true });
-    const result = await run_maintenance({ docs_path: docs, quick: true, silent: true });
+    const result = await run_maintenance({ docs_root: docs, quick: true, silent: true });
     expect(result.overview_coverage).toEqual({ withOverview: 0, withoutOverview: 0, missing: [] });
-    const md = await generate_health_report({ docs_path: docs, result, format: 'markdown' });
+    const md = await generate_health_report({ docs_root: docs, result, format: 'markdown' });
     expect(md).toContain('0 cluster(s) with an overview, 0 without');
   });
 });

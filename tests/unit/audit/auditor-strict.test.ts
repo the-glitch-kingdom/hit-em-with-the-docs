@@ -9,7 +9,7 @@ describe('auditDocumentation — knowledge-base validation (2.3.0)', () => {
   describe('valid fixture tree', () => {
     it('emits no KB-coded errors on a clean tree', async () => {
       const result = await check_documentation({
-        docs_path: VALID_FIXTURE,
+        docs_root: VALID_FIXTURE,
         silent: true,
       });
 
@@ -21,7 +21,7 @@ describe('auditDocumentation — knowledge-base validation (2.3.0)', () => {
   describe('invalid fixture tree', () => {
     it('emits a FACT_MISSING_PROVENANCE issue on fact-missing-provenance.md', async () => {
       const result = await check_documentation({
-        docs_path: INVALID_FIXTURE,
+        docs_root: INVALID_FIXTURE,
         silent: true,
       });
 
@@ -36,7 +36,7 @@ describe('auditDocumentation — knowledge-base validation (2.3.0)', () => {
 
     it('emits a FACT_INVALID_CONFIDENCE issue', async () => {
       const result = await check_documentation({
-        docs_path: INVALID_FIXTURE,
+        docs_root: INVALID_FIXTURE,
         silent: true,
       });
       const issue = result.issues.find((i) => i.code === 'FACT_INVALID_CONFIDENCE');
@@ -45,7 +45,7 @@ describe('auditDocumentation — knowledge-base validation (2.3.0)', () => {
 
     it('emits an INCIDENT_NARRATIVE_INVALID_SEVERITY issue', async () => {
       const result = await check_documentation({
-        docs_path: INVALID_FIXTURE,
+        docs_root: INVALID_FIXTURE,
         silent: true,
       });
       const issue = result.issues.find(
@@ -56,7 +56,7 @@ describe('auditDocumentation — knowledge-base validation (2.3.0)', () => {
 
     it('emits a PLAYBOOK_SYMPTOM_MISSING_TARGET issue', async () => {
       const result = await check_documentation({
-        docs_path: INVALID_FIXTURE,
+        docs_root: INVALID_FIXTURE,
         silent: true,
       });
       const issue = result.issues.find(
@@ -67,7 +67,7 @@ describe('auditDocumentation — knowledge-base validation (2.3.0)', () => {
 
     it('every KB-coded issue has rule prefix metadata- and a valid severity', async () => {
       const result = await check_documentation({
-        docs_path: INVALID_FIXTURE,
+        docs_root: INVALID_FIXTURE,
         silent: true,
       });
       const coded_issues = result.issues.filter((i) => i.code);
@@ -83,7 +83,7 @@ describe('auditDocumentation — knowledge-base validation (2.3.0)', () => {
     it('audit of the existing .documentation fixture is unchanged by 2.3.0 (no KB issues)', async () => {
       const fixture_path = resolve(__dirname, '../../fixtures/.documentation');
       const result = await check_documentation({
-        docs_path: fixture_path,
+        docs_root: fixture_path,
         silent: true,
       });
       // Existing fixtures have no fact/incident/symptoms — should produce no
@@ -96,7 +96,7 @@ describe('auditDocumentation — knowledge-base validation (2.3.0)', () => {
       // Plant a file with an invalid tier and verify the suggestion message
       // lists all current TIERS dynamically.
       const result = await check_documentation({
-        docs_path: INVALID_FIXTURE,
+        docs_root: INVALID_FIXTURE,
         silent: true,
       });
       // None of our invalid fixtures use an invalid tier — that's fine, the
@@ -108,7 +108,7 @@ describe('auditDocumentation — knowledge-base validation (2.3.0)', () => {
   describe('strict-mode escalation semantics', () => {
     it('valid fixture: produces no KB-coded issues (strict CLI would exit 0)', async () => {
       const result = await check_documentation({
-        docs_path: VALID_FIXTURE,
+        docs_root: VALID_FIXTURE,
         silent: true,
       });
       const error_issues = result.issues.filter((i) => i.severity === 'error');
@@ -121,7 +121,7 @@ describe('auditDocumentation — knowledge-base validation (2.3.0)', () => {
 
     it('invalid fixture: produces both KB-coded errors AND non-KB warnings', async () => {
       const result = await check_documentation({
-        docs_path: INVALID_FIXTURE,
+        docs_root: INVALID_FIXTURE,
         silent: true,
       });
       const kb_issues = result.issues.filter((i) => i.code !== undefined);

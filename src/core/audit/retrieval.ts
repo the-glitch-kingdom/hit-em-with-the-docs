@@ -35,12 +35,12 @@ export interface RetrievalCoverage {
 }
 
 /** Read the docs the retrieval rules apply to (generated/skipped ones are dropped later). */
-export async function load_retrieval_docs(docs_path: string, files: string[]): Promise<RetrievalDoc[]> {
+export async function load_retrieval_docs(docs_root: string, files: string[]): Promise<RetrievalDoc[]> {
   const docs: RetrievalDoc[] = [];
   for (const file of files) {
     try {
       const { data, content } = parse_frontmatter<Record<string, unknown>>(await readFile(file, 'utf-8'));
-      docs.push({ doc_path: relative(docs_path, file), data, body: content });
+      docs.push({ doc_path: relative(docs_root, file), data, body: content });
     } catch {
       // unreadable files are reported by the per-file audit
     }

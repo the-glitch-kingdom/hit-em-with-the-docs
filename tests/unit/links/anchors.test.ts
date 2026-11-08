@@ -28,7 +28,7 @@ describe('checkLinks anchors', () => {
       await mkdir(join(dir, 'guides'), { recursive: true });
       await writeFile(join(dir, 'guides', 'a.md'), '# A\n\n[ok](b.md#target) [old](b.md#renamed) [self](#a) [bad self](#zzz)\n');
       await writeFile(join(dir, 'guides', 'b.md'), '# B\n\n## Target\n');
-      const r = await check_links({ docs_path: dir, silent: true });
+      const r = await check_links({ docs_root: dir, silent: true });
       expect(r.broken_links).toHaveLength(0);
       expect(r.anchor_warnings.map((w) => w.targetPath).sort()).toEqual(['#zzz', 'b.md#renamed']);
     } finally {

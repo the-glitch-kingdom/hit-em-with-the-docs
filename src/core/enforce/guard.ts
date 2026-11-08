@@ -256,7 +256,7 @@ function resolve_doc_path(path: string, docs_dir: string): string | null {
  * "run `hewtd index`" advice it offered did nothing to them.
  *
  * hewtd writes exactly two shapes (`core/maintain/orchestrator.ts` builds every
- * path as `join(docsPath, domain)`):
+ * path as `join(docs_root, domain)`):
  *
  *     <docs>/INDEX.md            <docs>/REGISTRY.md
  *     <docs>/<domain>/INDEX.md   <docs>/<domain>/REGISTRY.md

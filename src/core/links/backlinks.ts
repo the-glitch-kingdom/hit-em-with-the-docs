@@ -21,12 +21,12 @@ export interface BacklinkChange {
 
 const FRONTMATTER = /^---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/;
 
-export async function add_overview_backlinks(docs_path: string, options: { dry_run?: boolean } = {}): Promise<BacklinkChange[]> {
-  const graph = await build_link_graph(docs_path);
+export async function add_overview_backlinks(docs_root: string, options: { dry_run?: boolean } = {}): Promise<BacklinkChange[]> {
+  const graph = await build_link_graph(docs_root);
   const read = new Map<string, { raw_text: string; data: Record<string, unknown> }>();
   const load_doc = async (id: string) => {
     if (!read.has(id)) {
-      const raw_text = await readFile(join(docs_path, id), 'utf-8');
+      const raw_text = await readFile(join(docs_root, id), 'utf-8');
       let data: Record<string, unknown> = {};
       try { data = parse_frontmatter<Record<string, unknown>>(raw_text).data; } catch { /* plain doc */ }
       read.set(id, { raw_text: raw_text, data });
@@ -78,7 +78,7 @@ export async function add_overview_backlinks(docs_path: string, options: { dry_r
     } else {
       next = frontmatter + block + '\n\n' + body;
     }
-    if (!options.dry_run) await writeFile(join(docs_path, file), next);
+    if (!options.dry_run) await writeFile(join(docs_root, file), next);
     changes.push({ file, overviews });
   }
   return changes;

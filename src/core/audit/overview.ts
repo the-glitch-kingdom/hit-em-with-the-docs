@@ -12,19 +12,19 @@ import type { AuditIssue } from './auditor.js';
 const error_codes = KB_ERROR_CODES;
 const TEMPLATE = '`templates/overview.template.md`';
 
-export async function check_overview(docs_path: string, config: OverviewConfig): Promise<AuditIssue[]> {
+export async function check_overview(docs_root: string, config: OverviewConfig): Promise<AuditIssue[]> {
   const is_check_enabled = (content: string): boolean => !config.disabled.includes(content);
   const want_missing = is_check_enabled(error_codes.OVERVIEW_MISSING);
   const want_stale = is_check_enabled(error_codes.OVERVIEW_STALE_LINKS);
   if (!want_missing && !want_stale) return [];
 
-  const clusters = await find_clusters(docs_path, config);
+  const clusters = await find_clusters(docs_root, config);
   const issues: AuditIssue[] = [];
   const found = want_stale && clusters.some((cluster) => cluster.kind_overview)
     ? new Map<string, Set<string>>()
     : null;
   if (found) {
-    for (const edge of (await build_link_graph(docs_path)).edges) {
+    for (const edge of (await build_link_graph(docs_root)).edges) {
       (found.get(edge.source) ?? found.set(edge.source, new Set()).get(edge.source)!).add(edge.target);
     }
   }

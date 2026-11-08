@@ -12,8 +12,8 @@ words. Behaviour, the CLI, `--json` output and every file under `.hewtd/` are un
 
 - Every exported function is renamed to snake_case; many also take the glossary verb (`get_` that reads files is
   `load_`/`find_`/`list_`, `generate_` that writes files is `write_`, and so on). Old names are removed.
-- Option-bag properties on exported functions are snake_case too (`docsPath` -> `docs_path`, `projectRoot` ->
-  `project_root`, `dryRun` -> `dry_run`, `rootPath` -> `root_path`, `vaultRoot` -> `vault_root`, `filePath` ->
+- Option-bag properties on exported functions are snake_case too (`docsPath` -> `docs_root`, `projectRoot` ->
+  `repo_root`, `dryRun` -> `dry_run`, `rootPath` -> `root_path`, `vaultRoot` -> `vault_root`, `filePath` ->
   `file_path`). Serialized shapes (config keys, JSON output, frontmatter) keep their names.
 - Renamed exports (old -> new):
 

@@ -15,8 +15,8 @@ export function with_generated_stamp(content: string): string | null {
 }
 
 /** Stamp unstamped generator-named reports in the reports dir; returns the files touched. */
-export async function write_report_stamps(docs_path: string, dry_run = false): Promise<string[]> {
-  const dir_path = await resolve_reports_dir(docs_path);
+export async function write_report_stamps(docs_root: string, dry_run = false): Promise<string[]> {
+  const dir_path = await resolve_reports_dir(docs_root);
   let names: string[];
   try {
     names = (await readdir(dir_path)).filter((file_name) => REPORT_NAME.test(file_name)).sort();

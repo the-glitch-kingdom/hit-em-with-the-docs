@@ -11,7 +11,7 @@ const VALID_FIXTURE_ROOT = resolve(__dirname, '../../fixtures/knowledge-base/val
 describe('buildCiterIndex (2.3.0)', () => {
   it('walks facts/, incidents/, and playbooks/ and resolves the citation graph', async () => {
     const index = await build_citer_index({
-      project_root: VALID_FIXTURE_ROOT,
+      repo_root: VALID_FIXTURE_ROOT,
       vault_root: VALID_FIXTURE_ROOT,
       playbook_globs: [resolve(VALID_FIXTURE_ROOT, 'playbooks/*.md')],
     });
@@ -43,7 +43,7 @@ describe('buildCiterIndex (2.3.0)', () => {
 
   it('returns an empty index when vault root has no facts and no incidents', async () => {
     const index = await build_citer_index({
-      project_root: '/tmp',
+      repo_root: '/tmp',
       vault_root: '/tmp/nonexistent-vault',
       playbook_globs: [],
     });
@@ -56,7 +56,7 @@ describe('buildCiterIndex (2.3.0)', () => {
 describe('findCitersInIndex (2.3.0)', () => {
   it('returns typed structure for an existing fact', async () => {
     const index = await build_citer_index({
-      project_root: VALID_FIXTURE_ROOT,
+      repo_root: VALID_FIXTURE_ROOT,
       vault_root: VALID_FIXTURE_ROOT,
       playbook_globs: [resolve(VALID_FIXTURE_ROOT, 'playbooks/*.md')],
     });
@@ -73,7 +73,7 @@ describe('findCitersInIndex (2.3.0)', () => {
 
   it('returns fact_exists=false for a dangling reference', async () => {
     const index = await build_citer_index({
-      project_root: VALID_FIXTURE_ROOT,
+      repo_root: VALID_FIXTURE_ROOT,
       vault_root: VALID_FIXTURE_ROOT,
       playbook_globs: [resolve(VALID_FIXTURE_ROOT, 'playbooks/*.md')],
     });
@@ -86,7 +86,7 @@ describe('findCitersInIndex (2.3.0)', () => {
 
   it('sorts citers, incidents, and ids alphabetically (deterministic output)', async () => {
     const index = await build_citer_index({
-      project_root: VALID_FIXTURE_ROOT,
+      repo_root: VALID_FIXTURE_ROOT,
       vault_root: VALID_FIXTURE_ROOT,
       playbook_globs: [resolve(VALID_FIXTURE_ROOT, 'playbooks/*.md')],
     });
@@ -121,7 +121,7 @@ describe('plain-string symptoms (#46)', () => {
         'utf-8'
       );
       const index = await build_citer_index({
-        project_root: root,
+        repo_root: root,
         vault_root: root,
         playbook_globs: [join(root, 'playbooks/*.md')],
       });

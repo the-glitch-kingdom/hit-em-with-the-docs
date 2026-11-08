@@ -27,12 +27,12 @@ async function is_present(path_text: string): Promise<boolean> {
   }
 }
 
-/** True if `projectRoot` is inside a git work tree. */
-function is_git_repo(project_root: string): boolean {
+/** True if `repo_root` is inside a git work tree. */
+function is_git_repo(repo_root: string): boolean {
   try {
     execFileSync('git', ['rev-parse', '--is-inside-work-tree'], {
       // eslint-disable-next-line id-denylist -- child_process/glob option name
-      cwd: project_root,
+      cwd: repo_root,
       stdio: 'ignore',
     });
     return true;
@@ -47,18 +47,18 @@ function is_git_repo(project_root: string): boolean {
  * method used.
  */
 async function move_file(
-  project_root: string,
+  repo_root: string,
   from_abs: string,
   to_abs: string
 ): Promise<'git' | 'fs'> {
   // Both git mv's fallback (fs.rename) and git mv -f replace an existing file.
   if (await is_present(to_abs)) throw new Error(`Refusing to overwrite existing file: ${to_abs}`);
   await mkdir(dirname(to_abs), { recursive: true });
-  if (is_git_repo(project_root)) {
+  if (is_git_repo(repo_root)) {
     try {
       execFileSync('git', ['mv', from_abs, to_abs], {
         // eslint-disable-next-line id-denylist -- child_process/glob option name
-        cwd: project_root,
+        cwd: repo_root,
         stdio: 'ignore',
       });
       return 'git';
@@ -75,8 +75,8 @@ async function move_file(
 // ---------------------------------------------------------------------------
 
 export interface ArchiveDocInput {
-  project_root: string;
-  docs_path: string;
+  repo_root: string;
+  docs_root: string;
   /** Doc to archive — docs-relative (e.g. `api/old.md`) or absolute. */
   file: string;
   reason?: string;
@@ -100,11 +100,11 @@ export interface ArchiveDocResult {
 export async function archive_doc(
   input: ArchiveDocInput
 ): Promise<ArchiveDocResult> {
-  const { project_root, docs_path, reason, force = false, dry_run = false } = input;
+  const { repo_root: repo_root, docs_root: docs_root, reason, force = false, dry_run = false } = input;
   const today = input.today ?? format_date(new Date());
   const errors: string[] = [];
 
-  const from_rel = resolve_doc_path(docs_path, input.file, project_root);
+  const from_rel = resolve_doc_path(docs_root, input.file, repo_root);
 
   if (!from_rel.endsWith('.md')) {
     errors.push(`Not a markdown file: ${from_rel}`);
@@ -115,14 +115,14 @@ export async function archive_doc(
     return { ok: false, errors, action: 'rejected', inbound_links: [] };
   }
 
-  const from_abs = join(docs_path, from_rel);
+  const from_abs = join(docs_root, from_rel);
   if (!(await is_present(from_abs))) {
     errors.push(`File not found: ${from_rel}`);
     return { ok: false, errors, action: 'rejected', inbound_links: [] };
   }
 
   const to_rel = `${ARCHIVE_DIR}/${from_rel}`;
-  const to_abs = join(docs_path, to_rel);
+  const to_abs = join(docs_root, to_rel);
 
   if (await is_present(to_abs)) {
     errors.push(
@@ -133,7 +133,7 @@ export async function archive_doc(
   }
 
   // Link guard: refuse by default if active docs link to this doc.
-  const inbound_links = await find_inbound_links(docs_path, from_rel);
+  const inbound_links = await find_inbound_links(docs_root, from_rel);
   if (inbound_links.length > 0 && !force && !dry_run) {
     errors.push(
       `${inbound_links.length} active doc(s) link to ${from_rel}. ` +
@@ -157,19 +157,19 @@ export async function archive_doc(
   };
   if (reason) stamped.archived_reason = reason;
 
-  const move_method = await move_file(project_root, from_abs, to_abs);
+  const move_method = await move_file(repo_root, from_abs, to_abs);
   await writeFile(to_abs, with_frontmatter(raw_text, stamped), 'utf-8');
   if (move_method === 'git') {
     try {
       // eslint-disable-next-line id-denylist -- child_process/glob option name
-      execFileSync('git', ['add', to_abs], { cwd: project_root, stdio: 'ignore' });
+      execFileSync('git', ['add', to_abs], { cwd: repo_root, stdio: 'ignore' });
     } catch {
       /* staging is best-effort */
     }
   }
 
   // Doc left its domain folder → refresh indexes so it drops out.
-  await regenerate_indexes({ docs_path, silent: true });
+  await regenerate_indexes({ docs_root: docs_root, silent: true });
 
   return { ok: true, errors, action: 'archived', from: from_rel, to: to_rel, move_method, inbound_links };
 }
@@ -179,8 +179,8 @@ export async function archive_doc(
 // ---------------------------------------------------------------------------
 
 export interface UnarchiveDocInput {
-  project_root: string;
-  docs_path: string;
+  repo_root: string;
+  docs_root: string;
   /** Archived doc — docs-relative (e.g. `archive/api/old.md`) or absolute. */
   file: string;
   dry_run?: boolean;
@@ -198,16 +198,16 @@ export interface UnarchiveDocResult {
 export async function unarchive_doc(
   input: UnarchiveDocInput
 ): Promise<UnarchiveDocResult> {
-  const { project_root, docs_path, dry_run = false } = input;
+  const { repo_root: repo_root, docs_root: docs_root, dry_run = false } = input;
   const errors: string[] = [];
 
-  const from_rel = resolve_doc_path(docs_path, input.file, project_root);
+  const from_rel = resolve_doc_path(docs_root, input.file, repo_root);
   if (!from_rel.startsWith(`${ARCHIVE_DIR}/`)) {
     errors.push(`"${from_rel}" is not under ${ARCHIVE_DIR}/ — nothing to unarchive.`);
     return { ok: false, errors, action: 'rejected' };
   }
 
-  const from_abs = join(docs_path, from_rel);
+  const from_abs = join(docs_root, from_rel);
   if (!(await is_present(from_abs))) {
     errors.push(`File not found: ${from_rel}`);
     return { ok: false, errors, action: 'rejected' };
@@ -221,7 +221,7 @@ export async function unarchive_doc(
     typeof data.archived_from === 'string' && data.archived_from.length > 0
       ? data.archived_from
       : from_rel.slice(`${ARCHIVE_DIR}/`.length);
-  const to_abs = join(docs_path, to_rel);
+  const to_abs = join(docs_root, to_rel);
 
   if (await is_present(to_abs)) {
     errors.push(`Restore target already exists: ${to_rel}. Move or remove it first.`);
@@ -238,18 +238,18 @@ export async function unarchive_doc(
   delete restored.archived_from;
   delete restored.archived_reason;
 
-  const move_method = await move_file(project_root, from_abs, to_abs);
+  const move_method = await move_file(repo_root, from_abs, to_abs);
   await writeFile(to_abs, with_frontmatter(raw_text, restored), 'utf-8');
   if (move_method === 'git') {
     try {
       // eslint-disable-next-line id-denylist -- child_process/glob option name
-      execFileSync('git', ['add', to_abs], { cwd: project_root, stdio: 'ignore' });
+      execFileSync('git', ['add', to_abs], { cwd: repo_root, stdio: 'ignore' });
     } catch {
       /* best-effort */
     }
   }
 
-  await regenerate_indexes({ docs_path, silent: true });
+  await regenerate_indexes({ docs_root: docs_root, silent: true });
 
   return { ok: true, errors, action: 'unarchived', from: from_rel, to: to_rel, move_method };
 }

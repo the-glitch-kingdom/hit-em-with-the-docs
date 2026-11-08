@@ -88,14 +88,14 @@ async function list_files(dir_path: string, keep: (name: string) => boolean): Pr
 }
 
 /** Findings (kind secret or personal) in archive/, tracked markdown outside the docs root, and .hewtd/. */
-export async function scan_peripheral(repo_root: string, docs_path: string, config: PluginConfig): Promise<SecretFinding[]> {
+export async function scan_peripheral(repo_root: string, docs_root: string, config: PluginConfig): Promise<SecretFinding[]> {
   const secrets_config = config.reconcile.secrets;
-  const git_top = find_git_top(docs_path) ?? repo_root;
+  const git_top = find_git_top(docs_root) ?? repo_root;
   const files = new Map<string, string>(); // abs -> label
-  for (const file of await list_files(join(docs_path, 'archive'), (name) => name.endsWith('.md'))) files.set(file, format_posix_path(relative(git_top, file)));
+  for (const file of await list_files(join(docs_root, 'archive'), (name) => name.endsWith('.md'))) files.set(file, format_posix_path(relative(git_top, file)));
   for (const file of await list_files(join(git_top, '.hewtd'), () => true)) files.set(file, format_posix_path(relative(git_top, file)));
   try {
-    const docs_rel = format_posix_path(relative(git_top, docs_path));
+    const docs_rel = format_posix_path(relative(git_top, docs_root));
     // eslint-disable-next-line id-denylist -- child_process option name
     const tracked = execFileSync('git', ['ls-files', '*.md'], { cwd: git_top, encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }).split('\n');
     for (const file of tracked) if (file && !(docs_rel && (file === docs_rel || file.startsWith(`${docs_rel}/`)))) files.set(join(git_top, file), file);
@@ -109,15 +109,15 @@ export async function scan_peripheral(repo_root: string, docs_path: string, conf
 }
 
 /** Standalone masked scan for `reconcile --secrets`: no scope = the whole docs root (archive included) plus the periphery. */
-export async function scan_secrets(options: { root: string; docs_path: string; config: PluginConfig; scope?: string[] }): Promise<SecretFinding[]> {
-  const { root: repo_root, docs_path, config } = options;
+export async function scan_secrets(options: { root: string; docs_root: string; config: PluginConfig; scope?: string[] }): Promise<SecretFinding[]> {
+  const { root: repo_root, docs_root: docs_root, config } = options;
   const secrets_config = config.reconcile.secrets;
   const abs_paths = options.scope?.length
-    ? (await resolve_scope(docs_path, options.scope)).map((doc_path) => join(docs_path, doc_path))
-    : (await list_files(docs_path, (name) => name.endsWith('.md'))).filter((file) => !file.startsWith(join(docs_path, 'archive') + '/')); // archive/ comes with the periphery
+    ? (await resolve_scope(docs_root, options.scope)).map((doc_path) => join(docs_root, doc_path))
+    : (await list_files(docs_root, (name) => name.endsWith('.md'))).filter((file) => !file.startsWith(join(docs_root, 'archive') + '/')); // archive/ comes with the periphery
   const found: SecretFinding[] = [];
-  for (const file of abs_paths.sort()) found.push(...(await scan_file(file, format_posix_path(relative(docs_path, file)), secrets_config)));
-  if (!options.scope?.length) found.push(...(await scan_peripheral(repo_root, docs_path, config)));
+  for (const file of abs_paths.sort()) found.push(...(await scan_file(file, format_posix_path(relative(docs_root, file)), secrets_config)));
+  if (!options.scope?.length) found.push(...(await scan_peripheral(repo_root, docs_root, config)));
   return found;
 }
 
@@ -143,24 +143,24 @@ export async function list_markdown_files(dir_path: string): Promise<string[]> {
  * No args and no `next` is an error: never the whole tree by default.
  */
 export async function resolve_scope(
-  docs_path: string,
+  docs_root: string,
   args: string[],
   options: { next?: number; ledger?: Ledger } = {}
 ): Promise<string[]> {
   if (!args.length && !options.next) throw new Error('Name a scope (domain, folder or files) or pass --next <n>; reconcile never runs on the whole tree by default.');
   const scope_files = new Set<string>();
-  if (!args.length) for (const file of await list_markdown_files(docs_path)) scope_files.add(file);
+  if (!args.length) for (const file of await list_markdown_files(docs_root)) scope_files.add(file);
   for (const scope_arg of args) {
-    const candidates = [resolve(scope_arg), resolve(docs_path, scope_arg)];
-    const scope_match = candidates.find((candidate) => existsSync(candidate) && (candidate === docs_path || candidate.startsWith(docs_path + '/')));
-    if (!scope_match) throw new Error(`Scope "${scope_arg}" is not a file, folder or domain under ${docs_path}`);
+    const candidates = [resolve(scope_arg), resolve(docs_root, scope_arg)];
+    const scope_match = candidates.find((candidate) => existsSync(candidate) && (candidate === docs_root || candidate.startsWith(docs_root + '/')));
+    if (!scope_match) throw new Error(`Scope "${scope_arg}" is not a file, folder or domain under ${docs_root}`);
     if (statSync(scope_match).isDirectory()) for (const file of await list_markdown_files(scope_match)) scope_files.add(file);
     else scope_files.add(scope_match);
   }
-  let doc_paths = [...scope_files].map((file) => format_posix_path(relative(docs_path, file))).sort();
+  let doc_paths = [...scope_files].map((file) => format_posix_path(relative(docs_root, file))).sort();
   if (options.next) {
     doc_paths = doc_paths
-      .filter((doc_path) => !is_reviewed(options.ledger?.entries[doc_path], compute_content_hash(readFileSync(join(docs_path, doc_path), 'utf-8'))))
+      .filter((doc_path) => !is_reviewed(options.ledger?.entries[doc_path], compute_content_hash(readFileSync(join(docs_root, doc_path), 'utf-8'))))
       .slice(0, options.next);
   }
   return doc_paths;
@@ -176,10 +176,10 @@ export function find_git_top(dir_path: string): string | undefined {
 }
 
 /** Scope files with uncommitted changes (tracked or untracked). Empty outside a git repo. */
-export function find_dirty_in_scope(docs_path: string, doc_paths: string[]): string[] {
-  const git_top = find_git_top(docs_path);
+export function find_dirty_in_scope(docs_root: string, doc_paths: string[]): string[] {
+  const git_top = find_git_top(docs_root);
   if (!git_top || !doc_paths.length) return [];
-  const status_output = execFileSync('git', ['status', '--porcelain', '--', ...doc_paths.map((doc_path) => join(docs_path, doc_path))], {
+  const status_output = execFileSync('git', ['status', '--porcelain', '--', ...doc_paths.map((doc_path) => join(docs_root, doc_path))], {
     // eslint-disable-next-line id-denylist -- child_process option name
     cwd: git_top, encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'],
   });
@@ -198,14 +198,14 @@ function is_attributed(data: Record<string, unknown>): boolean {
 
 export async function triage_docs(options: {
   root: string;
-  docs_path: string;
+  docs_root: string;
   rels: string[];
   config: PluginConfig;
   mode?: 'serial' | 'team';
   ledger?: Ledger;
 }): Promise<TriageResult> {
-  const { docs_path, rels: doc_paths, config } = options;
-  const git_top = find_git_top(docs_path) ?? options.root;
+  const { docs_root: docs_root, rels: doc_paths, config } = options;
+  const git_top = find_git_top(docs_root) ?? options.root;
   const index = build_repo_index(git_top, config.reconcile.schema_sources);
   const warnings: string[] = [];
   const sibling_repos: RelatedRepo[] = config.reconcile.related_repos.map((related_repo) => ({ name: related_repo.name, root: resolve(options.root, related_repo.path) }));
@@ -218,7 +218,7 @@ export async function triage_docs(options: {
   };
 
   const loaded = doc_paths.map((doc_path) => {
-    const raw_text = readFileSync(join(docs_path, doc_path), 'utf-8');
+    const raw_text = readFileSync(join(docs_root, doc_path), 'utf-8');
     const { data, content } = parse_frontmatter<Record<string, unknown>>(raw_text);
     return { doc_path, raw_text, data, body: content, references: extract_references(content) };
   });
@@ -243,14 +243,14 @@ export async function triage_docs(options: {
     }
     return scan_promise;
   };
-  const peripheral = await scan_peripheral(options.root, docs_path, config);
+  const peripheral = await scan_peripheral(options.root, docs_root, config);
 
-  const dups = await find_duplicates(docs_path, config);
+  const dups = await find_duplicates(docs_root, config);
   const docs: TriageDoc[] = [];
   let stale_warned = false;
   for (const doc of loaded) {
-    const abs_path = join(docs_path, doc.doc_path);
-    const resolved: ResolvedReference[] = await resolve_references(index, doc.references, { doc_file: abs_path, docs_path, related: sibling_repos });
+    const abs_path = join(docs_root, doc.doc_path);
+    const resolved: ResolvedReference[] = await resolve_references(index, doc.references, { doc_file: abs_path, docs_root: docs_root, related: sibling_repos });
     const sources = Array.isArray(doc.data.sources) ? doc.data.sources.filter((source): source is string => typeof source === 'string') : [];
     // Only path-like sources are checkable; URLs and prose citations are not claims about the repo.
     // `<name>:<path>` names a file in a related repo (read-only); checked there, not in this repo.
@@ -349,7 +349,7 @@ export async function triage_docs(options: {
     // An overview whose members changed since it was written goes back to check; the verdict is dropped so it stays queued.
     const ledger_entry = options.ledger?.entries[doc.doc_path];
     if (ledger_entry?.members) {
-      const changed = Object.entries(ledger_entry.members).filter(([member_path, member_hash]) => { try { return compute_content_hash(readFileSync(join(docs_path, member_path), 'utf-8')) !== member_hash; } catch { return true; } }).map(([member_path]) => member_path);
+      const changed = Object.entries(ledger_entry.members).filter(([member_path, member_hash]) => { try { return compute_content_hash(readFileSync(join(docs_root, member_path), 'utf-8')) !== member_hash; } catch { return true; } }).map(([member_path]) => member_path);
       if (changed.length && lane !== 'secret') {
         if (lane === 'clean' || lane === 'fields-only') lane = 'check';
         reasons.push(`member changed: ${changed.join(', ')}`);
@@ -360,7 +360,7 @@ export async function triage_docs(options: {
     if (ledger_entry?.pointer && lane !== 'secret') {
       const [owner_doc_path, anchor = ''] = ledger_entry.pointer.target.split('#');
       let owner_section_hash: string | undefined;
-      try { const owner_section = find_section(parse_frontmatter<Record<string, unknown>>(readFileSync(resolve(docs_path, owner_doc_path!), 'utf-8')).content, anchor); owner_section_hash = owner_section === null ? undefined : compute_content_hash(owner_section); } catch { /* owner gone */ }
+      try { const owner_section = find_section(parse_frontmatter<Record<string, unknown>>(readFileSync(resolve(docs_root, owner_doc_path!), 'utf-8')).content, anchor); owner_section_hash = owner_section === null ? undefined : compute_content_hash(owner_section); } catch { /* owner gone */ }
       if (owner_section_hash !== ledger_entry.pointer.section_hash) {
         if (lane === 'clean' || lane === 'fields-only') lane = 'check';
         reasons.push(owner_section_hash === undefined ? `pointer target changed: ${ledger_entry.pointer.target} (section missing)` : `pointer target changed: ${ledger_entry.pointer.target}`);
@@ -381,7 +381,7 @@ export async function triage_docs(options: {
   const team_config = config.reconcile.team;
   const auto = judged.length >= team_config.min_docs || judgment_bytes >= team_config.min_bytes ? 'team' : 'serial';
   let mode = options.mode ?? auto;
-  let shards = mode === 'team' ? await build_shards(docs_path, judged, config) : [];
+  let shards = mode === 'team' ? await build_shards(docs_root, judged, config) : [];
   // One shard is just a serial run with agent overhead.
   if (mode === 'team' && !options.mode && shards.length < 2) (mode = 'serial'), (shards = []);
 
@@ -397,7 +397,7 @@ export async function triage_docs(options: {
 }
 
 /** Read-only resolution of some docs for the graph export: no ledger, no dirty-tree check (that lives in the CLI). */
-export async function resolve_docs(options: { root: string; docs_path: string; rels: string[]; config: PluginConfig; ledger?: Ledger }): Promise<TriageDoc[]> {
+export async function resolve_docs(options: { root: string; docs_root: string; rels: string[]; config: PluginConfig; ledger?: Ledger }): Promise<TriageDoc[]> {
   // A copy, so the ledger-driven reasons (pointer target / member changed) fire without recording anything.
   const { ledger, ...rest } = options;
   return (await triage_docs({ ...rest, ...(ledger && { ledger: structuredClone(ledger) }) })).docs;
@@ -408,7 +408,7 @@ export async function resolve_docs(options: { root: string; docs_path: string; r
  * the rest chunked per domain), split any group larger than a fair share, then bin-pack by
  * bytes into at most `max_agents` shards.
  */
-export async function build_shards(docs_path: string, judged: Pick<TriageDoc, 'path' | 'bytes'>[], config: PluginConfig): Promise<Shard[]> {
+export async function build_shards(docs_root: string, judged: Pick<TriageDoc, 'path' | 'bytes'>[], config: PluginConfig): Promise<Shard[]> {
   if (!judged.length) return [];
   const { max_agents, docs_per_agent, min_bytes } = config.reconcile.team;
   const bytes = new Map(judged.map((doc) => [doc.path, doc.bytes]));
@@ -423,7 +423,7 @@ export async function build_shards(docs_path: string, judged: Pick<TriageDoc, 'p
   };
   for (const doc_path of bytes.keys()) parent.set(doc_path, doc_path);
   try {
-    for (const cluster of await find_clusters(docs_path, config.overview)) {
+    for (const cluster of await find_clusters(docs_root, config.overview)) {
       const in_scope = cluster.members.filter((member) => bytes.has(member));
       for (const member of in_scope.slice(1)) parent.set(find_root(member), find_root(in_scope[0]!));
     }

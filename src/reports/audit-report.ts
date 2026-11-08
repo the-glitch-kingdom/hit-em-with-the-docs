@@ -6,7 +6,7 @@ import { format_date } from '../core/metadata/generator.js';
 import type { AuditResult } from '../core/audit/auditor.js';
 
 export interface AuditReportOptions {
-  docs_path: string;
+  docs_root: string;
   result: AuditResult;
   format?: 'markdown' | 'json';
 }
@@ -160,11 +160,11 @@ function generate_json_report(result: AuditResult): string {
  * Save audit report to file
  */
 export async function write_audit_report(
-  docs_path: string,
+  docs_root: string,
   result: AuditResult,
   format: 'markdown' | 'json' = 'markdown'
 ): Promise<string> {
-  const reports_dir = await resolve_reports_dir(docs_path);
+  const reports_dir = await resolve_reports_dir(docs_root);
 
   if (!(await is_path_present(reports_dir))) {
     await mkdir(reports_dir, { recursive: true });
@@ -175,7 +175,7 @@ export async function write_audit_report(
   const file_name = `audit-${timestamp}.${extension}`;
   const file_path = join(reports_dir, file_name);
 
-  const content = await generate_audit_report({ docs_path, result, format });
+  const content = await generate_audit_report({ docs_root: docs_root, result, format });
   await writeFile(file_path, content, 'utf-8');
 
   return file_path;

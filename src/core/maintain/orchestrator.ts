@@ -18,7 +18,7 @@ import {
 } from '../../generators/regenerate.js';
 
 export interface MaintainOptions {
-  docs_path: string;
+  docs_root: string;
   quick?: boolean;
   fix?: boolean;
   silent?: boolean;
@@ -59,7 +59,7 @@ export interface DomainHealthResult {
  */
 export async function run_maintenance(options: MaintainOptions): Promise<MaintainResult> {
   const {
-    docs_path,
+    docs_root: docs_root,
     quick = false,
     fix = false,
     silent = false,
@@ -83,7 +83,7 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
   if (!silent) {
     logger.header('Documentation Maintenance');
     logger.info(`Mode: ${quick ? 'Quick' : 'Full'}${fix ? ' (Auto-fix)' : ''}`);
-    logger.info(`Path: ${docs_path}`);
+    logger.info(`Path: ${docs_root}`);
   }
 
   // Step 0: Domain Health Check
@@ -91,7 +91,7 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
     logger.subheader('Step 0: Domain Health Check');
   }
 
-  result.domain_health = await check_domain_health(docs_path);
+  result.domain_health = await check_domain_health(docs_root);
 
   if (!silent) {
     if (result.domain_health.healthy) {
@@ -113,9 +113,9 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
   // Overview back-links (#51): body edits, so only written under --fix; always listed.
   // Runs before metadata sync so word_count/read-time and the indexes see the edit in the same run.
   try {
-    const config = await load_plugin_config(dirname(docs_path));
+    const config = await load_plugin_config(dirname(docs_root));
     if (config.overview.backlinks) {
-      result.overview_backlinks = await add_overview_backlinks(docs_path, { dry_run: !fix });
+      result.overview_backlinks = await add_overview_backlinks(docs_root, { dry_run: !fix });
     }
   } catch (error) {
     result.errors.push(`Overview back-links failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -128,7 +128,7 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
 
   try {
     result.metadata_sync = await sync_metadata({
-      docs_path,
+      docs_root: docs_root,
       dry_run: !fix,
       fix,
       silent,
@@ -151,7 +151,7 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
   }
 
   try {
-    result.index_regeneration = await regenerate_indexes({ docs_path, silent });
+    result.index_regeneration = await regenerate_indexes({ docs_root: docs_root, silent });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     result.errors.push(`Index regeneration failed: ${message}`);
@@ -166,7 +166,7 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
   // inputs reported different broken-link counts, and a generator fix appeared not to work
   // until you ran maintain twice. Generated output has to exist before anything validates it.
   try {
-    await ensure_knowledge_base_indexes(docs_path, silent, result);
+    await ensure_knowledge_base_indexes(docs_root, silent, result);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     result.errors.push(`Knowledge-base index generation failed: ${message}`);
@@ -180,7 +180,7 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
 
     try {
       result.link_check = await check_links({
-        docs_path,
+        docs_root: docs_root,
         silent,
       });
     } catch (error) {
@@ -198,7 +198,7 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
 
   try {
     result.audit = await check_documentation({
-      docs_path,
+      docs_root: docs_root,
       silent,
     });
   } catch (error) {
@@ -208,8 +208,8 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
 
   // Retrieval coverage (#50): shown in the health report only, not part of the score.
   try {
-    const docs = await load_retrieval_docs(docs_path, await find_markdown_files(docs_path));
-    const config = await load_plugin_config(dirname(docs_path));
+    const docs = await load_retrieval_docs(docs_root, await find_markdown_files(docs_root));
+    const config = await load_plugin_config(dirname(docs_root));
     result.retrieval_coverage = compute_retrieval_coverage(docs, config.retrieval);
   } catch (error) {
     result.errors.push(`Retrieval coverage failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -217,8 +217,8 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
 
   // Overview coverage (#51): clusters with and without an overview.
   try {
-    const config = await load_plugin_config(dirname(docs_path));
-    const clusters = await find_clusters(docs_path, config.overview);
+    const config = await load_plugin_config(dirname(docs_root));
+    const clusters = await find_clusters(docs_root, config.overview);
     const missing = clusters.filter((cluster) => !cluster.overview);
     result.overview_coverage = {
       withOverview: clusters.length - missing.length,
@@ -238,7 +238,7 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
   }
 
   try {
-    result.report_path = await write_maintenance_report(docs_path, result, start_time);
+    result.report_path = await write_maintenance_report(docs_root, result, start_time);
     if (!silent) {
       logger.success(`Report saved: ${result.report_path}`);
     }
@@ -283,7 +283,7 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
 /**
  * Check domain health (folders, index files, registry files)
  */
-async function check_domain_health(docs_path: string): Promise<DomainHealthResult> {
+async function check_domain_health(docs_root: string): Promise<DomainHealthResult> {
   const result: DomainHealthResult = {
     healthy: true,
     presentDomains: [],
@@ -293,7 +293,7 @@ async function check_domain_health(docs_path: string): Promise<DomainHealthResul
   };
 
   for (const domain of get_all_domains()) {
-    const domain_path = join(docs_path, domain);
+    const domain_path = join(docs_root, domain);
     const index_path = join(domain_path, 'INDEX.md');
     const registry_path = join(domain_path, 'REGISTRY.md');
 
@@ -361,7 +361,7 @@ function compute_health_score(result: MaintainResult): number {
  * Generate maintenance report
  */
 async function write_maintenance_report(
-  docs_path: string,
+  docs_root: string,
   result: MaintainResult,
   start_time: number
 ): Promise<string> {
@@ -505,7 +505,7 @@ generated: true
 `;
 
   // Save report
-  const reports_dir = await resolve_reports_dir(docs_path);
+  const reports_dir = await resolve_reports_dir(docs_root);
   if (!(await is_path_present(reports_dir))) {
     await mkdir(reports_dir, { recursive: true });
   }
@@ -522,11 +522,11 @@ generated: true
  * requirement: a 2.2.0-era project tree must observe zero behavior change.
  */
 async function ensure_knowledge_base_indexes(
-  docs_path: string,
+  docs_root: string,
   silent: boolean,
   result: MaintainResult
 ): Promise<void> {
-  const knowledge_base_indexes = await generate_knowledge_base_indexes(docs_path);
+  const knowledge_base_indexes = await generate_knowledge_base_indexes(docs_root);
   if (!knowledge_base_indexes) return;
 
   if (!silent) {
@@ -544,12 +544,12 @@ async function ensure_knowledge_base_indexes(
 /**
  * Quick health check without full maintenance
  */
-export async function check_quick_health(docs_path: string): Promise<{
+export async function check_quick_health(docs_root: string): Promise<{
   healthy: boolean;
   score: number;
   issues: string[];
 }> {
-  const domain_health = await check_domain_health(docs_path);
+  const domain_health = await check_domain_health(docs_root);
   const issues: string[] = [];
 
   if (!domain_health.healthy) {

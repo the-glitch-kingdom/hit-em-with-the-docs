@@ -23,22 +23,22 @@ function doc(fields: Record<string, string>, body = '# Doc\n'): string {
 
 describe('findArchiveCandidates', () => {
   let tmp_dir: string;
-  let docs_path: string;
+  let docs_root: string;
 
   beforeEach(async () => {
     tmp_dir = await mkdtemp(join(tmpdir(), 'hewtd-cand-'));
-    docs_path = join(tmp_dir, '.documentation');
-    await mkdir(join(docs_path, 'api'), { recursive: true });
+    docs_root = join(tmp_dir, '.documentation');
+    await mkdir(join(docs_root, 'api'), { recursive: true });
   });
   afterEach(async () => {
     await rm(tmp_dir, { recursive: true, force: true });
   });
 
   const write = (rel: string, content: string) =>
-    writeFile(join(docs_path, rel), content, 'utf-8');
+    writeFile(join(docs_root, rel), content, 'utf-8');
 
   async function run(config = CONFIG) {
-    return find_archive_candidates({ docs_path, project_root: tmp_dir, config, today: TODAY });
+    return find_archive_candidates({ docs_root: docs_root, repo_root: tmp_dir, config, today: TODAY });
   }
 
   it('flags a status: deprecated doc (strong signal, alone)', async () => {

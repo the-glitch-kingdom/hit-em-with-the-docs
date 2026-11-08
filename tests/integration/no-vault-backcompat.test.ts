@@ -21,17 +21,17 @@ import { regenerate_indexes } from '../../src/generators/regenerate.js';
 
 describe('Backward compatibility — no-vault project (2.3.0 regression test)', () => {
   let tmp_root: string;
-  let docs_path: string;
+  let docs_root: string;
 
   beforeEach(async () => {
     tmp_root = await mkdtemp(join(tmpdir(), 'hewtd-backcompat-'));
-    docs_path = join(tmp_root, '.documentation');
+    docs_root = join(tmp_root, '.documentation');
 
     // Build a minimal pre-2.3.0 doc tree: one guide, no knowledge-base/,
     // no symptoms: blocks anywhere.
-    await mkdir(join(docs_path, 'security'), { recursive: true });
+    await mkdir(join(docs_root, 'security'), { recursive: true });
     await writeFile(
-      join(docs_path, 'security', 'auth-guide.md'),
+      join(docs_root, 'security', 'auth-guide.md'),
       `---
 title: "Authentication Guide"
 tier: guide
@@ -54,7 +54,7 @@ Body content for the guide.
     // a real `hewtd init`-built tree (which always ships index files). Without
     // this the tree has a document but no INDEX.md, which the 2.5.0 drift
     // audit rule correctly flags — that's a fixture gap, not a regression.
-    await regenerate_indexes({ docs_path, silent: true });
+    await regenerate_indexes({ docs_root: docs_root, silent: true });
   });
 
   afterEach(async () => {
@@ -62,16 +62,16 @@ Body content for the guide.
   });
 
   it('hewtd maintain does not create a knowledge-base/ subtree', async () => {
-    await run_maintenance({ docs_path, silent: true });
+    await run_maintenance({ docs_root: docs_root, silent: true });
 
-    const docs_contents = await readdir(docs_path);
+    const docs_contents = await readdir(docs_root);
     expect(docs_contents).not.toContain('knowledge-base');
   });
 
   it('hewtd maintain does not create facts/INDEX.md, incidents/INDEX.md, or symptoms/INDEX.md', async () => {
-    await run_maintenance({ docs_path, silent: true });
+    await run_maintenance({ docs_root: docs_root, silent: true });
 
-    const vault_path = join(docs_path, 'knowledge-base');
+    const vault_path = join(docs_root, 'knowledge-base');
     let vault_exists = true;
     try {
       await readdir(vault_path);
@@ -82,13 +82,13 @@ Body content for the guide.
   });
 
   it('audit emits no KB-coded errors on a pre-2.3.0 doc tree', async () => {
-    const result = await check_documentation({ docs_path, silent: true });
+    const result = await check_documentation({ docs_root: docs_root, silent: true });
     const kb_issues = result.issues.filter((i) => i.code !== undefined);
     expect(kb_issues).toEqual([]);
   });
 
   it('maintain completes without errors on a no-vault tree', async () => {
-    const result = await run_maintenance({ docs_path, silent: true });
+    const result = await run_maintenance({ docs_root: docs_root, silent: true });
     // Some pre-existing maintain errors are possible (missing INDEX.md for
     // domains, etc.) — those are not 2.3.0's concern. What we assert is that
     // NO error in the result.errors list mentions knowledge-base.
@@ -100,7 +100,7 @@ Body content for the guide.
 
   it('strict audit still passes on a pre-2.3.0 tree (no KB violations to escalate)', async () => {
     const result = await check_documentation({
-      docs_path,
+      docs_root: docs_root,
       silent: true,
       strict: true,
     });
@@ -116,13 +116,13 @@ Body content for the guide.
 
 describe('Backward compatibility — KB-adopting project (2.3.0 active path)', () => {
   let tmp_root: string;
-  let docs_path: string;
+  let docs_root: string;
   let vault_path: string;
 
   beforeEach(async () => {
     tmp_root = await mkdtemp(join(tmpdir(), 'hewtd-kb-active-'));
-    docs_path = join(tmp_root, '.documentation');
-    vault_path = join(docs_path, 'knowledge-base');
+    docs_root = join(tmp_root, '.documentation');
+    vault_path = join(docs_root, 'knowledge-base');
 
     // Tree with the KB subtree present + one fact + one incident.
     await mkdir(join(vault_path, 'facts'), { recursive: true });
@@ -194,7 +194,7 @@ produced: [test-fact]
   });
 
   it('hewtd maintain DOES generate KB indexes when a vault root exists', async () => {
-    await run_maintenance({ docs_path, silent: true });
+    await run_maintenance({ docs_root: docs_root, silent: true });
 
     const facts_index = join(vault_path, 'facts', 'INDEX.md');
     const incidents_index = join(vault_path, 'incidents', 'INDEX.md');

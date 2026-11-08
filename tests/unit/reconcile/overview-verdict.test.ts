@@ -24,7 +24,7 @@ const run = async (entries: ReviewEntry[]) => {
   const f = join(root, '.hewtd/reconcile/review-1-1.md');
   mkdirSync(join(root, '.hewtd/reconcile'), { recursive: true });
   writeFileSync(f, render_review({ batch: '1', shard: 1, scope: 'backend' }, entries).replace(/- \[ \] accept/g, '- [x] accept'));
-  return apply_reviews({ root, docs_path: docs, files: [f], ledger: await load_ledger(ledger_file), ledger_file, today: '2026-11-07' });
+  return apply_reviews({ root, docs_root: docs, files: [f], ledger: await load_ledger(ledger_file), ledger_file, today: '2026-11-07' });
 };
 const reconcile = async (...rels: string[]) => {
   const l = await load_ledger(ledger_file);
@@ -83,7 +83,7 @@ describe('overview verdict', () => {
     expect(led.entries['backend/overview-deploy.md']).toMatchObject({ verdict: 'overview', members: { 'backend/a.md': h('backend/a.md') } });
 
     const cfg = await load_plugin_config(root);
-    const tri = async () => (await triage_docs({ root, docs_path: docs, rels: ['backend/overview-deploy.md'], config: cfg, ledger: await load_ledger(ledger_file) })).docs[0]!;
+    const tri = async () => (await triage_docs({ root, docs_root: docs, rels: ['backend/overview-deploy.md'], config: cfg, ledger: await load_ledger(ledger_file) })).docs[0]!;
     expect((await tri()).reasons.join()).not.toMatch(/member changed/);
     writeFileSync(join(docs, 'backend/a.md'), doc('A') + '\nEdited.\n');
     const after = await tri();

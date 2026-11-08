@@ -8,7 +8,7 @@ export interface AuditRule {
   name: string;
   description: string;
   severity: 'error' | 'warning' | 'info';
-  check: (file_path: string, docs_path: string) => RuleCheckResult;
+  check: (file_path: string, docs_root: string) => RuleCheckResult;
 }
 
 export interface RuleCheckResult {
@@ -74,10 +74,10 @@ export function check_naming_convention(file_path: string): RuleCheckResult {
  */
 export function check_file_placement(
   file_path: string,
-  docs_path: string,
+  docs_root: string,
   declared_domain?: string
 ): RuleCheckResult {
-  const detected_result = detect_domain_from_path(file_path, docs_path);
+  const detected_result = detect_domain_from_path(file_path, docs_root);
   const detected_domain = detected_result.domain;
 
   // If no domain detected from path, and no domain declared, it's an issue
@@ -100,7 +100,7 @@ export function check_file_placement(
 
   // If file is in root (not in any domain folder)
   if (!detected_domain) {
-    const doc_path = relative(docs_path, file_path);
+    const doc_path = relative(docs_root, file_path);
     const path_parts = doc_path.split(/[/\\]/);
 
     // Check if it's in root
@@ -283,6 +283,6 @@ export const AUDIT_RULES: AuditRule[] = [
     name: 'File Placement',
     description: 'Check if files are in the correct domain folders',
     severity: 'warning',
-    check: (file_path, docs_path) => check_file_placement(file_path, docs_path),
+    check: (file_path, docs_root) => check_file_placement(file_path, docs_root),
   },
 ];

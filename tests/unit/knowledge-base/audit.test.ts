@@ -10,7 +10,7 @@ const VALID_FIXTURE_ROOT = resolve(__dirname, '../../fixtures/knowledge-base/val
 describe('auditFacts (2.3.0)', () => {
   it('identifies stale facts past audit_window_days', async () => {
     const index = await build_citer_index({
-      project_root: VALID_FIXTURE_ROOT,
+      repo_root: VALID_FIXTURE_ROOT,
       vault_root: VALID_FIXTURE_ROOT,
       playbook_globs: [resolve(VALID_FIXTURE_ROOT, 'playbooks/*.md')],
     });
@@ -26,7 +26,7 @@ describe('auditFacts (2.3.0)', () => {
 
   it('returns no stale facts when within audit_window_days', async () => {
     const index = await build_citer_index({
-      project_root: VALID_FIXTURE_ROOT,
+      repo_root: VALID_FIXTURE_ROOT,
       vault_root: VALID_FIXTURE_ROOT,
       playbook_globs: [resolve(VALID_FIXTURE_ROOT, 'playbooks/*.md')],
     });
@@ -41,7 +41,7 @@ describe('auditFacts (2.3.0)', () => {
 
   it('sorts stale facts by daysSinceVerified desc, id asc', async () => {
     const index = await build_citer_index({
-      project_root: VALID_FIXTURE_ROOT,
+      repo_root: VALID_FIXTURE_ROOT,
       vault_root: VALID_FIXTURE_ROOT,
       playbook_globs: [resolve(VALID_FIXTURE_ROOT, 'playbooks/*.md')],
     });

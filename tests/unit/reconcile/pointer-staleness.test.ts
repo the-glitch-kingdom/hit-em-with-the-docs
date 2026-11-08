@@ -20,7 +20,7 @@ const point = (): ReviewEntry => ({
   pointer: { summary: 'Canary release (`deploy.sh --canary`) for 30 minutes.', target: 'backend/deploy.md#release' },
   target_hash: compute_content_hash(read('backend/deploy.md')),
 });
-const tri = async () => (await triage_docs({ root, docs_path: docs, rels: ['backend/admin.md'], config: await load_plugin_config(root), ledger: await load_ledger(ledger_file) })).docs[0]!;
+const tri = async () => (await triage_docs({ root, docs_root: docs, rels: ['backend/admin.md'], config: await load_plugin_config(root), ledger: await load_ledger(ledger_file) })).docs[0]!;
 
 beforeEach(async () => {
   root = mkdtempSync(join(tmpdir(), 'ps-'));
@@ -34,7 +34,7 @@ beforeEach(async () => {
   const f = join(root, '.hewtd/reconcile/review-1-1.md');
   mkdirSync(join(root, '.hewtd/reconcile'), { recursive: true });
   writeFileSync(f, render_review({ batch: '1', shard: 1, scope: 'backend' }, [point()]).replace(/- \[ \] accept/g, '- [x] accept'));
-  const res = await apply_reviews({ root, docs_path: docs, files: [f], ledger: await load_ledger(ledger_file), ledger_file, today: '2026-11-07' });
+  const res = await apply_reviews({ root, docs_root: docs, files: [f], ledger: await load_ledger(ledger_file), ledger_file, today: '2026-11-07' });
   expect(res.outcomes[0]!.status).toBe('applied');
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
@@ -69,7 +69,7 @@ describe('pointer tracking survives later edits (review fix)', () => {
     const f = join(root, '.hewtd/reconcile/review-2-1.md');
     const verify: ReviewEntry = { path: 'backend/admin.md', content_hash: compute_content_hash(read('backend/admin.md')), verdict: 'verify', sources: ['backend/deploy.md'] };
     writeFileSync(f, render_review({ batch: '2', shard: 1, scope: 'backend' }, [verify]).replace(/- \[ \] accept/g, '- [x] accept'));
-    const res = await apply_reviews({ root, docs_path: docs, files: [f], ledger: await load_ledger(ledger_file), ledger_file, today: '2026-11-08' });
+    const res = await apply_reviews({ root, docs_root: docs, files: [f], ledger: await load_ledger(ledger_file), ledger_file, today: '2026-11-08' });
     expect(res.outcomes[0]!.status).toBe('applied');
     expect((await load_ledger(ledger_file)).entries['backend/admin.md']!.pointer).toMatchObject({ target: 'backend/deploy.md#release' });
     writeFileSync(join(docs, 'backend/deploy.md'), read('backend/deploy.md').replace('30 minutes', '45 minutes'));

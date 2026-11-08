@@ -27,13 +27,13 @@ const set_config = (c: object) => writeFile(join(root, '.claude/hit-em-with-the-
 describe('reports_dir', () => {
   it('defaults to <docs>/reports', async () => {
     expect(await resolve_reports_dir(docs)).toBe(join(docs, 'reports'));
-    const result = await run_maintenance({ docs_path: docs, quick: true, silent: true });
+    const result = await run_maintenance({ docs_root: docs, quick: true, silent: true });
     expect(result.report_path).toContain(join('.documentation', 'reports'));
   });
 
   it('writes outside the docs root when configured, leaving nothing under .documentation/reports', async () => {
     await set_config({ reports_dir: '.hewtd/reports' });
-    const result = await run_maintenance({ docs_path: docs, quick: true, silent: true });
+    const result = await run_maintenance({ docs_root: docs, quick: true, silent: true });
     expect(result.report_path).toBe(join(root, '.hewtd/reports', (result.report_path as string).split('/').pop()!));
     expect(existsSync(join(docs, 'reports'))).toBe(false);
     const saved = await write_health_report(docs, result);
@@ -57,19 +57,19 @@ describe('health report retrieval coverage', () => {
     await writeFile(join(docs, 'api/a.md'), fm('Alpha', `purpose: ${GOOD}\nsymptoms:\n  - deploy hangs\n`));
     await writeFile(join(docs, 'api/b.md'), fm('Twin'));
     await writeFile(join(docs, 'api/c.md'), fm('Twin'));
-    const result = await run_maintenance({ docs_path: docs, quick: true, silent: true });
+    const result = await run_maintenance({ docs_root: docs, quick: true, silent: true });
     expect(result.retrieval_coverage).toEqual({ total: 3, withPurpose: 1, withSymptoms: 1, withUniqueTitle: 1 });
-    const md = await generate_health_report({ docs_path: docs, result });
+    const md = await generate_health_report({ docs_root: docs, result });
     expect(md).toContain('## Retrieval Coverage');
     expect(md).toContain('| Non-weak purpose | 1/3 | 33.3% |');
-    const json = JSON.parse(await generate_health_report({ docs_path: docs, result, format: 'json' }));
+    const json = JSON.parse(await generate_health_report({ docs_root: docs, result, format: 'json' }));
     expect(json.retrievalCoverage.total).toBe(3);
   });
 
   it('empty tree gives 0% without dividing by zero', async () => {
-    const result = await run_maintenance({ docs_path: docs, quick: true, silent: true });
+    const result = await run_maintenance({ docs_root: docs, quick: true, silent: true });
     expect(result.retrieval_coverage?.total).toBe(0);
-    const md = await generate_health_report({ docs_path: docs, result });
+    const md = await generate_health_report({ docs_root: docs, result });
     expect(md).toContain('| Symptoms | 0/0 | 0.0% |');
     expect(md.split('## Retrieval Coverage')[1]!.split('## Recommendations')[0]).not.toContain('NaN');
   });

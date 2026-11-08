@@ -34,7 +34,7 @@ describe('reconcile references', () => {
       '`AUTH_SECRET_KEY` and `GHOST_ENV_VAR`, `npm run build`, `npm run nope`, `make deploy`, `make nope`,',
       '`npx vitest`, `npx unheard-of-tool`, [ok](./a.md), [bad](./zzz.md)',
     ].join('\n');
-    const rs = await check_doc_references(idx, body, { doc_file: join(root, 'docs/x.md'), docs_path: join(root, 'docs') });
+    const rs = await check_doc_references(idx, body, { doc_file: join(root, 'docs/x.md'), docs_root: join(root, 'docs') });
     expect(st(rs, 'src/auth/login.ts')).toBe('ok');
     expect(st(rs, 'src/auth/gone.ts')).toBe('missing');
     expect(st(rs, 'verifyToken')).toBe('ok');
@@ -68,11 +68,11 @@ describe('reconcile references', () => {
     execFileSync('git', ['add', '-A'], { cwd: root });
     const fresh = build_repo_index(root, []);
     const body = 'Calls `removedHelperFn` and reads `GONE_SETTING_VAR`.\n';
-    const rs = await check_doc_references(fresh, body, { doc_file: join(root, 'docs/self.md'), docs_path: join(root, 'docs') });
+    const rs = await check_doc_references(fresh, body, { doc_file: join(root, 'docs/self.md'), docs_root: join(root, 'docs') });
     expect(st(rs, 'removedHelperFn')).toBe('missing');
     expect(st(rs, 'GONE_SETTING_VAR')).toBe('missing');
     // mentioned by another doc too: an external name, so unknown
-    const other = await check_doc_references(fresh, 'See `ghostSymbolName`.\n', { doc_file: join(root, 'docs/self.md'), docs_path: join(root, 'docs') });
+    const other = await check_doc_references(fresh, 'See `ghostSymbolName`.\n', { doc_file: join(root, 'docs/self.md'), docs_root: join(root, 'docs') });
     expect(st(other, 'ghostSymbolName')).toBe('unknown');
   });
 

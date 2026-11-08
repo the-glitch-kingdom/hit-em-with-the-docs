@@ -47,7 +47,7 @@ components: [test]
 
     const result = await fix_legacy_layout({
       vault_root,
-      project_root: tmp_project,
+      repo_root: tmp_project,
     });
 
     expect(result.action).toBe('fixed');
@@ -91,7 +91,7 @@ components: [test]
 
     const result = await fix_legacy_layout({
       vault_root,
-      project_root: tmp_project,
+      repo_root: tmp_project,
     });
 
     expect(result.action).toBe('no_op');
@@ -146,7 +146,7 @@ components: [test]
 
     const result = await fix_legacy_layout({
       vault_root,
-      project_root: tmp_project,
+      repo_root: tmp_project,
     });
 
     expect(result.action).toBe('fixed');
@@ -204,7 +204,7 @@ provenance:
 
     const result = await fix_legacy_layout({
       vault_root,
-      project_root: tmp_project,
+      repo_root: tmp_project,
     });
 
     expect(result.action).toBe('fixed');
@@ -265,7 +265,7 @@ provenance:
 
     const result = await fix_legacy_layout({
       vault_root,
-      project_root: tmp_project,
+      repo_root: tmp_project,
     });
 
     expect(result.rewritten_provenance).toHaveLength(1);
@@ -298,7 +298,7 @@ components: [test]
 
     const result = await fix_legacy_layout({
       vault_root,
-      project_root: tmp_project,
+      repo_root: tmp_project,
       dry_run: true,
     });
 
@@ -331,7 +331,7 @@ version: '1.0.0'
 
     const result = await fix_legacy_layout({
       vault_root,
-      project_root: tmp_project,
+      repo_root: tmp_project,
     });
 
     expect(result.moved).toEqual([]);
@@ -383,7 +383,7 @@ components: [test]
 
     const result = await fix_legacy_layout({
       vault_root,
-      project_root: tmp_project,
+      repo_root: tmp_project,
     });
 
     expect(result.moved).toEqual([]);

@@ -102,7 +102,7 @@ export interface FindCitersResult {
 
 export interface BuildCiterIndexOptions {
   /** Absolute path to the project root. */
-  project_root: string;
+  repo_root: string;
   /** Absolute path to the vault root (default config: <root>/.documentation/knowledge-base/). */
   vault_root: string;
   /**
@@ -125,7 +125,7 @@ const is_string_array = (value: unknown): value is string[] =>
 export async function build_citer_index(
   options: BuildCiterIndexOptions
 ): Promise<CiterIndex> {
-  const { project_root, vault_root, playbook_globs } = options;
+  const { repo_root: repo_root, vault_root, playbook_globs } = options;
 
   const facts = new Map<string, FactRef>();
   const incidents = new Map<string, IncidentRef>();
@@ -137,7 +137,7 @@ export async function build_citer_index(
     absolute: true,
   });
   for (const fact_path of fact_files) {
-    const reference = await load_fact_ref(fact_path, project_root);
+    const reference = await load_fact_ref(fact_path, repo_root);
     if (reference) facts.set(reference.id, reference);
   }
 
@@ -147,7 +147,7 @@ export async function build_citer_index(
     { nodir: true, absolute: true }
   );
   for (const narrative_path of narrative_files) {
-    const reference = await load_incident_ref(narrative_path, project_root);
+    const reference = await load_incident_ref(narrative_path, repo_root);
     if (reference) incidents.set(reference.id, reference);
   }
 
@@ -166,7 +166,7 @@ export async function build_citer_index(
   }
 
   for (const playbook_path of playbook_candidates) {
-    const cits = await extract_playbook_citations(playbook_path, project_root);
+    const cits = await extract_playbook_citations(playbook_path, repo_root);
     for (const citation of cits) {
       // Each citation has a list of fact ids implicit in the symptoms entry.
       const fact_ids = citation.fact_ids;
@@ -183,7 +183,7 @@ export async function build_citer_index(
 
 async function load_fact_ref(
   path: string,
-  project_root: string
+  repo_root: string
 ): Promise<FactRef | null> {
   try {
     const content = await readFile(path, 'utf-8');
@@ -196,7 +196,7 @@ async function load_fact_ref(
     return {
       id: data.id,
       path,
-      relPath: relative(project_root, path),
+      relPath: relative(repo_root, path),
       title: is_string(data.title) ? data.title : data.id,
       confidence: is_string(data.confidence) ? data.confidence : undefined,
       lastVerified: last_verified,
@@ -209,7 +209,7 @@ async function load_fact_ref(
 
 async function load_incident_ref(
   narrative_path: string,
-  project_root: string
+  repo_root: string
 ): Promise<IncidentRef | null> {
   try {
     const narrative_content = await readFile(narrative_path, 'utf-8');
@@ -239,7 +239,7 @@ async function load_incident_ref(
     return {
       id: narrative.id,
       folder_path,
-      rel_folder_path: relative(project_root, folder_path),
+      rel_folder_path: relative(repo_root, folder_path),
       title: is_string(narrative.title) ? narrative.title : narrative.id,
       date: normalize_date(narrative.date),
       severity: is_string(narrative.severity) ? narrative.severity : undefined,
@@ -263,7 +263,7 @@ interface PlaybookCitationWithFacts {
 
 async function extract_playbook_citations(
   playbook_path: string,
-  project_root: string
+  repo_root: string
 ): Promise<PlaybookCitationWithFacts[]> {
   try {
     const content = await readFile(playbook_path, 'utf-8');
@@ -296,7 +296,7 @@ async function extract_playbook_citations(
 
       results.push({
         citation: {
-          rel_path: relative(project_root, playbook_path),
+          rel_path: relative(repo_root, playbook_path),
           path: playbook_path,
           title,
           target: text.target,

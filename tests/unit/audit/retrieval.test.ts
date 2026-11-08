@@ -93,7 +93,7 @@ describe('audit integration', () => {
       await writeFile(join(dir, 'guides', 'a.md'), fm(''));
       await writeFile(join(dir, 'guides', 'INDEX.md'), fm('generated: true\n'));
       await writeFile(join(dir, 'guides', 'plain.md'), fm('generated: true\n'));
-      const r = await check_documentation({ docs_path: dir, silent: true, project_root: dir });
+      const r = await check_documentation({ docs_root: dir, silent: true, repo_root: dir });
       const ret = r.issues.filter((i) => i.rule.startsWith('RETRIEVAL_'));
       expect(ret.length).toBeGreaterThan(0);
       expect(ret.every((i) => i.severity === 'warning' && i.code === undefined)).toBe(true);

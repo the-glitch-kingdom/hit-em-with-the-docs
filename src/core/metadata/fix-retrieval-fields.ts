@@ -29,13 +29,13 @@ const normalize_list = (value: unknown): string[] =>
   Array.isArray(value) ? value.map(String) : is_string(value) ? [value] : [];
 
 export async function fix_retrieval_fields(options: {
-  docs_path: string;
+  docs_root: string;
   apply?: boolean;
 }): Promise<FixRetrievalFieldsResult> {
   const result: FixRetrievalFieldsResult = { changed: [], conflicts: [], errors: [], dropped: 0, cleared: 0 };
-  const config = (await load_plugin_config(dirname(options.docs_path))).retrieval;
+  const config = (await load_plugin_config(dirname(options.docs_root))).retrieval;
   // eslint-disable-next-line id-denylist -- child_process/glob option name
-  const files = (await list_glob_matches('**/*.md', { cwd: options.docs_path, absolute: true })).sort();
+  const files = (await list_glob_matches('**/*.md', { cwd: options.docs_root, absolute: true })).sort();
 
   for (const file of files) {
     if (/(^|[\\/])(INDEX|REGISTRY)\.md$/.test(file)) continue;

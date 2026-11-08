@@ -20,7 +20,7 @@ import { check_overview } from './overview.js';
 import { check_naming_convention, check_file_placement } from './rules.js';
 
 export interface AuditOptions {
-  docs_path: string;
+  docs_root: string;
   domain?: string;
   issues_only?: boolean;
   silent?: boolean;
@@ -32,7 +32,7 @@ export interface AuditOptions {
    */
   strict?: boolean;
   /** Where `.claude/hit-em-with-the-docs.json` lives (retrieval thresholds). Defaults to cwd. */
-  project_root?: string;
+  repo_root?: string;
 }
 
 export interface AuditResult {
@@ -83,7 +83,7 @@ export function count_actionable_issues(issues: { rule: string }[]): number {
 
 export async function check_documentation(options: AuditOptions): Promise<AuditResult> {
   const {
-    docs_path,
+    docs_root: docs_root,
     domain,
     issues_only = false,
     silent = false,
@@ -109,12 +109,12 @@ export async function check_documentation(options: AuditOptions): Promise<AuditR
   }
 
   // Find all markdown files
-  let files = await find_markdown_files(docs_path);
+  let files = await find_markdown_files(docs_root);
 
   // Filter by domain if specified
   if (domain) {
     files = files.filter((file) => {
-      const doc_path = relative(docs_path, file);
+      const doc_path = relative(docs_root, file);
       return doc_path.startsWith(domain + '/') || doc_path.startsWith(domain + '\\');
     });
   }
@@ -137,7 +137,7 @@ export async function check_documentation(options: AuditOptions): Promise<AuditR
   const tag_counts = new Map<string, number>();
 
   for (const file of files) {
-    const file_issues = await check_file(file, docs_path);
+    const file_issues = await check_file(file, docs_root);
 
     // Track per-file results
     const has_errors = file_issues.some((i) => i.severity === 'error');
@@ -173,7 +173,7 @@ export async function check_documentation(options: AuditOptions): Promise<AuditR
       }
 
       // Track by domain
-      const file_domain = data.domains?.[0] ?? detect_domain_from_path(file, docs_path).domain ?? 'unknown';
+      const file_domain = data.domains?.[0] ?? detect_domain_from_path(file, docs_root).domain ?? 'unknown';
       if (!result.stats.byDomain[file_domain]) {
         result.stats.byDomain[file_domain] = { files: 0, issues: 0, healthScore: 0 };
       }
@@ -190,16 +190,16 @@ export async function check_documentation(options: AuditOptions): Promise<AuditR
   // going stale between maintain runs. Drift issues are error-severity so
   // `audit --strict` gates CI on them; they do not change `failedFiles`, so
   // a plain `audit` exit code is unaffected (existing behavior preserved).
-  const drift_issues = await check_index_drift(docs_path, domain);
+  const drift_issues = await check_index_drift(docs_root, domain);
   result.issues.push(...drift_issues);
 
   // Retrieval readiness (#50): advisory warnings. Deliberately carry no `code`
   // so `audit --strict` (which fails on any coded issue) is unaffected.
-  const plugin_cfg = await load_plugin_config(options.project_root);
+  const plugin_cfg = await load_plugin_config(options.repo_root);
   const retrieval_cfg = plugin_cfg.retrieval;
-  const retrieval_docs = await load_retrieval_docs(docs_path, files);
+  const retrieval_docs = await load_retrieval_docs(docs_root, files);
   result.issues.push(...check_retrieval(retrieval_docs, retrieval_cfg));
-  result.issues.push(...(await check_overview(docs_path, plugin_cfg.overview)));
+  result.issues.push(...(await check_overview(docs_root, plugin_cfg.overview)));
 
   // Calculate stats
   result.stats.metadataCompliance = (metadata_compliant / files.length) * 100 || 0;
@@ -243,9 +243,9 @@ export async function check_documentation(options: AuditOptions): Promise<AuditR
 /**
  * Audit a single file
  */
-async function check_file(file_path: string, docs_path: string): Promise<AuditIssue[]> {
+async function check_file(file_path: string, docs_root: string): Promise<AuditIssue[]> {
   const issues: AuditIssue[] = [];
-  const rel_path = relative(docs_path, file_path);
+  const rel_path = relative(docs_root, file_path);
 
   try {
     const content = await readFile(file_path, 'utf-8');
@@ -339,7 +339,7 @@ async function check_file(file_path: string, docs_path: string): Promise<AuditIs
     }
 
     // Check file placement
-    const placement_result = check_file_placement(file_path, docs_path, data.domains?.[0]);
+    const placement_result = check_file_placement(file_path, docs_root, data.domains?.[0]);
     if (!placement_result.valid) {
       const placement_issue: AuditIssue = {
         file: rel_path,
@@ -422,7 +422,7 @@ async function check_file(file_path: string, docs_path: string): Promise<AuditIs
  * `hewtd index` or `hewtd maintain` clears it.
  */
 async function check_index_drift(
-  docs_path: string,
+  docs_root: string,
   domain_filter?: string
 ): Promise<AuditIssue[]> {
   const issues: AuditIssue[] = [];
@@ -430,12 +430,12 @@ async function check_index_drift(
   const suggestion = 'Run `hewtd index` (or `hewtd maintain`) to regenerate it';
 
   for (const domain of domains) {
-    const doc_files = await list_domain_doc_files(docs_path, domain);
+    const doc_files = await list_domain_doc_files(docs_root, domain);
     if (doc_files.length === 0) continue;
 
     let index_content: string | null = null;
     try {
-      index_content = await readFile(join(docs_path, domain, 'INDEX.md'), 'utf-8');
+      index_content = await readFile(join(docs_root, domain, 'INDEX.md'), 'utf-8');
     } catch {
       index_content = null;
     }
@@ -475,11 +475,11 @@ async function check_index_drift(
  * Get audit summary for a domain
  */
 export async function load_audit_summary_for_domain(
-  docs_path: string,
+  docs_root: string,
   domain: string
 ): Promise<DomainAuditStats> {
   const result = await check_documentation({
-    docs_path,
+    docs_root: docs_root,
     domain,
     silent: true,
   });

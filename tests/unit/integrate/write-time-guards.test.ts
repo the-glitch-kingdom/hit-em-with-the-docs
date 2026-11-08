@@ -19,7 +19,7 @@ let root: string, docs: string, inbox: string;
 const run = (name: string, text: string, extra: Record<string, unknown> = {}) => {
   const f = join(inbox, name);
   writeFileSync(f, text);
-  return integrate_document({ file_path: f, docs_path: docs, auto: true, silent: true, ...extra });
+  return integrate_document({ file_path: f, docs_root: docs, auto: true, silent: true, ...extra });
 };
 const fm = (p: string) => parse_frontmatter<Record<string, unknown>>(readFileSync(p, 'utf-8')).data;
 const files = (dir: string): string[] => readdirSync(dir, { recursive: true }).map(String);
@@ -129,7 +129,7 @@ describe('integrate records sources', () => {
   it('triage puts the integrated doc in check, and search never indexes sources', async () => {
     const r = await run('t.md', doc('Details live in `src/f3.ts`.', '---\ntitle: Details\n---\n\n'));
     const rel = r.target_path!.slice(docs.length + 1);
-    const t = await triage_docs({ root, docs_path: docs, rels: [rel], config: await load_plugin_config(root), ledger: await load_ledger(join(root, '.hewtd/reconcile.json')) });
+    const t = await triage_docs({ root, docs_root: docs, rels: [rel], config: await load_plugin_config(root), ledger: await load_ledger(join(root, '.hewtd/reconcile.json')) });
     expect(t.docs[0]!.lane).toBe('check');
     writeFileSync(r.target_path!, readFileSync(r.target_path!, 'utf-8').replaceAll('Details live in `src/f3.ts`.', 'Details live elsewhere.'));
     expect(await find_docs(docs, 'src/f3.ts', { config: await load_plugin_config(root) })).toEqual([]);

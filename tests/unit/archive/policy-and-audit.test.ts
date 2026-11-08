@@ -41,12 +41,12 @@ describe('archive config defaults', () => {
 
 describe('audit nudge: deprecated-not-archived', () => {
   let tmp_dir: string;
-  let docs_path: string;
+  let docs_root: string;
 
   beforeEach(async () => {
     tmp_dir = await mkdtemp(join(tmpdir(), 'hewtd-depnudge-'));
-    docs_path = join(tmp_dir, '.documentation');
-    await mkdir(join(docs_path, 'api'), { recursive: true });
+    docs_root = join(tmp_dir, '.documentation');
+    await mkdir(join(docs_root, 'api'), { recursive: true });
     reset_registry();
   });
   afterEach(async () => {
@@ -56,11 +56,11 @@ describe('audit nudge: deprecated-not-archived', () => {
 
   it('flags a status: deprecated doc still in an active domain folder', async () => {
     await writeFile(
-      join(docs_path, 'api', 'old.md'),
+      join(docs_root, 'api', 'old.md'),
       `---\ntitle: Old\ntier: reference\ndomains: [api]\nstatus: deprecated\nlast_updated: '2026-06-01'\nversion: '1.0.0'\n---\n# Old\n`,
       'utf-8'
     );
-    const result = await check_documentation({ docs_path, silent: true });
+    const result = await check_documentation({ docs_root: docs_root, silent: true });
     const nudge = result.issues.find((i) => i.rule === 'deprecated-not-archived');
     expect(nudge).toBeDefined();
     expect(nudge!.severity).toBe('info');
@@ -69,11 +69,11 @@ describe('audit nudge: deprecated-not-archived', () => {
 
   it('does not flag an active doc', async () => {
     await writeFile(
-      join(docs_path, 'api', 'live.md'),
+      join(docs_root, 'api', 'live.md'),
       `---\ntitle: Live\ntier: reference\ndomains: [api]\nstatus: active\nlast_updated: '2026-06-01'\nversion: '1.0.0'\n---\n# Live\n`,
       'utf-8'
     );
-    const result = await check_documentation({ docs_path, silent: true });
+    const result = await check_documentation({ docs_root: docs_root, silent: true });
     expect(result.issues.find((i) => i.rule === 'deprecated-not-archived')).toBeUndefined();
   });
 });

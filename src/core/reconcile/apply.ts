@@ -232,12 +232,12 @@ function build_pointer_doc(option: { raw_text: string; entry: ReviewEntry; abs_p
 }
 
 /** overview: every member current and reconciled (or explicitly marked), then the new doc with kind: overview and no last_validated. */
-async function build_overview_doc(entry: ReviewEntry, docs_path: string, ledger: Ledger): Promise<string> {
+async function build_overview_doc(entry: ReviewEntry, docs_root: string, ledger: Ledger): Promise<string> {
   if (!entry.path.endsWith('.md') || !entry.members?.length || !entry.draft?.trim()) throw new Error('overview needs a .md path, members and a draft');
   const stale: string[] = [], open: string[] = [];
   for (const match of entry.members) {
     let hash: string;
-    try { hash = compute_content_hash(await readFile(join(docs_path, match.path), 'utf-8')); } catch { stale.push(match.path); continue; }
+    try { hash = compute_content_hash(await readFile(join(docs_root, match.path), 'utf-8')); } catch { stale.push(match.path); continue; }
     if (hash !== match.content_hash) { stale.push(match.path); continue; }
     const st = get_member_state(ledger, match.path, hash);
     if (st !== 'reconciled') open.push(match.path);
@@ -255,19 +255,19 @@ async function build_overview_doc(entry: ReviewEntry, docs_path: string, ledger:
 
 export async function apply_reviews(options: {
   root: string;
-  docs_path: string;
+  docs_root: string;
   files: string[];
   ledger: Ledger;
   ledger_file: string;
   today?: string;
 }): Promise<ApplyResult> {
-  const { root: repo_root, docs_path, ledger } = options;
+  const { root: repo_root, docs_root: docs_root, ledger } = options;
   const today = options.today ?? format_date(new Date());
   const config = await load_plugin_config(repo_root);
   const secrets_config = config.reconcile.secrets;
   const reviews = await Promise.all(options.files.map((file) => load_review(file)));
   const start_git_top = find_git_top(repo_root);
-  const snap = start_git_top ? load_snapshot(start_git_top, relative(start_git_top, docs_path) || '.') : new Map<string, Buffer>();
+  const snap = start_git_top ? load_snapshot(start_git_top, relative(start_git_top, docs_root) || '.') : new Map<string, Buffer>();
 
   // Merge shards; the same doc in two files is a hard error before anything is written.
   const owner = new Map<string, string>();
@@ -297,7 +297,7 @@ export async function apply_reviews(options: {
   {
       for (const { entry, accepted, r: result_item } of queue) {
       const review_ref = relative(repo_root, result_item.file).split('\\').join('/');
-      const abs_path = join(docs_path, entry.path);
+      const abs_path = join(docs_root, entry.path);
       // Hard guard: never write outside the project root (related repos are read-only).
       const repo_path = relative(repo_root, abs_path);
       if (repo_path === '..' || repo_path.startsWith('../') || repo_path.startsWith('..\\') || isAbsolute(repo_path)) {
@@ -309,7 +309,7 @@ export async function apply_reviews(options: {
         if (ledger.entries[key]?.verdict && ledger.entries[key]?.review_file === review_ref) { outcomes.push({ path: entry.path, status: 'already-applied' }); continue; }
         if (!accepted) { outcomes.push({ path: entry.path, status: 'rejected' }); continue; }
         if (!entry.verdict) { outcomes.push({ path: entry.path, status: 'skipped', detail: 'no verdict' }); continue; }
-        const outside_result = await apply_outside_entry({ docs_path, entry });
+        const outside_result = await apply_outside_entry({ docs_root: docs_root, entry });
         if (outside_result.status !== 'applied') { outcomes.push({ path: entry.path, status: outside_result.status, ...(outside_result.detail && { detail: outside_result.detail }) }); continue; }
         outside_result.touched.forEach((touched_path) => touched.add(touched_path));
         if (outside_result.domain) domains.add(outside_result.domain);
@@ -352,19 +352,19 @@ export async function apply_reviews(options: {
           touched.add(abs_path);
           merged_ids.add(entry.id ?? entry.path);
         } else if (entry.verdict === 'overview') {
-          await writeFile(abs_path, await build_overview_doc(entry, docs_path, ledger), 'utf-8');
+          await writeFile(abs_path, await build_overview_doc(entry, docs_root, ledger), 'utf-8');
           touched.add(abs_path);
           overview_members.set(entry.path, Object.fromEntries((entry.members ?? []).map((member) => [member.path, member.content_hash])));
         } else if (entry.verdict === 'point') {
           const target = entry.pointer?.target ?? '';
-          const owner_abs_path = resolve(docs_path, target.split('#')[0] ?? '');
-          const in_docs = !relative(docs_path, owner_abs_path).startsWith('..');
+          const owner_abs_path = resolve(docs_root, target.split('#')[0] ?? '');
+          const in_docs = !relative(docs_root, owner_abs_path).startsWith('..');
           // Outside the docs tree only a related repo's doc is allowed, and it is only ever read.
           if (!in_docs && !sibling_repo_roots.some((root) => !relative(root, owner_abs_path).startsWith('..'))) throw new Error('pointer target is outside the docs tree and not in a related repo');
           if (!(await is_present(owner_abs_path))) throw new Error(`pointer target not found: ${target}`);
           if (entry.depends_on_merge) {
             if (!merged_ids.has(entry.depends_on_merge)) throw new Error(`merge "${entry.depends_on_merge}" was not applied`);
-            if (owner_abs_path !== join(docs_path, [...applied].find((a) => (a.entry.id ?? a.entry.path) === entry.depends_on_merge)!.entry.path)) throw new Error('pointer target is not the merged doc');
+            if (owner_abs_path !== join(docs_root, [...applied].find((a) => (a.entry.id ?? a.entry.path) === entry.depends_on_merge)!.entry.path)) throw new Error('pointer target is not the merged doc');
           }
           const owner_raw_text = await readFile(owner_abs_path, 'utf-8');
           if (!entry.depends_on_merge && compute_content_hash(owner_raw_text) !== entry.target_hash) throw new Error('owner doc changed since the review was written (or target_hash missing)');
@@ -377,10 +377,10 @@ export async function apply_reviews(options: {
           await writeFile(abs_path, next, 'utf-8');
           touched.add(abs_path);
         } else if (entry.verdict === 'archive') {
-          const result_entry = await archive_doc({ project_root: repo_root, docs_path, file: entry.path, today, ...(entry.reason && { reason: entry.reason }) });
+          const result_entry = await archive_doc({ repo_root: repo_root, docs_root: docs_root, file: entry.path, today, ...(entry.reason && { reason: entry.reason }) });
           if (!result_entry.ok) throw new Error(result_entry.errors.join('; '));
           touched.add(abs_path);
-          touched.add(join(docs_path, result_entry.to ?? ''));
+          touched.add(join(docs_root, result_entry.to ?? ''));
         } else if (entry.verdict === 'secret') {
           if (!start_git_top) throw new Error('the secret verdict needs a git repo');
           const moved = move_secrets(start_git_top, raw_text, entry, secrets_config);
@@ -414,7 +414,7 @@ export async function apply_reviews(options: {
   try {
     if (domains.size) {
       const regenerated = await regenerate_indexes({
-        docs_path, silent: true,
+        docs_root: docs_root, silent: true,
         domains: [...domains].filter((domain) => known.has(domain)) as never,
       });
       regenerated.files_written.forEach((file) => touched.add(file));

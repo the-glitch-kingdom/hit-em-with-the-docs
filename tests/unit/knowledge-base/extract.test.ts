@@ -63,7 +63,7 @@ produced: []
     const result = await extract_facts({
       incident_folder,
       vault_root,
-      project_root: tmp_project,
+      repo_root: tmp_project,
       accept: [
         {
           id: 'test-fact-one',
@@ -105,7 +105,7 @@ produced: []
     await extract_facts({
       incident_folder,
       vault_root,
-      project_root: tmp_project,
+      repo_root: tmp_project,
       accept: [
         {
           id: 'test-fact-one',
@@ -126,7 +126,7 @@ produced: []
     await extract_facts({
       incident_folder,
       vault_root,
-      project_root: tmp_project,
+      repo_root: tmp_project,
       accept: [
         {
           id: 'test-fact-one',
@@ -143,7 +143,7 @@ produced: []
     const result = await extract_facts({
       incident_folder,
       vault_root,
-      project_root: tmp_project,
+      repo_root: tmp_project,
       accept: [
         {
           id: 'test-fact-one',
@@ -164,7 +164,7 @@ produced: []
     const result = await extract_facts({
       incident_folder,
       vault_root,
-      project_root: tmp_project,
+      repo_root: tmp_project,
       accept: [
         {
           id: 'dry-test',
@@ -189,7 +189,7 @@ produced: []
 
   it('writes purpose and symptoms into fact frontmatter when given', async () => {
     const r = await extract_facts({
-      incident_folder, vault_root, project_root: tmp_project,
+      incident_folder, vault_root, repo_root: tmp_project,
       accept: [{ id: 'f-one', title: 'F one', confidence: 'high', claim: 'c',
         purpose: 'Why does X fail?', symptoms: ['x fails on boot', 'ERR_X'] }],
     });

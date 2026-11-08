@@ -38,11 +38,11 @@ async function list_markdown_files(dir_path: string, found: string[] = []): Prom
 
 interface Indexed { path: string; fields: Record<Field, string[]> }
 
-async function load_search_index(docs_path: string, config?: PluginConfig): Promise<Indexed[]> {
+async function load_search_index(docs_root: string, config?: PluginConfig): Promise<Indexed[]> {
   const found: Indexed[] = [];
-  for (const abs_path of await list_markdown_files(docs_path)) {
+  for (const abs_path of await list_markdown_files(docs_root)) {
     const raw_text = readFileSync(abs_path, 'utf-8');
-    const doc_path = relative(docs_path, abs_path).split('\\').join('/');
+    const doc_path = relative(docs_root, abs_path).split('\\').join('/');
     const { data, content } = parse_frontmatter<Record<string, unknown>>(raw_text);
     if (data.generated === true || data.tier === 'plan' || basename(doc_path) === 'INDEX.md') continue;
     if (config && find_secrets(raw_text, doc_path, config.reconcile.secrets).some((result) => result.finding.kind === 'secret')) continue;
@@ -69,12 +69,12 @@ function run_command(template: string, query: string): string[] {
 
 /** BM25F-style ranking; ties break on path so the order is deterministic. */
 export async function find_docs(
-  docs_path: string,
+  docs_root: string,
   query: string,
   options: { limit?: number; config?: PluginConfig } = {}
 ): Promise<SearchHit[]> {
   const limit = options.limit ?? 10;
-  const docs = await load_search_index(docs_path, options.config);
+  const docs = await load_search_index(docs_root, options.config);
   const query_tokens = [...new Set(extract_tokens(query))];
   const compute_effective_weight = (doc: Indexed): number => (Object.keys(WEIGHTS) as Field[]).reduce((total, key) => total + WEIGHTS[key] * doc.fields[key].length, 0);
   const average_weight = docs.reduce((total, doc) => total + compute_effective_weight(doc), 0) / (docs.length || 1) || 1;
@@ -105,7 +105,7 @@ export async function find_docs(
     try {
       const known = new Set(docs.map((doc) => doc.path));
       for (const line of run_command(search_command, query)) {
-        const doc_path = (isAbsolute(line) ? relative(docs_path, line) : line).split('\\').join('/').replace(/^\.\//, '');
+        const doc_path = (isAbsolute(line) ? relative(docs_root, line) : line).split('\\').join('/').replace(/^\.\//, '');
         if (known.has(doc_path) && !command_hits.some((command_hit) => command_hit.path === doc_path)) command_hits.push({ path: doc_path, score: Infinity, matched: ['search_command'] });
       }
     } catch (error) {

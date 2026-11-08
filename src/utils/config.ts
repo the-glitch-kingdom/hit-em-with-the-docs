@@ -300,11 +300,10 @@ const CONFIG_FILENAME = '.claude/hit-em-with-the-docs.json';
 /**
  * Load the plugin config for a project, applying defaults. Never throws —
  * missing file, malformed JSON, and invalid shapes all fall through to
- * defaults. Pass `projectRoot` (defaults to `process.cwd()`) to control
+ * defaults. Pass `repo_root` (defaults to `process.cwd()`) to control
  * which directory to read from.
  */
-export async function load_plugin_config(project_root?: string): Promise<PluginConfig> {
-  const repo_root = project_root ?? process.cwd();
+export async function load_plugin_config(repo_root: string = process.cwd()): Promise<PluginConfig> {
   const config_path = resolve(repo_root, CONFIG_FILENAME);
 
   let raw_text: unknown;
@@ -327,8 +326,7 @@ export async function load_plugin_config(project_root?: string): Promise<PluginC
  * Synchronous variant — used in test setup where async loading is awkward.
  * Same fail-open behavior.
  */
-export function load_plugin_config_sync(project_root?: string): PluginConfig {
-  const repo_root = project_root ?? process.cwd();
+export function load_plugin_config_sync(repo_root: string = process.cwd()): PluginConfig {
   const config_path = resolve(repo_root, CONFIG_FILENAME);
 
   let raw_text: unknown;
@@ -353,9 +351,8 @@ export function load_plugin_config_sync(project_root?: string): PluginConfig {
  * module doesn't model (e.g. the runtime's `updatePolicy`). Never throws.
  */
 export async function load_raw_config(
-  project_root?: string
+  repo_root: string = process.cwd()
 ): Promise<Record<string, unknown>> {
-  const repo_root = project_root ?? process.cwd();
   const config_path = resolve(repo_root, CONFIG_FILENAME);
   try {
     const contents = await readFile(config_path, 'utf-8');
@@ -374,34 +371,34 @@ export async function load_raw_config(
  * newline. Returns the absolute path written.
  */
 export async function write_raw_config(
-  project_root: string,
+  repo_root: string,
   data: Record<string, unknown>
 ): Promise<string> {
-  const config_path = resolve(project_root, CONFIG_FILENAME);
+  const config_path = resolve(repo_root, CONFIG_FILENAME);
   await mkdir(dirname(config_path), { recursive: true });
   await writeFile(config_path, JSON.stringify(data, null, 2) + '\n', 'utf-8');
   return config_path;
 }
 
 /** Absolute path to a project's config file (whether or not it exists). */
-export function resolve_config_file_path(project_root: string): string {
-  return resolve(project_root, CONFIG_FILENAME);
+export function resolve_config_file_path(repo_root: string): string {
+  return resolve(repo_root, CONFIG_FILENAME);
 }
 
 /**
  * Resolve the documentation root for a project, applying config + defaults.
  * The returned path is absolute.
  */
-export function resolve_docs_root(project_root: string, config: PluginConfig): string {
-  return resolve(project_root, config.docs_root);
+export function resolve_docs_root(repo_root: string, config: PluginConfig): string {
+  return resolve(repo_root, config.docs_root);
 }
 
 /**
  * Resolve the vault root for a project, applying config + defaults.
  * The returned path is absolute.
  */
-export function resolve_vault_root(project_root: string, config: PluginConfig): string {
-  return resolve(project_root, config.vault.root);
+export function resolve_vault_root(repo_root: string, config: PluginConfig): string {
+  return resolve(repo_root, config.vault.root);
 }
 
 /**
@@ -409,27 +406,27 @@ export function resolve_vault_root(project_root: string, config: PluginConfig): 
  * patterns. Returned globs are suitable for `glob` library consumption.
  */
 export function resolve_playbook_globs(
-  project_root: string,
+  repo_root: string,
   config: PluginConfig
 ): string[] {
-  return config.vault.playbook_paths.map((playbook_path) => join(project_root, playbook_path));
+  return config.vault.playbook_paths.map((playbook_path) => join(repo_root, playbook_path));
 }
 
 /**
- * Where reports are written. Default `<docsPath>/reports`; `reports_dir`
- * (relative to the repo root, the parent of docsPath) overrides it. A path
+ * Where reports are written. Default `<docs_root>/reports`; `reports_dir`
+ * (relative to the repo root, the parent of docs_root) overrides it. A path
  * that escapes the repo root warns and falls back to the default.
  */
-export async function resolve_reports_dir(docs_path: string): Promise<string> {
-  const project_root = dirname(docs_path);
-  const configured = (await load_plugin_config(project_root)).reports_dir;
-  if (!configured) return join(docs_path, 'reports');
-  const dir_path = resolve(project_root, configured);
-  const repo_path = relative(project_root, dir_path);
+export async function resolve_reports_dir(docs_root: string): Promise<string> {
+  const repo_root = dirname(docs_root);
+  const configured = (await load_plugin_config(repo_root)).reports_dir;
+  if (!configured) return join(docs_root, 'reports');
+  const dir_path = resolve(repo_root, configured);
+  const repo_path = relative(repo_root, dir_path);
   if (repo_path === '..' || repo_path.startsWith(`..${sep}`) || isAbsolute(repo_path)) {
     // Lenient like the rest of the config: bad value → default, never a crash.
-    console.warn(`hewtd: reports_dir "${configured}" must stay inside the repo root; using ${join(docs_path, 'reports')}`);
-    return join(docs_path, 'reports');
+    console.warn(`hewtd: reports_dir "${configured}" must stay inside the repo root; using ${join(docs_root, 'reports')}`);
+    return join(docs_root, 'reports');
   }
   return dir_path;
 }

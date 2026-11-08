@@ -125,7 +125,7 @@ version: '1.0.0'
     const extraction = await extract_facts({
       incident_folder,
       vault_root,
-      project_root: tmp_project,
+      repo_root: tmp_project,
       accept: [
         {
           id: 'alloy-env-set-at-entrypoint-only',
@@ -162,7 +162,7 @@ version: '1.0.0'
 
     // === Step 4: audit-facts (clean — fact was just verified) ===
     const index = await build_citer_index({
-      project_root: tmp_project,
+      repo_root: tmp_project,
       vault_root,
       playbook_globs: [resolve(tmp_project, '.documentation/**/*.md')],
     });
@@ -204,11 +204,11 @@ version: '1.0.0'
         claim: 'A claim.',
       },
     ];
-    await extract_facts({ incident_folder, vault_root, project_root: tmp_project, accept });
+    await extract_facts({ incident_folder, vault_root, repo_root: tmp_project, accept });
     const second_extract = await extract_facts({
       incident_folder,
       vault_root,
-      project_root: tmp_project,
+      repo_root: tmp_project,
       accept,
     });
     expect(second_extract.extracted_facts[0]!.action).toBe('already_exists');

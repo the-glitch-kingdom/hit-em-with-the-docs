@@ -30,20 +30,20 @@ function get_verdict(doc: TriageDoc, ledger_verified: boolean, in_ledger: boolea
   return only_stale ? 'stale' : 'check';
 }
 
-export async function build_graph(options: { root: string; docs_path: string; config: PluginConfig; dry_run?: boolean }): Promise<GraphV1> {
-  const { root: repo_root, docs_path, config } = options;
-  const git_top = find_git_top(docs_path) ?? repo_root;
+export async function build_graph(options: { root: string; docs_root: string; config: PluginConfig; dry_run?: boolean }): Promise<GraphV1> {
+  const { root: repo_root, docs_root: docs_root, config } = options;
+  const git_top = find_git_top(docs_root) ?? repo_root;
   // exactly the set triage judges: the export and triage cannot diverge
-  const doc_paths = (await list_markdown_files(docs_path)).map((file) => format_posix_path(relative(docs_path, file))).sort(compare_strings);
+  const doc_paths = (await list_markdown_files(docs_root)).map((file) => format_posix_path(relative(docs_root, file))).sort(compare_strings);
   const raws = new Map<string, { raw_text: string; data: Record<string, unknown> }>();
   for (const doc_path of doc_paths) {
-    const raw_text = readFileSync(join(docs_path, doc_path), 'utf-8');
+    const raw_text = readFileSync(join(docs_root, doc_path), 'utf-8');
     raws.set(doc_path, { raw_text, data: parse_frontmatter<Record<string, unknown>>(raw_text).data });
   }
   const kept = [...raws.keys()];
   const ledger = await load_ledger(resolve(repo_root, config.reconcile.ledger_path));
-  const triaged = new Map((await resolve_docs({ root: repo_root, docs_path, rels: kept, config, ledger })).map((doc) => [doc.path, doc]));
-  const body = find_body_changed_dates(git_top, kept.map((doc_path) => ({ path: format_posix_path(relative(git_top, join(docs_path, doc_path))), content: raws.get(doc_path)!.raw_text })), { persist: !options.dry_run });
+  const triaged = new Map((await resolve_docs({ root: repo_root, docs_root: docs_root, rels: kept, config, ledger })).map((doc) => [doc.path, doc]));
+  const body = find_body_changed_dates(git_top, kept.map((doc_path) => ({ path: format_posix_path(relative(git_top, join(docs_root, doc_path))), content: raws.get(doc_path)!.raw_text })), { persist: !options.dry_run });
 
   const own_dates = find_file_dates(git_top);
   const sibling_dates = new Map(config.reconcile.related_repos.map((related_repo) => [related_repo.name, find_file_dates(resolve(repo_root, related_repo.path))]));
@@ -83,7 +83,7 @@ export async function build_graph(options: { root: string; docs_path: string; co
     for (const match of triage_doc.missing) if (![...references.values()].some((item) => item.target === match && item.resolved === false)) references.set(`file\0${match}`, { kind: 'file', target: match, resolved: false });
 
     const last_verified_value = raws.get(doc_path)!.data.last_verified;
-    const doc_repo_path = format_posix_path(relative(git_top, join(docs_path, doc_path)));
+    const doc_repo_path = format_posix_path(relative(git_top, join(docs_root, doc_path)));
     docs[doc_path] = {
       body_changed: body.dates.get(doc_repo_path) ?? null,
       verdict: get_verdict(triage_doc, ledger_entry?.verdict === 'verify' && ledger_entry.content_hash === compute_content_hash(raws.get(doc_path)!.raw_text), !!ledger_entry),
@@ -121,9 +121,9 @@ export interface WriteGraphResult {
 }
 
 /** Build and write `<git root>/.hewtd/graph.json`; a byte-identical file is left alone (mtime kept). */
-export async function write_graph(options: { root: string; docs_path: string; config: PluginConfig; dry_run?: boolean }): Promise<WriteGraphResult> {
+export async function write_graph(options: { root: string; docs_root: string; config: PluginConfig; dry_run?: boolean }): Promise<WriteGraphResult> {
   if (!options.config.graph_export) return { status: 'disabled' };
-  const git_top = find_git_top(options.docs_path);
+  const git_top = find_git_top(options.docs_root);
   if (!git_top) return { status: 'no-git' };
   const file = join(git_top, '.hewtd', 'graph.json');
   const graph_text = render_graph(await build_graph(options));

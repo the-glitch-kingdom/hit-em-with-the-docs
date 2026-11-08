@@ -33,7 +33,7 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 const run = async (rels: string[], mode?: 'serial' | 'team') => {
   const config = await load_plugin_config(dir);
-  return triage_docs({ root: dir, docs_path: docs, rels, config, ...(mode && { mode }) });
+  return triage_docs({ root: dir, docs_root: docs, rels, config, ...(mode && { mode }) });
 };
 
 describe('triage lanes', () => {
@@ -64,7 +64,7 @@ describe('triage lanes', () => {
     const config = await load_plugin_config(dir);
     const first = await resolve_scope(docs, [], { next: 1, ledger });
     expect(first).toEqual(['ops/clean.md']);
-    await triage_docs({ root: dir, docs_path: docs, rels: first, config, ledger });
+    await triage_docs({ root: dir, docs_root: docs, rels: first, config, ledger });
     expect(await resolve_scope(docs, [], { next: 1, ledger })).toEqual(['ops/dead.md']);
   });
 
@@ -114,7 +114,7 @@ describe('team plan', () => {
     const config = await load_plugin_config(dir);
     config.reconcile.team.min_bytes = 50;
     config.reconcile.team.docs_per_agent = 1;
-    const r = await triage_docs({ root: dir, docs_path: docs, rels: ['ops/gone.md', 'ops/fields.md'], config });
+    const r = await triage_docs({ root: dir, docs_root: docs, rels: ['ops/gone.md', 'ops/fields.md'], config });
     expect(r.mode).toBe('team');
     expect(r.shards.length).toBe(2);
   });
@@ -122,7 +122,7 @@ describe('team plan', () => {
   it('falls back to serial when the team plan would be a single shard', async () => {
     const config = await load_plugin_config(dir);
     config.reconcile.team.min_bytes = 50;
-    const r = await triage_docs({ root: dir, docs_path: docs, rels: ['ops/gone.md'], config });
+    const r = await triage_docs({ root: dir, docs_root: docs, rels: ['ops/gone.md'], config });
     expect(r.mode).toBe('serial');
     expect(r.shards).toEqual([]);
   });
@@ -254,7 +254,7 @@ describe('secret lane (#59)', () => {
     expect(r.peripheral.map((f) => f.file).sort()).toEqual(['.documentation/archive/old.md', '.hewtd/x.txt', 'notes.md']);
     expect(r.docs[0]!.lane).toBe('clean');
     const { scan_secrets } = await import('../../../src/core/reconcile/triage');
-    const all = await scan_secrets({ root: dir, docs_path: docs, config: await load_plugin_config(dir) });
+    const all = await scan_secrets({ root: dir, docs_root: docs, config: await load_plugin_config(dir) });
     expect(all).toHaveLength(3);
     expect(JSON.stringify(all)).not.toContain(tok());
   });
@@ -272,7 +272,7 @@ describe('triage refs and resolveDocs (#65)', () => {
     put('ops/gone.md', fm() + 'See `src/a.ts` and `src/nope.ts`. dirty\n');
     const config = await load_plugin_config(dir);
     const { resolve_docs } = await import('../../../src/core/reconcile/triage');
-    const out = await resolve_docs({ root: dir, docs_path: docs, rels: ['ops/gone.md'], config });
+    const out = await resolve_docs({ root: dir, docs_root: docs, rels: ['ops/gone.md'], config });
     expect(out[0]!.lane).toBe('check');
     expect(out[0]!.refs.some((x) => x.ref === 'src/nope.ts' && x.status === 'missing')).toBe(true);
     expect(existsSync(join(dir, '.hewtd'))).toBe(false);

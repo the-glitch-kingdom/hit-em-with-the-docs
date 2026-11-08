@@ -15,13 +15,13 @@ import {
 import { generate_metadata, merge_metadata, format_date } from './generator.js';
 
 export interface SyncOptions {
-  docs_path: string;
+  docs_root: string;
   /**
    * Project root the `docs_root` declaration is resolved against. Defaults to
    * `process.cwd()`, which is what the CLI wants; pass it explicitly when the
    * docs tree is not under the current directory.
    */
-  project_root?: string;
+  repo_root?: string;
   dry_run?: boolean;
   fix?: boolean;
   domain?: string;
@@ -56,8 +56,8 @@ export interface SyncStats {
  */
 export async function sync_metadata(options: SyncOptions): Promise<SyncResult> {
   const {
-    docs_path,
-    project_root = process.cwd(),
+    docs_root: docs_root,
+    repo_root: repo_root = process.cwd(),
     dry_run = false,
     fix = false,
     domain,
@@ -99,9 +99,9 @@ export async function sync_metadata(options: SyncOptions): Promise<SyncResult> {
   // Reads are unaffected: a scan writes nothing, and being able to inspect an
   // unmanaged directory is useful. `--dry-run` is likewise allowed, so the
   // preview of what `--fix` would do still works anywhere.
-  if (fix && !dry_run && !(await is_documentation_root(docs_path, project_root))) {
+  if (fix && !dry_run && !(await is_documentation_root(docs_root, repo_root))) {
     const message =
-      `${docs_path} is outside this project's documentation root, so --fix refuses ` +
+      `${docs_root} is outside this project's documentation root, so --fix refuses ` +
       `to write there. --fix stamps frontmatter into every markdown file it finds, ` +
       `and pointed at a source tree it rewrites files that are not documentation. ` +
       `The root is \`docs_root\` in .claude/hit-em-with-the-docs.json (default ` +
@@ -109,7 +109,7 @@ export async function sync_metadata(options: SyncOptions): Promise<SyncResult> {
       `it, or drop --fix to scan read-only.`;
     if (!silent) logger.error(message);
     result.errors.push({
-      file: relative(project_root, docs_path),
+      file: relative(repo_root, docs_root),
       error: message,
       fixable: false,
     });
@@ -117,12 +117,12 @@ export async function sync_metadata(options: SyncOptions): Promise<SyncResult> {
   }
 
   // Find all markdown files
-  let files = await find_markdown_files(docs_path);
+  let files = await find_markdown_files(docs_root);
 
   // Filter by domain if specified
   if (domain) {
     files = files.filter((file) => {
-      const doc_path = relative(docs_path, file);
+      const doc_path = relative(docs_root, file);
       return doc_path.startsWith(domain + '/') || doc_path.startsWith(domain + '\\');
     });
   }
@@ -143,7 +143,7 @@ export async function sync_metadata(options: SyncOptions): Promise<SyncResult> {
 
   for (const file of files) {
     try {
-      const sync_result = await sync_file(file, docs_path, dry_run, fix);
+      const sync_result = await sync_file(file, docs_root, dry_run, fix);
 
       if (sync_result.valid) {
         result.valid_files++;
@@ -182,7 +182,7 @@ export async function sync_metadata(options: SyncOptions): Promise<SyncResult> {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       result.errors.push({
-        file: relative(docs_path, file),
+        file: relative(docs_root, file),
         error: message,
         fixable: false,
       });
@@ -225,13 +225,13 @@ export async function sync_metadata(options: SyncOptions): Promise<SyncResult> {
  * writes that file, so its presence is a positive marker rather than a guess; a
  * source tree does not have one at its root.
  */
-async function is_documentation_root(docs_path: string, project_root: string): Promise<boolean> {
-  const declared = resolve_docs_root(project_root, await load_plugin_config(project_root));
+async function is_documentation_root(docs_root: string, repo_root: string): Promise<boolean> {
+  const declared = resolve_docs_root(repo_root, await load_plugin_config(repo_root));
 
-  const target = resolve(docs_path);
+  const target = resolve(docs_root);
   if (target === declared || target.startsWith(declared + sep)) return true;
 
-  return is_path_present(join(docs_path, 'INDEX.md'));
+  return is_path_present(join(docs_root, 'INDEX.md'));
 }
 
 interface FileSyncResult {
@@ -248,7 +248,7 @@ interface FileSyncResult {
  */
 async function sync_file(
   file_path: string,
-  docs_path: string,
+  docs_root: string,
   dry_run: boolean,
   fix: boolean
 ): Promise<FileSyncResult> {
@@ -291,7 +291,7 @@ async function sync_file(
   // File has issues
   if (!fix) {
     result.error = {
-      file: relative(docs_path, file_path),
+      file: relative(docs_root, file_path),
       error: `Missing required fields: ${missing_required.join(', ')}`,
       fixable: true,
     };
@@ -302,7 +302,7 @@ async function sync_file(
   const generated = generate_metadata({
     file_path,
     content,
-    docs_root: docs_path,
+    docs_root: docs_root,
     existing_metadata: data,
   });
 
@@ -367,9 +367,9 @@ function normalize_date_fields<T extends PartialDocumentMetadata>(metadata: T): 
 /**
  * Get sync statistics for a documentation root
  */
-export async function load_sync_stats(docs_path: string): Promise<SyncStats> {
+export async function load_sync_stats(docs_root: string): Promise<SyncStats> {
   const result = await sync_metadata({
-    docs_path,
+    docs_root: docs_root,
     dry_run: true,
     fix: false,
     silent: true,

@@ -36,15 +36,15 @@ export interface DomainConnectionMatrix {
 /**
  * Build a complete link graph for the documentation
  */
-export async function build_link_graph(docs_path: string): Promise<LinkGraph> {
-  const files = await find_markdown_files(docs_path);
+export async function build_link_graph(docs_root: string): Promise<LinkGraph> {
+  const files = await find_markdown_files(docs_root);
   const nodes = new Map<string, LinkNode>();
   const edges: LinkEdge[] = [];
 
   // First pass: create nodes
   for (const file of files) {
-    const rel_path = relative(docs_path, file);
-    const domain = detect_domain_from_path(file, docs_path).domain;
+    const rel_path = relative(docs_root, file);
+    const domain = detect_domain_from_path(file, docs_root).domain;
 
     nodes.set(rel_path, {
       id: rel_path,
@@ -59,7 +59,7 @@ export async function build_link_graph(docs_path: string): Promise<LinkGraph> {
   for (const file of files) {
     const content = await readFile(file, 'utf-8');
     const links = extract_links(content);
-    const rel_path = relative(docs_path, file);
+    const rel_path = relative(docs_root, file);
     const file_dir = dirname(file);
 
     for (const link of links) {
@@ -72,7 +72,7 @@ export async function build_link_graph(docs_path: string): Promise<LinkGraph> {
         if (path_part.startsWith('/')) {
           target_path = path_part.slice(1);
         } else {
-          target_path = relative(docs_path, resolve(file_dir, path_part));
+          target_path = relative(docs_root, resolve(file_dir, path_part));
         }
 
         // Normalize path separators
@@ -107,9 +107,9 @@ export async function build_link_graph(docs_path: string): Promise<LinkGraph> {
  * Build a domain connection matrix showing how domains link to each other
  */
 export async function build_domain_connection_matrix(
-  docs_path: string
+  docs_root: string
 ): Promise<DomainConnectionMatrix> {
-  const graph = await build_link_graph(docs_path);
+  const graph = await build_link_graph(docs_root);
 
   // Snapshot the active domain set once so the matrix axes and the index
   // lookups below share a single, stable ordering for this call.
@@ -149,10 +149,10 @@ export async function build_domain_connection_matrix(
  * Get top connected domain pairs
  */
 export async function find_top_connected_domains(
-  docs_path: string,
+  docs_root: string,
   limit: number = 10
 ): Promise<{ from: Domain; to: Domain; count: number }[]> {
-  const { domains, matrix } = await build_domain_connection_matrix(docs_path);
+  const { domains, matrix } = await build_domain_connection_matrix(docs_root);
   const connections: { from: Domain; to: Domain; count: number }[] = [];
 
   for (let i = 0; i < domains.length; i++) {
@@ -178,10 +178,10 @@ export async function find_top_connected_domains(
  */
 export async function find_backlinks(
   target_file: string,
-  docs_path: string
+  docs_root: string
 ): Promise<{ source: string; link_text: string; line_number: number }[]> {
-  const graph = await build_link_graph(docs_path);
-  const target_path = relative(docs_path, target_file).replace(/\\/g, '/');
+  const graph = await build_link_graph(docs_root);
+  const target_path = relative(docs_root, target_file).replace(/\\/g, '/');
 
   return graph.edges
     .filter((edge) => edge.target === target_path)
@@ -195,8 +195,8 @@ export async function find_backlinks(
 /**
  * Find orphan files (files with no incoming links)
  */
-export async function find_orphan_files(docs_path: string): Promise<string[]> {
-  const graph = await build_link_graph(docs_path);
+export async function find_orphan_files(docs_root: string): Promise<string[]> {
+  const graph = await build_link_graph(docs_root);
 
   return graph.nodes
     .filter((node) => node.in_degree === 0)
@@ -212,10 +212,10 @@ export async function find_orphan_files(docs_path: string): Promise<string[]> {
  * Find highly connected files (hubs)
  */
 export async function find_hub_files(
-  docs_path: string,
+  docs_root: string,
   min_degree: number = 5
 ): Promise<LinkNode[]> {
-  const graph = await build_link_graph(docs_path);
+  const graph = await build_link_graph(docs_root);
 
   return graph.nodes
     .filter((node) => node.in_degree >= min_degree || node.out_degree >= min_degree)
@@ -225,7 +225,7 @@ export async function find_hub_files(
 /**
  * Get link statistics summary
  */
-export async function load_link_statistics(docs_path: string): Promise<{
+export async function load_link_statistics(docs_root: string): Promise<{
   total_nodes: number;
   total_edges: number;
   avg_in_degree: number;
@@ -234,7 +234,7 @@ export async function load_link_statistics(docs_path: string): Promise<{
   hub_count: number;
   cross_domain_percentage: number;
 }> {
-  const graph = await build_link_graph(docs_path);
+  const graph = await build_link_graph(docs_root);
 
   const total_in_degree = graph.nodes.reduce((sum, node) => sum + node.in_degree, 0);
   const total_out_degree = graph.nodes.reduce((sum, node) => sum + node.out_degree, 0);

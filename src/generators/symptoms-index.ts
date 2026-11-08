@@ -104,7 +104,7 @@ export function render_symptoms_index(index: CiterIndex, symptoms_dir?: string):
       `\`${escape_markdown(symptom.key)}\``,
       // The LABEL stays project-relative (a stable, readable identifier), but the HREF
       // must be relative to this index's own directory. `playbookRelPath` is
-      // `relative(projectRoot, ...)`, and this file lives at <vaultRoot>/symptoms/, so
+      // `relative(repo_root, ...)`, and this file lives at <vaultRoot>/symptoms/, so
       // using it as the href resolved to <vaultRoot>/symptoms/<projectRelPath> and every
       // generated link was broken. Windows: normalise `\` to `/` for markdown.
       `[${symptom.playbook_rel_path}](${build_href(symptom, symptoms_dir)}${symptom.target})`,

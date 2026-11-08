@@ -9,7 +9,7 @@ const VALID_FIXTURE_ROOT = resolve(__dirname, '../../fixtures/knowledge-base/val
 
 async function build_index() {
   return build_citer_index({
-    project_root: VALID_FIXTURE_ROOT,
+    repo_root: VALID_FIXTURE_ROOT,
     vault_root: VALID_FIXTURE_ROOT,
     playbook_globs: [resolve(VALID_FIXTURE_ROOT, 'playbooks/*.md')],
   });
@@ -30,7 +30,7 @@ describe('renderFactsIndex (2.3.0)', () => {
 
   it('emits "no facts yet" message when index is empty', async () => {
     const empty = await build_citer_index({
-      project_root: '/tmp',
+      repo_root: '/tmp',
       vault_root: '/tmp/nonexistent',
       playbook_globs: [],
     });
@@ -94,7 +94,7 @@ describe('renderIncidentsIndex (2.3.0)', () => {
 
   it('emits "no incidents yet" message when index is empty', async () => {
     const empty = await build_citer_index({
-      project_root: '/tmp',
+      repo_root: '/tmp',
       vault_root: '/tmp/nonexistent',
       playbook_globs: [],
     });
@@ -143,7 +143,7 @@ describe('renderSymptomsIndex (2.3.0)', () => {
 
   it('emits "no symptoms" message when index has no citers', async () => {
     const empty = await build_citer_index({
-      project_root: '/tmp',
+      repo_root: '/tmp',
       vault_root: '/tmp/nonexistent',
       playbook_globs: [],
     });

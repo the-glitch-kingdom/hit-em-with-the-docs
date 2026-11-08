@@ -24,7 +24,7 @@ const run = async (e: ReviewEntry) => {
   mkdirSync(join(root, '.hewtd/reconcile'), { recursive: true });
   const f = join(root, '.hewtd/reconcile/review-1-1.md');
   writeFileSync(f, render_review({ batch: '1', shard: 1, scope: 'backend' }, [e]).replace('- [ ] accept', '- [x] accept'));
-  return apply_reviews({ root, docs_path: docs, files: [f], ledger: await load_ledger(ledger_file), ledger_file, today: '2026-11-07' });
+  return apply_reviews({ root, docs_root: docs, files: [f], ledger: await load_ledger(ledger_file), ledger_file, today: '2026-11-07' });
 };
 const seed = (body: string, gitignore = '.hewtd/\n') => {
   writeFileSync(join(docs, 'backend/a.md'), doc(body));
@@ -45,7 +45,7 @@ describe('secret verdict', () => {
   it('review skeleton proposes a secret entry with masked findings and env names, no value', async () => {
     seed(`VAULT_TOKEN=${tok}\nVAULT_TOKEN_2=${tok2}`);
     const triage = { docs: [{ path: 'backend/a.md', lane: 'secret', reasons: ['x'] }], shards: [] } as unknown as TriageResult;
-    const [file] = await write_review_skeletons({ root, docs_path: docs, triage, scope: 's' });
+    const [file] = await write_review_skeletons({ root, docs_root: docs, triage, scope: 's' });
     const text = readFileSync(file!, 'utf-8');
     expect(text).not.toContain(tok);
     expect(text).not.toContain(tok2);
@@ -144,7 +144,7 @@ describe('secret verdict', () => {
     writeFileSync(join(docs, 'backend/b.md'), doc('plain text, no secrets here at all'));
     g('add', '-A'); g('commit', '-qm', 'b');
     const triage = { docs: [{ path: 'backend/a.md', lane: 'secret', reasons: ['x'] }, { path: 'backend/b.md', lane: 'check', reasons: ['y'] }], shards: [{ id: 1, docs: ['backend/b.md'], bytes: 1 }] } as unknown as TriageResult;
-    const files = await write_review_skeletons({ root, docs_path: docs, triage, scope: 's' });
+    const files = await write_review_skeletons({ root, docs_root: docs, triage, scope: 's' });
     const names = files.map((f) => f.split('/').pop());
     expect(names.sort()).toEqual(['review-1-1.md', 'review-1-secrets.md']);
     expect(readFileSync(files.find((f) => f.endsWith('-1.md'))!, 'utf-8')).not.toContain('backend/a.md');

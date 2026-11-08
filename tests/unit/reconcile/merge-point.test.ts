@@ -21,7 +21,7 @@ const run = async (entries: ReviewEntry[]) => {
   const f = join(root, '.hewtd/reconcile/review-1-1.md');
   mkdirSync(join(root, '.hewtd/reconcile'), { recursive: true });
   writeFileSync(f, t);
-  return apply_reviews({ root, docs_path: docs, files: [f], ledger: await load_ledger(ledger_file), ledger_file, today: '2026-11-07' });
+  return apply_reviews({ root, docs_root: docs, files: [f], ledger: await load_ledger(ledger_file), ledger_file, today: '2026-11-07' });
 };
 const point = (over: Partial<ReviewEntry> = {}): ReviewEntry => ({
   path: 'backend/admin.md', content_hash: h('backend/admin.md'), verdict: 'point', remove: { old: OLD },

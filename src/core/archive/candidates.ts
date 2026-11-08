@@ -34,7 +34,7 @@ export interface ArchiveCandidate {
  * Returns null when not in a git repo or the file is untracked (no history).
  */
 export function find_last_touched_days(
-  project_root: string,
+  repo_root: string,
   file_abs: string,
   today: Date
 ): number | null {
@@ -43,7 +43,7 @@ export function find_last_touched_days(
       'git',
       ['log', '-1', '--format=%cs', '--', file_abs],
       // eslint-disable-next-line id-denylist -- child_process/glob option name
-      { cwd: project_root, stdio: ['ignore', 'pipe', 'ignore'] }
+      { cwd: repo_root, stdio: ['ignore', 'pipe', 'ignore'] }
     )
       .toString()
       .trim();
@@ -65,8 +65,8 @@ function get_last_updated_days(value: unknown, today: Date): number | null {
 }
 
 export interface FindCandidatesInput {
-  docs_path: string;
-  project_root: string;
+  docs_root: string;
+  repo_root: string;
   config: ArchiveConfig;
   /** Override "today" for deterministic tests. */
   today?: Date;
@@ -75,19 +75,19 @@ export interface FindCandidatesInput {
 export async function find_archive_candidates(
   input: FindCandidatesInput
 ): Promise<ArchiveCandidate[]> {
-  const { docs_path, project_root, config } = input;
+  const { docs_root: docs_root, repo_root: repo_root, config } = input;
   const today = input.today ?? new Date();
 
   // Inbound-degree map (archive/ already excluded by findMarkdownFiles).
-  const graph = await build_link_graph(docs_path);
+  const graph = await build_link_graph(docs_root);
   const in_degree = new Map<string, number>();
   for (const node of graph.nodes) in_degree.set(node.path.replace(/\\/g, '/'), node.in_degree);
 
-  const files = await find_markdown_files(docs_path);
+  const files = await find_markdown_files(docs_root);
   const candidates: ArchiveCandidate[] = [];
 
   for (const file_abs of files) {
-    const doc_path = relative(docs_path, file_abs).replace(/\\/g, '/');
+    const doc_path = relative(docs_root, file_abs).replace(/\\/g, '/');
     let raw_text: string;
     try {
       raw_text = await readFile(file_abs, 'utf-8');
@@ -116,7 +116,7 @@ export async function find_archive_candidates(
     const orphaned = (in_degree.get(doc_path) ?? 0) === 0;
 
     // Recency: prefer git-last-touched; fall back to last_updated.
-    let age_days = find_last_touched_days(project_root, file_abs, today);
+    let age_days = find_last_touched_days(repo_root, file_abs, today);
     let degraded = false;
     if (age_days === null) {
       age_days = get_last_updated_days(data.last_updated, today);
@@ -153,6 +153,6 @@ export async function find_archive_candidates(
 }
 
 /** Convenience: resolve absolute docs path for a candidate (test/CLI helper). */
-export function resolve_candidate_abs_path(docs_path: string, candidate: ArchiveCandidate): string {
-  return join(docs_path, candidate.file);
+export function resolve_candidate_abs_path(docs_root: string, candidate: ArchiveCandidate): string {
+  return join(docs_root, candidate.file);
 }

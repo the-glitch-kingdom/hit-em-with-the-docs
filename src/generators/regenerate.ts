@@ -64,10 +64,10 @@ const VAULT_GENERATED_SUBDIRS = ['facts', 'incidents', 'symptoms'];
  * e.g. `['knowledge-base/facts', 'knowledge-base/incidents', ...]`. Empty when
  * the configured vault lives outside the docs tree entirely.
  */
-function get_vault_owned_prefixes(docs_path: string): string[] {
-  const docs_abs = resolve(docs_path);
-  const project_root = dirname(docs_abs);
-  const vault_abs = resolve_vault_root(project_root, load_plugin_config_sync(project_root));
+function get_vault_owned_prefixes(docs_root: string): string[] {
+  const docs_abs = resolve(docs_root);
+  const repo_root = dirname(docs_abs);
+  const vault_abs = resolve_vault_root(repo_root, load_plugin_config_sync(repo_root));
   const doc_path = relative(docs_abs, vault_abs);
   if (!doc_path || doc_path.startsWith('..')) return [];
   const vault_path = doc_path.split(sep).join('/');
@@ -76,7 +76,7 @@ function get_vault_owned_prefixes(docs_path: string): string[] {
 
 export interface RegenerateOptions {
   /** Path to the documentation root (e.g. `.documentation`). */
-  docs_path: string;
+  docs_root: string;
   /**
    * Restrict domain INDEX.md/REGISTRY.md writes to these domains. The root
    * INDEX.md/REGISTRY.md are always refreshed regardless. Defaults to all
@@ -112,17 +112,17 @@ export interface RegenerateResult {
  * depth, `EXCLUDED_DIRS`, and the vault's generator-owned subtrees (issue #12).
  */
 export async function list_domain_doc_files(
-  docs_path: string,
+  docs_root: string,
   domain: string
 ): Promise<string[]> {
-  const vault_prefixes = get_vault_owned_prefixes(docs_path);
+  const vault_prefixes = get_vault_owned_prefixes(docs_root);
   const is_in_vault = (doc_rel_path: string): boolean => {
     const from_docs_root = `${domain}/${doc_rel_path}`;
     return vault_prefixes.some((prefix) => from_docs_root.startsWith(`${prefix}/`));
   };
 
   try {
-    const names = await readdir(join(docs_path, domain), { recursive: true });
+    const names = await readdir(join(docs_root, domain), { recursive: true });
     return names
       .map((name) => name.split(sep).join('/'))
       .filter((file_name) => file_name.endsWith('.md'))
@@ -169,17 +169,17 @@ function format_title_from_file_name(file_name: string): string {
  * paths (domain INDEX/REGISTRY) or `'<domain>/'` for root-relative paths.
  */
 async function build_domain_entries(
-  docs_path: string,
+  docs_root: string,
   domain: string,
   path_prefix: string
 ): Promise<IndexEntry[]> {
-  const files = await list_domain_doc_files(docs_path, domain);
+  const files = await list_domain_doc_files(docs_root, domain);
   const entries: IndexEntry[] = [];
 
   for (const file_name of files) {
     let raw_text: string;
     try {
-      raw_text = await readFile(join(docs_path, domain, file_name), 'utf-8');
+      raw_text = await readFile(join(docs_root, domain, file_name), 'utf-8');
     } catch {
       continue;
     }
@@ -235,7 +235,7 @@ async function build_domain_entries(
 export async function regenerate_indexes(
   options: RegenerateOptions
 ): Promise<RegenerateResult> {
-  const { docs_path, silent = false, dry_run = false } = options;
+  const { docs_root: docs_root, silent = false, dry_run = false } = options;
   const all_domains = get_all_domains();
   const target_domains = options.domains ?? all_domains;
 
@@ -251,11 +251,11 @@ export async function regenerate_indexes(
   // Generated files link only to domains with a folder on disk (#45).
   const present: Domain[] = [];
   for (const domain of all_domains) {
-    if (await is_path_present(join(docs_path, domain))) present.push(domain);
+    if (await is_path_present(join(docs_root, domain))) present.push(domain);
   }
 
   for (const domain of all_domains) {
-    const domain_entries = await build_domain_entries(docs_path, domain, '');
+    const domain_entries = await build_domain_entries(docs_root, domain, '');
     result.document_counts[domain] = domain_entries.length;
     result.total_documents += domain_entries.length;
     root_entries_by_domain[domain] = domain_entries.map((domain_entry) => ({
@@ -266,7 +266,7 @@ export async function regenerate_indexes(
     // Only (re)write a domain's own files when it is in the target set and
     // its directory actually exists on disk.
     if (!target_domains.includes(domain) || !present.includes(domain)) continue;
-    const domain_dir = join(docs_path, domain);
+    const domain_dir = join(docs_root, domain);
 
     const index_path = join(domain_dir, 'INDEX.md');
     const registry_path = join(domain_dir, 'REGISTRY.md');
@@ -286,9 +286,9 @@ export async function regenerate_indexes(
   }
 
   // Root INDEX.md / REGISTRY.md — always refreshed.
-  if (await is_path_present(docs_path)) {
-    const root_index_path = join(docs_path, 'INDEX.md');
-    const root_registry_path = join(docs_path, 'REGISTRY.md');
+  if (await is_path_present(docs_root)) {
+    const root_index_path = join(docs_root, 'INDEX.md');
+    const root_registry_path = join(docs_root, 'REGISTRY.md');
     if (!dry_run) {
       await writeFile(
         root_index_path,
@@ -325,17 +325,17 @@ export interface KbIndexResult {
  * incidents; nothing is written.
  */
 export async function generate_knowledge_base_indexes(
-  docs_path: string,
+  docs_root: string,
   dry_run = false
 ): Promise<KbIndexResult | null> {
-  // Config and playbook globs resolve relative to the project root (parent of docsPath).
-  const project_root = dirname(docs_path);
-  const config = await load_plugin_config(project_root);
-  const vault_root = resolve_vault_root(project_root, config);
+  // Config and playbook globs resolve relative to the project root (parent of docs_root).
+  const repo_root = dirname(docs_root);
+  const config = await load_plugin_config(repo_root);
+  const vault_root = resolve_vault_root(repo_root, config);
   if (!(await is_path_present(vault_root))) return null;
 
-  const playbook_globs = resolve_playbook_globs(project_root, config);
-  const index = await build_citer_index({ project_root, vault_root, playbook_globs });
+  const playbook_globs = resolve_playbook_globs(repo_root, config);
+  const index = await build_citer_index({ repo_root: repo_root, vault_root, playbook_globs });
   const facts_path = join(vault_root, 'facts', 'INDEX.md');
   const base = { facts: index.facts.size, incidents: index.incidents.size };
   if (dry_run) {

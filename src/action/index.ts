@@ -15,14 +15,14 @@ async function run_action(): Promise<void> {
     // Get inputs
     const command = core.getInput('command', { required: true });
     const mode = core.getInput('mode') || 'quick';
-    const docs_path = resolve(process.cwd(), core.getInput('docs-path') || '.documentation');
+    const docs_root = resolve(process.cwd(), core.getInput('docs-path') || '.documentation');
     const domain = core.getInput('domain') || undefined;
     const discover_type = core.getInput('discover-type') || 'patterns';
     const fail_on_error = core.getInput('fail-on-error') === 'true';
     const fail_threshold = parseInt(core.getInput('fail-threshold') || '50', 10);
 
     core.info(`Running command: ${command}`);
-    core.info(`Documentation path: ${docs_path}`);
+    core.info(`Documentation path: ${docs_root}`);
     core.info(`Mode: ${mode}`);
 
     let health_score = 100;
@@ -37,7 +37,7 @@ async function run_action(): Promise<void> {
       case 'init': {
         core.info('Initializing documentation structure...');
         const result = await create_scaffold({
-          root_path: docs_path,
+          root_path: docs_root,
           overwrite: false,
           silent: false,
         });
@@ -53,7 +53,7 @@ async function run_action(): Promise<void> {
       case 'maintain': {
         core.info('Running maintenance...');
         const result = await run_maintenance({
-          docs_path,
+          docs_root: docs_root,
           quick: mode === 'quick',
           fix: mode === 'fix',
           silent: false,
@@ -76,7 +76,7 @@ async function run_action(): Promise<void> {
       case 'metadata-sync': {
         core.info('Syncing metadata...');
         const result = await sync_metadata({
-          docs_path,
+          docs_root: docs_root,
           ...(domain ? { domain } : {}),
           fix: mode === 'fix',
           dry_run: mode !== 'fix',
@@ -93,7 +93,7 @@ async function run_action(): Promise<void> {
       case 'link-check': {
         core.info('Checking links...');
         const result = await check_links({
-          docs_path,
+          docs_root: docs_root,
           ...(domain ? { domain } : {}),
           silent: false,
         });
@@ -114,7 +114,7 @@ async function run_action(): Promise<void> {
       case 'audit': {
         core.info('Auditing documentation...');
         const result = await check_documentation({
-          docs_path,
+          docs_root: docs_root,
           ...(domain ? { domain } : {}),
           silent: false,
         });

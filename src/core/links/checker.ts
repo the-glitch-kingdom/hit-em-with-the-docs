@@ -12,7 +12,7 @@ export { type MarkdownLink } from '../../utils/markdown.js';
 export { extract_heading_anchors as heading_anchors, find_section as section_of, LINK_BROKEN_ANCHOR } from './anchors.js';
 
 export interface LinkCheckOptions {
-  docs_path: string;
+  docs_root: string;
   domain?: string;
   check_external?: boolean;
   silent?: boolean;
@@ -66,7 +66,7 @@ export interface LinkStats {
  */
 export async function check_links(options: LinkCheckOptions): Promise<LinkCheckResult> {
   const {
-    docs_path,
+    docs_root: docs_root,
     domain,
     check_external = false,
     silent = false,
@@ -94,12 +94,12 @@ export async function check_links(options: LinkCheckOptions): Promise<LinkCheckR
   }
 
   // Find all markdown files
-  let files = await find_markdown_files(docs_path);
+  let files = await find_markdown_files(docs_root);
 
   // Filter by domain if specified
   if (domain) {
     files = files.filter((file) => {
-      const doc_path = relative(docs_path, file);
+      const doc_path = relative(docs_root, file);
       return doc_path.startsWith(domain + '/') || doc_path.startsWith(domain + '\\');
     });
   }
@@ -116,7 +116,7 @@ export async function check_links(options: LinkCheckOptions): Promise<LinkCheckR
     try {
       const content = await readFile(file, 'utf-8');
       const links = extract_links(content);
-      const rel_file = relative(docs_path, file);
+      const rel_file = relative(docs_root, file);
       const file_dir = dirname(file);
 
       for (const link of links) {
@@ -126,7 +126,7 @@ export async function check_links(options: LinkCheckOptions): Promise<LinkCheckR
           result.stats.internalLinks++;
 
           // Resolve the link path
-          const target_path = resolve_link(link.url, file_dir, docs_path, file);
+          const target_path = resolve_link(link.url, file_dir, docs_root, file);
 
           // Check if target exists
           const exists = await is_path_present(target_path);
@@ -157,8 +157,8 @@ export async function check_links(options: LinkCheckOptions): Promise<LinkCheckR
             }
 
             // Track cross-domain links
-            const source_domain = detect_domain_from_path(file, docs_path).domain;
-            const target_domain = detect_domain_from_path(target_path, docs_path).domain;
+            const source_domain = detect_domain_from_path(file, docs_root).domain;
+            const target_domain = detect_domain_from_path(target_path, docs_root).domain;
 
             if (source_domain && target_domain && source_domain !== target_domain) {
               result.stats.crossDomainLinks++;
@@ -205,7 +205,7 @@ export async function check_links(options: LinkCheckOptions): Promise<LinkCheckR
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (!silent) {
-        logger.warn(`Error processing ${relative(docs_path, file)}: ${message}`);
+        logger.warn(`Error processing ${relative(docs_root, file)}: ${message}`);
       }
     }
   }
@@ -255,7 +255,7 @@ function extract_anchor(url: string): string | null {
 /**
  * Resolve a relative link to an absolute path
  */
-function resolve_link(link_url: string, file_dir: string, docs_path: string, source_file = file_dir): string {
+function resolve_link(link_url: string, file_dir: string, docs_root: string, source_file = file_dir): string {
   // Remove anchor
   const path_part = link_url.split('#')[0] ?? '';
 
@@ -266,7 +266,7 @@ function resolve_link(link_url: string, file_dir: string, docs_path: string, sou
 
   // Handle absolute links (from docs root)
   if (path_part.startsWith('/')) {
-    return join(docs_path, path_part);
+    return join(docs_root, path_part);
   }
 
   // Handle relative links
@@ -279,10 +279,10 @@ function resolve_link(link_url: string, file_dir: string, docs_path: string, sou
 export async function check_single_link(
   link_url: string,
   source_file: string,
-  docs_path: string
+  docs_root: string
 ): Promise<{ valid: boolean; reason?: string }> {
   const file_dir = dirname(source_file);
-  const target_path = resolve_link(link_url, file_dir, docs_path);
+  const target_path = resolve_link(link_url, file_dir, docs_root);
 
   const exists = await is_path_present(target_path);
 
@@ -298,17 +298,17 @@ export async function check_single_link(
  */
 export async function find_file_broken_links(
   file_path: string,
-  docs_path: string
+  docs_root: string
 ): Promise<BrokenLink[]> {
   const content = await readFile(file_path, 'utf-8');
   const links = extract_links(content);
   const broken_links: BrokenLink[] = [];
   const file_dir = dirname(file_path);
-  const rel_file = relative(docs_path, file_path);
+  const rel_file = relative(docs_root, file_path);
 
   for (const link of links) {
     if (link.is_internal) {
-      const target_path = resolve_link(link.url, file_dir, docs_path);
+      const target_path = resolve_link(link.url, file_dir, docs_root);
       const exists = await is_path_present(target_path);
 
       if (!exists) {

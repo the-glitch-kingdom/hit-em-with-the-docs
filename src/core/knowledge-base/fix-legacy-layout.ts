@@ -29,7 +29,7 @@ export interface FixLegacyLayoutOptions {
   /** Absolute vault root. */
   vault_root: string;
   /** Project root — used for relative-path provenance rewrites. */
-  project_root: string;
+  repo_root: string;
   /** If true, returns the plan without writing. */
   dry_run?: boolean;
 }
@@ -67,7 +67,7 @@ export interface FixLegacyLayoutResult {
 export async function fix_legacy_layout(
   options: FixLegacyLayoutOptions
 ): Promise<FixLegacyLayoutResult> {
-  const { vault_root, project_root, dry_run = false } = options;
+  const { vault_root, repo_root: repo_root, dry_run = false } = options;
 
   const result: FixLegacyLayoutResult = {
     vault_root,
@@ -155,8 +155,8 @@ export async function fix_legacy_layout(
           // - relative from project root: `<rel-vault>/<slug>/`
           // - bare slug + trailing slash: `<slug>/`
           // - bare slug no slash: `<slug>`
-          const rel_old = `${relative(project_root, candidate.from)}/`;
-          const rel_new = `${relative(project_root, candidate.to)}/`;
+          const rel_old = `${relative(repo_root, candidate.from)}/`;
+          const rel_new = `${relative(repo_root, candidate.to)}/`;
 
           if (reference === rel_old || reference === rel_old.slice(0, -1)) {
             rewritten = rel_new;

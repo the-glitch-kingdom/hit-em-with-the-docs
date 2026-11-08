@@ -44,7 +44,7 @@ export interface ExtractFactsOptions {
   /** Absolute path to the vault root. Facts go into `<vault>/facts/`. */
   vault_root: string;
   /** Project root for provenance relpath computation. */
-  project_root: string;
+  repo_root: string;
   /** Accepted fact specs (already curated by the LLM proposer + user). */
   accept: FactSpec[];
   /** If true, returns the plan without writing files. */
@@ -70,7 +70,7 @@ export interface ExtractFactsResult {
 export async function extract_facts(
   options: ExtractFactsOptions
 ): Promise<ExtractFactsResult> {
-  const { incident_folder, vault_root, project_root, accept, dry_run = false } = options;
+  const { incident_folder, vault_root, repo_root: repo_root, accept, dry_run = false } = options;
 
   const narrative_path = join(incident_folder, 'narrative.md');
   const narrative_raw = await readFile(narrative_path, 'utf-8');
@@ -79,7 +79,7 @@ export async function extract_facts(
     typeof narrative.data.id === 'string'
       ? narrative.data.id
       : basename(incident_folder);
-  const provenance_rel_path = relative(project_root, incident_folder).replace(/\\/g, '/');
+  const provenance_rel_path = relative(repo_root, incident_folder).replace(/\\/g, '/');
 
   const facts_dir = join(vault_root, 'facts');
   const today = new Date().toISOString().slice(0, 10);
@@ -197,6 +197,6 @@ function render_fact_body(spec: FactSpec): string {
 /**
  * Re-export the resolved vault root so callers don't have to recompute it.
  */
-export function get_default_vault_root(project_root: string): string {
-  return resolve(project_root, '.documentation/knowledge-base');
+export function get_default_vault_root(repo_root: string): string {
+  return resolve(repo_root, '.documentation/knowledge-base');
 }

@@ -59,11 +59,11 @@ const STEPS = [
 ];
 
 export async function build_secrets_report(options: {
-  root: string; docs_path: string; findings: SecretFinding[]; ledger?: Ledger; secrets_config: SecretsConfig; date?: string;
+  root: string; docs_root: string; findings: SecretFinding[]; ledger?: Ledger; secrets_config: SecretsConfig; date?: string;
 }): Promise<{ entries: ReportEntry[]; text: string }> {
-  const { root: repo_root, docs_path, secrets_config: config } = options;
+  const { root: repo_root, docs_root: docs_root, secrets_config: config } = options;
   const entries: ReportEntry[] = [];
-  const find_file = (file: string): string | undefined => [join(docs_path, file), join(repo_root, file)].find((candidate) => existsSync(candidate));
+  const find_file = (file: string): string | undefined => [join(docs_root, file), join(repo_root, file)].find((candidate) => existsSync(candidate));
   const wanted = new Map<string, Map<string, ReportEntry>>(); // repo path -> value -> entry (values stay in memory)
   const add_wanted_entry = (path: string, value: string, entry: ReportEntry): void => {
     if (!wanted.has(path)) wanted.set(path, new Map());

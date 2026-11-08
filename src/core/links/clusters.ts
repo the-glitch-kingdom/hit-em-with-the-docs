@@ -49,15 +49,15 @@ export interface DocCluster {
 }
 
 export async function find_clusters(
-  docs_path: string,
+  docs_root: string,
   config: Pick<OverviewConfig, 'min_cluster_size' | 'min_link_coverage'>
 ): Promise<DocCluster[]> {
-  const graph = await build_link_graph(docs_path);
+  const graph = await build_link_graph(docs_root);
   const info = new Map<string, { generated: boolean; overview: boolean; domain: string; tags: string[] }>();
   for (const node of graph.nodes) {
     let data: Record<string, unknown> = {};
     try {
-      data = parse_frontmatter<Record<string, unknown>>(await readFile(join(docs_path, node.id), 'utf-8')).data;
+      data = parse_frontmatter<Record<string, unknown>>(await readFile(join(docs_root, node.id), 'utf-8')).data;
     } catch {
       // unreadable: treat as plain doc
     }

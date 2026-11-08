@@ -38,8 +38,8 @@ let cached: DomainRegistry | null = null;
  * Build a fresh registry from disk config (no caching). Exposed mainly for
  * tests and for callers that need a registry for a specific project root.
  */
-export function build_registry(project_root?: string): DomainRegistry {
-  const config = load_plugin_config_sync(project_root);
+export function build_registry(repo_root?: string): DomainRegistry {
+  const config = load_plugin_config_sync(repo_root);
 
   const definitions = new Map<Domain, DomainDefinition>();
   const ids: Domain[] = [];
@@ -76,11 +76,11 @@ export function build_registry(project_root?: string): DomainRegistry {
 
 /**
  * The cached active registry. Built lazily on first access from the config at
- * `process.cwd()` (or `projectRoot` if passed on the first call).
+ * `process.cwd()` (or `repo_root` if passed on the first call).
  */
-export function get_registry(project_root?: string): DomainRegistry {
+export function get_registry(repo_root?: string): DomainRegistry {
   if (!cached) {
-    cached = build_registry(project_root);
+    cached = build_registry(repo_root);
   }
   return cached;
 }

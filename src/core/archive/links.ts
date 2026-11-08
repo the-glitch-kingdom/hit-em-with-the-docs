@@ -20,18 +20,18 @@ export interface InboundLink {
 
 /**
  * Find all active (non-archived) docs that link to `targetRelPath`
- * (a path relative to `docsPath`). Returns one entry per inbound link.
+ * (a path relative to `docs_root`). Returns one entry per inbound link.
  *
  * Links from generated root/domain `INDEX.md` / `REGISTRY.md` are not counted:
  * the archive's own reindex removes those rows, and counting them forced
  * `--force`, which also switched the check off for real inbound links (#39).
  */
 export async function find_inbound_links(
-  docs_path: string,
+  docs_root: string,
   target_rel_path: string
 ): Promise<InboundLink[]> {
   const normalized_target = target_rel_path.replace(/\\/g, '/');
-  const graph = await build_link_graph(docs_path);
+  const graph = await build_link_graph(docs_root);
   return graph.edges
     .filter((edge) => edge.target.replace(/\\/g, '/') === normalized_target)
     // ponytail: built-in domain shapes only; a custom domain id containing a
@@ -51,8 +51,8 @@ export async function find_inbound_links(
  * docs-relative worked: a project-relative path became
  * `<docs>/.documentation/...` and was reported as not found.
  */
-export function resolve_doc_path(docs_path: string, file: string, base = process.cwd()): string {
+export function resolve_doc_path(docs_root: string, file: string, base = process.cwd()): string {
   const abs_path = resolve(base, file);
-  const doc_path = abs_path.startsWith(docs_path + sep) ? relative(docs_path, abs_path) : file;
+  const doc_path = abs_path.startsWith(docs_root + sep) ? relative(docs_root, abs_path) : file;
   return doc_path.replace(/\\/g, '/').replace(/^\.\//, '');
 }

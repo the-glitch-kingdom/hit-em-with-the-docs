@@ -19,7 +19,7 @@ import { execFileSync } from 'child_process';
 
 export interface IntegrateOptions {
   file_path: string;
-  docs_path: string;
+  docs_root: string;
   auto?: boolean;
   dry_run?: boolean;
   force?: boolean;
@@ -56,7 +56,7 @@ export async function integrate_document(
 ): Promise<IntegrateResult> {
   const {
     file_path,
-    docs_path,
+    docs_root: docs_root,
     auto = false,
     dry_run = false,
     force = false,
@@ -94,7 +94,7 @@ export async function integrate_document(
 
     // Secret guard (#61): the whole input is new, so any secret in it refuses the write.
     // --force does not bypass this; only the allowlist/baseline does. Findings are masked.
-    const repo_root = find_git_top(docs_path) ?? dirname(resolve(docs_path));
+    const repo_root = find_git_top(docs_root) ?? dirname(resolve(docs_root));
     const config = await load_plugin_config(repo_root);
     const found = scan_text(content, basename(file_path), config.reconcile.secrets);
     const secrets = found.filter((finding) => finding.kind === 'secret');
@@ -110,7 +110,7 @@ export async function integrate_document(
     }
 
     // Detect domain
-    const domain_result = detect_domain(file_path, content, docs_path);
+    const domain_result = detect_domain(file_path, content, docs_root);
     if (domain_result.domain) {
       result.domain = domain_result.domain;
     }
@@ -131,7 +131,7 @@ export async function integrate_document(
     const duplicates = await find_duplicates(
       existing_metadata.title ?? basename(file_path, '.md'),
       content,
-      docs_path
+      docs_root
     );
 
     if (duplicates.length > 0) {
@@ -156,7 +156,7 @@ export async function integrate_document(
     const generated = generate_metadata({
       file_path,
       content,
-      docs_root: docs_path,
+      docs_root: docs_root,
       existing_metadata,
     });
 
@@ -189,12 +189,12 @@ export async function integrate_document(
       ];
     }
     const file_name = basename(file_path);
-    const target_path = join(docs_path, target_domain, file_name);
+    const target_path = join(docs_root, target_domain, file_name);
     result.target_path = target_path;
 
     // A doc already in the tree must not be copied (that leaves two). Moving it
     // would break inbound links, so only the in-place rewrite is allowed.
-    const doc_path = relative(resolve(docs_path), resolve(file_path));
+    const doc_path = relative(resolve(docs_root), resolve(file_path));
     if (doc_path && !doc_path.startsWith('..') && !isAbsolute(doc_path) && resolve(file_path) !== resolve(target_path)) {
       result.error = `${doc_path} is already in the docs tree; use maintain --fix / metadata-sync`;
       return result;
@@ -208,7 +208,7 @@ export async function integrate_document(
       logger.info(`  Domains: ${final_metadata.domains?.join(', ')}`);
       logger.info(`  Status: ${final_metadata.status}`);
       logger.newline();
-      logger.info(`Target path: ${relative(docs_path, target_path)}`);
+      logger.info(`Target path: ${relative(docs_root, target_path)}`);
     }
 
     if (dry_run) {
@@ -236,7 +236,7 @@ export async function integrate_document(
     // was never registered. A failure here now propagates to the caller
     // instead of being swallowed, so `integrate` cannot report a false
     // success. See https://github.com/TheGlitchKing/hit-em-with-the-docs/issues/7
-    await regenerate_indexes({ docs_path, domains: [target_domain], silent });
+    await regenerate_indexes({ docs_root: docs_root, domains: [target_domain], silent });
 
     result.success = true;
     result.integrated = true;
@@ -333,9 +333,9 @@ function find_unique_file(repo_root: string, name: string): string | undefined {
 async function find_duplicates(
   title: string,
   content: string,
-  docs_path: string
+  docs_root: string
 ): Promise<DuplicateMatch[]> {
-  const files = await find_markdown_files(docs_path);
+  const files = await find_markdown_files(docs_root);
   const duplicates: DuplicateMatch[] = [];
 
   const normalized_title = title.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -361,7 +361,7 @@ async function find_duplicates(
 
       if (similarity > 0.5) {
         duplicates.push({
-          path: relative(docs_path, file),
+          path: relative(docs_root, file),
           title: existing_title,
           similarity,
         });

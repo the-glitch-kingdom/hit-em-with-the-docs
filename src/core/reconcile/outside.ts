@@ -42,7 +42,7 @@ const run_git = (working_dir: string, args: string[], input?: string): string =>
   execFileSync('git', args, { cwd: working_dir, encoding: 'utf-8', maxBuffer: 256 * 1024 * 1024, stdio: ['pipe', 'pipe', 'ignore'], ...(input !== undefined && { input }) }).trim();
 
 /** Project root = the git root holding the docs tree, never the caller's cwd. */
-export const resolve_git_top = (docs_path: string): string => find_git_top(docs_path) ?? dirname(docs_path);
+export const resolve_git_top = (docs_root: string): string => find_git_top(docs_root) ?? dirname(docs_root);
 
 export const is_keep_in_place = (doc_path: string, globs: string[]): boolean =>
   globs.some((glob) => {
@@ -55,12 +55,12 @@ export const is_keep_in_place = (doc_path: string, globs: string[]): boolean =>
 /** Words in a doc body, ignoring frontmatter and heading marks. */
 const count_words = (raw_text: string): number => (parse_frontmatter(raw_text).content.replace(/^#+\s*/gm, '').match(/\S+/g) ?? []).length;
 
-export async function discover_outside(docs_path: string, keep_in_place: string[]): Promise<OutsideDoc[]> {
-  const git_top = resolve_git_top(docs_path);
-  const docs_rel = relative(git_top, docs_path).split('\\').join('/');
+export async function discover_outside(docs_root: string, keep_in_place: string[]): Promise<OutsideDoc[]> {
+  const git_top = resolve_git_top(docs_root);
+  const docs_rel = relative(git_top, docs_root).split('\\').join('/');
   const files = run_git(git_top, ['ls-files', '*.md']).split('\n').filter((file) => file && !(docs_rel && (file === docs_rel || file.startsWith(`${docs_rel}/`))));
   const in_tree = new Set<string>();
-  for (const file of await find_markdown_files(docs_path)) in_tree.add(compute_content_hash(await readFile(file, 'utf-8')));
+  for (const file of await find_markdown_files(docs_root)) in_tree.add(compute_content_hash(await readFile(file, 'utf-8')));
 
   const found: OutsideDoc[] = [];
   const rest: { path: string; raw_text: string }[] = [];
@@ -105,8 +105,8 @@ export async function discover_outside(docs_path: string, keep_in_place: string[
 }
 
 /** Skeleton review file: deterministic junk/stubs pre-set to `delete`, misplaced left for the judgment pass. */
-export async function write_outside_review(options: { docs_path: string; root: string; docs: OutsideDoc[]; batch?: string }): Promise<string> {
-  const git_top = resolve_git_top(options.docs_path);
+export async function write_outside_review(options: { docs_root: string; root: string; docs: OutsideDoc[]; batch?: string }): Promise<string> {
+  const git_top = resolve_git_top(options.docs_root);
   const dir_path = resolve_review_dir(options.root);
   const batch = options.batch ?? (await find_next_batch(dir_path));
   const entries: ReviewEntry[] = [];
@@ -147,9 +147,9 @@ async function load_git_history(git_top: string, doc_path: string): Promise<stri
 export interface OutsideApplyResult { status: 'applied' | 'stale' | 'error'; detail?: string; touched: string[]; domain?: string; }
 
 /** Apply one accepted outside entry. Edits files and stages them; the caller commits. */
-export async function apply_outside_entry(options: { docs_path: string; entry: ReviewEntry }): Promise<OutsideApplyResult> {
-  const { docs_path, entry } = options;
-  const git_top = resolve_git_top(docs_path);
+export async function apply_outside_entry(options: { docs_root: string; entry: ReviewEntry }): Promise<OutsideApplyResult> {
+  const { docs_root: docs_root, entry } = options;
+  const git_top = resolve_git_top(docs_root);
   const abs_path = resolve(git_top, entry.path);
   const repo_path = relative(git_top, abs_path).split('\\').join('/');
   const build_failure = (detail: string, status: 'error' | 'stale' = 'error'): OutsideApplyResult => ({ status, detail, touched: [] });
@@ -166,7 +166,7 @@ export async function apply_outside_entry(options: { docs_path: string; entry: R
   }
   if (entry.verdict !== 'integrate') return build_failure(`verdict "${entry.verdict}" is not valid for an outside entry`);
 
-  const integrate_options = { file_path: abs_path, docs_path, force: true, silent: true, ...(entry.domain && { domain: entry.domain }) };
+  const integrate_options = { file_path: abs_path, docs_root, force: true, silent: true, ...(entry.domain && { domain: entry.domain }) };
   const plan = await integrate_document({ ...integrate_options, dry_run: true });
   if (!plan.success || !plan.target_path) return build_failure(plan.error ?? 'integrate failed');
   const target = plan.target_path;
@@ -175,7 +175,7 @@ export async function apply_outside_entry(options: { docs_path: string; entry: R
 
   // Plan every inbound-link rewrite before touching anything, and refuse if one would sweep in uncommitted edits.
   const rewrites: { file: string; next: string }[] = [];
-  for (const file of await find_markdown_files(docs_path)) {
+  for (const file of await find_markdown_files(docs_root)) {
     const text = await readFile(file, 'utf-8');
     const next = with_rewritten_links(text, (link_target) => (resolve(dirname(file), link_target.split('#')[0]!) === abs_path ? format_posix_relative_path(dirname(file), target) : undefined));
     if (next !== text) rewrites.push({ file, next });
@@ -188,7 +188,7 @@ export async function apply_outside_entry(options: { docs_path: string; entry: R
   const history = await load_git_history(git_top, repo_path);
   const integration = await integrate_document(integrate_options);
   if (!integration.success || integration.target_path !== target) return build_failure(integration.error ?? 'integrate failed');
-  const target_rel = relative(docs_path, target).split('\\').join('/');
+  const target_rel = relative(docs_root, target).split('\\').join('/');
 
   // Provenance + moved_from; a moved doc was never reconciled or validated.
   const written = await readFile(target, 'utf-8');

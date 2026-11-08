@@ -364,7 +364,7 @@ export interface ResolveOptions {
   /** absolute path of the doc, for resolving relative links */
   doc_file?: string;
   /** absolute docs root, for resolving links */
-  docs_path?: string;
+  docs_root?: string;
 }
 
 /** `example.com/x`: a host-like first segment (letters-only TLD) is a URL, not a repo directory. */
@@ -442,7 +442,7 @@ export async function resolve_references(index: RepoIndex, references: Reference
         break;
       }
       case 'doc-link':
-        if (options.doc_file && options.docs_path) {
+        if (options.doc_file && options.docs_root) {
           const target = reference.ref.startsWith('/') ? null : resolve(dirname(options.doc_file), decodeURI(reference.ref.split(/[#?]/)[0]!));
           if (target && relative(index.root, target).startsWith('..')) {
             // outside the project: only a related repo's .documentation is checkable
@@ -452,7 +452,7 @@ export async function resolve_references(index: RepoIndex, references: Reference
               where = `${sibling_repo.name}:${relative(sibling_repo.root, target).split('\\').join('/')}`;
             }
           } else {
-            status = (await check_single_link(reference.ref, options.doc_file, options.docs_path)).valid ? 'ok' : 'missing';
+            status = (await check_single_link(reference.ref, options.doc_file, options.docs_root)).valid ? 'ok' : 'missing';
           }
         }
         break;

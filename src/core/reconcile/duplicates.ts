@@ -41,10 +41,10 @@ async function list_markdown_files(dir_path: string, found: string[] = []): Prom
   return found;
 }
 
-function find_first_commit(docs_path: string, doc_path: string): number | undefined {
+function find_first_commit(docs_root: string, doc_path: string): number | undefined {
   try {
     // eslint-disable-next-line id-denylist -- child_process option name
-    const log_output = execFileSync('git', ['log', '--follow', '--diff-filter=A', '--format=%ct', '--', doc_path], { cwd: docs_path, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const log_output = execFileSync('git', ['log', '--follow', '--diff-filter=A', '--format=%ct', '--', doc_path], { cwd: docs_root, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
     const timestamp = log_output.trim().split('\n').pop();
     return timestamp ? Number(timestamp) : undefined;
   } catch { return undefined; }
@@ -63,12 +63,12 @@ const compute_jaccard = (a: Set<string>, b: Set<string>): number => {
  */
 const MAX_POSTING = 20;
 
-export async function find_duplicates(docs_path: string, config: PluginConfig): Promise<Map<string, Duplicate[]>> {
+export async function find_duplicates(docs_root: string, config: PluginConfig): Promise<Map<string, Duplicate[]>> {
   const floor = config.retrieval.near_duplicate_min_chars;
   const sections: Sec[] = [];
-  for (const abs_path of await list_markdown_files(docs_path)) {
+  for (const abs_path of await list_markdown_files(docs_root)) {
     const raw_text = readFileSync(abs_path, 'utf-8');
-    const doc_path = relative(docs_path, abs_path).split('\\').join('/');
+    const doc_path = relative(docs_root, abs_path).split('\\').join('/');
     const { data, content } = parse_frontmatter<Record<string, unknown>>(raw_text);
     if (data.generated === true || data.tier === 'plan') continue;
     if (find_secrets(raw_text, doc_path, config.reconcile.secrets).some((raw_secret) => raw_secret.finding.kind === 'secret')) continue;
@@ -102,7 +102,7 @@ export async function find_duplicates(docs_path: string, config: PluginConfig): 
   const clusters = new Map<number, Sec[]>();
   sections.forEach((section, i) => (clusters.get(find_root(i)) ?? clusters.set(find_root(i), []).get(find_root(i))!).push(section));
   const first_commit_dates = new Map<string, number | undefined>();
-  const find_age = (doc: string): number | undefined => (first_commit_dates.has(doc) ? first_commit_dates.get(doc) : (first_commit_dates.set(doc, find_first_commit(docs_path, doc)), first_commit_dates.get(doc)));
+  const find_age = (doc: string): number | undefined => (first_commit_dates.has(doc) ? first_commit_dates.get(doc) : (first_commit_dates.set(doc, find_first_commit(docs_root, doc)), first_commit_dates.get(doc)));
 
   const duplicates_by_doc = new Map<string, Duplicate[]>();
   for (const members of clusters.values()) {

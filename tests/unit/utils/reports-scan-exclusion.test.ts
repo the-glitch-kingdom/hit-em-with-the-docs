@@ -55,28 +55,28 @@ const GENERATED_REPORT = [
 
 describe('reports/ is excluded from documentation scans', () => {
   let tmp_project: string;
-  let docs_path: string;
+  let docs_root: string;
 
   beforeEach(async () => {
     tmp_project = await mkdtemp(join(tmpdir(), 'hewtd-reports-'));
-    docs_path = join(tmp_project, '.documentation');
-    await mkdir(join(docs_path, 'procedures'), { recursive: true });
-    await mkdir(join(docs_path, 'reports'), { recursive: true });
-    await mkdir(join(docs_path, 'features', 'reports'), { recursive: true });
+    docs_root = join(tmp_project, '.documentation');
+    await mkdir(join(docs_root, 'procedures'), { recursive: true });
+    await mkdir(join(docs_root, 'reports'), { recursive: true });
+    await mkdir(join(docs_root, 'features', 'reports'), { recursive: true });
 
-    await writeFile(join(docs_path, 'procedures', 'sample.md'), DOC('Sample', 'procedures'), 'utf-8');
+    await writeFile(join(docs_root, 'procedures', 'sample.md'), DOC('Sample', 'procedures'), 'utf-8');
     await writeFile(
-      join(docs_path, 'reports', 'maintenance-2026-08-31T06-26-21.md'),
+      join(docs_root, 'reports', 'maintenance-2026-08-31T06-26-21.md'),
       GENERATED_REPORT,
       'utf-8'
     );
     await writeFile(
-      join(docs_path, 'reports', 'audit-2026-08-31T06-26-22.md'),
+      join(docs_root, 'reports', 'audit-2026-08-31T06-26-22.md'),
       GENERATED_REPORT,
       'utf-8'
     );
     await writeFile(
-      join(docs_path, 'features', 'reports', 'about-reports.md'),
+      join(docs_root, 'features', 'reports', 'about-reports.md'),
       DOC('About Reports', 'features'),
       'utf-8'
     );
@@ -87,7 +87,7 @@ describe('reports/ is excluded from documentation scans', () => {
   });
 
   const scanned = async () =>
-    (await find_markdown_files(docs_path)).map((f) => relative(docs_path, f).replace(/\\/g, '/'));
+    (await find_markdown_files(docs_root)).map((f) => relative(docs_root, f).replace(/\\/g, '/'));
 
   it('does not scan generated reports at the docs root', async () => {
     const files = await scanned();
@@ -104,7 +104,7 @@ describe('reports/ is excluded from documentation scans', () => {
   });
 
   it('raises no audit issues against generated reports', async () => {
-    const result = await check_documentation({ docs_path });
+    const result = await check_documentation({ docs_root: docs_root });
     const from_reports = result.issues.filter((i) =>
       i.file.replace(/\\/g, '/').startsWith('reports/')
     );
@@ -114,17 +114,17 @@ describe('reports/ is excluded from documentation scans', () => {
   it('does not degrade as more reports accumulate', async () => {
     // The point of the fix: the score must track documentation quality, not how
     // often maintenance has been run.
-    const before = await check_documentation({ docs_path });
+    const before = await check_documentation({ docs_root: docs_root });
 
     for (let i = 0; i < 8; i++) {
       await writeFile(
-        join(docs_path, 'reports', `maintenance-2026-09-0${i}T00-00-00.md`),
+        join(docs_root, 'reports', `maintenance-2026-09-0${i}T00-00-00.md`),
         GENERATED_REPORT,
         'utf-8'
       );
     }
 
-    const after = await check_documentation({ docs_path });
+    const after = await check_documentation({ docs_root: docs_root });
     expect(after.issues.length).toBe(before.issues.length);
     expect(after.total_files).toBe(before.total_files);
   });

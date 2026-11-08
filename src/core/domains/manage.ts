@@ -38,8 +38,8 @@ export interface DomainListResult {
  * registry for the given project root (uncached, so it reflects on-disk config
  * even mid-process).
  */
-export function list_domains(project_root: string): DomainListResult {
-  const registry = build_registry(project_root);
+export function list_domains(repo_root: string): DomainListResult {
+  const registry = build_registry(repo_root);
   const builtin: DomainDefinition[] = [];
   const custom: DomainDefinition[] = [];
   for (const id of registry.ids) {
@@ -55,9 +55,9 @@ export function list_domains(project_root: string): DomainListResult {
 // ---------------------------------------------------------------------------
 
 export interface AddDomainInput {
-  project_root: string;
+  repo_root: string;
   /** Documentation root (e.g. absolute path to `.documentation`). */
-  docs_path: string;
+  docs_root: string;
   spec: {
     id: string;
     name: string;
@@ -87,8 +87,8 @@ export interface AddDomainResult {
  * built-in or already a configured custom domain.
  */
 export async function add_domain(input: AddDomainInput): Promise<AddDomainResult> {
-  const { project_root, docs_path, spec, dry_run = false } = input;
-  const config_path = resolve_config_file_path(project_root);
+  const { repo_root: repo_root, docs_root: docs_root, spec, dry_run = false } = input;
+  const config_path = resolve_config_file_path(repo_root);
   const errors: string[] = [];
 
   // Strict, user-facing validation (the config loader's lenient filter is the
@@ -114,7 +114,7 @@ export async function add_domain(input: AddDomainInput): Promise<AddDomainResult
     return { ok: false, errors, action: 'rejected', config_path };
   }
 
-  const raw_text = await load_raw_config(project_root);
+  const raw_text = await load_raw_config(repo_root);
   const existing = Array.isArray(raw_text.domains)
     ? (raw_text.domains as unknown[])
     : [];
@@ -126,7 +126,7 @@ export async function add_domain(input: AddDomainInput): Promise<AddDomainResult
     return { ok: false, errors, action: 'rejected', config_path };
   }
 
-  const domain_folder = `${docs_path}/${valid.id}`;
+  const domain_folder = `${docs_root}/${valid.id}`;
 
   if (dry_run) {
     return {
@@ -141,7 +141,7 @@ export async function add_domain(input: AddDomainInput): Promise<AddDomainResult
 
   // Persist the config entry, preserving every other key (vault, updatePolicy…).
   raw_text.domains = [...existing, valid];
-  await write_raw_config(project_root, raw_text);
+  await write_raw_config(repo_root, raw_text);
 
   // Invalidate the cached registry so scaffolding sees the new domain.
   reset_registry();
@@ -149,11 +149,11 @@ export async function add_domain(input: AddDomainInput): Promise<AddDomainResult
   // createScaffold creates the (missing) domain folder + initial INDEX/REGISTRY.
   // regenerateIndexes then refreshes the ROOT index so it lists the new domain.
   const scaffold = await create_scaffold({
-    root_path: docs_path,
+    root_path: docs_root,
     domains: [valid.id],
     silent: true,
   });
-  const regen = await regenerate_indexes({ docs_path, silent: true });
+  const regen = await regenerate_indexes({ docs_root: docs_root, silent: true });
 
   return {
     ok: true,
@@ -171,8 +171,8 @@ export async function add_domain(input: AddDomainInput): Promise<AddDomainResult
 // ---------------------------------------------------------------------------
 
 export interface RemoveDomainInput {
-  project_root: string;
-  docs_path: string;
+  repo_root: string;
+  docs_root: string;
   id: string;
   dry_run?: boolean;
 }
@@ -195,9 +195,9 @@ export interface RemoveDomainResult {
 export async function remove_domain(
   input: RemoveDomainInput
 ): Promise<RemoveDomainResult> {
-  const { project_root, docs_path, id, dry_run = false } = input;
-  const config_path = resolve_config_file_path(project_root);
-  const domain_folder = `${docs_path}/${id}`;
+  const { repo_root: repo_root, docs_root: docs_root, id, dry_run = false } = input;
+  const config_path = resolve_config_file_path(repo_root);
+  const domain_folder = `${docs_root}/${id}`;
   const errors: string[] = [];
 
   if (is_builtin_domain(id)) {
@@ -214,7 +214,7 @@ export async function remove_domain(
     };
   }
 
-  const raw_text = await load_raw_config(project_root);
+  const raw_text = await load_raw_config(repo_root);
   const existing = Array.isArray(raw_text.domains) ? (raw_text.domains as unknown[]) : [];
   const present = existing.some(
     (doc) => doc && typeof doc === 'object' && (doc as { id?: unknown }).id === id
@@ -232,7 +232,7 @@ export async function remove_domain(
   }
 
   // Count docs that will be orphaned (folder is never deleted).
-  const orphaned_docs = (await list_domain_doc_files(docs_path, id)).length;
+  const orphaned_docs = (await list_domain_doc_files(docs_root, id)).length;
 
   if (dry_run) {
     return {
@@ -248,7 +248,7 @@ export async function remove_domain(
   raw_text.domains = existing.filter(
     (doc) => !(doc && typeof doc === 'object' && (doc as { id?: unknown }).id === id)
   );
-  await write_raw_config(project_root, raw_text);
+  await write_raw_config(repo_root, raw_text);
   reset_registry();
 
   return {

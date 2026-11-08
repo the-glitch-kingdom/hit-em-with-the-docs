@@ -68,7 +68,7 @@ export const ARCHIVE_DIR = 'archive';
  * drop for doing maintenance, which makes the number useless as a trend line.
  *
  * Excluded at the docs root ONLY — `<docs>/reports/`, which is the sole place
- * hewtd writes them (`join(docsPath, 'reports')`). A `features/reports/` folder
+ * hewtd writes them (`join(docs_root, 'reports')`). A `features/reports/` folder
  * is somebody's documentation *about* reports and stays audited; assuming the
  * name implied the artifact is the mistake #19 was about.
  */

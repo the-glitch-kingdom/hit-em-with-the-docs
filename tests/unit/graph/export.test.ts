@@ -49,7 +49,7 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }));
 describe('buildGraph', () => {
   it('assembles the v1 graph from refs, dates, ledger and duplicates', async () => {
     const config = await load_plugin_config(dir);
-    const g = await build_graph({ root: dir, docs_path: docs, config });
+    const g = await build_graph({ root: dir, docs_root: docs, config });
     expect(g.version).toBe(1);
     expect(g.source_commit).toMatch(/^[0-9a-f]{40}$/);
     expect(Object.keys(g.docs)).toEqual(['drafts/d.md', 'guides/admin.md', 'ops/gen.md', 'ops/missing.md', 'ops/verified.md', 'plans/plan.md', 'procedures/release.md']); // triage's set, sorted
@@ -66,7 +66,7 @@ describe('buildGraph', () => {
     expect(g.symbols['widgetRetry']).toEqual({ file: 'src/a.ts', file_kind: 'definition', cited_by: ['ops/verified.md'] });
 
     // every triage `missing` is a resolved:false ref; every resolved file ref has code_changed
-    const t = (await triage_docs({ root: dir, docs_path: docs, rels: Object.keys(g.docs), config })).docs;
+    const t = (await triage_docs({ root: dir, docs_root: docs, rels: Object.keys(g.docs), config })).docs;
     for (const d of t) for (const m of d.missing) expect(g.docs[d.path]!.refs).toContainEqual({ kind: 'file', target: m, resolved: false });
     for (const d of Object.values(g.docs)) for (const r of d.refs) if (r.kind === 'file' && r.resolved) expect(r.code_changed).toBeDefined();
     expect(g.docs['ops/missing.md']!.verdict).toBe('check');
@@ -81,15 +81,15 @@ describe('buildGraph', () => {
   it('exports exactly the docs triage judges', async () => {
     const config = await load_plugin_config(dir);
     const rels = (await list_markdown_files(docs)).map((f) => relative(docs, f));
-    const judged = (await triage_docs({ root: dir, docs_path: docs, rels, config })).docs.map((d) => d.path).sort();
-    expect(Object.keys((await build_graph({ root: dir, docs_path: docs, config })).docs).sort()).toEqual(judged);
+    const judged = (await triage_docs({ root: dir, docs_root: docs, rels, config })).docs.map((d) => d.path).sort();
+    expect(Object.keys((await build_graph({ root: dir, docs_root: docs, config })).docs).sort()).toEqual(judged);
     expect(judged).toEqual(expect.arrayContaining(['drafts/d.md', 'ops/gen.md', 'plans/plan.md']));
   });
 
   it('serializes deterministically with sorted keys and a trailing newline', async () => {
     const config = await load_plugin_config(dir);
-    const a = render_graph(await build_graph({ root: dir, docs_path: docs, config }));
-    const b = render_graph(await build_graph({ root: dir, docs_path: docs, config }));
+    const a = render_graph(await build_graph({ root: dir, docs_root: docs, config }));
+    const b = render_graph(await build_graph({ root: dir, docs_root: docs, config }));
     expect(a).toBe(b);
     expect(a.endsWith('}\n')).toBe(true);
     expect(a.indexOf('"docs"')).toBeLessThan(a.indexOf('"source_commit"'));
@@ -119,13 +119,13 @@ describe('buildGraph review fixes', () => {
   afterAll(() => rmSync(d2, { recursive: true, force: true }));
 
   it('a verified doc whose pointer target changed is not reported verified', async () => {
-    const g = await build_graph({ root: d2, docs_path: docs2, config: await load_plugin_config(d2) });
+    const g = await build_graph({ root: d2, docs_root: docs2, config: await load_plugin_config(d2) });
     expect(g.docs['guides/pointing.md']!.verdict).toBe('check');
   });
 
   it('a doc never through reconcile is unreviewed; the ledger file is not modified', async () => {
     const before = execFileSync('cat', [join(d2, '.hewtd/reconcile.json')], { encoding: 'utf-8' });
-    const g = await build_graph({ root: d2, docs_path: docs2, config: await load_plugin_config(d2) });
+    const g = await build_graph({ root: d2, docs_root: docs2, config: await load_plugin_config(d2) });
     expect(g.docs['guides/never.md']!.verdict).toBe('unreviewed');
     expect(g.docs['guides/never.md']!.refs).toContainEqual({ kind: 'file', target: 'src/gone.ts', resolved: false });
     expect(execFileSync('cat', [join(d2, '.hewtd/reconcile.json')], { encoding: 'utf-8' })).toBe(before);
@@ -133,7 +133,7 @@ describe('buildGraph review fixes', () => {
 
   it('dry-run does not write the cache', async () => {
     rmSync(join(d2, '.hewtd/graph-cache.json'), { force: true });
-    await build_graph({ root: d2, docs_path: docs2, config: await load_plugin_config(d2), dry_run: true });
+    await build_graph({ root: d2, docs_root: docs2, config: await load_plugin_config(d2), dry_run: true });
     expect(execFileSync('ls', ['-a', join(d2, '.hewtd')], { encoding: 'utf-8' })).not.toContain('graph-cache.json');
   });
 });

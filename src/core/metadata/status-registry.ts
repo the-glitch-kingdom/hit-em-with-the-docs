@@ -40,8 +40,8 @@ let cached: string[] | null = null;
  * Build the active vocabulary from disk config (no caching). Built-ins first
  * in declared order, then config extras in config order, de-duplicated.
  */
-export function build_status_vocabulary(project_root?: string): string[] {
-  const config = load_plugin_config_sync(project_root);
+export function build_status_vocabulary(repo_root?: string): string[] {
+  const config = load_plugin_config_sync(repo_root);
   const seen = new Set<string>(DOC_STATUS_VALUES);
   const values: string[] = [...DOC_STATUS_VALUES];
 
@@ -56,11 +56,11 @@ export function build_status_vocabulary(project_root?: string): string[] {
 
 /**
  * The cached active vocabulary. Built lazily on first access from the config
- * at `process.cwd()` (or `projectRoot` if passed on the first call).
+ * at `process.cwd()` (or `repo_root` if passed on the first call).
  */
-export function get_status_values(project_root?: string): string[] {
+export function get_status_values(repo_root?: string): string[] {
   if (!cached) {
-    cached = build_status_vocabulary(project_root);
+    cached = build_status_vocabulary(repo_root);
   }
   return [...cached];
 }

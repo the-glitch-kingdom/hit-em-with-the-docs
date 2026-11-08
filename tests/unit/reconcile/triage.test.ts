@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { execFileSync } from 'child_process';
-import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'fs';
+import { mkdtempSync, writeFileSync, rmSync, mkdirSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { loadPluginConfig } from '../../../src/utils/config';
@@ -239,5 +239,24 @@ describe('secret lane (#59)', () => {
     const all = await scanSecrets({ root: dir, docsPath: docs, config: await loadPluginConfig(dir) });
     expect(all).toHaveLength(3);
     expect(JSON.stringify(all)).not.toContain(tok());
+  });
+});
+
+describe('triage refs and resolveDocs (#65)', () => {
+  it('refs carry resolved and missing entries that match `missing`', async () => {
+    const r = await run(['ops/gone.md']);
+    const d = r.docs[0]!;
+    expect(d.refs.find((x) => x.ref === 'src/a.ts')).toMatchObject({ kind: 'path', status: 'ok', where: 'src/a.ts' });
+    expect(d.refs.filter((x) => x.status === 'missing').map((x) => x.ref)).toEqual(d.missing);
+  });
+
+  it('resolveDocs returns the same docs, writes no ledger and ignores a dirty tree', async () => {
+    put('ops/gone.md', fm() + 'See `src/a.ts` and `src/nope.ts`. dirty\n');
+    const config = await loadPluginConfig(dir);
+    const { resolveDocs } = await import('../../../src/core/reconcile/triage');
+    const out = await resolveDocs({ root: dir, docsPath: docs, rels: ['ops/gone.md'], config });
+    expect(out[0]!.lane).toBe('check');
+    expect(out[0]!.refs.some((x) => x.ref === 'src/nope.ts' && x.status === 'missing')).toBe(true);
+    expect(existsSync(join(dir, '.hewtd'))).toBe(false);
   });
 });

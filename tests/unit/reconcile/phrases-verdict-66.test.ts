@@ -4,8 +4,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'fs'
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { apply_reviews } from '../../../src/core/reconcile/apply';
-import { render_review, parse_review, write_gaps_review, type ReviewEntry } from '../../../src/core/reconcile/review';
-import { hash_content, load_ledger } from '../../../src/core/reconcile/ledger';
+import { render_review, load_review, write_gaps_review, type ReviewEntry } from '../../../src/core/reconcile/review';
+import { compute_content_hash, load_ledger } from '../../../src/core/reconcile/ledger';
 import { parse_frontmatter } from '../../../src/utils/frontmatter';
 import { validate_partial_metadata } from '../../../src/core/metadata/schema';
 
@@ -14,7 +14,7 @@ const g = (...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'u
 const head = (title: string, symptoms: string) =>
   `---\ntitle: ${title}\ndomains:\n  - backend\ntier: guide\nlast_verified: "2020-01-01"\n${symptoms}---\n\n# ${title}\n\nBody.\n`;
 const read = (rel: string) => readFileSync(join(docs, rel), 'utf-8');
-const entry = (path: string, phrases: string[]): ReviewEntry => ({ path, content_hash: hash_content(read(path)), verdict: 'phrases', phrases });
+const entry = (path: string, phrases: string[]): ReviewEntry => ({ path, content_hash: compute_content_hash(read(path)), verdict: 'phrases', phrases });
 const run = async (entries: ReviewEntry[], tick = true) => {
   const f = join(root, '.hewtd/reconcile/review-1-gaps.md');
   mkdirSync(join(root, '.hewtd/reconcile'), { recursive: true });
@@ -91,7 +91,7 @@ describe('phrases verdict (#66)', () => {
   it('writeGapsReview writes one unticked phrases entry per doc', async () => {
     const f = (await write_gaps_review({ root, docs_path: docs, proposals: [{ doc: 'backend/str.md', accepted: [{ query: 'one two three' }] }] }))!;
     expect(f).toMatch(/review-1-gaps\.md$/);
-    const r = await parse_review(f);
+    const r = await load_review(f);
     expect(r.entries).toHaveLength(1);
     expect(r.entries[0]).toMatchObject({ accepted: false, entry: { verdict: 'phrases', path: 'backend/str.md', phrases: ['one two three'] } });
     expect(await write_gaps_review({ root, docs_path: docs, proposals: [] })).toBeUndefined();

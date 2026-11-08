@@ -4,7 +4,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { load_plugin_config } from '../../../src/utils/config.js';
 import {
-  load_ledger, save_ledger, record_entry, is_reviewed, ledger_status, hash_content,
+  load_ledger, write_ledger, build_ledger_entry, is_reviewed, get_ledger_status, compute_content_hash,
 } from '../../../src/core/reconcile/ledger.js';
 import { MetadataSchema } from '../../../src/core/metadata/schema.js';
 
@@ -35,8 +35,8 @@ describe('ledger', () => {
   it('round-trips and tolerates missing/corrupt files', async () => {
     expect((await load_ledger(file())).entries).toEqual({});
     const l = await load_ledger(file());
-    record_entry(l, { path: 'a.md', lane: 'judge', verdict: 'keep', content_hash: 'h1' });
-    await save_ledger(file(), l);
+    build_ledger_entry(l, { path: 'a.md', lane: 'judge', verdict: 'keep', content_hash: 'h1' });
+    await write_ledger(file(), l);
     expect((await load_ledger(file())).entries['a.md'].verdict).toBe('keep');
     await writeFile(file(), '{nope');
     expect((await load_ledger(file())).entries).toEqual({});
@@ -44,27 +44,27 @@ describe('ledger', () => {
   it('concurrent saves leave valid JSON and no temp files', async () => {
     const ls = Array.from({ length: 10 }, (_, i) => {
       const l = { version: 1 as const, entries: {} };
-      record_entry(l, { path: `${i}.md`, lane: 'x', content_hash: 'h' });
+      build_ledger_entry(l, { path: `${i}.md`, lane: 'x', content_hash: 'h' });
       return l;
     });
-    await Promise.all(ls.map((l) => save_ledger(file(), l)));
+    await Promise.all(ls.map((l) => write_ledger(file(), l)));
     expect(Object.keys((await load_ledger(file())).entries)).toHaveLength(1);
     expect(await readdir(join(dir, '.hewtd'))).toEqual(['reconcile.json']);
   });
   it('changed content resets the entry', () => {
     const l = { version: 1 as const, entries: {} };
-    record_entry(l, { path: 'a.md', lane: 'judge', verdict: 'keep', applied_commit: 'abc', content_hash: hash_content('v1') });
-    expect(is_reviewed(l.entries['a.md'], hash_content('v1'))).toBe(true);
-    expect(is_reviewed(l.entries['a.md'], hash_content('v2'))).toBe(false);
-    const e = record_entry(l, { path: 'a.md', lane: 'judge', content_hash: hash_content('v2') });
+    build_ledger_entry(l, { path: 'a.md', lane: 'judge', verdict: 'keep', applied_commit: 'abc', content_hash: compute_content_hash('v1') });
+    expect(is_reviewed(l.entries['a.md'], compute_content_hash('v1'))).toBe(true);
+    expect(is_reviewed(l.entries['a.md'], compute_content_hash('v2'))).toBe(false);
+    const e = build_ledger_entry(l, { path: 'a.md', lane: 'judge', content_hash: compute_content_hash('v2') });
     expect(e.verdict).toBeUndefined();
     expect(e.applied_commit).toBeUndefined();
   });
   it('status counts and lists next unreviewed', () => {
     const l = { version: 1 as const, entries: {} };
-    record_entry(l, { path: 'a.md', lane: 'judge', verdict: 'keep', content_hash: 'h' });
-    record_entry(l, { path: 'b.md', lane: 'judge', verdict: 'keep', content_hash: 'old' });
-    const st = ledger_status(l, [{ path: 'a.md', hash: 'h' }, { path: 'b.md', hash: 'new' }, { path: 'c.md', hash: 'z' }], 5);
+    build_ledger_entry(l, { path: 'a.md', lane: 'judge', verdict: 'keep', content_hash: 'h' });
+    build_ledger_entry(l, { path: 'b.md', lane: 'judge', verdict: 'keep', content_hash: 'old' });
+    const st = get_ledger_status(l, [{ path: 'a.md', hash: 'h' }, { path: 'b.md', hash: 'new' }, { path: 'c.md', hash: 'z' }], 5);
     expect(st).toMatchObject({ total: 3, reviewed: 1, by_verdict: { keep: 1 }, next_unreviewed: ['b.md', 'c.md'] });
   });
 });

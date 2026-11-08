@@ -7,108 +7,110 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join, relative, resolve } from 'path';
 import type { PluginConfig } from '../../utils/config.js';
 import { parse_frontmatter } from '../../utils/frontmatter.js';
-import { hash_content, load_ledger } from '../reconcile/ledger.js';
-import { assert_no_secrets } from '../reconcile/secrets.js';
-import { git_root, md_files, resolve_docs, STALE_COMMITS_BAR, type TriageDoc } from '../reconcile/triage.js';
-import { body_changed_dates, last_changed } from './dates.js';
+import { compute_content_hash, load_ledger } from '../reconcile/ledger.js';
+import { validate_no_secrets } from '../reconcile/secrets.js';
+import { find_git_top, list_markdown_files, resolve_docs, STALE_COMMITS_BAR, type TriageDoc } from '../reconcile/triage.js';
+import { find_body_changed_dates, find_file_dates } from './dates.js';
 import { GRAPH_VERSION, type GraphDoc, type GraphRef, type GraphRefKind, type GraphSymbol, type GraphV1, type GraphVerdict } from './schema.js';
 
-const posix = (p: string): string => p.split('\\').join('/');
-const cmp = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+const format_posix_path = (path_text: string): string => path_text.split('\\').join('/');
+const compare_strings = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 const KIND: Record<string, GraphRefKind> = { path: 'file', 'doc-link': 'doc' };
 
-function verdict_of(d: TriageDoc, ledger_verified: boolean, in_ledger: boolean): GraphVerdict {
-  if (d.lane === 'secret') return 'secret';
-  if (d.lane === 'archive-candidate') return 'archive-candidate';
-  if (d.lane === 'clean') return 'verified'; // attributed (sources + last_verified) and every ref resolves
+function get_verdict(doc: TriageDoc, ledger_verified: boolean, in_ledger: boolean): GraphVerdict {
+  if (doc.lane === 'secret') return 'secret';
+  if (doc.lane === 'archive-candidate') return 'archive-candidate';
+  if (doc.lane === 'clean') return 'verified'; // attributed (sources + last_verified) and every ref resolves
   // Never through reconcile: say so instead of guessing check/fields-only (refs still carry resolved:false).
   if (!in_ledger) return 'unreviewed';
   // a pointer or overview member that changed drops the verdict, as in triage
-  if (ledger_verified && !d.reasons.some((r) => /^(member changed|pointer target changed)/.test(r))) return 'verified';
-  if (d.lane === 'fields-only') return 'fields-only';
-  const only_stale = d.reasons.length > 0 && d.reasons.every((r) => /commits to cited files/.test(r)) && (d.staleCommits ?? 0) >= STALE_COMMITS_BAR;
+  if (ledger_verified && !doc.reasons.some((reason) => /^(member changed|pointer target changed)/.test(reason))) return 'verified';
+  if (doc.lane === 'fields-only') return 'fields-only';
+  const only_stale = doc.reasons.length > 0 && doc.reasons.every((reason) => /commits to cited files/.test(reason)) && (doc.staleCommits ?? 0) >= STALE_COMMITS_BAR;
   return only_stale ? 'stale' : 'check';
 }
 
-export async function build_graph(opts: { root: string; docs_path: string; config: PluginConfig; dry_run?: boolean }): Promise<GraphV1> {
-  const { root, docs_path, config } = opts;
-  const repo = git_root(docs_path) ?? root;
+export async function build_graph(options: { root: string; docs_path: string; config: PluginConfig; dry_run?: boolean }): Promise<GraphV1> {
+  const { root: repo_root, docs_path, config } = options;
+  const git_top = find_git_top(docs_path) ?? repo_root;
   // exactly the set triage judges: the export and triage cannot diverge
-  const rels = (await md_files(docs_path)).map((f) => posix(relative(docs_path, f))).sort(cmp);
-  const raws = new Map<string, { raw: string; data: Record<string, unknown> }>();
-  for (const r of rels) {
-    const raw = readFileSync(join(docs_path, r), 'utf-8');
-    raws.set(r, { raw, data: parse_frontmatter<Record<string, unknown>>(raw).data });
+  const doc_paths = (await list_markdown_files(docs_path)).map((file) => format_posix_path(relative(docs_path, file))).sort(compare_strings);
+  const raws = new Map<string, { raw_text: string; data: Record<string, unknown> }>();
+  for (const doc_path of doc_paths) {
+    const raw_text = readFileSync(join(docs_path, doc_path), 'utf-8');
+    raws.set(doc_path, { raw_text, data: parse_frontmatter<Record<string, unknown>>(raw_text).data });
   }
   const kept = [...raws.keys()];
-  const ledger = await load_ledger(resolve(root, config.reconcile.ledger_path));
-  const triaged = new Map((await resolve_docs({ root, docs_path, rels: kept, config, ledger })).map((d) => [d.path, d]));
-  const body = body_changed_dates(repo, kept.map((r) => ({ path: posix(relative(repo, join(docs_path, r))), content: raws.get(r)!.raw })), { persist: !opts.dry_run });
+  const ledger = await load_ledger(resolve(repo_root, config.reconcile.ledger_path));
+  const triaged = new Map((await resolve_docs({ root: repo_root, docs_path, rels: kept, config, ledger })).map((doc) => [doc.path, doc]));
+  const body = find_body_changed_dates(git_top, kept.map((doc_path) => ({ path: format_posix_path(relative(git_top, join(docs_path, doc_path))), content: raws.get(doc_path)!.raw_text })), { persist: !options.dry_run });
 
-  const own = last_changed(repo);
-  const sibs = new Map(config.reconcile.related_repos.map((r) => [r.name, last_changed(resolve(root, r.path))]));
-  const date_of = (where: string): { repo?: string; file: string; date?: string | undefined } => {
-    const m = /^([\w.-]+):(.+)$/.exec(where);
-    const name = m && sibs.has(m[1]!) ? m[1]! : undefined;
-    const file = name ? m![2]! : where;
-    return { ...(name && { repo: name }), file, date: (name ? sibs.get(name) : own)?.dates.get(file) };
+  const own_dates = find_file_dates(git_top);
+  const sibling_dates = new Map(config.reconcile.related_repos.map((related_repo) => [related_repo.name, find_file_dates(resolve(repo_root, related_repo.path))]));
+  const get_date = (where: string): { repo?: string; file: string; date?: string | undefined } => {
+    const match = /^([\w.-]+):(.+)$/.exec(where);
+    const name = match && sibling_dates.has(match[1]!) ? match[1]! : undefined;
+    const file = name ? match![2]! : where;
+    return { ...(name && { repo: name }), file, date: (name ? sibling_dates.get(name) : own_dates)?.dates.get(file) };
   };
 
   const docs: Record<string, GraphDoc> = {};
   const symbols: Record<string, GraphSymbol> = {};
   const owners = new Map<string, Set<string>>();
-  const own_ = (doc: string, entry: string): void => { (owners.get(doc) ?? owners.set(doc, new Set()).get(doc)!).add(entry); };
+  const add_owner = (doc: string, entry: string): void => { (owners.get(doc) ?? owners.set(doc, new Set()).get(doc)!).add(entry); };
 
-  for (const rel of kept) {
-    const t = triaged.get(rel)!;
-    const led = ledger.entries[rel];
-    const refs = new Map<string, GraphRef>();
-    for (const r of t.refs) {
-      const kind = KIND[r.kind] ?? (r.kind as GraphRefKind);
-      const ref: GraphRef = { kind, target: r.ref, resolved: r.status === 'ok' ? true : r.status === 'missing' ? false : null };
-      if (r.status === 'ok' && r.where && (r.kind === 'path' || r.kind === 'symbol' || r.kind === 'env')) {
-        const w = date_of(r.where);
-        if (r.kind !== 'path') ref.file = w.file;
-        if (r.kind === 'symbol' && r.whereKind) ref.file_kind = r.whereKind;
-        if (w.repo) ref.repo = w.repo;
-        if (w.date) ref.code_changed = w.date;
-        if (r.kind === 'symbol') {
-          const s = (symbols[r.ref] ??= { file: w.file, ...(r.whereKind && { file_kind: r.whereKind }), cited_by: [] });
-          if (!s.cited_by.includes(rel)) s.cited_by.push(rel);
+  for (const doc_path of kept) {
+    const triage_doc = triaged.get(doc_path)!;
+    const ledger_entry = ledger.entries[doc_path];
+    const references = new Map<string, GraphRef>();
+    for (const resolved of triage_doc.refs) {
+      const kind = KIND[resolved.kind] ?? (resolved.kind as GraphRefKind);
+      const reference: GraphRef = { kind, target: resolved.ref, resolved: resolved.status === 'ok' ? true : resolved.status === 'missing' ? false : null };
+      if (resolved.status === 'ok' && resolved.where && (resolved.kind === 'path' || resolved.kind === 'symbol' || resolved.kind === 'env')) {
+        const where_date = get_date(resolved.where);
+        if (resolved.kind !== 'path') reference.file = where_date.file;
+        if (resolved.kind === 'symbol' && resolved.whereKind) reference.file_kind = resolved.whereKind;
+        if (where_date.repo) reference.repo = where_date.repo;
+        if (where_date.date) reference.code_changed = where_date.date;
+        if (resolved.kind === 'symbol') {
+          const symbol = (symbols[resolved.ref] ??= { file: where_date.file, ...(resolved.whereKind && { file_kind: resolved.whereKind }), cited_by: [] });
+          if (!symbol.cited_by.includes(doc_path)) symbol.cited_by.push(doc_path);
         }
       }
-      refs.set(`${kind}\0${r.ref}`, ref);
+      references.set(`${kind}\0${resolved.ref}`, reference);
     }
     // gone frontmatter `sources` are in triage's `missing` but not in its refs
-    for (const m of t.missing) if (![...refs.values()].some((x) => x.target === m && x.resolved === false)) refs.set(`file\0${m}`, { kind: 'file', target: m, resolved: false });
+    for (const match of triage_doc.missing) if (![...references.values()].some((item) => item.target === match && item.resolved === false)) references.set(`file\0${match}`, { kind: 'file', target: match, resolved: false });
 
-    const lv = raws.get(rel)!.data.last_verified;
-    const doc_repo_path = posix(relative(repo, join(docs_path, rel)));
-    docs[rel] = {
+    const last_verified_value = raws.get(doc_path)!.data.last_verified;
+    const doc_repo_path = format_posix_path(relative(git_top, join(docs_path, doc_path)));
+    docs[doc_path] = {
       body_changed: body.dates.get(doc_repo_path) ?? null,
-      verdict: verdict_of(t, led?.verdict === 'verify' && led.content_hash === hash_content(raws.get(rel)!.raw), !!led),
-      last_verified: typeof lv === 'string' ? lv : lv instanceof Date ? lv.toISOString().slice(0, 10) : null,
-      refs: [...refs.values()].sort((a, b) => cmp(a.kind, b.kind) || cmp(a.target, b.target)),
+      verdict: get_verdict(triage_doc, ledger_entry?.verdict === 'verify' && ledger_entry.content_hash === compute_content_hash(raws.get(doc_path)!.raw_text), !!ledger_entry),
+      last_verified: typeof last_verified_value === 'string' ? last_verified_value : last_verified_value instanceof Date ? last_verified_value.toISOString().slice(0, 10) : null,
+      // eslint-disable-next-line id-denylist -- serialized key (triage/graph JSON)
+      refs: [...references.values()].sort((a, b) => compare_strings(a.kind, b.kind) || compare_strings(a.target, b.target)),
       owner_of: [],
-      points_to: led?.pointer ? [{ from: null, to: led.pointer.target }] : [],
-      duplicates: (t.duplicates ?? []).map((d) => ({ section: `#${d.section}`, owner: `${d.owner}#${d.section}` })).sort((a, b) => cmp(a.owner, b.owner)),
+      points_to: ledger_entry?.pointer ? [{ from: null, to: ledger_entry.pointer.target }] : [],
+      duplicates: (triage_doc.duplicates ?? []).map((doc) => ({ section: `#${doc.section}`, owner: `${doc.owner}#${doc.section}` })).sort((a, b) => compare_strings(a.owner, b.owner)),
     };
-    if (led?.pointer) own_(led.pointer.target.split('#')[0]!, led.pointer.target);
-    for (const d of t.duplicates ?? []) own_(d.owner, `${d.owner}#${d.section}`);
+    if (ledger_entry?.pointer) add_owner(ledger_entry.pointer.target.split('#')[0]!, ledger_entry.pointer.target);
+    for (const doc of triage_doc.duplicates ?? []) add_owner(doc.owner, `${doc.owner}#${doc.section}`);
   }
-  for (const [doc, set] of owners) if (docs[doc]) docs[doc]!.owner_of = [...set].sort(cmp);
-  for (const s of Object.values(symbols)) s.cited_by.sort(cmp);
+  for (const [doc, set] of owners) if (docs[doc]) docs[doc]!.owner_of = [...set].sort(compare_strings);
+  for (const symbol of Object.values(symbols)) symbol.cited_by.sort(compare_strings);
 
   let head: string | null = null;
-  try { head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { /* not a repo, or no commits */ }
+  // eslint-disable-next-line id-denylist -- child_process option name
+  try { head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: git_top, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { /* not a repo, or no commits */ }
   return { version: GRAPH_VERSION, source_commit: head, docs, symbols };
 }
 
 /** Sorted keys at every level, 2-space indent, trailing newline: byte-identical for equal graphs. */
-export function serialize_graph(g: GraphV1): string {
-  const sort = (v: unknown): unknown =>
-    Array.isArray(v) ? v.map(sort) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort(cmp).map((k) => [k, sort((v as Record<string, unknown>)[k])])) : v;
-  return JSON.stringify(sort(g), null, 2) + '\n';
+export function render_graph(graph: GraphV1): string {
+  const sort_keys = (value: unknown): unknown =>
+    Array.isArray(value) ? value.map(sort_keys) : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort(compare_strings).map((key) => [key, sort_keys((value as Record<string, unknown>)[key])])) : value;
+  return JSON.stringify(sort_keys(graph), null, 2) + '\n';
 }
 
 export interface WriteGraphResult {
@@ -119,19 +121,20 @@ export interface WriteGraphResult {
 }
 
 /** Build and write `<git root>/.hewtd/graph.json`; a byte-identical file is left alone (mtime kept). */
-export async function write_graph(opts: { root: string; docs_path: string; config: PluginConfig; dry_run?: boolean }): Promise<WriteGraphResult> {
-  if (!opts.config.graph_export) return { status: 'disabled' };
-  const top = git_root(opts.docs_path);
-  if (!top) return { status: 'no-git' };
-  const file = join(top, '.hewtd', 'graph.json');
-  const text = serialize_graph(await build_graph(opts));
-  assert_no_secrets(text, 'the graph export', opts.config.reconcile.secrets);
+export async function write_graph(options: { root: string; docs_path: string; config: PluginConfig; dry_run?: boolean }): Promise<WriteGraphResult> {
+  if (!options.config.graph_export) return { status: 'disabled' };
+  const git_top = find_git_top(options.docs_path);
+  if (!git_top) return { status: 'no-git' };
+  const file = join(git_top, '.hewtd', 'graph.json');
+  const graph_text = render_graph(await build_graph(options));
+  validate_no_secrets(graph_text, 'the graph export', options.config.reconcile.secrets);
   const had = existsSync(file);
-  if (had && readFileSync(file, 'utf-8') === text) return { status: 'unchanged', file };
-  if (opts.dry_run) return { status: 'would-write', file };
-  mkdirSync(join(top, '.hewtd'), { recursive: true });
-  writeFileSync(file, text);
+  if (had && readFileSync(file, 'utf-8') === graph_text) return { status: 'unchanged', file };
+  if (options.dry_run) return { status: 'would-write', file };
+  mkdirSync(join(git_top, '.hewtd'), { recursive: true });
+  writeFileSync(file, graph_text);
   let ignored = true;
-  try { execFileSync('git', ['check-ignore', '-q', file], { cwd: top, stdio: 'ignore' }); } catch { ignored = false; }
+  // eslint-disable-next-line id-denylist -- child_process option name
+  try { execFileSync('git', ['check-ignore', '-q', file], { cwd: git_top, stdio: 'ignore' }); } catch { ignored = false; }
   return { status: 'written', file, ...(!had && !ignored && { hint: true }) };
 }

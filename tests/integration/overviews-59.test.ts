@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 import { render_review, type ReviewEntry } from '../../src/core/reconcile/review';
-import { hash_content } from '../../src/core/reconcile/ledger';
+import { compute_content_hash } from '../../src/core/reconcile/ledger';
 import { parse_frontmatter } from '../../src/utils/frontmatter';
 
 // #59 acceptance checks through the built CLI on fixture repos.
@@ -16,7 +16,7 @@ const g = (...a: string[]) => execFileSync('git', ['-c', 'user.name=Ann', '-c', 
 const hewtd = (args: string[]) => spawnSync('node', [CLI, ...args], { cwd: root, encoding: 'utf8' });
 const put = (rel: string, text: string) => { mkdirSync(join(docs, rel, '..'), { recursive: true }); writeFileSync(join(docs, rel), text); };
 const read = (rel: string) => readFileSync(join(docs, rel), 'utf-8');
-const h = (rel: string) => hash_content(read(rel));
+const h = (rel: string) => compute_content_hash(read(rel));
 const commit = () => { g('add', '-A'); if (g('status', '--porcelain')) g('commit', '-qm', 'x'); };
 const fm = (title: string) => `---\ntitle: ${title}\ndomains:\n  - backend\n---\n\n`;
 /** Commits any hand edit first: reconcile refuses a dirty scope. */

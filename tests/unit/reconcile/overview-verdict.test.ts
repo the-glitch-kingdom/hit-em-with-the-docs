@@ -5,18 +5,18 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { apply_reviews } from '../../../src/core/reconcile/apply';
 import { render_review, type ReviewEntry } from '../../../src/core/reconcile/review';
-import { hash_content, load_ledger, save_ledger } from '../../../src/core/reconcile/ledger';
-import { triage } from '../../../src/core/reconcile/triage';
+import { compute_content_hash, load_ledger, write_ledger } from '../../../src/core/reconcile/ledger';
+import { triage_docs } from '../../../src/core/reconcile/triage';
 import { load_plugin_config } from '../../../src/utils/config';
 import { parse_frontmatter } from '../../../src/utils/frontmatter';
 
 let root: string, docs: string, ledger_file: string;
 const g = (...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: root, encoding: 'utf-8' }).trim();
 const doc = (t: string) => `---\ntitle: ${t}\ndomains:\n  - backend\n---\n\n# ${t}\n\nBody.\n`;
-const h = (rel: string) => hash_content(readFileSync(join(docs, rel), 'utf-8'));
+const h = (rel: string) => compute_content_hash(readFileSync(join(docs, rel), 'utf-8'));
 const DRAFT = '# Deploy flow\n\n1. Build. See [A](a.md).\n2. Ship. See [B](b.md).\n';
 const entry = (over: Partial<ReviewEntry> = {}): ReviewEntry => ({
-  path: 'backend/overview-deploy.md', content_hash: hash_content(''), verdict: 'overview', draft: DRAFT,
+  path: 'backend/overview-deploy.md', content_hash: compute_content_hash(''), verdict: 'overview', draft: DRAFT,
   members: [{ path: 'backend/a.md', content_hash: h('backend/a.md') }, { path: 'backend/b.md', content_hash: h('backend/b.md') }],
   frontmatter: { title: 'Deploy flow', domains: ['backend'], purpose: 'The deploy flow.', last_validated: '2020-01-01' }, ...over,
 });
@@ -29,7 +29,7 @@ const run = async (entries: ReviewEntry[]) => {
 const reconcile = async (...rels: string[]) => {
   const l = await load_ledger(ledger_file);
   for (const r of rels) l.entries[r] = { path: r, lane: 'check', verdict: 'verify', content_hash: h(r) };
-  await save_ledger(ledger_file, l);
+  await write_ledger(ledger_file, l);
 };
 
 beforeEach(() => {
@@ -83,7 +83,7 @@ describe('overview verdict', () => {
     expect(led.entries['backend/overview-deploy.md']).toMatchObject({ verdict: 'overview', members: { 'backend/a.md': h('backend/a.md') } });
 
     const cfg = await load_plugin_config(root);
-    const tri = async () => (await triage({ root, docs_path: docs, rels: ['backend/overview-deploy.md'], config: cfg, ledger: await load_ledger(ledger_file) })).docs[0]!;
+    const tri = async () => (await triage_docs({ root, docs_path: docs, rels: ['backend/overview-deploy.md'], config: cfg, ledger: await load_ledger(ledger_file) })).docs[0]!;
     expect((await tri()).reasons.join()).not.toMatch(/member changed/);
     writeFileSync(join(docs, 'backend/a.md'), doc('A') + '\nEdited.\n');
     const after = await tri();

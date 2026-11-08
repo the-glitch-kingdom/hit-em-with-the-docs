@@ -5,7 +5,7 @@
 import { createHash } from 'crypto';
 import { mkdir, readFile, rename, writeFile } from 'fs/promises';
 import { dirname } from 'path';
-import { assert_no_secrets } from './secrets.js';
+import { validate_no_secrets } from './secrets.js';
 
 export interface LedgerEntry {
   path: string;
@@ -28,15 +28,15 @@ export interface Ledger {
   entries: Record<string, LedgerEntry>;
 }
 
-export const hash_content = (content: string): string =>
+export const compute_content_hash = (content: string): string =>
   createHash('sha256').update(content).digest('hex');
 
 /** Missing or corrupt ledger loads as empty: never throws. */
 export async function load_ledger(file: string): Promise<Ledger> {
   try {
-    const raw = JSON.parse(await readFile(file, 'utf-8'));
-    if (raw && typeof raw === 'object' && raw.entries && typeof raw.entries === 'object') {
-      return { version: 1, entries: raw.entries };
+    const parsed = JSON.parse(await readFile(file, 'utf-8'));
+    if (parsed && typeof parsed === 'object' && parsed.entries && typeof parsed.entries === 'object') {
+      return { version: 1, entries: parsed.entries };
     }
   } catch {
     /* fall through */
@@ -45,13 +45,13 @@ export async function load_ledger(file: string): Promise<Ledger> {
 }
 
 /** Atomic: write a unique temp file, then rename over the target. */
-export async function save_ledger(file: string, ledger: Ledger): Promise<void> {
+export async function write_ledger(file: string, ledger: Ledger): Promise<void> {
   const text = JSON.stringify(ledger, null, 2) + '\n';
-  assert_no_secrets(text, 'the reconcile ledger');
+  validate_no_secrets(text, 'the reconcile ledger');
   await mkdir(dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
-  await writeFile(tmp, text, 'utf-8');
-  await rename(tmp, file);
+  const temp_path = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  await writeFile(temp_path, text, 'utf-8');
+  await rename(temp_path, file);
 }
 
 /** Reviewed = has a verdict and the doc is unchanged since. */
@@ -62,7 +62,7 @@ export function is_reviewed(entry: LedgerEntry | undefined, current_hash: string
 }
 
 /** Record a doc's current state; a changed hash drops the old verdict. */
-export function record_entry(
+export function build_ledger_entry(
   ledger: Ledger,
   entry: Partial<LedgerEntry> & Pick<LedgerEntry, 'path' | 'lane' | 'content_hash'>
 ): LedgerEntry {
@@ -85,19 +85,19 @@ export interface LedgerStatus {
 }
 
 /** `docs` = every in-scope doc with its current content hash. */
-export function ledger_status(
+export function get_ledger_status(
   ledger: Ledger,
   docs: { path: string; hash: string }[],
   next = 10
 ): LedgerStatus {
-  const s: LedgerStatus = { total: docs.length, reviewed: 0, by_lane: {}, by_verdict: {}, next_unreviewed: [] };
-  for (const d of docs) {
-    const e = ledger.entries[d.path];
-    if (e) s.by_lane[e.lane] = (s.by_lane[e.lane] ?? 0) + 1;
-    if (is_reviewed(e, d.hash)) {
-      s.reviewed++;
-      s.by_verdict[e!.verdict!] = (s.by_verdict[e!.verdict!] ?? 0) + 1;
-    } else if (s.next_unreviewed.length < next) s.next_unreviewed.push(d.path);
+  const status: LedgerStatus = { total: docs.length, reviewed: 0, by_lane: {}, by_verdict: {}, next_unreviewed: [] };
+  for (const doc of docs) {
+    const entry = ledger.entries[doc.path];
+    if (entry) status.by_lane[entry.lane] = (status.by_lane[entry.lane] ?? 0) + 1;
+    if (is_reviewed(entry, doc.hash)) {
+      status.reviewed++;
+      status.by_verdict[entry!.verdict!] = (status.by_verdict[entry!.verdict!] ?? 0) + 1;
+    } else if (status.next_unreviewed.length < next) status.next_unreviewed.push(doc.path);
   }
-  return s;
+  return status;
 }

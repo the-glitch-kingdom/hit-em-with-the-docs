@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from 'child_process';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 import { load_plugin_config } from '../../src/utils/config';
-import { assert_no_secrets } from '../../src/core/reconcile/secrets';
+import { validate_no_secrets } from '../../src/core/reconcile/secrets';
 
 const CLI = join(resolve(__dirname, '../..'), 'dist/cli/index.js');
 // Built at runtime: the repo never holds a scannable literal.
@@ -29,7 +29,7 @@ describe('secrets baseline', () => {
 
   it('baselines a finding: no value in the file, and every check honours it', async () => {
     const text = readFileSync(join(root, '.documentation/a.md'), 'utf-8');
-    await expect(load_plugin_config(root).then((c) => assert_no_secrets(text, 'a.md', c.reconcile.secrets))).rejects.toThrow();
+    await expect(load_plugin_config(root).then((c) => validate_no_secrets(text, 'a.md', c.reconcile.secrets))).rejects.toThrow();
     const r = hewtd('secrets', '--baseline-add', '.documentation/a.md:3', '--reason', 'test fixture');
     expect(r.status).toBe(0);
     expect(r.stdout + r.stderr).not.toContain(val);
@@ -38,7 +38,7 @@ describe('secrets baseline', () => {
     expect(raw).not.toContain(val.slice(4));
     expect(JSON.parse(raw).entries[0]).toMatchObject({ rule: 'stripe-key', file: '.documentation/a.md', reason: 'test fixture' });
     const cfg = (await load_plugin_config(root)).reconcile.secrets;
-    expect(() => assert_no_secrets(text, 'elsewhere.md', cfg)).not.toThrow();
+    expect(() => validate_no_secrets(text, 'elsewhere.md', cfg)).not.toThrow();
   });
 
   it('prune drops stale entries and keeps live ones', () => {

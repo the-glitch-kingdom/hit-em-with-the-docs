@@ -4,15 +4,15 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { apply_reviews } from '../../../src/core/reconcile/apply';
-import { render_review, parse_review, write_review_skeletons, type ReviewEntry } from '../../../src/core/reconcile/review';
-import { hash_content, load_ledger, is_reviewed } from '../../../src/core/reconcile/ledger';
+import { render_review, load_review, write_review_skeletons, type ReviewEntry } from '../../../src/core/reconcile/review';
+import { compute_content_hash, load_ledger, is_reviewed } from '../../../src/core/reconcile/ledger';
 
 let root: string, docs: string, ledger_file: string;
 const g = (...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: root, encoding: 'utf-8' }).trim();
 const doc = (name: string, extra = '') => `---\ntitle: ${name}\ndomains:\n  - backend\n${extra}---\n\n# ${name}\n\nBody of ${name}.\n`;
 const read = (rel: string) => readFileSync(join(docs, rel), 'utf-8');
 const entry = (rel: string, over: Partial<ReviewEntry>): ReviewEntry =>
-  ({ path: rel, content_hash: hash_content(read(rel)), verdict: 'verify', ...over });
+  ({ path: rel, content_hash: compute_content_hash(read(rel)), verdict: 'verify', ...over });
 const review = (name: string, entries: ReviewEntry[], accept: boolean[] = entries.map(() => true), shard = 1) => {
   let t = render_review({ batch: '1', shard, scope: 'backend' }, entries);
   accept.forEach((a) => { if (a) t = t.replace('- [ ] accept', '- [x] accept'); });
@@ -114,7 +114,7 @@ describe('applyReviews', () => {
     const triage: any = { docs: [{ path: 'backend/a.md', lane: 'check', reasons: ['r'] }, { path: 'backend/b.md', lane: 'clean', reasons: [] }], shards: [], totals: {}, mode: 'serial', warnings: [] };
     const [f] = await write_review_skeletons({ root, docs_path: docs, triage, scope: 'backend' });
     expect(f).toMatch(/review-1-1\.md$/);
-    const r = await parse_review(f!);
+    const r = await load_review(f!);
     expect(r.entries.map((e) => [e.entry.path, e.entry.verdict, e.accepted])).toEqual([['backend/a.md', null, false]]);
     expect((await run([f!])).outcomes[0].status).toBe('rejected');
   });
@@ -169,7 +169,7 @@ describe('applyReviews', () => {
       const target = join(outside, 'x.md');
       writeFileSync(target, doc('x'));
       const rel = join('..', '..', outside.split('/').pop()!, 'x.md');
-      const e: ReviewEntry = { path: rel, content_hash: hash_content(doc('x')), verdict: 'verify' };
+      const e: ReviewEntry = { path: rel, content_hash: compute_content_hash(doc('x')), verdict: 'verify' };
       const res = await run([review('review-1-1.md', [e])]);
       expect(res.outcomes[0]).toMatchObject({ status: 'error', detail: expect.stringContaining('outside the project root') });
       expect(readFileSync(target, 'utf-8')).toBe(doc('x'));
@@ -181,6 +181,6 @@ describe('applyReviews', () => {
     expect(res.outcomes[0].status).toBe('applied');
     const l = (await load_ledger(ledger_file)).entries['backend/a.md'];
     expect(l?.verdict).toBe('rewrite');
-    expect(is_reviewed(l, hash_content(read('backend/a.md')))).toBe(false);
+    expect(is_reviewed(l, compute_content_hash(read('backend/a.md')))).toBe(false);
   });
 });

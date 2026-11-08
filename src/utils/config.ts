@@ -318,7 +318,7 @@ export async function load_plugin_config(project_root?: string): Promise<PluginC
   const parsed = plugin_config_schema.safeParse(raw);
   const cfg = parsed.success ? parsed.data : plugin_config_schema.parse({}); // malformed: defaults, not a crash
   // The committed secrets baseline joins the allowlist, so every secret check honours it (#61).
-  const { load_baseline, baseline_allow } = await import('../core/reconcile/secrets.js');
+  const { load_baseline, build_baseline_allow: baseline_allow } = await import('../core/reconcile/secrets.js');
   cfg.reconcile.secrets.allow = [...cfg.reconcile.secrets.allow, ...baseline_allow(await load_baseline(root))];
   return cfg;
 }

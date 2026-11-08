@@ -5,8 +5,8 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { apply_reviews } from '../../../src/core/reconcile/apply';
 import { render_review, type ReviewEntry } from '../../../src/core/reconcile/review';
-import { hash_content, load_ledger } from '../../../src/core/reconcile/ledger';
-import { triage } from '../../../src/core/reconcile/triage';
+import { compute_content_hash, load_ledger } from '../../../src/core/reconcile/ledger';
+import { triage_docs } from '../../../src/core/reconcile/triage';
 import { load_plugin_config } from '../../../src/utils/config';
 
 let root: string, docs: string, ledger_file: string;
@@ -15,12 +15,12 @@ const read = (rel: string) => readFileSync(join(docs, rel), 'utf-8');
 const OWNER = '---\ntitle: Deploy guide\ndomains:\n  - backend\n---\n\n# Deploy guide\n\n## Release\n\nRun `deploy.sh --canary` and wait 30 minutes.\n\n## Other\n\nx\n';
 const COPY = '---\ntitle: Admin\ndomains:\n  - backend\n---\n\n# Admin\n\nIntro.\n\nRun `deploy.sh --canary` and wait 30 minutes.\n\nOutro.\n';
 const point = (): ReviewEntry => ({
-  path: 'backend/admin.md', content_hash: hash_content(read('backend/admin.md')), verdict: 'point',
+  path: 'backend/admin.md', content_hash: compute_content_hash(read('backend/admin.md')), verdict: 'point',
   remove: { old: 'Run `deploy.sh --canary` and wait 30 minutes.' },
   pointer: { summary: 'Canary release (`deploy.sh --canary`) for 30 minutes.', target: 'backend/deploy.md#release' },
-  target_hash: hash_content(read('backend/deploy.md')),
+  target_hash: compute_content_hash(read('backend/deploy.md')),
 });
-const tri = async () => (await triage({ root, docs_path: docs, rels: ['backend/admin.md'], config: await load_plugin_config(root), ledger: await load_ledger(ledger_file) })).docs[0]!;
+const tri = async () => (await triage_docs({ root, docs_path: docs, rels: ['backend/admin.md'], config: await load_plugin_config(root), ledger: await load_ledger(ledger_file) })).docs[0]!;
 
 beforeEach(async () => {
   root = mkdtempSync(join(tmpdir(), 'ps-'));
@@ -67,7 +67,7 @@ describe('pointer staleness', () => {
 describe('pointer tracking survives later edits (review fix)', () => {
   it('a verify on the pointing doc does not end tracking; an owner change still sends it to check', async () => {
     const f = join(root, '.hewtd/reconcile/review-2-1.md');
-    const verify: ReviewEntry = { path: 'backend/admin.md', content_hash: hash_content(read('backend/admin.md')), verdict: 'verify', sources: ['backend/deploy.md'] };
+    const verify: ReviewEntry = { path: 'backend/admin.md', content_hash: compute_content_hash(read('backend/admin.md')), verdict: 'verify', sources: ['backend/deploy.md'] };
     writeFileSync(f, render_review({ batch: '2', shard: 1, scope: 'backend' }, [verify]).replace(/- \[ \] accept/g, '- [x] accept'));
     const res = await apply_reviews({ root, docs_path: docs, files: [f], ledger: await load_ledger(ledger_file), ledger_file, today: '2026-11-08' });
     expect(res.outcomes[0]!.status).toBe('applied');

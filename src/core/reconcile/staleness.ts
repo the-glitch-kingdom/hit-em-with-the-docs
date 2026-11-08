@@ -13,8 +13,9 @@ export type StalenessSignal =
   | { status: 'none' } // doc not in git (new/uncommitted) or no git repo
   | { status: 'unknown'; warning: string }; // shallow clone: history is incomplete
 
-function git(repo_root: string, args: string[]): string {
+function run_git(repo_root: string, args: string[]): string {
   return execFileSync('git', args, {
+    // eslint-disable-next-line id-denylist -- child_process option name
     cwd: repo_root,
     encoding: 'utf-8',
     stdio: ['ignore', 'pipe', 'ignore'],
@@ -24,7 +25,7 @@ function git(repo_root: string, args: string[]): string {
 
 const MAX_WALK = 50;
 
-const body_of = (text: string): string => {
+const get_body = (text: string): string => {
   try {
     return remove_frontmatter(text).trim();
   } catch {
@@ -38,78 +39,78 @@ const body_of = (text: string): string => {
  * at the first commit whose body differs from the current one; capped at
  * MAX_WALK commits (then the oldest one examined). Null if the doc has no history.
  */
-export function body_change(
+export function find_body_change(
   repo_root: string,
   doc_path: string
 ): { commit: string; date: string } | null {
   // --follow so a renamed doc keeps its history (works for a single path only)
-  const out = git(repo_root, [
+  const log_output = run_git(repo_root, [
     'log', '--follow', '--name-only', `-n${MAX_WALK}`, '--format=%x00%H%x09%cI', '--', doc_path,
   ]);
-  const commits = out
+  const commits = log_output
     .split('\0')
     .filter(Boolean)
-    .map((r) => {
-      const [head = '', ...rest] = r.split('\n');
+    .map((chunk) => {
+      const [head = '', ...rest] = chunk.split('\n');
       const [sha = '', date = ''] = head.split('\t');
-      return { sha, date, path: rest.find((l) => l.trim())?.trim() ?? doc_path };
+      return { sha, date, path: rest.find((line) => line.trim())?.trim() ?? doc_path };
     });
   const first = commits[0];
   if (!first) return null;
   let current: string;
   try {
-    current = body_of(readFileSync(join(repo_root, doc_path), 'utf-8'));
+    current = get_body(readFileSync(join(repo_root, doc_path), 'utf-8'));
   } catch {
     return { commit: first.sha, date: first.date };
   }
   // shortcut: an uncommitted body edit matches no commit, so it falls back to the newest commit
-  let hit = first;
-  for (const c of commits) {
+  let match = first;
+  for (const candidate of commits) {
     let body: string;
     try {
-      body = body_of(git(repo_root, ['show', `${c.sha}:${c.path}`]));
+      body = get_body(run_git(repo_root, ['show', `${candidate.sha}:${candidate.path}`]));
     } catch {
       break;
     }
     if (body !== current) break;
-    hit = c;
+    match = candidate;
   }
-  return { commit: hit.sha, date: hit.date };
+  return { commit: match.sha, date: match.date };
 }
 
 /**
  * @param doc_path repo-relative path of the doc
  * @param cited_paths repo-relative paths it cites (one rev-list call for all of them)
  */
-export function staleness_signal(
+export function find_staleness_signal(
   repo_root: string,
   doc_path: string,
   cited_paths: string[]
 ): StalenessSignal {
   try {
-    if (git(repo_root, ['rev-parse', '--is-shallow-repository']) === 'true') {
+    if (run_git(repo_root, ['rev-parse', '--is-shallow-repository']) === 'true') {
       return {
         status: 'unknown',
         warning: 'shallow clone: git history is incomplete, staleness unknown (fetch full history)',
       };
     }
-    const change = body_change(repo_root, doc_path);
+    const change = find_body_change(repo_root, doc_path);
     if (!change) return { status: 'none' };
     const { commit: doc_commit, date: doc_date } = change;
     const cited = [...new Set(cited_paths)];
     if (cited.length === 0) return { status: 'signal', commits: 0, doc_commit, doc_date };
-    const n = git(repo_root, ['rev-list', '--count', `${doc_commit}..HEAD`, '--', ...cited]);
-    return { status: 'signal', commits: parseInt(n, 10) || 0, doc_commit, doc_date };
+    const commit_count = run_git(repo_root, ['rev-list', '--count', `${doc_commit}..HEAD`, '--', ...cited]);
+    return { status: 'signal', commits: parseInt(commit_count, 10) || 0, doc_commit, doc_date };
   } catch {
     return { status: 'none' }; // not a git repo / git missing
   }
 }
 
 /** Commits in a sibling repo to `paths` since `since` (ISO date of the doc's last body change). 0 if unreadable. */
-export function sibling_commits(sibling_root: string, since: string, paths: string[]): number {
+export function count_sibling_commits(sibling_root: string, since: string, paths: string[]): number {
   if (!paths.length) return 0;
   try {
-    return parseInt(git(sibling_root, ['rev-list', '--count', `--since=${since}`, 'HEAD', '--', ...paths]), 10) || 0;
+    return parseInt(run_git(sibling_root, ['rev-list', '--count', `--since=${since}`, 'HEAD', '--', ...paths]), 10) || 0;
   } catch {
     return 0;
   }

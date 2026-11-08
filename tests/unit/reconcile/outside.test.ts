@@ -6,14 +6,14 @@ import { join } from 'path';
 import { apply_reviews } from '../../../src/core/reconcile/apply';
 import { render_review, type ReviewEntry } from '../../../src/core/reconcile/review';
 import { discover_outside, write_outside_review } from '../../../src/core/reconcile/outside';
-import { hash_content, load_ledger } from '../../../src/core/reconcile/ledger';
+import { compute_content_hash, load_ledger } from '../../../src/core/reconcile/ledger';
 
 let root: string, docs: string, ledger_file: string;
 const g = (...a: string[]) => execFileSync('git', ['-c', 'user.name=Ann', '-c', 'user.email=t@t', ...a], { cwd: root, encoding: 'utf-8', env: { ...process.env, GIT_AUTHOR_NAME: 'Ann' } }).trim();
 const words = (n: number) => Array.from({ length: n }, (_, i) => `word${i}`).join(' ');
 const put = (rel: string, text: string) => { mkdirSync(join(root, rel, '..'), { recursive: true }); writeFileSync(join(root, rel), text); };
 const entry = (rel: string, verdict: ReviewEntry['verdict'], over: Partial<ReviewEntry> = {}): ReviewEntry =>
-  ({ path: rel, outside: true, content_hash: hash_content(readFileSync(join(root, rel), 'utf-8')), verdict, ...over });
+  ({ path: rel, outside: true, content_hash: compute_content_hash(readFileSync(join(root, rel), 'utf-8')), verdict, ...over });
 const run = async (entries: ReviewEntry[], accept = true) => {
   let t = render_review({ batch: '1', shard: 1, scope: 'outside' }, entries);
   if (accept) t = t.replaceAll('- [ ] accept', '- [x] accept');

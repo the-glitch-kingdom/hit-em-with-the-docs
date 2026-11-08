@@ -6,11 +6,12 @@
 import { execFileSync } from 'child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
-import { hash_content } from '../reconcile/ledger.js';
-import { body_change } from '../reconcile/staleness.js';
+import { compute_content_hash } from '../reconcile/ledger.js';
+import { find_body_change } from '../reconcile/staleness.js';
 
-const git = (cwd: string, args: string[]): string =>
-  execFileSync('git', args, { cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 256 * 1024 * 1024 });
+const run_git = (working_dir: string, args: string[]): string =>
+  // eslint-disable-next-line id-denylist -- child_process option name
+  execFileSync('git', args, { cwd: working_dir, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 256 * 1024 * 1024 });
 
 export interface FileDates {
   dates: Map<string, string>; // repo-relative path -> YYYY-MM-DD of its last commit
@@ -19,12 +20,12 @@ export interface FileDates {
 }
 
 /** Last commit date of every file in the repo, one `git log` pass (newest first, first hit wins). Null outside git. */
-export function last_changed(repo_root: string): FileDates | null {
+export function find_file_dates(repo_root: string): FileDates | null {
   try {
-    const shallow = git(repo_root, ['rev-parse', '--is-shallow-repository']).trim() === 'true';
+    const shallow = run_git(repo_root, ['rev-parse', '--is-shallow-repository']).trim() === 'true';
     const dates = new Map<string, string>();
     let date = '';
-    for (const line of git(repo_root, ['log', '-z', '--format=%x01%cs', '--name-only']).split(/[\0\n]/)) {
+    for (const line of run_git(repo_root, ['log', '-z', '--format=%x01%cs', '--name-only']).split(/[\0\n]/)) {
       if (line.startsWith('\x01')) date = line.slice(1);
       else if (line && date && !dates.has(line)) dates.set(line, date);
     }
@@ -42,39 +43,39 @@ interface Cache { head: string; docs: Record<string, { hash: string; body_change
  * doc's content hash are unchanged, so unchanged docs are not walked again.
  * `walked` counts the docs that needed a git walk.
  */
-export function body_changed_dates(
+export function find_body_changed_dates(
   repo_root: string,
   docs: Array<{ path: string; content: string }>,
-  opts: { persist?: boolean } = {}
+  options: { persist?: boolean } = {}
 ): { dates: Map<string, string | null>; walked: number } {
   const dates = new Map<string, string | null>();
   let head: string;
   try {
-    head = git(repo_root, ['rev-parse', 'HEAD']).trim();
+    head = run_git(repo_root, ['rev-parse', 'HEAD']).trim();
   } catch {
-    for (const d of docs) dates.set(d.path, null);
+    for (const doc of docs) dates.set(doc.path, null);
     return { dates, walked: 0 };
   }
   let old: Cache | null = null;
   try {
-    const c = JSON.parse(readFileSync(join(repo_root, CACHE), 'utf-8')) as Cache;
-    if (c.head === head && c.docs) old = c;
+    const cache = JSON.parse(readFileSync(join(repo_root, CACHE), 'utf-8')) as Cache;
+    if (cache.head === head && cache.docs) old = cache;
   } catch { /* no cache */ }
   const next: Cache = { head, docs: {} };
   let walked = 0;
-  for (const d of docs) {
-    const hash = hash_content(d.content);
-    let hit = old?.docs[d.path];
-    if (!hit || hit.hash !== hash) {
+  for (const doc of docs) {
+    const hash = compute_content_hash(doc.content);
+    let cached = old?.docs[doc.path];
+    if (!cached || cached.hash !== hash) {
       walked++;
       let changed: string | null = null;
-      try { changed = body_change(repo_root, d.path)?.date.slice(0, 10) ?? null; } catch { /* leave null */ }
-      hit = { hash, body_changed: changed };
+      try { changed = find_body_change(repo_root, doc.path)?.date.slice(0, 10) ?? null; } catch { /* leave null */ }
+      cached = { hash, body_changed: changed };
     }
-    next.docs[d.path] = hit;
-    dates.set(d.path, hit.body_changed);
+    next.docs[doc.path] = cached;
+    dates.set(doc.path, cached.body_changed);
   }
-  if (opts.persist !== false) try {
+  if (options.persist !== false) try {
     mkdirSync(dirname(join(repo_root, CACHE)), { recursive: true });
     writeFileSync(join(repo_root, CACHE), JSON.stringify(next));
   } catch { /* cache is best effort */ }

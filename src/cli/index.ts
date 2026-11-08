@@ -241,7 +241,7 @@ program
 async function export_graph(docs_path: string, dry_run: boolean): Promise<void> {
   try {
     const { load_plugin_config } = await import('../utils/config.js');
-    const { project_root_of } = await import('../core/reconcile/outside.js');
+    const { resolve_git_top: project_root_of } = await import('../core/reconcile/outside.js');
     const { write_graph } = await import('../core/graph/export.js');
     const root = project_root_of(docs_path);
     const r = await write_graph({ root, docs_path, config: await load_plugin_config(root), dry_run });
@@ -1163,9 +1163,9 @@ program
   .option('--gaps <file>', 'Classify missed search queries (gaps.v1 file or one question per line) into user_phrase proposals, new-doc candidates and open questions; writes only .hewtd/reconcile/gaps-report-<date>.md', undefined)
   .action(async (scope: string[], options) => {
     const { load_plugin_config } = await import('../utils/config.js');
-    const { load_ledger, ledger_status, hash_content } = await import('../core/reconcile/ledger.js');
+    const { load_ledger, get_ledger_status: ledger_status, compute_content_hash: hash_content } = await import('../core/reconcile/ledger.js');
     const { glob } = await import('../utils/glob.js');
-    const { project_root_of } = await import('../core/reconcile/outside.js');
+    const { resolve_git_top: project_root_of } = await import('../core/reconcile/outside.js');
     const docs_path = resolve(process.cwd(), options.docsPath);
     // State (ledger, review files, config) lives at the project root, so a run from a subdirectory shares it.
     const root = project_root_of(docs_path);
@@ -1191,7 +1191,7 @@ program
           // Re-scan, so findings still pending stay in the report instead of being overwritten by the moved ones.
           const { scan_secrets } = await import('../core/reconcile/triage.js');
           const pending = await scan_secrets({ root, docs_path, config });
-          const rep = await build_secrets_report({ root, docs_path, findings: pending, ledger: after, cfg: config.reconcile.secrets });
+          const rep = await build_secrets_report({ root, docs_path, findings: pending, ledger: after, secrets_config: config.reconcile.secrets });
           logger.info(`  secrets report with next steps (rotate, then purge): ${relative(root, await write_secrets_report(root, rep.text))}`);
         }
       } catch (e) {
@@ -1205,7 +1205,7 @@ program
         const { scan_secrets } = await import('../core/reconcile/triage.js');
         const found = await scan_secrets({ root, docs_path, config, scope });
         const { build_secrets_report, write_secrets_report } = await import('../core/reconcile/secrets-report.js');
-        const report = await build_secrets_report({ root, docs_path, findings: found, ledger: await load_ledger(ledger_file), cfg: config.reconcile.secrets });
+        const report = await build_secrets_report({ root, docs_path, findings: found, ledger: await load_ledger(ledger_file), secrets_config: config.reconcile.secrets });
         const report_file = relative(root, await write_secrets_report(root, report.text));
         if (options.json) { console.log(JSON.stringify(found, null, 2)); return; }
         logger.header('hewtd reconcile --secrets');
@@ -1251,7 +1251,7 @@ program
     }
     if (options.overview) {
       try {
-        const { seed_overview, write_members_file } = await import('../core/reconcile/overview.js');
+        const { load_overview_seed: seed_overview, write_members_file } = await import('../core/reconcile/overview.js');
         const seed = await seed_overview({
           docs_path, config, ledger: await load_ledger(ledger_file), question: options.overview,
           limit: options.limit ? parseInt(options.limit, 10) || undefined : undefined,
@@ -1284,8 +1284,8 @@ program
       return;
     }
     if (!options.status) {
-      const { resolve_scope, dirty_in_scope, triage } = await import('../core/reconcile/triage.js');
-      const { save_ledger } = await import('../core/reconcile/ledger.js');
+      const { resolve_scope, find_dirty_in_scope: dirty_in_scope, triage_docs: triage } = await import('../core/reconcile/triage.js');
+      const { write_ledger: save_ledger } = await import('../core/reconcile/ledger.js');
       try {
         if (options.serial && options.team) throw new Error('--serial and --team are mutually exclusive');
         const ledger = await load_ledger(ledger_file);
@@ -1350,8 +1350,8 @@ program
   .action(async (options) => {
     try {
       const { load_plugin_config } = await import('../utils/config.js');
-      const { project_root_of } = await import('../core/reconcile/outside.js');
-      const { add_baseline, load_baseline, save_baseline, scan_file, BASELINE_PATH } = await import('../core/reconcile/secrets.js');
+      const { resolve_git_top: project_root_of } = await import('../core/reconcile/outside.js');
+      const { add_baseline, load_baseline, write_baseline: save_baseline, scan_file, BASELINE_PATH } = await import('../core/reconcile/secrets.js');
       const docs_path = resolve(process.cwd(), options.docsPath);
       const root = project_root_of(docs_path);
       const config = await load_plugin_config(root);
@@ -1408,7 +1408,7 @@ program
   .action(async (action, options) => {
     try {
       if (action !== 'install' && action !== 'uninstall') throw new Error('expected install or uninstall');
-      const { project_root_of } = await import('../core/reconcile/outside.js');
+      const { resolve_git_top: project_root_of } = await import('../core/reconcile/outside.js');
       const { install_hook, uninstall_hook } = await import('../core/reconcile/hooks.js');
       const root = project_root_of(resolve(process.cwd(), options.docsPath));
       const r = await (action === 'install' ? install_hook : uninstall_hook)(root);

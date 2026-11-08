@@ -5,9 +5,9 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { integrate_document } from '../../../src/core/integrate/integrator';
 import { parse_frontmatter } from '../../../src/utils/frontmatter';
-import { fingerprint } from '../../../src/core/reconcile/secrets';
-import { triage } from '../../../src/core/reconcile/triage';
-import { search_docs } from '../../../src/core/reconcile/search';
+import { compute_fingerprint } from '../../../src/core/reconcile/secrets';
+import { triage_docs } from '../../../src/core/reconcile/triage';
+import { find_docs } from '../../../src/core/reconcile/search';
 import { load_plugin_config } from '../../../src/utils/config';
 import { load_ledger } from '../../../src/core/reconcile/ledger';
 
@@ -54,7 +54,7 @@ describe('integrate secret scan', () => {
 
   it('a baselined value integrates; an email only warns', async () => {
     mkdirSync(join(root, '.hewtd'));
-    writeFileSync(join(root, '.hewtd/secrets-baseline.json'), JSON.stringify({ entries: [{ fingerprint: fingerprint(hvs), rule: 'vault-token', file: 'x', masked: 'hvs.…27', reason: 'fixture' }] }));
+    writeFileSync(join(root, '.hewtd/secrets-baseline.json'), JSON.stringify({ entries: [{ fingerprint: compute_fingerprint(hvs), rule: 'vault-token', file: 'x', masked: 'hvs.…27', reason: 'fixture' }] }));
     expect((await run('a.md', `# A\n\nfixture ${hvs}\n`)).success).toBe(true);
     expect((await run('b.md', '# B\n\ncontact ann@corp.io for access\n')).success).toBe(true);
   });
@@ -129,9 +129,9 @@ describe('integrate records sources', () => {
   it('triage puts the integrated doc in check, and search never indexes sources', async () => {
     const r = await run('t.md', doc('Details live in `src/f3.ts`.', '---\ntitle: Details\n---\n\n'));
     const rel = r.target_path!.slice(docs.length + 1);
-    const t = await triage({ root, docs_path: docs, rels: [rel], config: await load_plugin_config(root), ledger: await load_ledger(join(root, '.hewtd/reconcile.json')) });
+    const t = await triage_docs({ root, docs_path: docs, rels: [rel], config: await load_plugin_config(root), ledger: await load_ledger(join(root, '.hewtd/reconcile.json')) });
     expect(t.docs[0]!.lane).toBe('check');
     writeFileSync(r.target_path!, readFileSync(r.target_path!, 'utf-8').replaceAll('Details live in `src/f3.ts`.', 'Details live elsewhere.'));
-    expect(await search_docs(docs, 'src/f3.ts', { config: await load_plugin_config(root) })).toEqual([]);
+    expect(await find_docs(docs, 'src/f3.ts', { config: await load_plugin_config(root) })).toEqual([]);
   });
 });

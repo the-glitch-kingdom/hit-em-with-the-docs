@@ -5,8 +5,8 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { apply_reviews } from '../../../src/core/reconcile/apply';
 import { render_review, type ReviewEntry } from '../../../src/core/reconcile/review';
-import { hash_content, load_ledger, save_ledger } from '../../../src/core/reconcile/ledger';
-import { assert_no_secrets } from '../../../src/core/reconcile/secrets';
+import { compute_content_hash, load_ledger, write_ledger } from '../../../src/core/reconcile/ledger';
+import { validate_no_secrets } from '../../../src/core/reconcile/secrets';
 
 // Secret-shaped strings are built at runtime so the repo holds no scannable literal.
 const rnd = (n: number, seed = 7) => { let x = seed; let s = ''; const a = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'; for (let i = 0; i < n; i++) { x = (x * 1103515245 + 12345) & 0x7fffffff; s += a[x % a.length]; } return s; };
@@ -36,13 +36,13 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
-const entry = (over: Partial<ReviewEntry>): ReviewEntry => ({ path: 'backend/a.md', content_hash: hash_content(read('backend/a.md')), verdict: 'verify', ...over });
+const entry = (over: Partial<ReviewEntry>): ReviewEntry => ({ path: 'backend/a.md', content_hash: compute_content_hash(read('backend/a.md')), verdict: 'verify', ...over });
 
 describe('no values anywhere', () => {
   it('assertNoSecrets throws a masked message, never the value', () => {
-    expect(() => assert_no_secrets(`x ${tok}`, 'here')).toThrow(/vault-token line 1 hvs\.…28/);
-    try { assert_no_secrets(`x ${tok}`, 'here'); } catch (e) { expect((e as Error).message).not.toContain(tok); }
-    expect(() => assert_no_secrets('nothing here', 'here')).not.toThrow();
+    expect(() => validate_no_secrets(`x ${tok}`, 'here')).toThrow(/vault-token line 1 hvs\.…28/);
+    try { validate_no_secrets(`x ${tok}`, 'here'); } catch (e) { expect((e as Error).message).not.toContain(tok); }
+    expect(() => validate_no_secrets('nothing here', 'here')).not.toThrow();
   });
 
   it('refuses to render a review that carries a value', () => {
@@ -50,7 +50,7 @@ describe('no values anywhere', () => {
   });
 
   it('refuses to save a ledger that carries a value', async () => {
-    await expect(save_ledger(ledger_file, { version: 1, entries: { p: { path: p(tok), lane: 'check', content_hash: 'h' } } })).rejects.toThrow(/would write a secret/);
+    await expect(write_ledger(ledger_file, { version: 1, entries: { p: { path: p(tok), lane: 'check', content_hash: 'h' } } })).rejects.toThrow(/would write a secret/);
     expect(existsSync(ledger_file)).toBe(false);
   });
 

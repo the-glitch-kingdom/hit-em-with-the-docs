@@ -3,7 +3,7 @@ import { execFileSync } from 'child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { build_repo_index, check_doc_references, extract_references, prime_symbols, type RepoIndex, type ResolvedReference } from '../../../src/core/reconcile/references.js';
+import { build_repo_index, check_doc_references, extract_references, add_known_symbols, type RepoIndex, type ResolvedReference } from '../../../src/core/reconcile/references.js';
 
 let root: string;
 const put = (p: string, c: string): void => { mkdirSync(join(root, p, '..'), { recursive: true }); writeFileSync(join(root, p), c); };
@@ -125,7 +125,7 @@ describe('primeSymbols on big files (#58)', () => {
       execFileSync('git', ['add', '-A'], { cwd: r });
       const i = build_repo_index(r);
       const t = Date.now();
-      prime_symbols(i, ['needleSymbolName', 'smallSymbolName', 'nobodyHasThis', 'needle']);
+      add_known_symbols(i, ['needleSymbolName', 'smallSymbolName', 'nobodyHasThis', 'needle']);
       expect(Date.now() - t).toBeLessThan(10000);
       expect(i.symbols.get('needleSymbolName')).toBe('big.json');
       expect(i.symbols.get('smallSymbolName')).toBe('small.ts');

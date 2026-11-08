@@ -3,7 +3,7 @@ import { execFileSync } from 'child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, renameSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { last_changed, body_changed_dates } from '../../../src/core/graph/dates.js';
+import { find_file_dates, find_body_changed_dates } from '../../../src/core/graph/dates.js';
 
 const sh = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, encoding: 'utf-8' }).trim();
 const commit = (cwd: string, msg: string, date: string) => {
@@ -28,7 +28,7 @@ beforeAll(() => {
 
 describe('lastChanged', () => {
   it('matches git log -1 per file, including renames', () => {
-    const r = last_changed(repo)!;
+    const r = find_file_dates(repo)!;
     expect(r.shallow).toBe(false);
     for (const f of ['src/a.ts', 'src/c.ts', 'doc.md']) {
       expect(r.dates.get(f)).toBe(sh(repo, 'log', '-1', '--format=%cs', '--', f));
@@ -41,11 +41,11 @@ describe('lastChanged', () => {
     const sib = mk();
     writeFileSync(join(sib, 'lib.ts'), 'x');
     commit(sib, 's', '2026-02-02T12:00:00');
-    expect(last_changed(sib)!.dates.get('lib.ts')).toBe('2026-02-02');
+    expect(find_file_dates(sib)!.dates.get('lib.ts')).toBe('2026-02-02');
   });
 
   it('returns null outside git', () => {
-    expect(last_changed(mkdtempSync(join(tmpdir(), 'nogit-')))).toBeNull();
+    expect(find_file_dates(mkdtempSync(join(tmpdir(), 'nogit-')))).toBeNull();
   });
 });
 
@@ -53,20 +53,20 @@ describe('bodyChangedDates', () => {
   const docs = () => [{ path: 'doc.md', content: '---\nt: 1\n---\nbody\n' }];
 
   it('walks once, then hits the cache while HEAD and content are unchanged', () => {
-    const a = body_changed_dates(repo, docs());
+    const a = find_body_changed_dates(repo, docs());
     expect(a.dates.get('doc.md')).toBe('2026-01-10');
     expect(a.walked).toBe(1);
-    const b = body_changed_dates(repo, docs());
+    const b = find_body_changed_dates(repo, docs());
     expect(b.walked).toBe(0);
     expect(b.dates.get('doc.md')).toBe('2026-01-10');
   });
 
   it('re-walks when content changes', () => {
-    expect(body_changed_dates(repo, [{ path: 'doc.md', content: 'other' }]).walked).toBe(1);
+    expect(find_body_changed_dates(repo, [{ path: 'doc.md', content: 'other' }]).walked).toBe(1);
   });
 
   it('gives nulls and does not throw outside git', () => {
-    const r = body_changed_dates(mkdtempSync(join(tmpdir(), 'nogit-')), docs());
+    const r = find_body_changed_dates(mkdtempSync(join(tmpdir(), 'nogit-')), docs());
     expect(r.dates.get('doc.md')).toBeNull();
   });
 });

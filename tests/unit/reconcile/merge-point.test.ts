@@ -5,8 +5,8 @@ import { tmpdir } from 'os';
 import { join, relative } from 'path';
 import { apply_reviews } from '../../../src/core/reconcile/apply';
 import { render_review, type ReviewEntry } from '../../../src/core/reconcile/review';
-import { hash_content, load_ledger } from '../../../src/core/reconcile/ledger';
-import { missing_tokens } from '../../../src/core/reconcile/noloss';
+import { compute_content_hash, load_ledger } from '../../../src/core/reconcile/ledger';
+import { find_missing_tokens } from '../../../src/core/reconcile/noloss';
 
 let root: string, docs: string, ledger_file: string;
 const g = (...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: root, encoding: 'utf-8' }).trim();
@@ -14,7 +14,7 @@ const read = (rel: string) => readFileSync(join(docs, rel), 'utf-8');
 const OWNER = '---\ntitle: Deploy guide\ndomains:\n  - backend\n---\n\n# Deploy guide\n\n## Release\n\nRun `deploy.sh` first.\n\n## Other\n\nx\n';
 const COPY = '---\ntitle: Admin\ndomains:\n  - backend\n---\n\n# Admin\n\nIntro.\n\nRun `deploy.sh --canary` and wait 30 minutes.\n\nOutro.\n';
 const OLD = 'Run `deploy.sh --canary` and wait 30 minutes.';
-const h = (rel: string) => hash_content(read(rel));
+const h = (rel: string) => compute_content_hash(read(rel));
 const run = async (entries: ReviewEntry[]) => {
   let t = render_review({ batch: '1', shard: 1, scope: 'backend' }, entries);
   t = t.replace(/- \[ \] accept/g, '- [x] accept');
@@ -42,25 +42,25 @@ afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 describe('no-loss tokens', () => {
   it('lists flags and durations absent from owner and summary', () => {
-    expect(missing_tokens(OLD, 'Run `deploy.sh` first.', 'Canary release.').sort()).toEqual(['--canary', '30']);
-    expect(missing_tokens(OLD, 'x', 'Use `deploy.sh --canary`, 30 minutes.')).toEqual([]);
+    expect(find_missing_tokens(OLD, 'Run `deploy.sh` first.', 'Canary release.').sort()).toEqual(['--canary', '30']);
+    expect(find_missing_tokens(OLD, 'x', 'Use `deploy.sh --canary`, 30 minutes.')).toEqual([]);
   });
 });
 
 describe('no-loss tokens (review fixes)', () => {
   const none = 'Unrelated owner text about something else.';
   it('bare numbers, quoted strings, URLs, table cells and code-block commands all count', () => {
-    expect(missing_tokens('Listens on port 8080 with 3 retries.', none, '')).toEqual(expect.arrayContaining(['8080', '3']));
-    expect(missing_tokens('Set the "Staging Gate" toggle to "on".', none, '')).toEqual(expect.arrayContaining(['Staging', 'Gate', 'on']));
-    expect(missing_tokens('| env | url |\n|---|---|\n| prod | https://x.example.com |', none, '')).toEqual(expect.arrayContaining(['prod', 'https://x.example.com']));
-    expect(missing_tokens('```sh\nmake release\nkubectl rollout undo web\n```', none, '')).toEqual(expect.arrayContaining(['kubectl', 'rollout', 'undo', 'web']));
+    expect(find_missing_tokens('Listens on port 8080 with 3 retries.', none, '')).toEqual(expect.arrayContaining(['8080', '3']));
+    expect(find_missing_tokens('Set the "Staging Gate" toggle to "on".', none, '')).toEqual(expect.arrayContaining(['Staging', 'Gate', 'on']));
+    expect(find_missing_tokens('| env | url |\n|---|---|\n| prod | https://x.example.com |', none, '')).toEqual(expect.arrayContaining(['prod', 'https://x.example.com']));
+    expect(find_missing_tokens('```sh\nmake release\nkubectl rollout undo web\n```', none, '')).toEqual(expect.arrayContaining(['kubectl', 'rollout', 'undo', 'web']));
   });
   it('matches whole tokens only, never fragments of other words', () => {
-    expect(missing_tokens('run with -v and a 30s timeout', 'Use --verbose and a 130s timeout.', '')).toEqual(expect.arrayContaining(['-v', '30s']));
-    expect(missing_tokens('run with -v and a 30s timeout', 'Use -v and a 30s timeout.', '')).toEqual([]);
+    expect(find_missing_tokens('run with -v and a 30s timeout', 'Use --verbose and a 130s timeout.', '')).toEqual(expect.arrayContaining(['-v', '30s']));
+    expect(find_missing_tokens('run with -v and a 30s timeout', 'Use -v and a 30s timeout.', '')).toEqual([]);
   });
   it('plain prose words may be reworded', () => {
-    expect(missing_tokens('Then simply wait for the release to finish.', 'Wait until it completes.', '')).toEqual([]);
+    expect(find_missing_tokens('Then simply wait for the release to finish.', 'Wait until it completes.', '')).toEqual([]);
   });
 });
 
@@ -120,7 +120,7 @@ describe('point', () => {
     writeFileSync(join(root, '.claude/hit-em-with-the-docs.json'), JSON.stringify({ reconcile: { related_repos: [{ name: 'sib', path: sib }] } }));
     try {
       const target = `${relative(docs, join(sib, 'docs/deploy.md'))}#release`;
-      const res = await run([point({ pointer: { summary: 'Canary release.', target }, target_hash: hash_content(owner_text) })]);
+      const res = await run([point({ pointer: { summary: 'Canary release.', target }, target_hash: compute_content_hash(owner_text) })]);
       expect(res.outcomes[0]!.detail ?? '').toBe('');
       expect(read('backend/admin.md')).toContain(`](${relative(join(docs, 'backend'), join(sib, 'docs/deploy.md'))}#release)`);
       expect(readFileSync(join(sib, 'docs/deploy.md'), 'utf-8')).toBe(owner_text);

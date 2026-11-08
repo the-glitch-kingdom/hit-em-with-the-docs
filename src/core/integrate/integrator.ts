@@ -13,7 +13,7 @@ import { regenerate_indexes } from '../../generators/regenerate.js';
 import levenshtein from 'fast-levenshtein';
 import { load_plugin_config, type PluginConfig } from '../../utils/config.js';
 import { scan_text } from '../reconcile/secrets.js';
-import { git_root } from '../reconcile/triage.js';
+import { find_git_top } from '../reconcile/triage.js';
 import { build_repo_index, extract_references, resolve_references, type RelatedRepo } from '../reconcile/references.js';
 import { execFileSync } from 'child_process';
 
@@ -94,7 +94,7 @@ export async function integrate_document(
 
     // Secret guard (#61): the whole input is new, so any secret in it refuses the write.
     // --force does not bypass this; only the allowlist/baseline does. Findings are masked.
-    const root = git_root(docs_path) ?? dirname(resolve(docs_path));
+    const root = find_git_top(docs_path) ?? dirname(resolve(docs_path));
     const config = await load_plugin_config(root);
     const found = scan_text(content, basename(file_path), config.reconcile.secrets);
     const secrets = found.filter((f) => f.kind === 'secret');

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { scan_text, find_secrets, fingerprint, mask } from '../../../src/core/reconcile/secrets';
+import { scan_text, find_secrets, compute_fingerprint, format_masked } from '../../../src/core/reconcile/secrets';
 import { load_plugin_config } from '../../../src/utils/config';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
@@ -42,9 +42,9 @@ describe('scanText', () => {
   });
 
   it('allowlist by fingerprint and by pattern; entries need a reason', () => {
-    expect(scan(`t ${hvs}`, { allow: [{ fingerprint: fingerprint(hvs), reason: 'fixture' }], disabled_rules: [] })).toEqual([]);
+    expect(scan(`t ${hvs}`, { allow: [{ fingerprint: compute_fingerprint(hvs), reason: 'fixture' }], disabled_rules: [] })).toEqual([]);
     expect(scan(`t ${hvs}`, { allow: [{ pattern: '^hvs\\.', file: 'doc.md', reason: 'fixture' }], disabled_rules: [] })).toEqual([]);
-    expect(scan(`t ${hvs}`, { allow: [{ fingerprint: fingerprint(hvs), file: 'other/**', reason: 'x' }], disabled_rules: [] })).toHaveLength(1);
+    expect(scan(`t ${hvs}`, { allow: [{ fingerprint: compute_fingerprint(hvs), file: 'other/**', reason: 'x' }], disabled_rules: [] })).toHaveLength(1);
   });
 
   it('disabled_rules turns a rule off', () => {
@@ -53,7 +53,7 @@ describe('scanText', () => {
 
   it('reports line and col, and a finding never holds the value', () => {
     const [f] = scan(`a\nb token ${hvs} z`);
-    expect(f).toMatchObject({ line: 2, col: 9, length: hvs.length, masked: mask(hvs), fingerprint: fingerprint(hvs) });
+    expect(f).toMatchObject({ line: 2, col: 9, length: hvs.length, masked: format_masked(hvs), fingerprint: compute_fingerprint(hvs) });
     expect(f.masked.replace('…', '').startsWith(hvs.slice(0, 4))).toBe(true);
     expect(JSON.stringify(f)).not.toContain(hvs.slice(5));
     expect(find_secrets(`t ${hvs}`, 'd', cfg)[0].value).toBe(hvs);
@@ -98,7 +98,7 @@ describe('review fixes (#59)', () => {
   });
 
   it('allowlist accepts the 12-char fingerprint prefix shown in reports', () => {
-    const fp = fingerprint(hvs);
+    const fp = compute_fingerprint(hvs);
     expect(scan(`t ${hvs}`, { allow: [{ fingerprint: fp.slice(0, 12), reason: 'fixture' }], disabled_rules: [] })).toEqual([]);
     expect(scan(`t ${hvs}`, { allow: [{ fingerprint: fp.slice(0, 8), reason: 'too short' }], disabled_rules: [] })).toHaveLength(1);
   });

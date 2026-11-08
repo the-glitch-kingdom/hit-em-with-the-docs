@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, rmSync, mkdirSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { load_plugin_config } from '../../../src/utils/config';
-import { resolve_scope, dirty_in_scope, triage, plan_shards } from '../../../src/core/reconcile/triage';
+import { resolve_scope, find_dirty_in_scope, triage_docs, build_shards } from '../../../src/core/reconcile/triage';
 
 let dir: string;
 let docs: string;
@@ -33,7 +33,7 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 const run = async (rels: string[], mode?: 'serial' | 'team') => {
   const config = await load_plugin_config(dir);
-  return triage({ root: dir, docs_path: docs, rels, config, ...(mode && { mode }) });
+  return triage_docs({ root: dir, docs_path: docs, rels, config, ...(mode && { mode }) });
 };
 
 describe('triage lanes', () => {
@@ -64,7 +64,7 @@ describe('triage lanes', () => {
     const config = await load_plugin_config(dir);
     const first = await resolve_scope(docs, [], { next: 1, ledger });
     expect(first).toEqual(['ops/clean.md']);
-    await triage({ root: dir, docs_path: docs, rels: first, config, ledger });
+    await triage_docs({ root: dir, docs_path: docs, rels: first, config, ledger });
     expect(await resolve_scope(docs, [], { next: 1, ledger })).toEqual(['ops/dead.md']);
   });
 
@@ -86,7 +86,7 @@ describe('scope', () => {
   });
 
   it('--next skips docs the ledger already reviewed', async () => {
-    const { hash_content } = await import('../../../src/core/reconcile/ledger');
+    const { compute_content_hash: hash_content } = await import('../../../src/core/reconcile/ledger');
     const { readFileSync: read_file_sync } = await import('fs');
     const content = read_file_sync(join(docs, 'ops/clean.md'), 'utf-8');
     const ledger = { version: 1 as const, entries: { 'ops/clean.md': { path: 'ops/clean.md', lane: 'clean', verdict: 'ok', content_hash: hash_content(content) } } };
@@ -95,8 +95,8 @@ describe('scope', () => {
 
   it('flags uncommitted changes in scope only', async () => {
     put('ops/clean.md', fm() + 'edited\n');
-    expect(dirty_in_scope(docs, ['ops/clean.md'])).toHaveLength(1);
-    expect(dirty_in_scope(docs, ['ops/gone.md'])).toEqual([]);
+    expect(find_dirty_in_scope(docs, ['ops/clean.md'])).toHaveLength(1);
+    expect(find_dirty_in_scope(docs, ['ops/gone.md'])).toEqual([]);
   });
 });
 
@@ -114,7 +114,7 @@ describe('team plan', () => {
     const config = await load_plugin_config(dir);
     config.reconcile.team.min_bytes = 50;
     config.reconcile.team.docs_per_agent = 1;
-    const r = await triage({ root: dir, docs_path: docs, rels: ['ops/gone.md', 'ops/fields.md'], config });
+    const r = await triage_docs({ root: dir, docs_path: docs, rels: ['ops/gone.md', 'ops/fields.md'], config });
     expect(r.mode).toBe('team');
     expect(r.shards.length).toBe(2);
   });
@@ -122,7 +122,7 @@ describe('team plan', () => {
   it('falls back to serial when the team plan would be a single shard', async () => {
     const config = await load_plugin_config(dir);
     config.reconcile.team.min_bytes = 50;
-    const r = await triage({ root: dir, docs_path: docs, rels: ['ops/gone.md'], config });
+    const r = await triage_docs({ root: dir, docs_path: docs, rels: ['ops/gone.md'], config });
     expect(r.mode).toBe('serial');
     expect(r.shards).toEqual([]);
   });
@@ -139,12 +139,12 @@ describe('team plan', () => {
     const config = await load_plugin_config(dir);
     config.reconcile.team.max_agents = 3;
     const judged = mk(30);
-    const shards = await plan_shards(docs, judged, config);
+    const shards = await build_shards(docs, judged, config);
     const all = shards.flatMap((s) => s.docs);
     expect(shards.length).toBeLessThanOrEqual(3);
     expect(new Set(all).size).toBe(all.length);
     expect([...all].sort()).toEqual(judged.map((d) => d.path).sort());
-    expect(JSON.stringify(await plan_shards(docs, judged, config))).toBe(JSON.stringify(shards));
+    expect(JSON.stringify(await build_shards(docs, judged, config))).toBe(JSON.stringify(shards));
   });
 
   it('keeps linked (clustered) docs in one shard when the cluster fits a fair share', async () => {
@@ -157,7 +157,7 @@ describe('team plan', () => {
     }
     for (let i = 0; i < 6; i++) put(`other/o${i}.md`, `---\ntitle: o${i}\n---\nx\n`);
     const judged = [...names, ...Array.from({ length: 6 }, (_, i) => `other/o${i}.md`)].map((path) => ({ path, bytes: 100 }));
-    const shards = await plan_shards(docs, judged, config);
+    const shards = await build_shards(docs, judged, config);
     const homes = new Set(shards.filter((s) => s.docs.some((d) => names.includes(d))).map((s) => s.id));
     expect(homes.size).toBe(1);
   });
@@ -169,7 +169,7 @@ describe('team plan', () => {
       const links = names.filter((m) => m !== n).map((m) => `[x](${m.replace('flow/', '')})`).join(' ');
       put(n, `---\ntitle: ${n}\n---\n${links}\n`);
     }
-    const shards = await plan_shards(docs, names.map((path) => ({ path, bytes: 100 })), config);
+    const shards = await build_shards(docs, names.map((path) => ({ path, bytes: 100 })), config);
     expect(shards.length).toBe(3);
     expect(Math.max(...shards.map((s) => s.docs.length))).toBe(8);
     expect(shards.flatMap((s) => s.docs).sort()).toEqual(names);

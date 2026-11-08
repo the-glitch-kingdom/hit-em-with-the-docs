@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { load_plugin_config } from '../../../src/utils/config';
-import { triage } from '../../../src/core/reconcile/triage';
+import { triage_docs } from '../../../src/core/reconcile/triage';
 import { check_doc_references, build_repo_index, type RelatedRepo } from '../../../src/core/reconcile/references';
 import { discover_outside } from '../../../src/core/reconcile/outside';
 
@@ -63,7 +63,7 @@ describe('related repos: references', () => {
 });
 
 describe('related repos: triage', () => {
-  const run = async (rel: string) => triage({ root: proj, docs_path: join(proj, '.documentation'), rels: [rel], config: await load_plugin_config(proj) });
+  const run = async (rel: string) => triage_docs({ root: proj, docs_path: join(proj, '.documentation'), rels: [rel], config: await load_plugin_config(proj) });
   const commit = () => { gi(proj, 'add', '-A'); gi(proj, 'commit', '-qm', 'c'); };
 
   it('resolves <name>: sources, warns for a missing checkout, ignores invalid config entries', async () => {

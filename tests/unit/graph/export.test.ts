@@ -5,9 +5,9 @@ import { tmpdir } from 'os';
 import { join, relative } from 'path';
 import { load_plugin_config } from '../../../src/utils/config';
 import { find_duplicates } from '../../../src/core/reconcile/duplicates';
-import { hash_content } from '../../../src/core/reconcile/ledger';
-import { md_files, triage } from '../../../src/core/reconcile/triage';
-import { build_graph, serialize_graph } from '../../../src/core/graph/export';
+import { compute_content_hash } from '../../../src/core/reconcile/ledger';
+import { list_markdown_files, triage_docs } from '../../../src/core/reconcile/triage';
+import { build_graph, render_graph } from '../../../src/core/graph/export';
 
 let dir: string;
 let docs: string;
@@ -37,7 +37,7 @@ beforeAll(() => {
   put('drafts/d.md', '---\ntitle: D\n---\nDraft.\n');
   put('ops/gen.md', '---\ntitle: G\ngenerated: true\n---\nGenerated.\n');
   put('.hewtd/reconcile.json', JSON.stringify({ version: 1, entries: {
-    'ops/verified.md': { path: 'ops/verified.md', lane: 'clean', verdict: 'verify', content_hash: hash_content(verified_raw) },
+    'ops/verified.md': { path: 'ops/verified.md', lane: 'clean', verdict: 'verify', content_hash: compute_content_hash(verified_raw) },
     'ops/missing.md': { path: 'ops/missing.md', lane: 'check', verdict: 'point', content_hash: 'x', pointer: { target: 'procedures/release.md#release-procedure', section_hash: 'h' } },
   } }), dir);
   commit('one', '2026-02-01T12:00:00');
@@ -66,7 +66,7 @@ describe('buildGraph', () => {
     expect(g.symbols['widgetRetry']).toEqual({ file: 'src/a.ts', file_kind: 'definition', cited_by: ['ops/verified.md'] });
 
     // every triage `missing` is a resolved:false ref; every resolved file ref has code_changed
-    const t = (await triage({ root: dir, docs_path: docs, rels: Object.keys(g.docs), config })).docs;
+    const t = (await triage_docs({ root: dir, docs_path: docs, rels: Object.keys(g.docs), config })).docs;
     for (const d of t) for (const m of d.missing) expect(g.docs[d.path]!.refs).toContainEqual({ kind: 'file', target: m, resolved: false });
     for (const d of Object.values(g.docs)) for (const r of d.refs) if (r.kind === 'file' && r.resolved) expect(r.code_changed).toBeDefined();
     expect(g.docs['ops/missing.md']!.verdict).toBe('check');
@@ -80,16 +80,16 @@ describe('buildGraph', () => {
 
   it('exports exactly the docs triage judges', async () => {
     const config = await load_plugin_config(dir);
-    const rels = (await md_files(docs)).map((f) => relative(docs, f));
-    const judged = (await triage({ root: dir, docs_path: docs, rels, config })).docs.map((d) => d.path).sort();
+    const rels = (await list_markdown_files(docs)).map((f) => relative(docs, f));
+    const judged = (await triage_docs({ root: dir, docs_path: docs, rels, config })).docs.map((d) => d.path).sort();
     expect(Object.keys((await build_graph({ root: dir, docs_path: docs, config })).docs).sort()).toEqual(judged);
     expect(judged).toEqual(expect.arrayContaining(['drafts/d.md', 'ops/gen.md', 'plans/plan.md']));
   });
 
   it('serializes deterministically with sorted keys and a trailing newline', async () => {
     const config = await load_plugin_config(dir);
-    const a = serialize_graph(await build_graph({ root: dir, docs_path: docs, config }));
-    const b = serialize_graph(await build_graph({ root: dir, docs_path: docs, config }));
+    const a = render_graph(await build_graph({ root: dir, docs_path: docs, config }));
+    const b = render_graph(await build_graph({ root: dir, docs_path: docs, config }));
     expect(a).toBe(b);
     expect(a.endsWith('}\n')).toBe(true);
     expect(a.indexOf('"docs"')).toBeLessThan(a.indexOf('"source_commit"'));
@@ -111,7 +111,7 @@ describe('buildGraph review fixes', () => {
     put2('guides/pointing.md', POINTING);
     put2('guides/never.md', '---\ntitle: Never reconciled\n---\nSee `src/a.ts` and `src/gone.ts`.\n');
     put2('.hewtd/reconcile.json', JSON.stringify({ version: 1, entries: {
-      'guides/pointing.md': { path: 'guides/pointing.md', lane: 'clean', verdict: 'verify', content_hash: hash_content(POINTING), pointer: { target: 'ops/deploy.md#release', section_hash: 'hash-of-an-older-section' } },
+      'guides/pointing.md': { path: 'guides/pointing.md', lane: 'clean', verdict: 'verify', content_hash: compute_content_hash(POINTING), pointer: { target: 'ops/deploy.md#release', section_hash: 'hash-of-an-older-section' } },
     } }), d2);
     execFileSync('git', ['add', '-A'], { cwd: d2 });
     execFileSync('git', ['commit', '-qm', 'init'], { cwd: d2 });

@@ -4,9 +4,9 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, exist
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { apply_reviews } from '../../../src/core/reconcile/apply';
-import { render_review, write_review_skeletons, parse_review, type ReviewEntry } from '../../../src/core/reconcile/review';
-import { hash_content, load_ledger } from '../../../src/core/reconcile/ledger';
-import { fingerprint } from '../../../src/core/reconcile/secrets';
+import { render_review, write_review_skeletons, load_review, type ReviewEntry } from '../../../src/core/reconcile/review';
+import { compute_content_hash, load_ledger } from '../../../src/core/reconcile/ledger';
+import { compute_fingerprint } from '../../../src/core/reconcile/secrets';
 import type { TriageResult } from '../../../src/core/reconcile/triage';
 
 // Secret-shaped strings are built at runtime so the repo holds no scannable literal.
@@ -19,7 +19,7 @@ const g = (...a: string[]) => execFileSync('git', a, { cwd: root, encoding: 'utf
 const doc = (body: string) => `---\ntitle: a\ndomains:\n  - backend\n---\n\n# a\n\n${body}\n`;
 const read = (rel: string) => readFileSync(join(docs, rel), 'utf-8');
 const env = () => join(root, '.env.hewtd');
-const entry = (over: Partial<ReviewEntry> = {}): ReviewEntry => ({ path: 'backend/a.md', content_hash: hash_content(read('backend/a.md')), verdict: 'secret', ...over });
+const entry = (over: Partial<ReviewEntry> = {}): ReviewEntry => ({ path: 'backend/a.md', content_hash: compute_content_hash(read('backend/a.md')), verdict: 'secret', ...over });
 const run = async (e: ReviewEntry) => {
   mkdirSync(join(root, '.hewtd/reconcile'), { recursive: true });
   const f = join(root, '.hewtd/reconcile/review-1-1.md');
@@ -49,7 +49,7 @@ describe('secret verdict', () => {
     const text = readFileSync(file!, 'utf-8');
     expect(text).not.toContain(tok);
     expect(text).not.toContain(tok2);
-    const [{ entry: e }] = (await parse_review(file!)).entries as [{ entry: ReviewEntry }];
+    const [{ entry: e }] = (await load_review(file!)).entries as [{ entry: ReviewEntry }];
     expect(e.verdict).toBe('secret');
     expect(e.secrets?.map((s) => s.env)).toEqual(['HEWTD_SECRET_VAULT_TOKEN', 'HEWTD_SECRET_VAULT_TOKEN_2']);
     expect(e.secrets![0]!.masked).toBe('hvs.…28');
@@ -57,7 +57,7 @@ describe('secret verdict', () => {
 
   it('moves values to a 0600 ignored .env.hewtd, leaves pointers, commits no value', async () => {
     seed(`VAULT_TOKEN=${tok}\nagain ${tok}`);
-    const res = await run(entry({ secrets: [{ rule: 'vault-token', line: 9, masked: 'x', fingerprint: fingerprint(tok), env: 'HEWTD_SECRET_VAULT_TOKEN' }] }));
+    const res = await run(entry({ secrets: [{ rule: 'vault-token', line: 9, masked: 'x', fingerprint: compute_fingerprint(tok), env: 'HEWTD_SECRET_VAULT_TOKEN' }] }));
     expect(res.outcomes[0]).toMatchObject({ status: 'applied' });
     const after = read('backend/a.md');
     expect(after).not.toContain(tok);
@@ -77,7 +77,7 @@ describe('secret verdict', () => {
     seed(`VAULT_TOKEN=${tok}`, '.hewtd/\n.env.hewtd\n');
     writeFileSync(env(), `HEWTD_SECRET_VAULT_TOKEN=${tok2}\n`);
     const before = read('backend/a.md');
-    const res = await run(entry({ secrets: [{ rule: 'vault-token', line: 9, masked: 'x', fingerprint: fingerprint(tok), env: 'HEWTD_SECRET_VAULT_TOKEN' }] }));
+    const res = await run(entry({ secrets: [{ rule: 'vault-token', line: 9, masked: 'x', fingerprint: compute_fingerprint(tok), env: 'HEWTD_SECRET_VAULT_TOKEN' }] }));
     expect(res.outcomes[0]).toMatchObject({ status: 'error', detail: expect.stringContaining('different value') });
     expect(read('backend/a.md')).toBe(before);
     expect(readFileSync(env(), 'utf-8')).toBe(`HEWTD_SECRET_VAULT_TOKEN=${tok2}\n`);

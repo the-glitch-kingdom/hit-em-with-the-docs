@@ -65,7 +65,7 @@ describe('archive/ is excluded from every scan, at any depth', () => {
   });
 
   it('audit never validates archived content', async () => {
-    const result = await audit_documentation({ docsPath: docs_path, silent: true });
+    const result = await audit_documentation({ docs_path, silent: true });
 
     // No issue may be attributed to a file under an archive/ folder — an
     // archived doc's stale frontmatter is not a problem to be reported.
@@ -74,9 +74,9 @@ describe('archive/ is excluded from every scan, at any depth', () => {
   });
 
   it('a link INTO the archive still resolves — referenceable, just not concrete', async () => {
-    const result = await check_links({ docsPath: docs_path, silent: true });
+    const result = await check_links({ docs_path, silent: true });
 
-    const broken_into_archive = result.brokenLinks.filter((b) =>
+    const broken_into_archive = result.broken_links.filter((b) =>
       b.targetPath.includes('archive')
     );
     expect(broken_into_archive).toEqual([]);

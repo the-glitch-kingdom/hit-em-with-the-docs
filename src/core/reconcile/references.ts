@@ -109,7 +109,7 @@ export function extract_references(body: string): Reference[] {
     for (const m of raw.matchAll(/\$([A-Z][A-Z0-9_]{2,})\b/g)) add(m[1]!, 'env', line);
   });
   for (const l of extract_links(body)) {
-    if (l.isInternal && !/^[a-z][a-z0-9+.-]*:/i.test(l.url)) add(l.url, 'doc-link', l.lineNumber);
+    if (l.is_internal && !/^[a-z][a-z0-9+.-]*:/i.test(l.url)) add(l.url, 'doc-link', l.line_number);
   }
   return out;
 }
@@ -123,18 +123,18 @@ export interface RepoIndex {
   files: Set<string>;
   /** npm script name -> directory of the first package.json defining it ('' = root) */
   scripts: Map<string, string>;
-  makeTargets: Set<string>;
+  make_targets: Set<string>;
   deps: Set<string>;
   schema: Schema;
   /** schema files actually parsed (from `schema_sources`) */
-  schemaFiles: string[];
+  schema_files: string[];
   /** names with no code hit that do appear in markdown (docs neither prove nor disprove them) */
   /** name -> up to two markdown files that mention it (names with no code hit only) */
-  mdNames: Map<string, Set<string>>;
+  md_names: Map<string, Set<string>>;
   /** symbol -> first file it appears in (non-markdown); filled by primeSymbols */
   symbols: Map<string, string | null>;
   /** symbol -> whether `symbols` holds a defining file; filled by primeSymbols */
-  symbolKinds: Map<string, 'definition' | 'reference'>;
+  symbol_kinds: Map<string, 'definition' | 'reference'>;
 }
 
 const git = (root: string, args: string[]): string =>
@@ -222,7 +222,7 @@ export function build_repo_index(root: string, schema_sources: string[] = []): R
     if (f.endsWith('.sql')) parse_sql(read(f), schema);
     else if (f.endsWith('.prisma')) parse_prisma(read(f), schema);
   }
-  return { root, files, scripts, makeTargets: make_targets, deps, schema, schemaFiles: schema_files, mdNames: new Map(), symbols: new Map(), symbolKinds: new Map() };
+  return { root, files, scripts, make_targets, deps, schema, schema_files, md_names: new Map(), symbols: new Map(), symbol_kinds: new Map() };
 }
 
 const BIG_FILE = 512 * 1024;
@@ -275,7 +275,7 @@ function definition_pass(idx: RepoIndex, names: string[], files: string[]): void
   for (const n of names) {
     const d = defs.get(n);
     if (d) idx.symbols.set(n, d);
-    idx.symbolKinds.set(n, d ? 'definition' : 'reference');
+    idx.symbol_kinds.set(n, d ? 'definition' : 'reference');
   }
 }
 
@@ -328,7 +328,7 @@ export function prime_symbols(idx: RepoIndex, names: Iterable<string>): void {
           const c = l.lastIndexOf(':');
           const tok = l.slice(c + 1);
           if (c <= 0 || !want.has(tok)) continue;
-          const files = idx.mdNames.get(tok) ?? idx.mdNames.set(tok, new Set()).get(tok)!;
+          const files = idx.md_names.get(tok) ?? idx.md_names.set(tok, new Set()).get(tok)!;
           if (files.size < 2) files.add(l.slice(0, c));
         }
       }
@@ -340,7 +340,7 @@ export function prime_symbols(idx: RepoIndex, names: Iterable<string>): void {
 // ---------- resolution ----------
 
 function mentioned_elsewhere(idx: RepoIndex, name: string, self: string | undefined): boolean {
-  const files = idx.mdNames.get(name);
+  const files = idx.md_names.get(name);
   return !!files && [...files].some((f) => f !== self);
 }
 
@@ -359,9 +359,9 @@ export interface ResolveOptions {
   /** sibling checkouts, consulted only for refs unresolved locally */
   related?: RelatedRepo[];
   /** absolute path of the doc, for resolving relative links */
-  docFile?: string;
+  doc_file?: string;
   /** absolute docs root, for resolving links */
-  docsPath?: string;
+  docs_path?: string;
 }
 
 /** `example.com/x`: a host-like first segment (letters-only TLD) is a URL, not a repo directory. */
@@ -386,11 +386,11 @@ function in_related(related: RelatedRepo[], r: Reference): { where: string; kind
     let where: string | undefined;
     let kind: 'definition' | 'reference' | undefined;
     if (r.kind === 'path') where = resolve_path(sib, r.ref);
-    else if (r.kind === 'symbol' || r.kind === 'env') { where = sib.symbols.get(r.ref) ?? undefined; kind = sib.symbolKinds.get(r.ref); }
+    else if (r.kind === 'symbol' || r.kind === 'env') { where = sib.symbols.get(r.ref) ?? undefined; kind = sib.symbol_kinds.get(r.ref); }
     else if (r.kind === 'command') {
       const name = r.ref.replace(/^\S+( run)? /, '');
       if (r.ref.startsWith('npm') && sib.scripts.has(name)) where = join(sib.scripts.get(name)!, 'package.json');
-      else if (r.ref.startsWith('make') && sib.makeTargets.has(name)) where = 'Makefile';
+      else if (r.ref.startsWith('make') && sib.make_targets.has(name)) where = 'Makefile';
     }
     if (where) return { where: `${rel.name}:${where}`, ...(kind && { kind }) };
   }
@@ -404,7 +404,7 @@ export async function resolve_references(idx: RepoIndex, refs: Reference[], opts
   const lost = sym_names.filter((n) => !idx.symbols.get(n));
   if (related.length && lost.length) for (const rel of related) { const sib = related_index(rel); if (sib) prime_symbols(sib, lost); }
   const have_schema = idx.schema.tables.size > 0;
-  const self = opts.docFile ? relative(idx.root, opts.docFile).split('\\').join('/') : undefined;
+  const self = opts.doc_file ? relative(idx.root, opts.doc_file).split('\\').join('/') : undefined;
   const out: ResolvedReference[] = [];
   for (const r of refs) {
     let status: RefStatus = 'unknown';
@@ -419,14 +419,14 @@ export async function resolve_references(idx: RepoIndex, refs: Reference[], opts
         break;
       case 'symbol': case 'env':
         where = idx.symbols.get(r.ref) ?? undefined;
-        if (where) where_kind = idx.symbolKinds.get(r.ref);
+        if (where) where_kind = idx.symbol_kinds.get(r.ref);
         // Only another doc's mention makes a code-less name `unknown` (an external name); the citing doc itself proves nothing.
         status = where ? 'ok' : mentioned_elsewhere(idx, r.ref, self) ? 'unknown' : 'missing';
         break;
       case 'command': {
         const [tool, name] = [r.ref.split(' ')[0]!, r.ref.replace(/^\S+( run)? /, '')];
         if (tool === 'npm') status = idx.scripts.has(name) ? 'ok' : 'missing';
-        else if (tool === 'make') status = idx.makeTargets.has(name) ? 'ok' : idx.files.has('Makefile') ? 'missing' : 'unknown';
+        else if (tool === 'make') status = idx.make_targets.has(name) ? 'ok' : idx.files.has('Makefile') ? 'missing' : 'unknown';
         else status = idx.deps.has(name) || existsSync(resolve(idx.root, 'node_modules/.bin', name)) ? 'ok' : 'unknown'; // npx can fetch from the registry
         break;
       }
@@ -439,8 +439,8 @@ export async function resolve_references(idx: RepoIndex, refs: Reference[], opts
         break;
       }
       case 'doc-link':
-        if (opts.docFile && opts.docsPath) {
-          const target = r.ref.startsWith('/') ? null : resolve(dirname(opts.docFile), decodeURI(r.ref.split(/[#?]/)[0]!));
+        if (opts.doc_file && opts.docs_path) {
+          const target = r.ref.startsWith('/') ? null : resolve(dirname(opts.doc_file), decodeURI(r.ref.split(/[#?]/)[0]!));
           if (target && relative(idx.root, target).startsWith('..')) {
             // outside the project: only a related repo's .documentation is checkable
             const rel = related.find((x) => !relative(join(x.root, '.documentation'), target).startsWith('..'));
@@ -449,7 +449,7 @@ export async function resolve_references(idx: RepoIndex, refs: Reference[], opts
               where = `${rel.name}:${relative(rel.root, target).split('\\').join('/')}`;
             }
           } else {
-            status = (await check_single_link(r.ref, opts.docFile, opts.docsPath)).valid ? 'ok' : 'missing';
+            status = (await check_single_link(r.ref, opts.doc_file, opts.docs_path)).valid ? 'ok' : 'missing';
           }
         }
         break;

@@ -30,8 +30,8 @@ function verdict_of(d: TriageDoc, ledger_verified: boolean, in_ledger: boolean):
   return only_stale ? 'stale' : 'check';
 }
 
-export async function build_graph(opts: { root: string; docsPath: string; config: PluginConfig; dryRun?: boolean }): Promise<GraphV1> {
-  const { root, docsPath: docs_path, config } = opts;
+export async function build_graph(opts: { root: string; docs_path: string; config: PluginConfig; dry_run?: boolean }): Promise<GraphV1> {
+  const { root, docs_path, config } = opts;
   const repo = git_root(docs_path) ?? root;
   // exactly the set triage judges: the export and triage cannot diverge
   const rels = (await md_files(docs_path)).map((f) => posix(relative(docs_path, f))).sort(cmp);
@@ -42,8 +42,8 @@ export async function build_graph(opts: { root: string; docsPath: string; config
   }
   const kept = [...raws.keys()];
   const ledger = await load_ledger(resolve(root, config.reconcile.ledger_path));
-  const triaged = new Map((await resolve_docs({ root, docsPath: docs_path, rels: kept, config, ledger })).map((d) => [d.path, d]));
-  const body = body_changed_dates(repo, kept.map((r) => ({ path: posix(relative(repo, join(docs_path, r))), content: raws.get(r)!.raw })), { persist: !opts.dryRun });
+  const triaged = new Map((await resolve_docs({ root, docs_path, rels: kept, config, ledger })).map((d) => [d.path, d]));
+  const body = body_changed_dates(repo, kept.map((r) => ({ path: posix(relative(repo, join(docs_path, r))), content: raws.get(r)!.raw })), { persist: !opts.dry_run });
 
   const own = last_changed(repo);
   const sibs = new Map(config.reconcile.related_repos.map((r) => [r.name, last_changed(resolve(root, r.path))]));
@@ -119,16 +119,16 @@ export interface WriteGraphResult {
 }
 
 /** Build and write `<git root>/.hewtd/graph.json`; a byte-identical file is left alone (mtime kept). */
-export async function write_graph(opts: { root: string; docsPath: string; config: PluginConfig; dryRun?: boolean }): Promise<WriteGraphResult> {
+export async function write_graph(opts: { root: string; docs_path: string; config: PluginConfig; dry_run?: boolean }): Promise<WriteGraphResult> {
   if (!opts.config.graph_export) return { status: 'disabled' };
-  const top = git_root(opts.docsPath);
+  const top = git_root(opts.docs_path);
   if (!top) return { status: 'no-git' };
   const file = join(top, '.hewtd', 'graph.json');
   const text = serialize_graph(await build_graph(opts));
   assert_no_secrets(text, 'the graph export', opts.config.reconcile.secrets);
   const had = existsSync(file);
   if (had && readFileSync(file, 'utf-8') === text) return { status: 'unchanged', file };
-  if (opts.dryRun) return { status: 'would-write', file };
+  if (opts.dry_run) return { status: 'would-write', file };
   mkdirSync(join(top, '.hewtd'), { recursive: true });
   writeFileSync(file, text);
   let ignored = true;

@@ -27,11 +27,11 @@ import matter from 'gray-matter';
 
 export interface FixLegacyLayoutOptions {
   /** Absolute vault root. */
-  vaultRoot: string;
+  vault_root: string;
   /** Project root — used for relative-path provenance rewrites. */
-  projectRoot: string;
+  project_root: string;
   /** If true, returns the plan without writing. */
-  dryRun?: boolean;
+  dry_run?: boolean;
 }
 
 export interface MovedFolder {
@@ -45,17 +45,17 @@ export interface MovedFolder {
 
 export interface RewrittenProvenance {
   /** Absolute fact file path. */
-  factPath: string;
+  fact_path: string;
   /** Old provenance string that was replaced. */
-  oldRef: string;
+  old_ref: string;
   /** New provenance string. */
-  newRef: string;
+  new_ref: string;
 }
 
 export interface FixLegacyLayoutResult {
-  vaultRoot: string;
+  vault_root: string;
   moved: MovedFolder[];
-  rewrittenProvenance: RewrittenProvenance[];
+  rewritten_provenance: RewrittenProvenance[];
   /** Paths that LOOKED like incident folders but were ambiguous. Reported but not moved. */
   skipped: { path: string; reason: string }[];
   action: 'fixed' | 'no_op' | 'dry_run';
@@ -67,12 +67,12 @@ export interface FixLegacyLayoutResult {
 export async function fix_legacy_layout(
   options: FixLegacyLayoutOptions
 ): Promise<FixLegacyLayoutResult> {
-  const { vaultRoot: vault_root, projectRoot: project_root, dryRun: dry_run = false } = options;
+  const { vault_root, project_root, dry_run = false } = options;
 
   const result: FixLegacyLayoutResult = {
-    vaultRoot: vault_root,
+    vault_root,
     moved: [],
-    rewrittenProvenance: [],
+    rewritten_provenance: [],
     skipped: [],
     action: 'no_op',
   };
@@ -171,9 +171,9 @@ export async function fix_legacy_layout(
         if (rewritten !== ref) {
           did_rewrite = true;
           provenance_rewrites.push({
-            factPath: fact_path,
-            oldRef: ref,
-            newRef: rewritten,
+            fact_path,
+            old_ref: ref,
+            new_ref: rewritten,
           });
         }
         new_provenance.push(rewritten);
@@ -218,7 +218,7 @@ export async function fix_legacy_layout(
     }
   }
 
-  result.rewrittenProvenance = provenance_rewrites;
+  result.rewritten_provenance = provenance_rewrites;
   result.action = dry_run
     ? 'dry_run'
     : result.moved.length > 0 || provenance_rewrites.length > 0

@@ -9,9 +9,9 @@ const VALID_FIXTURE_ROOT = resolve(__dirname, '../../fixtures/knowledge-base/val
 
 async function build_index() {
   return build_citer_index({
-    projectRoot: VALID_FIXTURE_ROOT,
-    vaultRoot: VALID_FIXTURE_ROOT,
-    playbookGlobs: [resolve(VALID_FIXTURE_ROOT, 'playbooks/*.md')],
+    project_root: VALID_FIXTURE_ROOT,
+    vault_root: VALID_FIXTURE_ROOT,
+    playbook_globs: [resolve(VALID_FIXTURE_ROOT, 'playbooks/*.md')],
   });
 }
 
@@ -30,9 +30,9 @@ describe('renderFactsIndex (2.3.0)', () => {
 
   it('emits "no facts yet" message when index is empty', async () => {
     const empty = await build_citer_index({
-      projectRoot: '/tmp',
-      vaultRoot: '/tmp/nonexistent',
-      playbookGlobs: [],
+      project_root: '/tmp',
+      vault_root: '/tmp/nonexistent',
+      playbook_globs: [],
     });
     const out = render_facts_index(empty);
     expect(out).toContain('No facts yet');
@@ -72,8 +72,8 @@ describe('renderIncidentsIndex (2.3.0)', () => {
     // Manually inject a second, older incident to verify sort order.
     index.incidents.set('2026-04-01-test-older', {
       id: '2026-04-01-test-older',
-      folderPath: '/tmp/older',
-      relFolderPath: 'incidents/2026-04-01-test-older',
+      folder_path: '/tmp/older',
+      rel_folder_path: 'incidents/2026-04-01-test-older',
       title: 'Older Test Incident',
       date: '2026-04-01',
       severity: 'low',
@@ -94,9 +94,9 @@ describe('renderIncidentsIndex (2.3.0)', () => {
 
   it('emits "no incidents yet" message when index is empty', async () => {
     const empty = await build_citer_index({
-      projectRoot: '/tmp',
-      vaultRoot: '/tmp/nonexistent',
-      playbookGlobs: [],
+      project_root: '/tmp',
+      vault_root: '/tmp/nonexistent',
+      playbook_globs: [],
     });
     expect(render_incidents_index(empty)).toContain('No incidents yet');
   });
@@ -143,9 +143,9 @@ describe('renderSymptomsIndex (2.3.0)', () => {
 
   it('emits "no symptoms" message when index has no citers', async () => {
     const empty = await build_citer_index({
-      projectRoot: '/tmp',
-      vaultRoot: '/tmp/nonexistent',
-      playbookGlobs: [],
+      project_root: '/tmp',
+      vault_root: '/tmp/nonexistent',
+      playbook_globs: [],
     });
     expect(render_symptoms_index(empty)).toContain('No symptoms blocks found');
   });

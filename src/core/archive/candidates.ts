@@ -64,8 +64,8 @@ function last_updated_days(value: unknown, today: Date): number | null {
 }
 
 export interface FindCandidatesInput {
-  docsPath: string;
-  projectRoot: string;
+  docs_path: string;
+  project_root: string;
   config: ArchiveConfig;
   /** Override "today" for deterministic tests. */
   today?: Date;
@@ -74,13 +74,13 @@ export interface FindCandidatesInput {
 export async function find_archive_candidates(
   input: FindCandidatesInput
 ): Promise<ArchiveCandidate[]> {
-  const { docsPath: docs_path, projectRoot: project_root, config } = input;
+  const { docs_path, project_root, config } = input;
   const today = input.today ?? new Date();
 
   // Inbound-degree map (archive/ already excluded by findMarkdownFiles).
   const graph = await build_link_graph(docs_path);
   const in_degree = new Map<string, number>();
-  for (const n of graph.nodes) in_degree.set(n.path.replace(/\\/g, '/'), n.inDegree);
+  for (const n of graph.nodes) in_degree.set(n.path.replace(/\\/g, '/'), n.in_degree);
 
   const files = await find_markdown_files(docs_path);
   const candidates: ArchiveCandidate[] = [];

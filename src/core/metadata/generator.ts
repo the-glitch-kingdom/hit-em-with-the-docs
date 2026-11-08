@@ -5,10 +5,10 @@ import { count_words, format_read_time, extract_title } from '../../utils/markdo
 import type { DocumentMetadata, PartialDocumentMetadata } from './schema.js';
 
 export interface GeneratorOptions {
-  filePath: string;
+  file_path: string;
   content: string;
-  docsRoot?: string;
-  existingMetadata?: PartialDocumentMetadata;
+  docs_root?: string;
+  existing_metadata?: PartialDocumentMetadata;
 }
 
 export interface GeneratedMetadata extends Partial<DocumentMetadata> {
@@ -23,10 +23,10 @@ export interface GeneratedMetadata extends Partial<DocumentMetadata> {
  */
 export function generate_metadata(options: GeneratorOptions): GeneratedMetadata {
   const {
-    filePath: file_path,
+    file_path,
     content,
-    docsRoot: docs_root = '.documentation',
-    existingMetadata: existing_metadata = {},
+    docs_root = '.documentation',
+    existing_metadata = {},
   } = options;
 
   const generated: GeneratedMetadata = {
@@ -61,7 +61,7 @@ export function generate_metadata(options: GeneratorOptions): GeneratedMetadata 
       generated.domains = [domain_result.domain];
 
       // Add alternative domains with high confidence
-      for (const alt of domain_result.alternativeDomains) {
+      for (const alt of domain_result.alternative_domains) {
         if (alt.confidence > 0.5 && generated.domains.length < 3) {
           generated.domains.push(alt.domain);
         }

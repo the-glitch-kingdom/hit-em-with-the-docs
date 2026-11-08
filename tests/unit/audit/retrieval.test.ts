@@ -93,7 +93,7 @@ describe('audit integration', () => {
       await writeFile(join(dir, 'guides', 'a.md'), fm(''));
       await writeFile(join(dir, 'guides', 'INDEX.md'), fm('generated: true\n'));
       await writeFile(join(dir, 'guides', 'plain.md'), fm('generated: true\n'));
-      const r = await audit_documentation({ docsPath: dir, silent: true, projectRoot: dir });
+      const r = await audit_documentation({ docs_path: dir, silent: true, project_root: dir });
       const ret = r.issues.filter((i) => i.rule.startsWith('RETRIEVAL_'));
       expect(ret.length).toBeGreaterThan(0);
       expect(ret.every((i) => i.severity === 'warning' && i.code === undefined)).toBe(true);
@@ -137,7 +137,7 @@ describe('audit integration', () => {
 
 describe('countActionableIssues (Action fail-on-error, review fix)', () => {
   it('ignores advisory RETRIEVAL_* warnings', async () => {
-    const { count_actionable_issues: count_actionable_issues } = await import('../../../src/core/audit/auditor.js');
+    const { count_actionable_issues } = await import('../../../src/core/audit/auditor.js');
     expect(
       count_actionable_issues([
         { rule: 'RETRIEVAL_MISSING_PURPOSE' },

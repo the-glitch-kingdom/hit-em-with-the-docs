@@ -76,7 +76,7 @@ function vault_owned_prefixes(docs_path: string): string[] {
 
 export interface RegenerateOptions {
   /** Path to the documentation root (e.g. `.documentation`). */
-  docsPath: string;
+  docs_path: string;
   /**
    * Restrict domain INDEX.md/REGISTRY.md writes to these domains. The root
    * INDEX.md/REGISTRY.md are always refreshed regardless. Defaults to all
@@ -89,16 +89,16 @@ export interface RegenerateOptions {
    * that WOULD be written. Exists so users can preview the (large, one-time)
    * diff the 2.7.1 recursive walk produces before committing to it.
    */
-  dryRun?: boolean;
+  dry_run?: boolean;
 }
 
 export interface RegenerateResult {
   /** Per-domain document counts — all domains, regardless of the filter. */
-  documentCounts: Record<string, number>;
+  document_counts: Record<string, number>;
   /** Absolute paths of every INDEX.md / REGISTRY.md written. */
-  filesWritten: string[];
+  files_written: string[];
   /** Total documents across all domains. */
-  totalDocuments: number;
+  total_documents: number;
 }
 
 /**
@@ -210,9 +210,9 @@ async function build_domain_entries(
           : title_from_file_name(file_name),
       tier: typeof data.tier === 'string' ? data.tier : 'guide',
       status: typeof data.status === 'string' ? data.status : 'active',
-      lastUpdated: normalize_date(data.last_updated),
+      last_updated: normalize_date(data.last_updated),
       ...(typeof data.purpose === 'string' && { purpose: data.purpose }),
-      wordCount:
+      word_count:
         typeof data.word_count === 'number'
           ? data.word_count
           : count_words(content),
@@ -235,14 +235,14 @@ async function build_domain_entries(
 export async function regenerate_indexes(
   options: RegenerateOptions
 ): Promise<RegenerateResult> {
-  const { docsPath: docs_path, silent = false, dryRun: dry_run = false } = options;
+  const { docs_path, silent = false, dry_run = false } = options;
   const all_domains = get_all_domains();
   const target_domains = options.domains ?? all_domains;
 
   const result: RegenerateResult = {
-    documentCounts: {},
-    filesWritten: [],
-    totalDocuments: 0,
+    document_counts: {},
+    files_written: [],
+    total_documents: 0,
   };
 
   // Scan every domain — the root INDEX needs counts for all of them even
@@ -256,8 +256,8 @@ export async function regenerate_indexes(
 
   for (const domain of all_domains) {
     const domain_entries = await build_domain_entries(docs_path, domain, '');
-    result.documentCounts[domain] = domain_entries.length;
-    result.totalDocuments += domain_entries.length;
+    result.document_counts[domain] = domain_entries.length;
+    result.total_documents += domain_entries.length;
     root_entries_by_domain[domain] = domain_entries.map((e) => ({
       ...e,
       path: `${domain}/${e.path}`,
@@ -282,7 +282,7 @@ export async function regenerate_indexes(
         'utf-8'
       );
     }
-    result.filesWritten.push(index_path, registry_path);
+    result.files_written.push(index_path, registry_path);
   }
 
   // Root INDEX.md / REGISTRY.md — always refreshed.
@@ -297,13 +297,13 @@ export async function regenerate_indexes(
       );
       await writeFile(root_registry_path, generate_root_registry(present), 'utf-8');
     }
-    result.filesWritten.push(root_index_path, root_registry_path);
+    result.files_written.push(root_index_path, root_registry_path);
   }
 
   if (!silent) {
     logger.success(
-      `${dry_run ? 'Would regenerate' : 'Regenerated'} ${result.filesWritten.length} ` +
-        `index file(s) — ${result.totalDocuments} document(s) across ` +
+      `${dry_run ? 'Would regenerate' : 'Regenerated'} ${result.files_written.length} ` +
+        `index file(s) — ${result.total_documents} document(s) across ` +
         `${all_domains.length} domains`
     );
   }
@@ -314,9 +314,9 @@ export async function regenerate_indexes(
 export interface KbIndexResult {
   facts: number;
   incidents: number;
-  factsPath: string;
-  incidentsPath: string;
-  symptomsPath: string;
+  facts_path: string;
+  incidents_path: string;
+  symptoms_path: string;
 }
 
 /**
@@ -335,16 +335,16 @@ export async function generate_kb_indexes(
   if (!(await path_exists(vault_root))) return null;
 
   const playbook_globs = resolve_playbook_globs(project_root, config);
-  const index = await build_citer_index({ projectRoot: project_root, vaultRoot: vault_root, playbookGlobs: playbook_globs });
+  const index = await build_citer_index({ project_root, vault_root, playbook_globs });
   const facts_path = join(vault_root, 'facts', 'INDEX.md');
   const base = { facts: index.facts.size, incidents: index.incidents.size };
   if (dry_run) {
-    return { ...base, factsPath: facts_path, incidentsPath: '', symptomsPath: '' };
+    return { ...base, facts_path, incidents_path: '', symptoms_path: '' };
   }
   return {
     ...base,
-    factsPath: await generate_facts_index({ vaultRoot: vault_root, index }),
-    incidentsPath: await generate_incidents_index({ vaultRoot: vault_root, index }),
-    symptomsPath: await generate_symptoms_index({ vaultRoot: vault_root, index }),
+    facts_path: await generate_facts_index({ vault_root, index }),
+    incidents_path: await generate_incidents_index({ vault_root, index }),
+    symptoms_path: await generate_symptoms_index({ vault_root, index }),
   };
 }

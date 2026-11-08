@@ -113,7 +113,7 @@ Secure your REST API endpoints with authentication.
 Use proper database queries for user validation.
 `;
       const result = detect_domain_from_content(content);
-      expect(result.alternativeDomains.length).toBeGreaterThan(0);
+      expect(result.alternative_domains.length).toBeGreaterThan(0);
     });
 
     it('should return null for no keyword matches', () => {

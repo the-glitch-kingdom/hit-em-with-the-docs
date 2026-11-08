@@ -30,8 +30,8 @@ describe('findClusters', () => {
     put('guides/INDEX.md', names.map((n) => `${n}.md`), 'generated: true\n');
     const [c] = await find_clusters(root, cfg);
     expect(c!.overview).toBeUndefined();
-    expect(c!.generatedOnlyHub).toBe(true);
-    expect(c!.sharedTags).toEqual(['deploy', 'ops']);
+    expect(c!.generated_only_hub).toBe(true);
+    expect(c!.shared_tags).toEqual(['deploy', 'ops']);
   });
 
   it('finds a kind: overview doc linking 4 of 5 (duplicates do not inflate)', async () => {
@@ -39,9 +39,9 @@ describe('findClusters', () => {
     put('guides/a.md', ['b.md', 'b.md', 'b.md', 'c.md', 'd.md'], 'kind: overview\n');
     const [c] = await find_clusters(root, cfg);
     expect(c!.overview).toBe('guides/a.md');
-    expect(c!.kindOverview).toBe(true);
+    expect(c!.kind_overview).toBe(true);
     expect(c!.coverage).toBe(0.75);
-    expect(c!.generatedOnlyHub).toBe(false);
+    expect(c!.generated_only_hub).toBe(false);
   });
 
   it('does not count repeated links to one doc as coverage', async () => {
@@ -141,7 +141,7 @@ describe('findClusters communities', () => {
 
 describe('overview config', () => {
   it('defaults leniently', async () => {
-    const { load_plugin_config: load_plugin_config } = await import('../../../src/utils/config.js');
+    const { load_plugin_config } = await import('../../../src/utils/config.js');
     writeFileSync(join(root, 'x'), '');
     mkdirSync(join(root, '.claude'));
     writeFileSync(join(root, '.claude/hit-em-with-the-docs.json'), JSON.stringify({ overview: { min_cluster_size: 'x', backlinks: false } }));

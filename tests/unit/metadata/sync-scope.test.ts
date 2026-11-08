@@ -65,11 +65,11 @@ describe('metadata-sync scope (#25)', () => {
 
   it('refuses to --fix a directory that is not a documentation root', async () => {
     const src = await source_tree();
-    const result = await sync_metadata({ docsPath: src, fix: true, silent: true });
+    const result = await sync_metadata({ docs_path: src, fix: true, silent: true });
 
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]!.error).toContain("outside this project's documentation root");
-    expect(result.fixedFiles).toBe(0);
+    expect(result.fixed_files).toBe(0);
   });
 
   it('leaves every non-documentation file byte-identical', async () => {
@@ -80,7 +80,7 @@ describe('metadata-sync scope (#25)', () => {
       )
     );
 
-    await sync_metadata({ docsPath: src, fix: true, silent: true });
+    await sync_metadata({ docs_path: src, fix: true, silent: true });
 
     const after = await Promise.all(
       ['infrastructure/vault/SETUP.md', 'frontend/tests/notes.md', 'LOOSE.md'].map((p) =>
@@ -96,9 +96,9 @@ describe('metadata-sync scope (#25)', () => {
   it('still scans a non-documentation directory read-only', async () => {
     // Reads write nothing, and inspecting an unmanaged directory is useful.
     const src = await source_tree();
-    const result = await sync_metadata({ docsPath: src, fix: false, silent: true });
+    const result = await sync_metadata({ docs_path: src, fix: false, silent: true });
 
-    expect(result.totalFiles).toBe(3);
+    expect(result.total_files).toBe(3);
     expect(result.errors.every((e) => !e.error.includes('documentation root'))).toBe(true);
   });
 
@@ -106,7 +106,7 @@ describe('metadata-sync scope (#25)', () => {
     const src = await source_tree();
     const before = await readFile(join(src, 'LOOSE.md'), 'utf-8');
 
-    const result = await sync_metadata({ docsPath: src, fix: true, dryRun: true, silent: true });
+    const result = await sync_metadata({ docs_path: src, fix: true, dry_run: true, silent: true });
 
     expect(result.errors).toHaveLength(0);
     expect(await readFile(join(src, 'LOOSE.md'), 'utf-8')).toBe(before);
@@ -114,10 +114,10 @@ describe('metadata-sync scope (#25)', () => {
 
   it('fixes normally inside a scaffolded documentation root', async () => {
     const docs = await docs_tree();
-    const result = await sync_metadata({ docsPath: docs, fix: true, silent: true });
+    const result = await sync_metadata({ docs_path: docs, fix: true, silent: true });
 
     expect(result.errors).toHaveLength(0);
-    expect(result.fixedFiles).toBeGreaterThan(0);
+    expect(result.fixed_files).toBeGreaterThan(0);
   });
 
   it('accepts the declared docs root even with no INDEX.md yet', async () => {
@@ -130,8 +130,8 @@ describe('metadata-sync scope (#25)', () => {
     // `root` is the project; `.documentation` is its DECLARED docs root, so this
     // is allowed on its declaration alone — no INDEX.md and no content sniffing.
     const result = await sync_metadata({
-      docsPath: docs,
-      projectRoot: root,
+      docs_path: docs,
+      project_root: root,
       fix: true,
       silent: true,
     });
@@ -148,8 +148,8 @@ describe('metadata-sync scope (#25)', () => {
     await writeFile(join(root, 'LOOSE.md'), NON_DOC, 'utf-8');
 
     const result = await sync_metadata({
-      docsPath: root,
-      projectRoot: root,
+      docs_path: root,
+      project_root: root,
       fix: true,
       silent: true,
     });
@@ -170,8 +170,8 @@ describe('metadata-sync scope (#25)', () => {
     await writeFile(join(root, 'mydocs', 'api', 'a.md'), DOC, 'utf-8');
 
     const result = await sync_metadata({
-      docsPath: join(root, 'mydocs'),
-      projectRoot: root,
+      docs_path: join(root, 'mydocs'),
+      project_root: root,
       fix: true,
       silent: true,
     });
@@ -184,8 +184,8 @@ describe('metadata-sync scope (#25)', () => {
     await writeFile(join(docs, 'api', 'a.md'), DOC, 'utf-8');
 
     const result = await sync_metadata({
-      docsPath: join(docs, 'api'),
-      projectRoot: root,
+      docs_path: join(docs, 'api'),
+      project_root: root,
       fix: true,
       silent: true,
     });
@@ -199,8 +199,8 @@ describe('metadata-sync scope (#25)', () => {
     await writeFile(join(sibling, 'a.md'), NON_DOC, 'utf-8');
 
     const result = await sync_metadata({
-      docsPath: sibling,
-      projectRoot: root,
+      docs_path: sibling,
+      project_root: root,
       fix: true,
       silent: true,
     });
@@ -212,7 +212,7 @@ describe('metadata-sync scope (#25)', () => {
     const empty = join(root, 'empty');
     await mkdir(empty, { recursive: true });
 
-    const result = await sync_metadata({ docsPath: empty, fix: true, silent: true });
+    const result = await sync_metadata({ docs_path: empty, fix: true, silent: true });
     expect(result.errors[0]!.error).toContain("outside this project's documentation root");
   });
 });

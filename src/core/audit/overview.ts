@@ -20,7 +20,7 @@ export async function check_overview(docs_path: string, cfg: OverviewConfig): Pr
 
   const clusters = await find_clusters(docs_path, cfg);
   const issues: AuditIssue[] = [];
-  const out = want_stale && clusters.some((c) => c.kindOverview)
+  const out = want_stale && clusters.some((c) => c.kind_overview)
     ? new Map<string, Set<string>>()
     : null;
   if (out) {
@@ -37,12 +37,12 @@ export async function check_overview(docs_path: string, cfg: OverviewConfig): Pr
         rule: O.OVERVIEW_MISSING,
         severity: 'warning',
         message:
-          `Flow${c.sharedTags.length ? `: ${c.sharedTags.join(', ')}` : ''} — ${c.members.length} docs (${c.members.slice(0, 5).join(', ')}${c.members.length > 5 ? ', ...' : ''}) have no overview` +
-          (c.generatedOnlyHub ? '; only a generated index links them all' : ''),
+          `Flow${c.shared_tags.length ? `: ${c.shared_tags.join(', ')}` : ''} — ${c.members.length} docs (${c.members.slice(0, 5).join(', ')}${c.members.length > 5 ? ', ...' : ''}) have no overview` +
+          (c.generated_only_hub ? '; only a generated index links them all' : ''),
         fixable: false,
         suggestion: `Write a \`kind: overview\` doc linking each member, starting from ${TEMPLATE}`,
       });
-    } else if (out && c.kindOverview) {
+    } else if (out && c.kind_overview) {
       const linked = out.get(c.overview) ?? new Set<string>();
       const missing = c.members.filter((m) => m !== c.overview && !linked.has(m));
       if (missing.length === 0) continue;

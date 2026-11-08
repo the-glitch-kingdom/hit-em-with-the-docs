@@ -9,7 +9,7 @@ import { join } from 'path';
 import { remove_frontmatter } from '../../utils/frontmatter.js';
 
 export type StalenessSignal =
-  | { status: 'signal'; commits: number; docCommit: string; docDate: string }
+  | { status: 'signal'; commits: number; doc_commit: string; doc_date: string }
   | { status: 'none' } // doc not in git (new/uncommitted) or no git repo
   | { status: 'unknown'; warning: string }; // shallow clone: history is incomplete
 
@@ -97,9 +97,9 @@ export function staleness_signal(
     if (!change) return { status: 'none' };
     const { commit: doc_commit, date: doc_date } = change;
     const cited = [...new Set(cited_paths)];
-    if (cited.length === 0) return { status: 'signal', commits: 0, docCommit: doc_commit, docDate: doc_date };
+    if (cited.length === 0) return { status: 'signal', commits: 0, doc_commit, doc_date };
     const n = git(repo_root, ['rev-list', '--count', `${doc_commit}..HEAD`, '--', ...cited]);
-    return { status: 'signal', commits: parseInt(n, 10) || 0, docCommit: doc_commit, docDate: doc_date };
+    return { status: 'signal', commits: parseInt(n, 10) || 0, doc_commit, doc_date };
   } catch {
     return { status: 'none' }; // not a git repo / git missing
   }

@@ -2,7 +2,7 @@
  * Link-cluster detection for overview docs (#51). A cluster is a densely linked
  * domain, or a label-propagation community, of non-generated docs. Generated files
  * (INDEX/REGISTRY) link to everything, so they never count as members or as an
- * overview; they only feed `generatedOnlyHub`.
+ * overview; they only feed `generated_only_hub`.
  */
 
 import { readFile } from 'fs/promises';
@@ -40,12 +40,12 @@ export interface DocCluster {
   overview?: string | undefined;
   /** Link coverage of the overview, or of the best non-generated doc when none qualifies. */
   coverage: number;
-  kindOverview: boolean;
-  generatedOnlyHub: boolean;
+  kind_overview: boolean;
+  generated_only_hub: boolean;
   /** Most-linked member: where a missing-overview warning is reported. */
   top: string;
   /** Tags on 2+ members, most common first (max 3). */
-  sharedTags: string[];
+  shared_tags: string[];
 }
 
 export async function find_clusters(
@@ -182,10 +182,10 @@ export async function find_clusters(
       ...g,
       overview: best?.id,
       coverage: (best ?? [...ranked].sort((a, b) => b.cov - a.cov)[0])?.cov ?? 0,
-      kindOverview: best?.kind ?? false,
-      generatedOnlyHub: !best && generated_hub,
+      kind_overview: best?.kind ?? false,
+      generated_only_hub: !best && generated_hub,
       top,
-      sharedTags: shared_tags,
+      shared_tags,
     };
   });
 }

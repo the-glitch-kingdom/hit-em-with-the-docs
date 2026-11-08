@@ -11,9 +11,9 @@ const VALID_FIXTURE_ROOT = resolve(__dirname, '../../fixtures/knowledge-base/val
 describe('buildCiterIndex (2.3.0)', () => {
   it('walks facts/, incidents/, and playbooks/ and resolves the citation graph', async () => {
     const index = await build_citer_index({
-      projectRoot: VALID_FIXTURE_ROOT,
-      vaultRoot: VALID_FIXTURE_ROOT,
-      playbookGlobs: [resolve(VALID_FIXTURE_ROOT, 'playbooks/*.md')],
+      project_root: VALID_FIXTURE_ROOT,
+      vault_root: VALID_FIXTURE_ROOT,
+      playbook_globs: [resolve(VALID_FIXTURE_ROOT, 'playbooks/*.md')],
     });
 
     // Facts
@@ -43,9 +43,9 @@ describe('buildCiterIndex (2.3.0)', () => {
 
   it('returns an empty index when vault root has no facts and no incidents', async () => {
     const index = await build_citer_index({
-      projectRoot: '/tmp',
-      vaultRoot: '/tmp/nonexistent-vault',
-      playbookGlobs: [],
+      project_root: '/tmp',
+      vault_root: '/tmp/nonexistent-vault',
+      playbook_globs: [],
     });
     expect(index.facts.size).toBe(0);
     expect(index.incidents.size).toBe(0);
@@ -56,9 +56,9 @@ describe('buildCiterIndex (2.3.0)', () => {
 describe('findCitersInIndex (2.3.0)', () => {
   it('returns typed structure for an existing fact', async () => {
     const index = await build_citer_index({
-      projectRoot: VALID_FIXTURE_ROOT,
-      vaultRoot: VALID_FIXTURE_ROOT,
-      playbookGlobs: [resolve(VALID_FIXTURE_ROOT, 'playbooks/*.md')],
+      project_root: VALID_FIXTURE_ROOT,
+      vault_root: VALID_FIXTURE_ROOT,
+      playbook_globs: [resolve(VALID_FIXTURE_ROOT, 'playbooks/*.md')],
     });
 
     const result = find_citers_in_index(index, 'alloy-env-set-at-entrypoint-only');
@@ -73,9 +73,9 @@ describe('findCitersInIndex (2.3.0)', () => {
 
   it('returns fact_exists=false for a dangling reference', async () => {
     const index = await build_citer_index({
-      projectRoot: VALID_FIXTURE_ROOT,
-      vaultRoot: VALID_FIXTURE_ROOT,
-      playbookGlobs: [resolve(VALID_FIXTURE_ROOT, 'playbooks/*.md')],
+      project_root: VALID_FIXTURE_ROOT,
+      vault_root: VALID_FIXTURE_ROOT,
+      playbook_globs: [resolve(VALID_FIXTURE_ROOT, 'playbooks/*.md')],
     });
 
     const result = find_citers_in_index(index, 'nonexistent-fact-id');
@@ -86,9 +86,9 @@ describe('findCitersInIndex (2.3.0)', () => {
 
   it('sorts citers, incidents, and ids alphabetically (deterministic output)', async () => {
     const index = await build_citer_index({
-      projectRoot: VALID_FIXTURE_ROOT,
-      vaultRoot: VALID_FIXTURE_ROOT,
-      playbookGlobs: [resolve(VALID_FIXTURE_ROOT, 'playbooks/*.md')],
+      project_root: VALID_FIXTURE_ROOT,
+      vault_root: VALID_FIXTURE_ROOT,
+      playbook_globs: [resolve(VALID_FIXTURE_ROOT, 'playbooks/*.md')],
     });
     const result = find_citers_in_index(index, 'alloy-env-set-at-entrypoint-only');
 
@@ -121,9 +121,9 @@ describe('plain-string symptoms (#46)', () => {
         'utf-8'
       );
       const index = await build_citer_index({
-        projectRoot: root,
-        vaultRoot: root,
-        playbookGlobs: [join(root, 'playbooks/*.md')],
+        project_root: root,
+        vault_root: root,
+        playbook_globs: [join(root, 'playbooks/*.md')],
       });
       expect(index.citers.get('some-fact')).toHaveLength(1);
     } finally {

@@ -5,13 +5,13 @@ import { join } from 'node:path';
 import { parse_gaps } from '../../../src/core/reconcile/gaps.js';
 
 let repo: string;
-let ctx: { docsRoot: string; repoRoot: string };
+let ctx: { docs_root: string; repo_root: string };
 beforeAll(() => {
   repo = mkdtempSync(join(tmpdir(), 'gaps-'));
   const docs = join(repo, '.documentation');
   mkdirSync(join(docs, 'devops'), { recursive: true });
   writeFileSync(join(docs, 'devops/release-flow.md'), '# x\n');
-  ctx = { docsRoot: docs, repoRoot: repo };
+  ctx = { docs_root: docs, repo_root: repo };
 });
 afterAll(() => rmSync(repo, { recursive: true, force: true }));
 
@@ -37,7 +37,7 @@ describe('parseGaps', () => {
     expect(r.errors.map((e) => e.slice(0, 7))).toEqual(['gaps[1]', 'gaps[2]', 'gaps[3]', 'gaps[4]', 'gaps[5]']);
   });
   it('resolves docs-relative, vault-relative and absolute used_doc; unknown becomes no doc and is reported', () => {
-    const abs = join(ctx.docsRoot, 'devops/release-flow.md');
+    const abs = join(ctx.docs_root, 'devops/release-flow.md');
     const paths = ['devops/release-flow.md', '.documentation/devops/release-flow.md', abs];
     for (const p of paths) expect(parse_gaps(JSON.stringify([{ query: 'q', used_doc: p }]), ctx).gaps[0].used_doc).toBe('devops/release-flow.md');
     const bad = parse_gaps(JSON.stringify([{ query: 'q', used_doc: 'nope.md' }, { query: 'q', used_doc: '../outside.md' }]), ctx);
@@ -45,8 +45,8 @@ describe('parseGaps', () => {
     expect(bad.errors).toHaveLength(2);
   });
   it('a generated index or a non-markdown file is not a live doc', () => {
-    writeFileSync(join(ctx.docsRoot, 'devops/INDEX.md'), '---\ngenerated: true\n---\n# Index\n');
-    writeFileSync(join(ctx.docsRoot, 'devops/notes.txt'), 'x\n');
+    writeFileSync(join(ctx.docs_root, 'devops/INDEX.md'), '---\ngenerated: true\n---\n# Index\n');
+    writeFileSync(join(ctx.docs_root, 'devops/notes.txt'), 'x\n');
     const r = parse_gaps(JSON.stringify([{ query: 'q', used_doc: 'devops/INDEX.md' }, { query: 'q', used_doc: 'devops/notes.txt' }]), ctx);
     expect(r.gaps.map((g) => g.used_doc)).toEqual([null, null]);
   });

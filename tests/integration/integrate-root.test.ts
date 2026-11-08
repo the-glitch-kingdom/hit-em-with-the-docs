@@ -47,7 +47,7 @@ describe('integrate from a subdirectory', () => {
 });
 
 describe('integrate of an in-tree file', () => {
-  const run = (file: string) => integrate_document({ filePath: file, docsPath: docs, auto: true, silent: true });
+  const run = (file: string) => integrate_document({ file_path: file, docs_path: docs, auto: true, silent: true });
 
   it('refuses a file at a different path and writes nothing', async () => {
     await mkdir(join(docs, 'api/sub'), { recursive: true });

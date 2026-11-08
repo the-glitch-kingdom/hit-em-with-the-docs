@@ -38,7 +38,7 @@ describe('findArchiveCandidates', () => {
     writeFile(join(docs_path, rel), content, 'utf-8');
 
   async function run(config = CONFIG) {
-    return find_archive_candidates({ docsPath: docs_path, projectRoot: tmp_dir, config, today: TODAY });
+    return find_archive_candidates({ docs_path, project_root: tmp_dir, config, today: TODAY });
   }
 
   it('flags a status: deprecated doc (strong signal, alone)', async () => {

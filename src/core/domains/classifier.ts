@@ -46,9 +46,9 @@ export interface TierDefinition {
   id: Tier;
   name: string;
   description: string;
-  sizeRange: { min: number; max: number }; // in KB
+  size_range: { min: number; max: number }; // in KB
   indicators: string[];
-  headingPatterns: RegExp[];
+  heading_patterns: RegExp[];
 }
 
 export const TIER_DEFINITIONS: Record<Tier, TierDefinition> = {
@@ -56,12 +56,12 @@ export const TIER_DEFINITIONS: Record<Tier, TierDefinition> = {
     id: 'guide',
     name: 'Guide',
     description: 'Step-by-step how-to guides',
-    sizeRange: { min: 15, max: 30 },
+    size_range: { min: 15, max: 30 },
     indicators: [
       'how to', 'step by step', 'tutorial', 'guide', 'walkthrough',
       'getting started', 'learn', 'implement', 'build', 'create',
     ],
-    headingPatterns: [
+    heading_patterns: [
       /^#+\s*(prerequisites?|requirements?)/i,
       /^#+\s*(step\s*\d+|first|next|then|finally)/i,
       /^#+\s*(overview|introduction|getting started)/i,
@@ -72,12 +72,12 @@ export const TIER_DEFINITIONS: Record<Tier, TierDefinition> = {
     id: 'standard',
     name: 'Standard',
     description: 'Coding standards and conventions',
-    sizeRange: { min: 5, max: 15 },
+    size_range: { min: 5, max: 15 },
     indicators: [
       'standard', 'convention', 'rule', 'must', 'should', 'must not',
       'should not', 'required', 'recommended', 'best practice', 'guideline',
     ],
-    headingPatterns: [
+    heading_patterns: [
       /^#+\s*(rules?|guidelines?|conventions?)/i,
       /^#+\s*(do|don'?t|avoid|prefer)/i,
       /^#+\s*(naming|formatting|style)/i,
@@ -88,12 +88,12 @@ export const TIER_DEFINITIONS: Record<Tier, TierDefinition> = {
     id: 'example',
     name: 'Example',
     description: 'Code examples and templates',
-    sizeRange: { min: 3, max: 10 },
+    size_range: { min: 3, max: 10 },
     indicators: [
       'example', 'sample', 'template', 'snippet', 'code', 'demo',
       'showcase', 'pattern example', 'usage example',
     ],
-    headingPatterns: [
+    heading_patterns: [
       /^#+\s*(example|sample|template)/i,
       /^#+\s*(code|snippet|usage)/i,
       /^#+\s*(input|output|result)/i,
@@ -103,12 +103,12 @@ export const TIER_DEFINITIONS: Record<Tier, TierDefinition> = {
     id: 'reference',
     name: 'Reference',
     description: 'Comprehensive references',
-    sizeRange: { min: 30, max: 100 },
+    size_range: { min: 30, max: 100 },
     indicators: [
       'reference', 'specification', 'api', 'complete', 'comprehensive',
       'all', 'full list', 'documentation', 'schema', 'interface',
     ],
-    headingPatterns: [
+    heading_patterns: [
       /^#+\s*(api|schema|interface|type)/i,
       /^#+\s*(parameters?|arguments?|options?)/i,
       /^#+\s*(methods?|functions?|endpoints?)/i,
@@ -119,12 +119,12 @@ export const TIER_DEFINITIONS: Record<Tier, TierDefinition> = {
     id: 'admin',
     name: 'Admin',
     description: 'Administrative/operational docs',
-    sizeRange: { min: 10, max: 20 },
+    size_range: { min: 10, max: 20 },
     indicators: [
       'admin', 'administrative', 'operational', 'maintenance', 'ops',
       'manage', 'configure', 'setup', 'deployment', 'monitoring',
     ],
-    headingPatterns: [
+    heading_patterns: [
       /^#+\s*(configuration|setup|installation)/i,
       /^#+\s*(maintenance|monitoring|logging)/i,
       /^#+\s*(backup|restore|recovery)/i,
@@ -135,12 +135,12 @@ export const TIER_DEFINITIONS: Record<Tier, TierDefinition> = {
     id: 'plan',
     name: 'Plan',
     description: 'Phase/task/atom planning artifacts (added in 2.2.0 for persistent-planning lg-mode interop). Plans typically carry tier: plan in frontmatter; auto-classification is a fallback.',
-    sizeRange: { min: 1, max: 200 },
+    size_range: { min: 1, max: 200 },
     indicators: [
       'phase', 'task', 'atom', 'milestone', 'deliverable',
       'plan', 'roadmap', 'blocker', 'dependency', 'next concrete action',
     ],
-    headingPatterns: [
+    heading_patterns: [
       /^#+\s*(goal|scope|status)/i,
       /^#+\s*(phases?|tasks?|atoms?)/i,
       /^#+\s*(decisions? made|errors? encountered)/i,
@@ -151,12 +151,12 @@ export const TIER_DEFINITIONS: Record<Tier, TierDefinition> = {
     id: 'fact',
     name: 'Fact',
     description: 'Atomic, single-claim, citable unit of knowledge (added in 2.3.0). Facts use last_verified + confidence instead of semver versioning. Facts typically carry tier: fact in frontmatter; auto-classification is a fallback.',
-    sizeRange: { min: 1, max: 5 },
+    size_range: { min: 1, max: 5 },
     indicators: [
       'claim', 'confidence', 'verify', 'last verified', 'provenance',
       'citation', 'fact', 'hypothesis', 'invalidated by', 'consequence',
     ],
-    headingPatterns: [
+    heading_patterns: [
       /^#+\s*(claim|the claim)/i,
       /^#+\s*(how to verify|verification)/i,
       /^#+\s*(consequences?|implications?)/i,
@@ -167,12 +167,12 @@ export const TIER_DEFINITIONS: Record<Tier, TierDefinition> = {
     id: 'incident-narrative',
     name: 'Incident narrative',
     description: 'Immutable postmortem story (added in 2.3.0). Lives at <vault-root>/incidents/<date-slug>/narrative.md. Date-stamped; uses lifecycle status (open/partial/resolved/planned) not semver.',
-    sizeRange: { min: 2, max: 50 },
+    size_range: { min: 2, max: 50 },
     indicators: [
       'postmortem', 'incident', 'outage', 'severity', 'resolution',
       'timeline', 'root cause', 'remediation', 'symptoms', 'on-call',
     ],
-    headingPatterns: [
+    heading_patterns: [
       /^#+\s*(timeline|sequence of events)/i,
       /^#+\s*(root cause|cause)/i,
       /^#+\s*(impact|severity)/i,
@@ -184,12 +184,12 @@ export const TIER_DEFINITIONS: Record<Tier, TierDefinition> = {
     id: 'incident-facts',
     name: 'Incident facts bridge',
     description: 'Bridge document linking an incident to the facts it produced, strengthened, or weakened (added in 2.3.0). Lives at <vault-root>/incidents/<date-slug>/facts.md.',
-    sizeRange: { min: 1, max: 10 },
+    size_range: { min: 1, max: 10 },
     indicators: [
       'produced', 'strengthened', 'weakened', 'facts from',
       'incident facts', 'bridges to', 'derived from',
     ],
-    headingPatterns: [
+    heading_patterns: [
       /^#+\s*(produced|new facts)/i,
       /^#+\s*(strengthened)/i,
       /^#+\s*(weakened|invalidated)/i,
@@ -243,7 +243,7 @@ export function classify_tier(content: string): TierClassificationResult {
     }
 
     // Check heading patterns
-    for (const pattern of def.headingPatterns) {
+    for (const pattern of def.heading_patterns) {
       const matches = content.match(new RegExp(pattern.source, 'gim'));
       if (matches) {
         scores[tier] += matches.length * 5;
@@ -252,7 +252,7 @@ export function classify_tier(content: string): TierClassificationResult {
     }
 
     // Size-based scoring
-    if (size_kb >= def.sizeRange.min && size_kb <= def.sizeRange.max) {
+    if (size_kb >= def.size_range.min && size_kb <= def.size_range.max) {
       scores[tier] += 10;
       reasoning.push(`Size ${size_kb.toFixed(1)}KB matches ${tier} range`);
     }

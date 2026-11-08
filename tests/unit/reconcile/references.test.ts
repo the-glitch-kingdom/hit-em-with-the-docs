@@ -34,7 +34,7 @@ describe('reconcile references', () => {
       '`AUTH_SECRET_KEY` and `GHOST_ENV_VAR`, `npm run build`, `npm run nope`, `make deploy`, `make nope`,',
       '`npx vitest`, `npx unheard-of-tool`, [ok](./a.md), [bad](./zzz.md)',
     ].join('\n');
-    const rs = await check_doc_references(idx, body, { docFile: join(root, 'docs/x.md'), docsPath: join(root, 'docs') });
+    const rs = await check_doc_references(idx, body, { doc_file: join(root, 'docs/x.md'), docs_path: join(root, 'docs') });
     expect(st(rs, 'src/auth/login.ts')).toBe('ok');
     expect(st(rs, 'src/auth/gone.ts')).toBe('missing');
     expect(st(rs, 'verifyToken')).toBe('ok');
@@ -68,11 +68,11 @@ describe('reconcile references', () => {
     execFileSync('git', ['add', '-A'], { cwd: root });
     const fresh = build_repo_index(root, []);
     const body = 'Calls `removedHelperFn` and reads `GONE_SETTING_VAR`.\n';
-    const rs = await check_doc_references(fresh, body, { docFile: join(root, 'docs/self.md'), docsPath: join(root, 'docs') });
+    const rs = await check_doc_references(fresh, body, { doc_file: join(root, 'docs/self.md'), docs_path: join(root, 'docs') });
     expect(st(rs, 'removedHelperFn')).toBe('missing');
     expect(st(rs, 'GONE_SETTING_VAR')).toBe('missing');
     // mentioned by another doc too: an external name, so unknown
-    const other = await check_doc_references(fresh, 'See `ghostSymbolName`.\n', { docFile: join(root, 'docs/self.md'), docsPath: join(root, 'docs') });
+    const other = await check_doc_references(fresh, 'See `ghostSymbolName`.\n', { doc_file: join(root, 'docs/self.md'), docs_path: join(root, 'docs') });
     expect(st(other, 'ghostSymbolName')).toBe('unknown');
   });
 
@@ -95,7 +95,7 @@ describe('reconcile reference precision (#58)', () => {
     const none = await check_doc_references(build_repo_index(root), body);
     expect(none.map((r) => r.status)).toEqual(['unknown', 'unknown']);
     const with_src = build_repo_index(root, ['db/*.sql']);
-    expect(with_src.schemaFiles).toEqual(['db/001.sql']);
+    expect(with_src.schema_files).toEqual(['db/001.sql']);
     const rs = await check_doc_references(with_src, body);
     expect(st(rs, 'users')).toBe('ok');
     expect(st(rs, 'ghost_table')).toBe('missing');

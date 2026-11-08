@@ -30,12 +30,12 @@ afterEach(() => rmSync(root, { recursive: true, force: true }));
 describe('secrets report', () => {
   it('flags history per finding, lists personal data apart, and holds no value', async () => {
     const config = await load_plugin_config(root);
-    const findings = await scan_secrets({ root, docsPath: docs, config });
-    const r = await build_secrets_report({ root, docsPath: docs, findings, cfg: config.reconcile.secrets, date: '2026-11-07' });
+    const findings = await scan_secrets({ root, docs_path: docs, config });
+    const r = await build_secrets_report({ root, docs_path: docs, findings, cfg: config.reconcile.secrets, date: '2026-11-07' });
     const a = r.entries.find((e) => e.file === 'backend/a.md')!;
     const b = r.entries.find((e) => e.file === 'backend/b.md' && e.kind === 'secret')!;
-    expect(a.inHistory).toBe(true);
-    expect(b.inHistory).toBe(false);
+    expect(a.in_history).toBe(true);
+    expect(b.in_history).toBe(false);
     expect(r.text).toContain('in git history: yes');
     expect(r.text).toContain('in git history: no');
     expect(r.text).toContain('Rotate or revoke');
@@ -52,8 +52,8 @@ describe('secrets report', () => {
     const config = await load_plugin_config(root);
     writeFileSync(join(root, '.env.hewtd'), `HEWTD_SECRET_A=${old}\n`);
     const ledger = { version: 1 as const, entries: { 'backend/a.md': { path: 'backend/a.md', lane: 'clean', content_hash: 'x', env_names: ['HEWTD_SECRET_A'] } } };
-    const r = await build_secrets_report({ root, docsPath: docs, findings: [], ledger, cfg: config.reconcile.secrets });
-    expect(r.entries[0]).toMatchObject({ status: 'moved', env: 'HEWTD_SECRET_A', inHistory: true });
+    const r = await build_secrets_report({ root, docs_path: docs, findings: [], ledger, cfg: config.reconcile.secrets });
+    expect(r.entries[0]).toMatchObject({ status: 'moved', env: 'HEWTD_SECRET_A', in_history: true });
     expect(r.text).toContain('status: moved (HEWTD_SECRET_A)');
     expect(r.text).not.toContain(old);
   });

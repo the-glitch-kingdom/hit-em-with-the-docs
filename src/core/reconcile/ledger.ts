@@ -79,9 +79,9 @@ export function record_entry(
 export interface LedgerStatus {
   total: number;
   reviewed: number;
-  byLane: Record<string, number>;
-  byVerdict: Record<string, number>;
-  nextUnreviewed: string[];
+  by_lane: Record<string, number>;
+  by_verdict: Record<string, number>;
+  next_unreviewed: string[];
 }
 
 /** `docs` = every in-scope doc with its current content hash. */
@@ -90,14 +90,14 @@ export function ledger_status(
   docs: { path: string; hash: string }[],
   next = 10
 ): LedgerStatus {
-  const s: LedgerStatus = { total: docs.length, reviewed: 0, byLane: {}, byVerdict: {}, nextUnreviewed: [] };
+  const s: LedgerStatus = { total: docs.length, reviewed: 0, by_lane: {}, by_verdict: {}, next_unreviewed: [] };
   for (const d of docs) {
     const e = ledger.entries[d.path];
-    if (e) s.byLane[e.lane] = (s.byLane[e.lane] ?? 0) + 1;
+    if (e) s.by_lane[e.lane] = (s.by_lane[e.lane] ?? 0) + 1;
     if (is_reviewed(e, d.hash)) {
       s.reviewed++;
-      s.byVerdict[e!.verdict!] = (s.byVerdict[e!.verdict!] ?? 0) + 1;
-    } else if (s.nextUnreviewed.length < next) s.nextUnreviewed.push(d.path);
+      s.by_verdict[e!.verdict!] = (s.by_verdict[e!.verdict!] ?? 0) + 1;
+    } else if (s.next_unreviewed.length < next) s.next_unreviewed.push(d.path);
   }
   return s;
 }

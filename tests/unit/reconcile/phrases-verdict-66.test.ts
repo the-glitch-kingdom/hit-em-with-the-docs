@@ -21,7 +21,7 @@ const run = async (entries: ReviewEntry[], tick = true) => {
   let text = render_review({ batch: '1', shard: 1, scope: 'gaps' }, entries);
   if (tick) text = text.replace(/- \[ \] accept/g, '- [x] accept');
   writeFileSync(f, text);
-  return apply_reviews({ root, docsPath: docs, files: [f], ledger: await load_ledger(ledger_file), ledgerFile: ledger_file, today: '2026-11-07' });
+  return apply_reviews({ root, docs_path: docs, files: [f], ledger: await load_ledger(ledger_file), ledger_file, today: '2026-11-07' });
 };
 
 beforeEach(() => {
@@ -89,11 +89,11 @@ describe('phrases verdict (#66)', () => {
   });
 
   it('writeGapsReview writes one unticked phrases entry per doc', async () => {
-    const f = (await write_gaps_review({ root, docsPath: docs, proposals: [{ doc: 'backend/str.md', accepted: [{ query: 'one two three' }] }] }))!;
+    const f = (await write_gaps_review({ root, docs_path: docs, proposals: [{ doc: 'backend/str.md', accepted: [{ query: 'one two three' }] }] }))!;
     expect(f).toMatch(/review-1-gaps\.md$/);
     const r = await parse_review(f);
     expect(r.entries).toHaveLength(1);
     expect(r.entries[0]).toMatchObject({ accepted: false, entry: { verdict: 'phrases', path: 'backend/str.md', phrases: ['one two three'] } });
-    expect(await write_gaps_review({ root, docsPath: docs, proposals: [] })).toBeUndefined();
+    expect(await write_gaps_review({ root, docs_path: docs, proposals: [] })).toBeUndefined();
   });
 });

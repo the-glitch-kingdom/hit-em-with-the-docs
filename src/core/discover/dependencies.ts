@@ -4,7 +4,7 @@ import { glob, path_exists } from '../../utils/glob.js';
 import { logger } from '../../utils/logger.js';
 
 export interface DependencyAnalysisOptions {
-  rootPath: string;
+  root_path: string;
   silent?: boolean;
 }
 
@@ -20,7 +20,7 @@ export interface PackageAnalysis {
   production: number;
   development: number;
   dependencies: PackageInfo[];
-  devDependencies: PackageInfo[];
+  dev_dependencies: PackageInfo[];
 }
 
 export interface PackageInfo {
@@ -28,14 +28,14 @@ export interface PackageInfo {
   version: string;
   type: 'production' | 'development';
   outdated?: boolean;
-  latestVersion?: string;
+  latest_version?: string;
 }
 
 export interface ModuleAnalysis {
-  totalFiles: number;
+  total_files: number;
   imports: number;
-  circularDependencies: CircularDependency[];
-  highCoupling: HighCouplingModule[];
+  circular_dependencies: CircularDependency[];
+  high_coupling: HighCouplingModule[];
 }
 
 export interface CircularDependency {
@@ -45,7 +45,7 @@ export interface CircularDependency {
 export interface HighCouplingModule {
   file: string;
   imports: number;
-  importedBy: number;
+  imported_by: number;
 }
 
 export interface SecurityAnalysis {
@@ -71,7 +71,7 @@ export interface UnusedDependency {
 export async function analyze_dependencies(
   options: DependencyAnalysisOptions
 ): Promise<DependencyAnalysis> {
-  const { rootPath: root_path, silent = false } = options;
+  const { root_path, silent = false } = options;
 
   if (!silent) {
     logger.header('Dependency Analysis');
@@ -89,9 +89,9 @@ export async function analyze_dependencies(
   const modules = await analyze_modules(root_path);
 
   if (!silent) {
-    logger.info(`Analyzed ${modules.totalFiles} files, ${modules.imports} imports`);
-    if (modules.circularDependencies.length > 0) {
-      logger.warn(`Found ${modules.circularDependencies.length} circular dependencies`);
+    logger.info(`Analyzed ${modules.total_files} files, ${modules.imports} imports`);
+    if (modules.circular_dependencies.length > 0) {
+      logger.warn(`Found ${modules.circular_dependencies.length} circular dependencies`);
     }
   }
 
@@ -122,7 +122,7 @@ async function analyze_packages(root_path: string): Promise<PackageAnalysis> {
     production: 0,
     development: 0,
     dependencies: [],
-    devDependencies: [],
+    dev_dependencies: [],
   };
 
   const package_json_path = join(root_path, 'package.json');
@@ -150,13 +150,13 @@ async function analyze_packages(root_path: string): Promise<PackageAnalysis> {
     // Dev dependencies
     if (pkg.devDependencies) {
       for (const [name, version] of Object.entries(pkg.devDependencies)) {
-        result.devDependencies.push({
+        result.dev_dependencies.push({
           name,
           version: String(version),
           type: 'development',
         });
       }
-      result.development = result.devDependencies.length;
+      result.development = result.dev_dependencies.length;
     }
 
     result.total = result.production + result.development;
@@ -172,10 +172,10 @@ async function analyze_packages(root_path: string): Promise<PackageAnalysis> {
  */
 async function analyze_modules(root_path: string): Promise<ModuleAnalysis> {
   const result: ModuleAnalysis = {
-    totalFiles: 0,
+    total_files: 0,
     imports: 0,
-    circularDependencies: [],
-    highCoupling: [],
+    circular_dependencies: [],
+    high_coupling: [],
   };
 
   // Find all source files
@@ -185,7 +185,7 @@ async function analyze_modules(root_path: string): Promise<ModuleAnalysis> {
     ignore: ['**/node_modules/**', '**/dist/**', '**/build/**'],
   });
 
-  result.totalFiles = files.length;
+  result.total_files = files.length;
 
   // Build import graph
   const import_graph = new Map<string, Set<string>>();
@@ -223,7 +223,7 @@ async function analyze_modules(root_path: string): Promise<ModuleAnalysis> {
   }
 
   // Detect circular dependencies
-  result.circularDependencies = detect_circular_dependencies(import_graph);
+  result.circular_dependencies = detect_circular_dependencies(import_graph);
 
   // Find high coupling modules
   for (const [file, imports] of import_graph) {
@@ -231,17 +231,17 @@ async function analyze_modules(root_path: string): Promise<ModuleAnalysis> {
     const imported_by_count = imported_by.get(file)?.size ?? 0;
 
     if (import_count > 10 || imported_by_count > 10) {
-      result.highCoupling.push({
+      result.high_coupling.push({
         file,
         imports: import_count,
-        importedBy: imported_by_count,
+        imported_by: imported_by_count,
       });
     }
   }
 
   // Sort by total coupling
-  result.highCoupling.sort((a, b) =>
-    (b.imports + b.importedBy) - (a.imports + a.importedBy)
+  result.high_coupling.sort((a, b) =>
+    (b.imports + b.imported_by) - (a.imports + a.imported_by)
   );
 
   return result;
@@ -359,7 +359,7 @@ async function analyze_security_basic(
     },
   };
 
-  const all_packages = [...packages.dependencies, ...packages.devDependencies];
+  const all_packages = [...packages.dependencies, ...packages.dev_dependencies];
 
   for (const pkg of all_packages) {
     const vuln = known_vulnerable[pkg.name];
@@ -405,7 +405,7 @@ async function find_unused_dependencies(
   }
 
   // Check each dependency
-  const all_packages = [...packages.dependencies, ...packages.devDependencies];
+  const all_packages = [...packages.dependencies, ...packages.dev_dependencies];
 
   for (const pkg of all_packages) {
     const name = pkg.name;

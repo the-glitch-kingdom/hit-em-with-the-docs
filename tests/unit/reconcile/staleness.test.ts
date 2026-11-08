@@ -64,8 +64,8 @@ describe('stalenessSignal', () => {
     commit('doc.md', '---\ntitle: a\nlast_verified: 2026-01-01\n---\n\nbody\n');
     const s = staleness_signal(dir, 'doc.md', ['src/a.ts']);
     expect(s).toMatchObject({ status: 'signal', commits: 3 });
-    expect((s as { docDate: string }).docDate).toMatch(/^\d{4}-/);
-    expect(body_change(dir, 'doc.md')?.date).toBe((s as { docDate: string }).docDate);
+    expect((s as { doc_date: string }).doc_date).toMatch(/^\d{4}-/);
+    expect(body_change(dir, 'doc.md')?.date).toBe((s as { doc_date: string }).doc_date);
   });
 
   it('resets on a body edit after the code commits', () => {

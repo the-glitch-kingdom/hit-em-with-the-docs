@@ -4,14 +4,14 @@ import { glob } from '../../utils/glob.js';
 import { logger } from '../../utils/logger.js';
 
 export interface StandardsDiscoveryOptions {
-  rootPath: string;
+  root_path: string;
   silent?: boolean;
 }
 
 export interface DiscoveredStandards {
   naming: NamingStandards;
-  fileOrganization: FileOrganizationStandards;
-  codeStyle: CodeStyleStandards;
+  file_organization: FileOrganizationStandards;
+  code_style: CodeStyleStandards;
   documentation: DocumentationStandards;
   testing: TestingStandards;
 }
@@ -32,28 +32,28 @@ export interface ConventionCompliance {
 
 export interface FileOrganizationStandards {
   patterns: { pattern: string; files: number; examples: string[] }[];
-  rootFolders: string[];
+  root_folders: string[];
 }
 
 export interface CodeStyleStandards {
-  maxLineLength: number;
+  max_line_length: number;
   indentation: 'spaces' | 'tabs' | 'mixed';
-  indentSize?: number;
+  indent_size?: number;
   semicolons: 'always' | 'never' | 'mixed';
   quotes: 'single' | 'double' | 'mixed';
-  trailingCommas: 'always' | 'never' | 'mixed';
+  trailing_commas: 'always' | 'never' | 'mixed';
 }
 
 export interface DocumentationStandards {
-  docstringStyle: string;
+  docstring_style: string;
   coverage: number;
-  typeHintCoverage: number;
+  type_hint_coverage: number;
 }
 
 export interface TestingStandards {
   pattern: string;
   coverage?: number;
-  fixturePattern?: string;
+  fixture_pattern?: string;
 }
 
 /**
@@ -62,7 +62,7 @@ export interface TestingStandards {
 export async function discover_standards(
   options: StandardsDiscoveryOptions
 ): Promise<DiscoveredStandards> {
-  const { rootPath: root_path, silent = false } = options;
+  const { root_path, silent = false } = options;
 
   if (!silent) {
     logger.header('Standards Discovery');
@@ -97,8 +97,8 @@ export async function discover_standards(
 
   const standards: DiscoveredStandards = {
     naming,
-    fileOrganization: file_organization,
-    codeStyle: code_style,
+    file_organization,
+    code_style,
     documentation,
     testing,
   };
@@ -108,8 +108,8 @@ export async function discover_standards(
     logger.success('Standards discovered:');
     logger.info(`  Functions: ${naming.functions.convention} (${naming.functions.compliance.toFixed(0)}% compliance)`);
     logger.info(`  Classes: ${naming.classes.convention} (${naming.classes.compliance.toFixed(0)}% compliance)`);
-    logger.info(`  Indentation: ${code_style.indentation}${code_style.indentSize ? ` (${code_style.indentSize} spaces)` : ''}`);
-    logger.info(`  Type hints: ${documentation.typeHintCoverage.toFixed(0)}% coverage`);
+    logger.info(`  Indentation: ${code_style.indentation}${code_style.indent_size ? ` (${code_style.indent_size} spaces)` : ''}`);
+    logger.info(`  Type hints: ${documentation.type_hint_coverage.toFixed(0)}% coverage`);
   }
 
   return standards;
@@ -294,7 +294,7 @@ async function discover_file_organization(
 
   return {
     patterns: patterns.sort((a, b) => b.files - a.files),
-    rootFolders: root_folders,
+    root_folders,
   };
 }
 
@@ -368,14 +368,14 @@ async function discover_code_style(files: string[]): Promise<CodeStyleStandards>
     no_trailing_comma_count > trailing_comma_count * 2 ? 'never' : 'mixed';
 
   const result: CodeStyleStandards = {
-    maxLineLength: max_line_length,
+    max_line_length,
     indentation,
     semicolons,
     quotes,
-    trailingCommas: trailing_commas,
+    trailing_commas,
   };
   if (indentation === 'spaces') {
-    result.indentSize = indent_size;
+    result.indent_size = indent_size;
   }
   return result;
 }
@@ -421,9 +421,9 @@ async function discover_documentation_standards(
   const type_hint_coverage = total_functions > 0 ? (typed_functions / total_functions) * 100 : 0;
 
   return {
-    docstringStyle: docstring_style,
+    docstring_style,
     coverage,
-    typeHintCoverage: type_hint_coverage,
+    type_hint_coverage,
   };
 }
 
@@ -467,7 +467,7 @@ async function discover_testing_standards(
     pattern: test_pattern,
   };
   if (fixtures.length > 0) {
-    result.fixturePattern = 'fixtures/';
+    result.fixture_pattern = 'fixtures/';
   }
   return result;
 }

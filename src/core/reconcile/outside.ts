@@ -104,8 +104,8 @@ export async function discover_outside(docs_path: string, keep_in_place: string[
 }
 
 /** Skeleton review file: deterministic junk/stubs pre-set to `delete`, misplaced left for the judgment pass. */
-export async function write_outside_review(opts: { docsPath: string; root: string; docs: OutsideDoc[]; batch?: string }): Promise<string> {
-  const top = project_root_of(opts.docsPath);
+export async function write_outside_review(opts: { docs_path: string; root: string; docs: OutsideDoc[]; batch?: string }): Promise<string> {
+  const top = project_root_of(opts.docs_path);
   const dir = review_dir(opts.root);
   const batch = opts.batch ?? (await next_batch(dir));
   const entries: ReviewEntry[] = [];
@@ -146,8 +146,8 @@ async function git_history(top: string, rel: string): Promise<string> {
 export interface OutsideApplyResult { status: 'applied' | 'stale' | 'error'; detail?: string; touched: string[]; domain?: string; }
 
 /** Apply one accepted outside entry. Edits files and stages them; the caller commits. */
-export async function apply_outside_entry(opts: { docsPath: string; entry: ReviewEntry }): Promise<OutsideApplyResult> {
-  const { docsPath: docs_path, entry: e } = opts;
+export async function apply_outside_entry(opts: { docs_path: string; entry: ReviewEntry }): Promise<OutsideApplyResult> {
+  const { docs_path, entry: e } = opts;
   const top = project_root_of(docs_path);
   const abs = resolve(top, e.path);
   const rel = relative(top, abs).split('\\').join('/');
@@ -165,10 +165,10 @@ export async function apply_outside_entry(opts: { docsPath: string; entry: Revie
   }
   if (e.verdict !== 'integrate') return fail(`verdict "${e.verdict}" is not valid for an outside entry`);
 
-  const integrate_opts = { filePath: abs, docsPath: docs_path, force: true, silent: true, ...(e.domain && { domain: e.domain }) };
-  const plan = await integrate_document({ ...integrate_opts, dryRun: true });
-  if (!plan.success || !plan.targetPath) return fail(plan.error ?? 'integrate failed');
-  const target = plan.targetPath;
+  const integrate_opts = { file_path: abs, docs_path, force: true, silent: true, ...(e.domain && { domain: e.domain }) };
+  const plan = await integrate_document({ ...integrate_opts, dry_run: true });
+  if (!plan.success || !plan.target_path) return fail(plan.error ?? 'integrate failed');
+  const target = plan.target_path;
   // force only skips the similarity prompt; it must never overwrite a doc nobody accepted a change to.
   if (existsSync(target)) return fail(`target ${relative(top, target).split('\\').join('/')} already exists`);
 
@@ -186,7 +186,7 @@ export async function apply_outside_entry(opts: { docsPath: string; entry: Revie
 
   const history = await git_history(top, rel);
   const res = await integrate_document(integrate_opts);
-  if (!res.success || res.targetPath !== target) return fail(res.error ?? 'integrate failed');
+  if (!res.success || res.target_path !== target) return fail(res.error ?? 'integrate failed');
   const target_rel = relative(docs_path, target).split('\\').join('/');
 
   // Provenance + moved_from; a moved doc was never reconciled or validated.

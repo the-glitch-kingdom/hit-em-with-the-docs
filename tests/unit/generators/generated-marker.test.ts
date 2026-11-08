@@ -12,7 +12,7 @@ const entry = (purpose?: string) => ({
   title: 'A',
   tier: 'guide',
   status: 'active',
-  lastUpdated: '2026-01-01',
+  last_updated: '2026-01-01',
   ...(purpose !== undefined && { purpose }),
 });
 

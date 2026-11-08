@@ -42,15 +42,15 @@ describe('archiveDoc / unarchiveDoc', () => {
   it('moves a doc into archive/<domain>/ and stamps lifecycle metadata (fs fallback)', async () => {
     await write_doc('api/old.md');
     const res = await archive_doc({
-      projectRoot: tmp_dir,
-      docsPath: docs_path,
+      project_root: tmp_dir,
+      docs_path,
       file: 'api/old.md',
       reason: 'superseded',
       today: '2026-06-09',
     });
     expect(res.ok).toBe(true);
     expect(res.action).toBe('archived');
-    expect(res.moveMethod).toBe('fs'); // tmpDir is not a git repo
+    expect(res.move_method).toBe('fs'); // tmpDir is not a git repo
     expect(await exists(join(docs_path, 'archive/api/old.md'))).toBe(true);
     expect(await exists(join(docs_path, 'api/old.md'))).toBe(false);
 
@@ -63,7 +63,7 @@ describe('archiveDoc / unarchiveDoc', () => {
 
   it('drops the doc from its domain INDEX after archiving', async () => {
     await write_doc('api/old.md');
-    await archive_doc({ projectRoot: tmp_dir, docsPath: docs_path, file: 'api/old.md', today: '2026-06-09' });
+    await archive_doc({ project_root: tmp_dir, docs_path, file: 'api/old.md', today: '2026-06-09' });
     const index = await readFile(join(docs_path, 'api/INDEX.md'), 'utf-8').catch(() => '');
     expect(index).not.toMatch(/old\.md/);
   });
@@ -71,10 +71,10 @@ describe('archiveDoc / unarchiveDoc', () => {
   it('dry-run moves nothing', async () => {
     await write_doc('api/old.md');
     const res = await archive_doc({
-      projectRoot: tmp_dir,
-      docsPath: docs_path,
+      project_root: tmp_dir,
+      docs_path,
       file: 'api/old.md',
-      dryRun: true,
+      dry_run: true,
       today: '2026-06-09',
     });
     expect(res.action).toBe('dry_run');
@@ -87,20 +87,20 @@ describe('archiveDoc / unarchiveDoc', () => {
     await write_doc('api/live.md', FM().replace('# Doc\n', '# Live\nSee [old](old.md).\n'));
 
     const blocked = await archive_doc({
-      projectRoot: tmp_dir,
-      docsPath: docs_path,
+      project_root: tmp_dir,
+      docs_path,
       file: 'api/old.md',
       today: '2026-06-09',
     });
     expect(blocked.ok).toBe(false);
     expect(blocked.action).toBe('blocked');
-    expect(blocked.inboundLinks.length).toBeGreaterThan(0);
-    expect(blocked.inboundLinks[0]!.source).toBe('api/live.md');
+    expect(blocked.inbound_links.length).toBeGreaterThan(0);
+    expect(blocked.inbound_links[0]!.source).toBe('api/live.md');
     expect(await exists(join(docs_path, 'api/old.md'))).toBe(true); // not moved
 
     const forced = await archive_doc({
-      projectRoot: tmp_dir,
-      docsPath: docs_path,
+      project_root: tmp_dir,
+      docs_path,
       file: 'api/old.md',
       force: true,
       today: '2026-06-09',
@@ -110,15 +110,15 @@ describe('archiveDoc / unarchiveDoc', () => {
   });
 
   it('rejects missing files, non-markdown, and already-archived paths', async () => {
-    const missing = await archive_doc({ projectRoot: tmp_dir, docsPath: docs_path, file: 'api/ghost.md' });
+    const missing = await archive_doc({ project_root: tmp_dir, docs_path, file: 'api/ghost.md' });
     expect(missing.ok).toBe(false);
     expect(missing.action).toBe('rejected');
 
-    const not_md = await archive_doc({ projectRoot: tmp_dir, docsPath: docs_path, file: 'api/x.txt' });
+    const not_md = await archive_doc({ project_root: tmp_dir, docs_path, file: 'api/x.txt' });
     expect(not_md.ok).toBe(false);
 
     await write_doc('archive/api/already.md');
-    const already = await archive_doc({ projectRoot: tmp_dir, docsPath: docs_path, file: 'archive/api/already.md' });
+    const already = await archive_doc({ project_root: tmp_dir, docs_path, file: 'archive/api/already.md' });
     expect(already.ok).toBe(false);
   });
 
@@ -130,16 +130,16 @@ describe('archiveDoc / unarchiveDoc', () => {
     execFileSync('git', ['add', '-A'], { cwd: tmp_dir });
     execFileSync('git', ['commit', '-qm', 'init'], { cwd: tmp_dir });
 
-    const res = await archive_doc({ projectRoot: tmp_dir, docsPath: docs_path, file: 'api/old.md', today: '2026-06-09' });
+    const res = await archive_doc({ project_root: tmp_dir, docs_path, file: 'api/old.md', today: '2026-06-09' });
     expect(res.ok).toBe(true);
-    expect(res.moveMethod).toBe('git');
+    expect(res.move_method).toBe('git');
   });
 
   it('unarchive restores to archived_from and strips the stamp', async () => {
     await write_doc('api/old.md');
-    await archive_doc({ projectRoot: tmp_dir, docsPath: docs_path, file: 'api/old.md', today: '2026-06-09' });
+    await archive_doc({ project_root: tmp_dir, docs_path, file: 'api/old.md', today: '2026-06-09' });
 
-    const res = await unarchive_doc({ projectRoot: tmp_dir, docsPath: docs_path, file: 'archive/api/old.md' });
+    const res = await unarchive_doc({ project_root: tmp_dir, docs_path, file: 'archive/api/old.md' });
     expect(res.ok).toBe(true);
     expect(res.action).toBe('unarchived');
     expect(res.to).toBe('api/old.md');
@@ -153,14 +153,14 @@ describe('archiveDoc / unarchiveDoc', () => {
   });
 
   it('unarchive rejects a non-archived path and refuses to clobber', async () => {
-    const not_archived = await unarchive_doc({ projectRoot: tmp_dir, docsPath: docs_path, file: 'api/x.md' });
+    const not_archived = await unarchive_doc({ project_root: tmp_dir, docs_path, file: 'api/x.md' });
     expect(not_archived.ok).toBe(false);
 
     // archive, then recreate the original path → unarchive must refuse to clobber.
     await write_doc('api/old.md');
-    await archive_doc({ projectRoot: tmp_dir, docsPath: docs_path, file: 'api/old.md', today: '2026-06-09' });
+    await archive_doc({ project_root: tmp_dir, docs_path, file: 'api/old.md', today: '2026-06-09' });
     await write_doc('api/old.md'); // recreate at the restore target
-    const clobber = await unarchive_doc({ projectRoot: tmp_dir, docsPath: docs_path, file: 'archive/api/old.md' });
+    const clobber = await unarchive_doc({ project_root: tmp_dir, docs_path, file: 'archive/api/old.md' });
     expect(clobber.ok).toBe(false);
     expect(clobber.errors.join(' ')).toMatch(/already exists/i);
   });
@@ -170,7 +170,7 @@ describe('archiveDoc / unarchiveDoc', () => {
 
     async function expect_refused(dry_run = false): Promise<void> {
       const doc_before = await readFile(join(docs_path, 'README.md'), 'utf-8');
-      const res = await archive_doc({ projectRoot: tmp_dir, docsPath: docs_path, file: 'README.md', dryRun: dry_run });
+      const res = await archive_doc({ project_root: tmp_dir, docs_path, file: 'README.md', dry_run });
       expect(res.ok).toBe(false);
       expect(res.action).toBe('rejected');
       expect(res.errors.join(' ')).toMatch(/archive\/README\.md.*README\.md/);
@@ -207,28 +207,28 @@ describe('archiveDoc / unarchiveDoc', () => {
       await writeFile(join(docs_path, 'INDEX.md'), '# Index\n[old](api/old.md)\n', 'utf-8');
       await writeFile(join(docs_path, 'api/REGISTRY.md'), '# Registry\n[old](old.md)\n', 'utf-8');
 
-      const res = await archive_doc({ projectRoot: tmp_dir, docsPath: docs_path, file: 'api/old.md', dryRun: true });
-      expect(res.inboundLinks).toEqual([]);
+      const res = await archive_doc({ project_root: tmp_dir, docs_path, file: 'api/old.md', dry_run: true });
+      expect(res.inbound_links).toEqual([]);
 
       // A sub-feature INDEX.md is prose hewtd never writes: it still blocks.
       await write_doc('api/v2/INDEX.md', FM().replace('# Doc\n', '# V2\n[old](../old.md)\n'));
-      const blocked = await archive_doc({ projectRoot: tmp_dir, docsPath: docs_path, file: 'api/old.md' });
+      const blocked = await archive_doc({ project_root: tmp_dir, docs_path, file: 'api/old.md' });
       expect(blocked.action).toBe('blocked');
-      expect(blocked.inboundLinks.map((l) => l.source)).toEqual(['api/v2/INDEX.md']);
+      expect(blocked.inbound_links.map((l) => l.source)).toEqual(['api/v2/INDEX.md']);
     });
 
     it('accepts project-relative, docs-relative and absolute paths, for archive and unarchive', async () => {
       for (const file of ['.documentation/api/a.md', 'api/b.md', join(docs_path, 'api/c.md')]) {
         const name = file.slice(-4);
         await write_doc(`api/${name}`);
-        const res = await archive_doc({ projectRoot: tmp_dir, docsPath: docs_path, file, today: '2026-06-09' });
+        const res = await archive_doc({ project_root: tmp_dir, docs_path, file, today: '2026-06-09' });
         expect(res.ok, file).toBe(true);
         expect(res.from).toBe(`api/${name}`);
       }
 
       const back = await unarchive_doc({
-        projectRoot: tmp_dir,
-        docsPath: docs_path,
+        project_root: tmp_dir,
+        docs_path,
         file: '.documentation/archive/api/a.md',
       });
       expect(back.ok).toBe(true);

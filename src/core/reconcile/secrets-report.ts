@@ -12,7 +12,7 @@ import { assert_no_secrets, find_secrets, fingerprint, mask, type SecretFinding 
 
 export interface ReportEntry {
   rule: string; file: string; line?: number; masked: string; fingerprint: string;
-  kind: 'secret' | 'personal'; status: 'pending' | 'moved'; inHistory?: boolean; env?: string;
+  kind: 'secret' | 'personal'; status: 'pending' | 'moved'; in_history?: boolean; env?: string;
 }
 
 /** Stream `git log --all -p` for one path and report which wanted values ever appeared. Nothing but the path is passed to git. */
@@ -57,9 +57,9 @@ const STEPS = [
 ];
 
 export async function build_secrets_report(opts: {
-  root: string; docsPath: string; findings: SecretFinding[]; ledger?: Ledger; cfg: SecretsConfig; date?: string;
+  root: string; docs_path: string; findings: SecretFinding[]; ledger?: Ledger; cfg: SecretsConfig; date?: string;
 }): Promise<{ entries: ReportEntry[]; text: string }> {
-  const { root, docsPath: docs_path, cfg } = opts;
+  const { root, docs_path, cfg } = opts;
   const entries: ReportEntry[] = [];
   const locate = (file: string): string | undefined => [join(docs_path, file), join(root, file)].find((p) => existsSync(p));
   const wanted = new Map<string, Map<string, ReportEntry>>(); // repo path -> value -> entry (values stay in memory)
@@ -93,7 +93,7 @@ export async function build_secrets_report(opts: {
   }
   for (const [path, vals] of wanted) {
     const hit = await values_in_history(root, path, [...vals.keys()]);
-    for (const [v, e] of vals) e.inHistory = hit.has(v);
+    for (const [v, e] of vals) e.in_history = hit.has(v);
   }
 
   const secrets = entries.filter((e) => e.kind === 'secret');
@@ -102,7 +102,7 @@ export async function build_secrets_report(opts: {
   L.push(`## Secrets (${secrets.length})`, '');
   if (!secrets.length) L.push('None found.', '');
   for (const e of secrets) {
-    const hist = e.inHistory === undefined ? 'unknown' : e.inHistory ? 'yes' : 'no';
+    const hist = e.in_history === undefined ? 'unknown' : e.in_history ? 'yes' : 'no';
     L.push(`- \`${e.rule}\` ${e.file}${e.line ? `:${e.line}` : ''} ${e.masked} (${e.fingerprint.slice(0, 12)}) - in git history: ${hist} - status: ${e.status}${e.env ? ` (${e.env})` : ''}`);
   }
   if (secrets.length) L.push('', '### Next steps, for each secret above', '', ...STEPS.map((s, i) => `${i + 1}. ${s}`), '');

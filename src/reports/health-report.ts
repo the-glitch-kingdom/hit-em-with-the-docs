@@ -6,7 +6,7 @@ import { format_date } from '../core/metadata/generator.js';
 import type { MaintainResult } from '../core/maintain/orchestrator.js';
 
 export interface HealthReportOptions {
-  docsPath: string;
+  docs_path: string;
   result: MaintainResult;
   format?: 'markdown' | 'json';
 }
@@ -46,27 +46,27 @@ generated: true
 # Documentation Health Report
 
 **Generated:** ${timestamp}
-**Health Score:** ${result.healthScore.toFixed(1)}/100
+**Health Score:** ${result.health_score.toFixed(1)}/100
 
 ## Summary
 
 | Metric | Value | Status |
 |--------|-------|--------|
-| Health Score | ${result.healthScore.toFixed(1)}% | ${get_status_emoji(result.healthScore)} |
-| Domain Health | ${result.domainHealth.healthy ? 'Healthy' : 'Issues'} | ${result.domainHealth.healthy ? '✅' : '⚠️'} |
-| Files Analyzed | ${result.metadataSync?.totalFiles ?? 0} | ℹ️ |
-| Valid Files | ${result.metadataSync?.validFiles ?? 0} | ${get_status_emoji((result.metadataSync?.validFiles ?? 0) / (result.metadataSync?.totalFiles ?? 1) * 100)} |
-| Broken Links | ${result.linkCheck?.brokenLinks.length ?? 'N/A'} | ${(result.linkCheck?.brokenLinks.length ?? 0) === 0 ? '✅' : '⚠️'} |
+| Health Score | ${result.health_score.toFixed(1)}% | ${get_status_emoji(result.health_score)} |
+| Domain Health | ${result.domain_health.healthy ? 'Healthy' : 'Issues'} | ${result.domain_health.healthy ? '✅' : '⚠️'} |
+| Files Analyzed | ${result.metadata_sync?.total_files ?? 0} | ℹ️ |
+| Valid Files | ${result.metadata_sync?.valid_files ?? 0} | ${get_status_emoji((result.metadata_sync?.valid_files ?? 0) / (result.metadata_sync?.total_files ?? 1) * 100)} |
+| Broken Links | ${result.link_check?.broken_links.length ?? 'N/A'} | ${(result.link_check?.broken_links.length ?? 0) === 0 ? '✅' : '⚠️'} |
 
 ## Health Score Breakdown
 
 \`\`\`
-Overall Score: ${result.healthScore.toFixed(1)}/100
+Overall Score: ${result.health_score.toFixed(1)}/100
 
 Components:
-├── Domain Health: ${result.domainHealth.healthy ? '100' : '50'}/100 (weight: 20%)
+├── Domain Health: ${result.domain_health.healthy ? '100' : '50'}/100 (weight: 20%)
 ├── Metadata Compliance: ${result.audit?.stats.metadataCompliance.toFixed(1) ?? 'N/A'}/100 (weight: 40%)
-├── Link Health: ${result.linkCheck ? (100 - result.linkCheck.stats.brokenPercentage).toFixed(1) : 'N/A'}/100 (weight: 20%)
+├── Link Health: ${result.link_check ? (100 - result.link_check.stats.brokenPercentage).toFixed(1) : 'N/A'}/100 (weight: 20%)
 └── Naming Compliance: ${result.audit?.stats.namingCompliance.toFixed(1) ?? 'N/A'}/100 (weight: 20%)
 \`\`\`
 
@@ -84,7 +84,7 @@ ${generate_recommendations(result)}
 const pct = (n: number, total: number): string => (total === 0 ? '0.0' : ((n / total) * 100).toFixed(1));
 
 function render_coverage(result: MaintainResult): string {
-  const c = result.retrievalCoverage;
+  const c = result.retrieval_coverage;
   if (!c) return '';
   const row = (label: string, n: number): string => `| ${label} | ${n}/${c.total} | ${pct(n, c.total)}% |`;
   return `## Retrieval Coverage
@@ -101,7 +101,7 @@ ${render_overviews(result)}
 }
 
 function render_overviews(result: MaintainResult): string {
-  const o = result.overviewCoverage;
+  const o = result.overview_coverage;
   if (!o) return '';
   const rows = o.missing.map((m) => `| ${m.id} | ${m.size} | ${m.generatedOnlyHub ? 'yes' : 'no'} |`).join('\n');
   return `
@@ -115,34 +115,34 @@ ${rows ? `\n| Cluster missing an overview | Docs | Generated-only hub |\n|---|--
 function generate_json_report(result: MaintainResult): string {
   return JSON.stringify({
     timestamp: new Date().toISOString(),
-    healthScore: result.healthScore,
+    healthScore: result.health_score,
     summary: {
-      domainHealth: result.domainHealth.healthy,
-      totalFiles: result.metadataSync?.totalFiles ?? 0,
-      validFiles: result.metadataSync?.validFiles ?? 0,
-      brokenLinks: result.linkCheck?.brokenLinks.length ?? null,
+      domainHealth: result.domain_health.healthy,
+      totalFiles: result.metadata_sync?.total_files ?? 0,
+      validFiles: result.metadata_sync?.valid_files ?? 0,
+      brokenLinks: result.link_check?.broken_links.length ?? null,
       auditIssues: result.audit?.issues.length ?? 0,
     },
-    domainHealth: result.domainHealth,
-    metadataSync: result.metadataSync ? {
-      totalFiles: result.metadataSync.totalFiles,
-      validFiles: result.metadataSync.validFiles,
-      fixedFiles: result.metadataSync.fixedFiles,
-      avgCompleteness: result.metadataSync.stats.avgCompleteness,
+    domainHealth: result.domain_health,
+    metadataSync: result.metadata_sync ? {
+      totalFiles: result.metadata_sync.total_files,
+      validFiles: result.metadata_sync.valid_files,
+      fixedFiles: result.metadata_sync.fixed_files,
+      avgCompleteness: result.metadata_sync.stats.avg_completeness,
     } : null,
-    linkCheck: result.linkCheck ? {
-      totalLinks: result.linkCheck.totalLinks,
-      brokenLinks: result.linkCheck.brokenLinks.length,
-      crossDomainLinks: result.linkCheck.stats.crossDomainLinks,
+    linkCheck: result.link_check ? {
+      totalLinks: result.link_check.total_links,
+      brokenLinks: result.link_check.broken_links.length,
+      crossDomainLinks: result.link_check.stats.crossDomainLinks,
     } : null,
     audit: result.audit ? {
-      passedFiles: result.audit.passedFiles,
-      failedFiles: result.audit.failedFiles,
-      healthScore: result.audit.healthScore,
+      passedFiles: result.audit.passed_files,
+      failedFiles: result.audit.failed_files,
+      healthScore: result.audit.health_score,
       stats: result.audit.stats,
     } : null,
-    retrievalCoverage: result.retrievalCoverage ?? null,
-    overviewCoverage: result.overviewCoverage ?? null,
+    retrievalCoverage: result.retrieval_coverage ?? null,
+    overviewCoverage: result.overview_coverage ?? null,
     errors: result.errors,
   }, null, 2);
 }
@@ -164,32 +164,32 @@ function generate_recommendations(result: MaintainResult): string {
   const recommendations: string[] = [];
 
   // Domain health recommendations
-  if (!result.domainHealth.healthy) {
-    if (result.domainHealth.missingDomains.length > 0) {
-      recommendations.push(`- **Create missing domain folders:** ${result.domainHealth.missingDomains.join(', ')}`);
+  if (!result.domain_health.healthy) {
+    if (result.domain_health.missingDomains.length > 0) {
+      recommendations.push(`- **Create missing domain folders:** ${result.domain_health.missingDomains.join(', ')}`);
     }
-    if (result.domainHealth.missingIndexes.length > 0) {
-      recommendations.push(`- **Create missing INDEX.md files:** ${result.domainHealth.missingIndexes.join(', ')}`);
+    if (result.domain_health.missingIndexes.length > 0) {
+      recommendations.push(`- **Create missing INDEX.md files:** ${result.domain_health.missingIndexes.join(', ')}`);
     }
-    if (result.domainHealth.missingRegistries.length > 0) {
-      recommendations.push(`- **Create missing REGISTRY.md files:** ${result.domainHealth.missingRegistries.join(', ')}`);
+    if (result.domain_health.missingRegistries.length > 0) {
+      recommendations.push(`- **Create missing REGISTRY.md files:** ${result.domain_health.missingRegistries.join(', ')}`);
     }
   }
 
   // Metadata recommendations
-  if (result.metadataSync) {
-    const invalid_files = result.metadataSync.totalFiles - result.metadataSync.validFiles;
+  if (result.metadata_sync) {
+    const invalid_files = result.metadata_sync.total_files - result.metadata_sync.valid_files;
     if (invalid_files > 0) {
       recommendations.push(`- **Fix metadata in ${invalid_files} files:** Run \`npx hit-em-with-the-docs metadata-sync --fix\``);
     }
-    if (result.metadataSync.stats.avgCompleteness < 80) {
-      recommendations.push(`- **Improve metadata completeness:** Current average is ${result.metadataSync.stats.avgCompleteness.toFixed(1)}%`);
+    if (result.metadata_sync.stats.avg_completeness < 80) {
+      recommendations.push(`- **Improve metadata completeness:** Current average is ${result.metadata_sync.stats.avg_completeness.toFixed(1)}%`);
     }
   }
 
   // Link recommendations
-  if (result.linkCheck && result.linkCheck.brokenLinks.length > 0) {
-    recommendations.push(`- **Fix ${result.linkCheck.brokenLinks.length} broken links:** Run \`npx hit-em-with-the-docs link-check --report\` for details`);
+  if (result.link_check && result.link_check.broken_links.length > 0) {
+    recommendations.push(`- **Fix ${result.link_check.broken_links.length} broken links:** Run \`npx hit-em-with-the-docs link-check --report\` for details`);
   }
 
   // Audit recommendations
@@ -229,7 +229,7 @@ export async function save_health_report(
   const file_name = `health-${timestamp}.${ext}`;
   const file_path = join(reports_dir, file_name);
 
-  const content = await generate_health_report({ docsPath: docs_path, result, format });
+  const content = await generate_health_report({ docs_path, result, format });
   await writeFile(file_path, content, 'utf-8');
 
   return file_path;

@@ -32,18 +32,18 @@ export interface GapsRead {
 
 export interface GapsContext {
   /** Absolute docs root (e.g. <repo>/.documentation). */
-  docsRoot: string;
+  docs_root: string;
   /** Repo root, for vault-relative paths like `.documentation/ops/x.md`. Defaults to the docs root's parent. */
-  repoRoot?: string;
+  repo_root?: string;
 }
 
 /** Resolve a docs-relative, vault-relative or absolute path to a docs-relative one; null when it is not a live doc
  * (a missing file, outside the docs root, not markdown, or `generated: true` such as INDEX.md). */
 export function normalize_used_doc(p: string, ctx: GapsContext): string | null {
-  const repo = ctx.repoRoot ?? resolve(ctx.docsRoot, '..');
-  const candidates = isAbsolute(p) ? [p] : [join(ctx.docsRoot, p), join(repo, p)];
+  const repo = ctx.repo_root ?? resolve(ctx.docs_root, '..');
+  const candidates = isAbsolute(p) ? [p] : [join(ctx.docs_root, p), join(repo, p)];
   for (const c of candidates) {
-    const rel = relative(ctx.docsRoot, resolve(c));
+    const rel = relative(ctx.docs_root, resolve(c));
     if (rel.startsWith('..') || isAbsolute(rel) || !rel) continue;
     if (!c.endsWith('.md') || !existsSync(c) || !statSync(c).isFile()) continue;
     if (parse_frontmatter<Record<string, unknown>>(readFileSync(c, 'utf-8')).data.generated === true) continue;
@@ -136,8 +136,8 @@ const identifier_body = (q: string): string =>
   (q.match(/[\w$./-]+(?:\(\))?/g) ?? []).filter((t) => /[a-z][A-Z]|_|\/|\.[A-Za-z]{1,5}$|\(\)$/.test(t.replace(/\.$/, ''))).map((t) => `\`${t.replace(/\.$/, '')}\``).join(' ');
 
 /** Every gap lands in exactly one outcome. Read-only: nothing in the docs tree changes. */
-export async function classify_gaps(gaps: Gap[], opts: { root: string; docsRoot: string; config: PluginConfig }): Promise<GapsClassification> {
-  const { root, docsRoot: docs_root, config } = opts;
+export async function classify_gaps(gaps: Gap[], opts: { root: string; docs_root: string; config: PluginConfig }): Promise<GapsClassification> {
+  const { root, docs_root, config } = opts;
   const secrets = config.reconcile.secrets;
   const res: GapsClassification = { proposals: [], candidates: [], questions: [], dropped: [] };
 

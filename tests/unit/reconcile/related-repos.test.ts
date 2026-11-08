@@ -34,7 +34,7 @@ describe('related repos: references', () => {
   const resolve = async (body: string, rel: RelatedRepo[] = related()) => {
     put(proj, 'docs/x.md', body);
     gi(proj, 'add', '-A');
-    return check_doc_references(build_repo_index(proj), body, { docFile: join(proj, 'docs/x.md'), docsPath: join(proj, 'docs'), related: rel });
+    return check_doc_references(build_repo_index(proj), body, { doc_file: join(proj, 'docs/x.md'), docs_path: join(proj, 'docs'), related: rel });
   };
 
   it('finds refs only a sibling has, with a <name>: where; read-only', async () => {
@@ -63,7 +63,7 @@ describe('related repos: references', () => {
 });
 
 describe('related repos: triage', () => {
-  const run = async (rel: string) => triage({ root: proj, docsPath: join(proj, '.documentation'), rels: [rel], config: await load_plugin_config(proj) });
+  const run = async (rel: string) => triage({ root: proj, docs_path: join(proj, '.documentation'), rels: [rel], config: await load_plugin_config(proj) });
   const commit = () => { gi(proj, 'add', '-A'); gi(proj, 'commit', '-qm', 'c'); };
 
   it('resolves <name>: sources, warns for a missing checkout, ignores invalid config entries', async () => {

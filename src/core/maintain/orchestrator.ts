@@ -18,7 +18,7 @@ import {
 } from '../../generators/regenerate.js';
 
 export interface MaintainOptions {
-  docsPath: string;
+  docs_path: string;
   quick?: boolean;
   fix?: boolean;
   silent?: boolean;
@@ -26,17 +26,17 @@ export interface MaintainOptions {
 
 export interface MaintainResult {
   success: boolean;
-  domainHealth: DomainHealthResult;
-  metadataSync?: SyncResult;
-  indexRegeneration?: RegenerateResult;
-  linkCheck?: LinkCheckResult;
+  domain_health: DomainHealthResult;
+  metadata_sync?: SyncResult;
+  index_regeneration?: RegenerateResult;
+  link_check?: LinkCheckResult;
   audit?: AuditResult;
-  retrievalCoverage?: RetrievalCoverage;
-  overviewCoverage?: OverviewCoverage;
+  retrieval_coverage?: RetrievalCoverage;
+  overview_coverage?: OverviewCoverage;
   /** Back-links added under --fix, or that would be added without it. */
-  overviewBacklinks?: BacklinkChange[];
-  healthScore: number;
-  reportPath?: string;
+  overview_backlinks?: BacklinkChange[];
+  health_score: number;
+  report_path?: string;
   errors: string[];
 }
 
@@ -59,7 +59,7 @@ export interface DomainHealthResult {
  */
 export async function run_maintenance(options: MaintainOptions): Promise<MaintainResult> {
   const {
-    docsPath: docs_path,
+    docs_path,
     quick = false,
     fix = false,
     silent = false,
@@ -67,14 +67,14 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
 
   const result: MaintainResult = {
     success: true,
-    domainHealth: {
+    domain_health: {
       healthy: true,
       presentDomains: [],
       missingDomains: [],
       missingIndexes: [],
       missingRegistries: [],
     },
-    healthScore: 0,
+    health_score: 0,
     errors: [],
   };
 
@@ -91,21 +91,21 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
     logger.subheader('Step 0: Domain Health Check');
   }
 
-  result.domainHealth = await check_domain_health(docs_path);
+  result.domain_health = await check_domain_health(docs_path);
 
   if (!silent) {
-    if (result.domainHealth.healthy) {
-      logger.success(`All ${result.domainHealth.presentDomains.length} domains healthy`);
+    if (result.domain_health.healthy) {
+      logger.success(`All ${result.domain_health.presentDomains.length} domains healthy`);
     } else {
       logger.warn(`Domain issues found:`);
-      if (result.domainHealth.missingDomains.length > 0) {
-        logger.warn(`  Missing domains: ${result.domainHealth.missingDomains.join(', ')}`);
+      if (result.domain_health.missingDomains.length > 0) {
+        logger.warn(`  Missing domains: ${result.domain_health.missingDomains.join(', ')}`);
       }
-      if (result.domainHealth.missingIndexes.length > 0) {
-        logger.warn(`  Missing INDEX.md: ${result.domainHealth.missingIndexes.join(', ')}`);
+      if (result.domain_health.missingIndexes.length > 0) {
+        logger.warn(`  Missing INDEX.md: ${result.domain_health.missingIndexes.join(', ')}`);
       }
-      if (result.domainHealth.missingRegistries.length > 0) {
-        logger.warn(`  Missing REGISTRY.md: ${result.domainHealth.missingRegistries.join(', ')}`);
+      if (result.domain_health.missingRegistries.length > 0) {
+        logger.warn(`  Missing REGISTRY.md: ${result.domain_health.missingRegistries.join(', ')}`);
       }
     }
   }
@@ -115,7 +115,7 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
   try {
     const cfg = await load_plugin_config(dirname(docs_path));
     if (cfg.overview.backlinks) {
-      result.overviewBacklinks = await add_overview_backlinks(docs_path, { dryRun: !fix });
+      result.overview_backlinks = await add_overview_backlinks(docs_path, { dry_run: !fix });
     }
   } catch (error) {
     result.errors.push(`Overview back-links failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -127,9 +127,9 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
   }
 
   try {
-    result.metadataSync = await sync_metadata({
-      docsPath: docs_path,
-      dryRun: !fix,
+    result.metadata_sync = await sync_metadata({
+      docs_path,
+      dry_run: !fix,
       fix,
       silent,
     });
@@ -151,7 +151,7 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
   }
 
   try {
-    result.indexRegeneration = await regenerate_indexes({ docsPath: docs_path, silent });
+    result.index_regeneration = await regenerate_indexes({ docs_path, silent });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     result.errors.push(`Index regeneration failed: ${message}`);
@@ -179,8 +179,8 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
     }
 
     try {
-      result.linkCheck = await check_links({
-        docsPath: docs_path,
+      result.link_check = await check_links({
+        docs_path,
         silent,
       });
     } catch (error) {
@@ -198,7 +198,7 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
 
   try {
     result.audit = await audit_documentation({
-      docsPath: docs_path,
+      docs_path,
       silent,
     });
   } catch (error) {
@@ -210,7 +210,7 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
   try {
     const docs = await collect_retrieval_docs(docs_path, await find_markdown_files(docs_path));
     const cfg = await load_plugin_config(dirname(docs_path));
-    result.retrievalCoverage = retrieval_coverage(docs, cfg.retrieval);
+    result.retrieval_coverage = retrieval_coverage(docs, cfg.retrieval);
   } catch (error) {
     result.errors.push(`Retrieval coverage failed: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -220,17 +220,17 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
     const cfg = await load_plugin_config(dirname(docs_path));
     const clusters = await find_clusters(docs_path, cfg.overview);
     const missing = clusters.filter((c) => !c.overview);
-    result.overviewCoverage = {
+    result.overview_coverage = {
       withOverview: clusters.length - missing.length,
       withoutOverview: missing.length,
-      missing: missing.map((c) => ({ id: c.id, size: c.members.length, generatedOnlyHub: c.generatedOnlyHub })),
+      missing: missing.map((c) => ({ id: c.id, size: c.members.length, generatedOnlyHub: c.generated_only_hub })),
     };
   } catch (error) {
     result.errors.push(`Overview coverage failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   // Calculate overall health score
-  result.healthScore = calculate_health_score(result);
+  result.health_score = calculate_health_score(result);
 
   // Generate report
   if (!silent) {
@@ -238,9 +238,9 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
   }
 
   try {
-    result.reportPath = await generate_maintenance_report(docs_path, result, start_time);
+    result.report_path = await generate_maintenance_report(docs_path, result, start_time);
     if (!silent) {
-      logger.success(`Report saved: ${result.reportPath}`);
+      logger.success(`Report saved: ${result.report_path}`);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -253,17 +253,17 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
     logger.newline();
     logger.header('Maintenance Summary');
     logger.info(`Duration: ${duration}s`);
-    logger.info(`Health Score: ${result.healthScore.toFixed(1)}/100`);
+    logger.info(`Health Score: ${result.health_score.toFixed(1)}/100`);
 
-    if (result.metadataSync) {
-      logger.info(`Files: ${result.metadataSync.totalFiles}`);
+    if (result.metadata_sync) {
+      logger.info(`Files: ${result.metadata_sync.total_files}`);
       if (fix) {
-        logger.info(`Fixed: ${result.metadataSync.fixedFiles}`);
+        logger.info(`Fixed: ${result.metadata_sync.fixed_files}`);
       }
     }
 
-    if (result.linkCheck) {
-      logger.info(`Links: ${result.linkCheck.totalLinks} (${result.linkCheck.brokenLinks.length} broken)`);
+    if (result.link_check) {
+      logger.info(`Links: ${result.link_check.total_links} (${result.link_check.broken_links.length} broken)`);
     }
 
     if (result.audit) {
@@ -329,29 +329,29 @@ function calculate_health_score(result: MaintainResult): number {
   let score = 100;
 
   // Domain health penalty
-  if (!result.domainHealth.healthy) {
+  if (!result.domain_health.healthy) {
     const missing_count =
-      result.domainHealth.missingDomains.length +
-      result.domainHealth.missingIndexes.length +
-      result.domainHealth.missingRegistries.length;
+      result.domain_health.missingDomains.length +
+      result.domain_health.missingIndexes.length +
+      result.domain_health.missingRegistries.length;
     score -= missing_count * 2;
   }
 
   // Metadata compliance
-  if (result.metadataSync) {
-    const compliance_rate = result.metadataSync.validFiles / result.metadataSync.totalFiles;
+  if (result.metadata_sync) {
+    const compliance_rate = result.metadata_sync.valid_files / result.metadata_sync.total_files;
     score = score * 0.7 + compliance_rate * 30;
   }
 
   // Link health
-  if (result.linkCheck) {
-    const broken_rate = result.linkCheck.brokenLinks.length / Math.max(result.linkCheck.totalLinks, 1);
+  if (result.link_check) {
+    const broken_rate = result.link_check.broken_links.length / Math.max(result.link_check.total_links, 1);
     score -= broken_rate * 20;
   }
 
   // Audit score
   if (result.audit) {
-    score = score * 0.7 + result.audit.healthScore * 0.3;
+    score = score * 0.7 + result.audit.health_score * 0.3;
   }
 
   return Math.max(0, Math.min(100, score));
@@ -383,81 +383,81 @@ generated: true
 
 **Generated:** ${new Date().toISOString()}
 **Duration:** ${duration}s
-**Health Score:** ${result.healthScore.toFixed(1)}/100
+**Health Score:** ${result.health_score.toFixed(1)}/100
 
 ## Summary
 
 | Metric | Value |
 |--------|-------|
-| Overall Health | ${result.healthScore.toFixed(1)}% |
-| Domain Health | ${result.domainHealth.healthy ? 'Healthy' : 'Issues Found'} |
-| Indexes Regenerated | ${result.indexRegeneration?.filesWritten.length ?? 0} files |
-| Files Scanned | ${result.metadataSync?.totalFiles ?? 0} |
-| Valid Files | ${result.metadataSync?.validFiles ?? 0} |
-| Broken Links | ${result.linkCheck?.brokenLinks.length ?? 'Not checked'} |
+| Overall Health | ${result.health_score.toFixed(1)}% |
+| Domain Health | ${result.domain_health.healthy ? 'Healthy' : 'Issues Found'} |
+| Indexes Regenerated | ${result.index_regeneration?.files_written.length ?? 0} files |
+| Files Scanned | ${result.metadata_sync?.total_files ?? 0} |
+| Valid Files | ${result.metadata_sync?.valid_files ?? 0} |
+| Broken Links | ${result.link_check?.broken_links.length ?? 'Not checked'} |
 | Audit Issues | ${result.audit?.issues.length ?? 0} |
 
 ## Domain Health
 
 `;
 
-  if (result.domainHealth.healthy) {
-    content += `All ${result.domainHealth.presentDomains.length} domains are healthy.\n\n`;
+  if (result.domain_health.healthy) {
+    content += `All ${result.domain_health.presentDomains.length} domains are healthy.\n\n`;
   } else {
-    if (result.domainHealth.missingDomains.length > 0) {
+    if (result.domain_health.missingDomains.length > 0) {
       content += `### Missing Domains\n\n`;
-      content += result.domainHealth.missingDomains.map((d) => `- ${d}`).join('\n');
+      content += result.domain_health.missingDomains.map((d) => `- ${d}`).join('\n');
       content += '\n\n';
     }
 
-    if (result.domainHealth.missingIndexes.length > 0) {
+    if (result.domain_health.missingIndexes.length > 0) {
       content += `### Missing INDEX.md Files\n\n`;
-      content += result.domainHealth.missingIndexes.map((d) => `- ${d}/INDEX.md`).join('\n');
+      content += result.domain_health.missingIndexes.map((d) => `- ${d}/INDEX.md`).join('\n');
       content += '\n\n';
     }
 
-    if (result.domainHealth.missingRegistries.length > 0) {
+    if (result.domain_health.missingRegistries.length > 0) {
       content += `### Missing REGISTRY.md Files\n\n`;
-      content += result.domainHealth.missingRegistries.map((d) => `- ${d}/REGISTRY.md`).join('\n');
+      content += result.domain_health.missingRegistries.map((d) => `- ${d}/REGISTRY.md`).join('\n');
       content += '\n\n';
     }
   }
 
-  if (result.metadataSync) {
+  if (result.metadata_sync) {
     content += `## Metadata Sync
 
 | Metric | Value |
 |--------|-------|
-| Total Files | ${result.metadataSync.totalFiles} |
-| Valid | ${result.metadataSync.validFiles} |
-| Fixed | ${result.metadataSync.fixedFiles} |
-| Errors | ${result.metadataSync.errors.length} |
-| Avg Completeness | ${result.metadataSync.stats.avgCompleteness.toFixed(1)}% |
+| Total Files | ${result.metadata_sync.total_files} |
+| Valid | ${result.metadata_sync.valid_files} |
+| Fixed | ${result.metadata_sync.fixed_files} |
+| Errors | ${result.metadata_sync.errors.length} |
+| Avg Completeness | ${result.metadata_sync.stats.avg_completeness.toFixed(1)}% |
 
 `;
   }
 
-  if (result.linkCheck) {
+  if (result.link_check) {
     content += `## Link Check
 
 | Metric | Value |
 |--------|-------|
-| Total Links | ${result.linkCheck.totalLinks} |
-| Valid Links | ${result.linkCheck.validLinks} |
-| Broken Links | ${result.linkCheck.brokenLinks.length} |
-| Cross-Domain | ${result.linkCheck.stats.crossDomainLinks} |
+| Total Links | ${result.link_check.total_links} |
+| Valid Links | ${result.link_check.valid_links} |
+| Broken Links | ${result.link_check.broken_links.length} |
+| Cross-Domain | ${result.link_check.stats.crossDomainLinks} |
 
 `;
 
-    if (result.linkCheck.brokenLinks.length > 0) {
+    if (result.link_check.broken_links.length > 0) {
       content += `### Broken Links\n\n`;
       content += `| File | Target | Line |\n`;
       content += `|------|--------|------|\n`;
-      for (const link of result.linkCheck.brokenLinks.slice(0, 20)) {
+      for (const link of result.link_check.broken_links.slice(0, 20)) {
         content += `| ${link.sourceFile} | ${link.targetPath} | ${link.lineNumber} |\n`;
       }
-      if (result.linkCheck.brokenLinks.length > 20) {
-        content += `\n*...and ${result.linkCheck.brokenLinks.length - 20} more*\n`;
+      if (result.link_check.broken_links.length > 20) {
+        content += `\n*...and ${result.link_check.broken_links.length - 20} more*\n`;
       }
       content += '\n';
     }
@@ -468,9 +468,9 @@ generated: true
 
 | Metric | Value |
 |--------|-------|
-| Passed Files | ${result.audit.passedFiles} |
-| Failed Files | ${result.audit.failedFiles} |
-| Health Score | ${result.audit.healthScore.toFixed(1)}% |
+| Passed Files | ${result.audit.passed_files} |
+| Failed Files | ${result.audit.failed_files} |
+| Health Score | ${result.audit.health_score.toFixed(1)}% |
 | Metadata Compliance | ${result.audit.stats.metadataCompliance.toFixed(1)}% |
 | Naming Compliance | ${result.audit.stats.namingCompliance.toFixed(1)}% |
 
@@ -531,9 +531,9 @@ async function maybe_generate_kb_indexes(
 
   if (!silent) {
     logger.subheader('Step 3.5: Knowledge-base Indexes');
-    logger.success(`Generated ${kb.facts} facts → ${kb.factsPath}`);
-    logger.success(`Generated ${kb.incidents} incidents → ${kb.incidentsPath}`);
-    logger.success(`Generated symptoms index → ${kb.symptomsPath}`);
+    logger.success(`Generated ${kb.facts} facts → ${kb.facts_path}`);
+    logger.success(`Generated ${kb.incidents} incidents → ${kb.incidents_path}`);
+    logger.success(`Generated symptoms index → ${kb.symptoms_path}`);
   }
 
   // Suppress unused-var: result is part of the signature for future use

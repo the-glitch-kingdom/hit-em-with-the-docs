@@ -29,7 +29,7 @@ const SHINGLE = 5;
 const BAR = 0.5;
 const SKIP_DIRS = new Set(['archive', 'drafts']);
 
-interface Sec { doc: string; anchor: string; label: Set<string>; words: Set<string>; shingles: Set<string>; docSize: number }
+interface Sec { doc: string; anchor: string; label: Set<string>; words: Set<string>; shingles: Set<string>; doc_size: number }
 
 async function walk(dir: string, out: string[] = []): Promise<string[]> {
   for (const e of (await readdir(dir, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
@@ -78,7 +78,7 @@ export async function find_duplicates(docs_path: string, config: PluginConfig): 
       const w = tokenize(normalize_block(s.text));
       const shingles = new Set<string>();
       for (let i = 0; i + SHINGLE <= w.length; i++) shingles.add(w.slice(i, i + SHINGLE).join(' '));
-      if (shingles.size) secs.push({ doc: rel, anchor: s.anchor, label: new Set(tokenize(`${s.heading} ${doc_label}`)), words: new Set(w), shingles, docSize: doc_size });
+      if (shingles.size) secs.push({ doc: rel, anchor: s.anchor, label: new Set(tokenize(`${s.heading} ${doc_label}`)), words: new Set(w), shingles, doc_size });
     }
   }
 
@@ -109,7 +109,7 @@ export async function find_duplicates(docs_path: string, config: PluginConfig): 
     // Owner: the section whose heading/title/purpose best names the shared text, plus how much of its doc the text is
     // (a procedure doc is mostly its procedure; a big guide embedding it is not), then the older doc.
     const shared = members.map((m) => m.words).reduce((a, b) => new Set([...a].filter((w) => b.has(w))));
-    const score = (m: Sec): number => (m.label.size ? [...m.label].filter((w) => shared.has(w)).length / m.label.size : 0) + m.words.size / m.docSize;
+    const score = (m: Sec): number => (m.label.size ? [...m.label].filter((w) => shared.has(w)).length / m.label.size : 0) + m.words.size / m.doc_size;
     const best = Math.max(...members.map(score));
     let top = members.filter((m) => Math.abs(score(m) - best) < 1e-9);
     if (new Set(top.map((m) => m.doc)).size > 1) {

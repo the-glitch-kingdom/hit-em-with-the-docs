@@ -37,11 +37,11 @@ describe('extractLinks skips code', () => {
 
     const link = links[0]!;
     expect(link.url).toBe('./y.md');
-    expect(link.lineNumber).toBe(2);
+    expect(link.line_number).toBe(2);
 
     // The offset must index into the ORIGINAL line, not the blanked copy.
     const line = md.split('\n')[1]!;
-    expect(line.slice(link.startIndex, link.endIndex)).toBe('[y](./y.md)');
+    expect(line.slice(link.start_index, link.end_index)).toBe('[y](./y.md)');
   });
 
   it('handles ~~~ fences and longer backtick runs', () => {
@@ -112,7 +112,7 @@ describe('extractLinks — indented code blocks and CommonMark fences', () => {
   it('still preserves offsets for a real link sharing a line with a span', () => {
     const doc = 'Span `[s](./s.md)` and real [b](./b.md)';
     const link = extract_links(doc)[0]!;
-    expect(doc.slice(link.startIndex, link.endIndex)).toBe('[b](./b.md)');
-    expect(link.lineNumber).toBe(1);
+    expect(doc.slice(link.start_index, link.end_index)).toBe('[b](./b.md)');
+    expect(link.line_number).toBe(1);
   });
 });

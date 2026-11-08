@@ -33,15 +33,15 @@ import matter from 'gray-matter';
 
 export interface MigrateIncidentOptions {
   /** Absolute path to the flat-file incident markdown. */
-  flatFilePath: string;
+  flat_file_path: string;
   /**
    * Absolute path to the vault root. The migrated folder lands at
    * `<vaultRoot>/incidents/<slug>/`. Required since 2.4.0 — the 2.3.0
    * "sibling of the flat file" behavior was the source of the path bug.
    */
-  vaultRoot: string;
+  vault_root: string;
   /** If true, returns the migration plan without writing. */
-  dryRun?: boolean;
+  dry_run?: boolean;
   /**
    * If true, proceed with migration even if a folder already exists at
    * the canonical or legacy location. Used to recover from a partial
@@ -51,9 +51,9 @@ export interface MigrateIncidentOptions {
 }
 
 export interface MigrateIncidentResult {
-  flatFilePath: string;
+  flat_file_path: string;
   /** The canonical target — always under `<vaultRoot>/incidents/`. */
-  targetFolder: string;
+  target_folder: string;
   action: 'migrated' | 'already_migrated' | 'dry_run';
   /**
    * Populated when `action === 'already_migrated'` to indicate WHERE the
@@ -61,20 +61,20 @@ export interface MigrateIncidentResult {
    * `'legacy'` = 2.3.0-style sibling-of-flat-file location. Helps consumers
    * decide whether to run `fix-legacy-layout`.
    */
-  existingLocation?: 'new' | 'legacy';
-  narrativePath: string;
-  factsPath: string;
-  evidencePath: string;
+  existing_location?: 'new' | 'legacy';
+  narrative_path: string;
+  facts_path: string;
+  evidence_path: string;
   /** What the narrative.md content will be. */
-  narrativeContent: string;
+  narrative_content: string;
   /** What the facts.md content will be. */
-  factsContent: string;
+  facts_content: string;
 }
 
 export async function migrate_incident(
   options: MigrateIncidentOptions
 ): Promise<MigrateIncidentResult> {
-  const { flatFilePath: flat_file_path, vaultRoot: vault_root, dryRun: dry_run = false, force = false } = options;
+  const { flat_file_path, vault_root, dry_run = false, force = false } = options;
 
   const source_content = await readFile(flat_file_path, 'utf-8');
   const parsed = matter(source_content);
@@ -154,42 +154,42 @@ export async function migrate_incident(
   if (!force) {
     if (existsSync(narrative_path)) {
       return {
-        flatFilePath: flat_file_path,
-        targetFolder: target_folder,
+        flat_file_path,
+        target_folder,
         action: 'already_migrated',
-        existingLocation: 'new',
-        narrativePath: narrative_path,
-        factsPath: facts_path,
-        evidencePath: evidence_path,
-        narrativeContent: narrative_content,
-        factsContent: facts_content,
+        existing_location: 'new',
+        narrative_path,
+        facts_path,
+        evidence_path,
+        narrative_content,
+        facts_content,
       };
     }
     if (existsSync(legacy_narrative_path)) {
       return {
-        flatFilePath: flat_file_path,
-        targetFolder: target_folder,
+        flat_file_path,
+        target_folder,
         action: 'already_migrated',
-        existingLocation: 'legacy',
-        narrativePath: legacy_narrative_path,
-        factsPath: join(legacy_target_folder, 'facts.md'),
-        evidencePath: join(legacy_target_folder, 'evidence'),
-        narrativeContent: narrative_content,
-        factsContent: facts_content,
+        existing_location: 'legacy',
+        narrative_path: legacy_narrative_path,
+        facts_path: join(legacy_target_folder, 'facts.md'),
+        evidence_path: join(legacy_target_folder, 'evidence'),
+        narrative_content,
+        facts_content,
       };
     }
   }
 
   if (dry_run) {
     return {
-      flatFilePath: flat_file_path,
-      targetFolder: target_folder,
+      flat_file_path,
+      target_folder,
       action: 'dry_run',
-      narrativePath: narrative_path,
-      factsPath: facts_path,
-      evidencePath: evidence_path,
-      narrativeContent: narrative_content,
-      factsContent: facts_content,
+      narrative_path,
+      facts_path,
+      evidence_path,
+      narrative_content,
+      facts_content,
     };
   }
 
@@ -203,14 +203,14 @@ export async function migrate_incident(
   await rename(flat_file_path, `${flat_file_path}.migrated`);
 
   return {
-    flatFilePath: flat_file_path,
-    targetFolder: target_folder,
+    flat_file_path,
+    target_folder,
     action: 'migrated',
-    narrativePath: narrative_path,
-    factsPath: facts_path,
-    evidencePath: evidence_path,
-    narrativeContent: narrative_content,
-    factsContent: facts_content,
+    narrative_path,
+    facts_path,
+    evidence_path,
+    narrative_content,
+    facts_content,
   };
 }
 

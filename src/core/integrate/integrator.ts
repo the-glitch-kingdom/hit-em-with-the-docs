@@ -18,10 +18,10 @@ import { build_repo_index, extract_references, resolve_references, type RelatedR
 import { execFileSync } from 'child_process';
 
 export interface IntegrateOptions {
-  filePath: string;
-  docsPath: string;
+  file_path: string;
+  docs_path: string;
   auto?: boolean;
-  dryRun?: boolean;
+  dry_run?: boolean;
   force?: boolean;
   silent?: boolean;
   /** Target domain, overriding the frontmatter `domains:` and detection (#39). */
@@ -31,14 +31,14 @@ export interface IntegrateOptions {
 export interface IntegrateResult {
   success: boolean;
   integrated: boolean;
-  originalPath: string;
-  targetPath?: string;
+  original_path: string;
+  target_path?: string;
   domain?: Domain;
   tier?: string;
   duplicates?: DuplicateMatch[];
   metadata?: PartialDocumentMetadata;
   /** Files/URLs this run added to the doc's `sources` (citation counts in `sourceCounts`). */
-  sourcesAdded?: string[];
+  sources_added?: string[];
   error?: string;
 }
 
@@ -55,10 +55,10 @@ export async function integrate_document(
   options: IntegrateOptions
 ): Promise<IntegrateResult> {
   const {
-    filePath: file_path,
-    docsPath: docs_path,
+    file_path,
+    docs_path,
     auto = false,
-    dryRun: dry_run = false,
+    dry_run = false,
     force = false,
     silent = false,
     domain: domain_override,
@@ -67,7 +67,7 @@ export async function integrate_document(
   const result: IntegrateResult = {
     success: false,
     integrated: false,
-    originalPath: file_path,
+    original_path: file_path,
   };
 
   if (!silent) {
@@ -154,10 +154,10 @@ export async function integrate_document(
 
     // Generate metadata
     const generated = generate_metadata({
-      filePath: file_path,
+      file_path,
       content,
-      docsRoot: docs_path,
-      existingMetadata: existing_metadata,
+      docs_root: docs_path,
+      existing_metadata,
     });
 
     const final_metadata = merge_metadata(existing_metadata, generated);
@@ -167,7 +167,7 @@ export async function integrate_document(
     const added = await cited_sources(body, root, config, Array.isArray(existing_metadata.sources) ? existing_metadata.sources : undefined, silent);
     if (added.length) {
       final_metadata.sources = [...(Array.isArray(existing_metadata.sources) ? existing_metadata.sources : []), ...added.map((a) => a.path)];
-      result.sourcesAdded = added.map((a) => a.path);
+      result.sources_added = added.map((a) => a.path);
       if (!silent) for (const a of added) logger.info(`  ${dry_run ? 'Would add' : 'Adding'} source: ${a.path} (cited ${a.count}x)`);
     }
 
@@ -190,7 +190,7 @@ export async function integrate_document(
     }
     const file_name = basename(file_path);
     const target_path = join(docs_path, target_domain, file_name);
-    result.targetPath = target_path;
+    result.target_path = target_path;
 
     // A doc already in the tree must not be copied (that leaves two). Moving it
     // would break inbound links, so only the in-place rewrite is allowed.
@@ -236,7 +236,7 @@ export async function integrate_document(
     // was never registered. A failure here now propagates to the caller
     // instead of being swallowed, so `integrate` cannot report a false
     // success. See https://github.com/TheGlitchKing/hit-em-with-the-docs/issues/7
-    await regenerate_indexes({ docsPath: docs_path, domains: [target_domain], silent });
+    await regenerate_indexes({ docs_path, domains: [target_domain], silent });
 
     result.success = true;
     result.integrated = true;
@@ -403,7 +403,7 @@ export async function batch_integrate(
   for (const file of files) {
     const result = await integrate_document({
       ...options,
-      filePath: file,
+      file_path: file,
     });
     results.push(result);
   }

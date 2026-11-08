@@ -20,9 +20,9 @@ import { check_overview } from './overview.js';
 import { check_naming_convention, check_file_placement } from './rules.js';
 
 export interface AuditOptions {
-  docsPath: string;
+  docs_path: string;
   domain?: string;
-  issuesOnly?: boolean;
+  issues_only?: boolean;
   silent?: boolean;
   /**
    * Strict mode: when true, the `audit` CLI command will exit non-zero on
@@ -32,16 +32,16 @@ export interface AuditOptions {
    */
   strict?: boolean;
   /** Where `.claude/hit-em-with-the-docs.json` lives (retrieval thresholds). Defaults to cwd. */
-  projectRoot?: string;
+  project_root?: string;
 }
 
 export interface AuditResult {
-  totalFiles: number;
-  passedFiles: number;
-  failedFiles: number;
+  total_files: number;
+  passed_files: number;
+  failed_files: number;
   issues: AuditIssue[];
   stats: AuditStats;
-  healthScore: number;
+  health_score: number;
 }
 
 export interface AuditIssue {
@@ -83,16 +83,16 @@ export function count_actionable_issues(issues: { rule: string }[]): number {
 
 export async function audit_documentation(options: AuditOptions): Promise<AuditResult> {
   const {
-    docsPath: docs_path,
+    docs_path,
     domain,
-    issuesOnly: issues_only = false,
+    issues_only = false,
     silent = false,
   } = options;
 
   const result: AuditResult = {
-    totalFiles: 0,
-    passedFiles: 0,
-    failedFiles: 0,
+    total_files: 0,
+    passed_files: 0,
+    failed_files: 0,
     issues: [],
     stats: {
       metadataCompliance: 0,
@@ -101,7 +101,7 @@ export async function audit_documentation(options: AuditOptions): Promise<AuditR
       tagConsistency: 0,
       byDomain: {},
     },
-    healthScore: 0,
+    health_score: 0,
   };
 
   if (!silent) {
@@ -125,7 +125,7 @@ export async function audit_documentation(options: AuditOptions): Promise<AuditR
     return !['INDEX.md', 'REGISTRY.md'].includes(name);
   });
 
-  result.totalFiles = files.length;
+  result.total_files = files.length;
 
   if (!silent) {
     logger.info(`Auditing ${files.length} files...`);
@@ -143,9 +143,9 @@ export async function audit_documentation(options: AuditOptions): Promise<AuditR
     const has_errors = file_issues.some((i) => i.severity === 'error');
 
     if (has_errors) {
-      result.failedFiles++;
+      result.failed_files++;
     } else {
-      result.passedFiles++;
+      result.passed_files++;
     }
 
     // Add issues
@@ -195,7 +195,7 @@ export async function audit_documentation(options: AuditOptions): Promise<AuditR
 
   // Retrieval readiness (#50): advisory warnings. Deliberately carry no `code`
   // so `audit --strict` (which fails on any coded issue) is unaffected.
-  const plugin_cfg = await load_plugin_config(options.projectRoot);
+  const plugin_cfg = await load_plugin_config(options.project_root);
   const retrieval_cfg = plugin_cfg.retrieval;
   const retrieval_docs = await collect_retrieval_docs(docs_path, files);
   result.issues.push(...check_retrieval(retrieval_docs, retrieval_cfg));
@@ -219,7 +219,7 @@ export async function audit_documentation(options: AuditOptions): Promise<AuditR
   }
 
   // Calculate overall health score
-  result.healthScore =
+  result.health_score =
     (result.stats.metadataCompliance * 0.4) +
     (result.stats.namingCompliance * 0.2) +
     (result.stats.placementCompliance * 0.2) +
@@ -228,8 +228,8 @@ export async function audit_documentation(options: AuditOptions): Promise<AuditR
   if (!silent) {
     logger.newline();
     logger.success(`Audit complete!`);
-    logger.info(`Passed: ${result.passedFiles}/${result.totalFiles}`);
-    logger.info(`Health Score: ${result.healthScore.toFixed(1)}/100`);
+    logger.info(`Passed: ${result.passed_files}/${result.total_files}`);
+    logger.info(`Health Score: ${result.health_score.toFixed(1)}/100`);
     if (result.issues.length > 0) {
       const errors = result.issues.filter((i) => i.severity === 'error').length;
       const warnings = result.issues.filter((i) => i.severity === 'warning').length;
@@ -479,7 +479,7 @@ export async function get_audit_summary_for_domain(
   domain: string
 ): Promise<DomainAuditStats> {
   const result = await audit_documentation({
-    docsPath: docs_path,
+    docs_path,
     domain,
     silent: true,
   });

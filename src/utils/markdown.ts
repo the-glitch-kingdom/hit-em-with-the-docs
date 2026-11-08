@@ -6,16 +6,16 @@ export interface MarkdownLink {
   text: string;
   url: string;
   title?: string;
-  isInternal: boolean;
-  lineNumber: number;
-  startIndex: number;
-  endIndex: number;
+  is_internal: boolean;
+  line_number: number;
+  start_index: number;
+  end_index: number;
 }
 
 export interface MarkdownHeading {
   level: number;
   text: string;
-  lineNumber: number;
+  line_number: number;
 }
 
 /**
@@ -141,10 +141,10 @@ export function extract_links(content: string): MarkdownLink[] {
       const link: MarkdownLink = {
         text: text ?? '',
         url: url_str,
-        isInternal: is_internal,
-        lineNumber: line_index + 1,
-        startIndex: match.index,
-        endIndex: match.index + (full_match?.length ?? 0),
+        is_internal,
+        line_number: line_index + 1,
+        start_index: match.index,
+        end_index: match.index + (full_match?.length ?? 0),
       };
       if (title) {
         link.title = title;
@@ -161,7 +161,7 @@ export function extract_links(content: string): MarkdownLink[] {
  * Extract only internal links
  */
 export function extract_internal_links(content: string): MarkdownLink[] {
-  return extract_links(content).filter((link) => link.isInternal);
+  return extract_links(content).filter((link) => link.is_internal);
 }
 
 /**
@@ -180,7 +180,7 @@ export function extract_headings(content: string): MarkdownHeading[] {
       headings.push({
         level: match[1]?.length ?? 1,
         text: (match[2] ?? '').trim(),
-        lineNumber: line_index + 1,
+        line_number: line_index + 1,
       });
     }
   });

@@ -27,7 +27,7 @@ describe('Metadata Generator', () => {
     ])('omits purpose (no title echo) when first paragraph is a %s', (_n, first) => {
       const result = generate_metadata({
         content: `# Some Title\n\n${first}\n\n## More\n\nText.\n`,
-        filePath: 'docs/some-title.md',
+        file_path: 'docs/some-title.md',
       });
       expect(result.purpose).toBeUndefined();
     });
@@ -43,7 +43,7 @@ This is a quick start guide for the project.
 - Node.js installed
 `;
       const result = generate_metadata({
-        filePath: '.documentation/quickstart/getting-started.md',
+        file_path: '.documentation/quickstart/getting-started.md',
         content,
       });
 
@@ -54,7 +54,7 @@ This is a quick start guide for the project.
     it('should generate title from filename if no H1', () => {
       const content = `Some content without a heading.`;
       const result = generate_metadata({
-        filePath: '.documentation/security/auth-setup-guide.md',
+        file_path: '.documentation/security/auth-setup-guide.md',
         content,
       });
 
@@ -70,7 +70,7 @@ This is a quick start guide for the project.
 ## Step 3: Test the setup
 `;
       const result = generate_metadata({
-        filePath: '.documentation/security/auth-setup.md',
+        file_path: '.documentation/security/auth-setup.md',
         content: guide_content,
       });
 
@@ -81,7 +81,7 @@ This is a quick start guide for the project.
     it('should generate domains from file path', () => {
       const content = '# Test Document\n\nContent here.';
       const result = generate_metadata({
-        filePath: '.documentation/security/test-doc.md',
+        file_path: '.documentation/security/test-doc.md',
         content,
       });
 
@@ -90,7 +90,7 @@ This is a quick start guide for the project.
 
     it('should generate status as draft for new documents', () => {
       const result = generate_metadata({
-        filePath: 'test.md',
+        file_path: 'test.md',
         content: '# Test\n\nContent',
       });
 
@@ -99,7 +99,7 @@ This is a quick start guide for the project.
 
     it('should generate version as 1.0.0 for new documents', () => {
       const result = generate_metadata({
-        filePath: 'test.md',
+        file_path: 'test.md',
         content: '# Test\n\nContent',
       });
 
@@ -108,7 +108,7 @@ This is a quick start guide for the project.
 
     it('should set last_updated to current date', () => {
       const result = generate_metadata({
-        filePath: 'test.md',
+        file_path: 'test.md',
         content: '# Test\n\nContent',
       });
 
@@ -119,7 +119,7 @@ This is a quick start guide for the project.
     it('should generate word_count', () => {
       const content = '# Test\n\nThis is a simple test with some words.';
       const result = generate_metadata({
-        filePath: 'test.md',
+        file_path: 'test.md',
         content,
       });
 
@@ -128,9 +128,9 @@ This is a quick start guide for the project.
 
     it('should not override existing metadata', () => {
       const result = generate_metadata({
-        filePath: 'test.md',
+        file_path: 'test.md',
         content: '# Test\n\nContent',
-        existingMetadata: {
+        existing_metadata: {
           title: 'Existing Title',
           tier: 'reference',
         },
@@ -150,9 +150,9 @@ This is a quick start guide for the project.
       };
 
       const generated = generate_metadata({
-        filePath: '.documentation/security/test.md',
+        file_path: '.documentation/security/test.md',
         content: '# Test\n\nContent',
-        existingMetadata: existing,
+        existing_metadata: existing,
       });
 
       const merged = merge_metadata(existing, generated);
@@ -167,7 +167,7 @@ This is a quick start guide for the project.
       const merged = merge_metadata(
         {},
         generate_metadata({
-          filePath: 'test.md',
+          file_path: 'test.md',
           content: '# Test\n\nContent',
         })
       );
@@ -181,7 +181,7 @@ This is a quick start guide for the project.
       const merged = merge_metadata(
         { word_count: 999 },
         generate_metadata({
-          filePath: 'test.md',
+          file_path: 'test.md',
           content: '# Test\n\nA few words here.',
         })
       );

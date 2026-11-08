@@ -26,7 +26,7 @@ const overview_issues = (): string[] =>
       'node',
       [
         '-e',
-        `import('${join(REPO, 'dist/core/audit/auditor.js')}').then(async m=>{const r=await m.audit_documentation({docsPath:process.argv[1],silent:true});console.log(JSON.stringify(r.issues.filter(i=>i.rule&&i.rule.startsWith('OVERVIEW_')).map(i=>i.rule+'|'+i.file+'|'+i.message)))})`,
+        `import('${join(REPO, 'dist/core/audit/auditor.js')}').then(async m=>{const r=await m.audit_documentation({docs_path:process.argv[1],silent:true});console.log(JSON.stringify(r.issues.filter(i=>i.rule&&i.rule.startsWith('OVERVIEW_')).map(i=>i.rule+'|'+i.file+'|'+i.message)))})`,
         docs,
       ],
       { encoding: 'utf8', cwd: root }
@@ -110,7 +110,7 @@ describe('overview docs end to end (built CLI)', () => {
     expect(overview_issues().length).toBeGreaterThan(0);
     expect(hewtd('audit', '-p', docs).status).toBe(0);
     expect(hewtd('audit', '--strict', '-p', docs).status).toBe(0);
-    const { count_actionable_issues: count_actionable_issues } = await import('../../src/core/audit/auditor.js');
+    const { count_actionable_issues } = await import('../../src/core/audit/auditor.js');
     expect(count_actionable_issues([{ rule: 'OVERVIEW_MISSING' }, { rule: 'OVERVIEW_STALE_LINKS' }])).toBe(0);
   });
 

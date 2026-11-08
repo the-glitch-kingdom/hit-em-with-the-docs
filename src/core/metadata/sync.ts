@@ -15,24 +15,24 @@ import {
 import { generate_metadata, merge_metadata, format_date } from './generator.js';
 
 export interface SyncOptions {
-  docsPath: string;
+  docs_path: string;
   /**
    * Project root the `docs_root` declaration is resolved against. Defaults to
    * `process.cwd()`, which is what the CLI wants; pass it explicitly when the
    * docs tree is not under the current directory.
    */
-  projectRoot?: string;
-  dryRun?: boolean;
+  project_root?: string;
+  dry_run?: boolean;
   fix?: boolean;
   domain?: string;
   silent?: boolean;
 }
 
 export interface SyncResult {
-  totalFiles: number;
-  validFiles: number;
-  fixedFiles: number;
-  skippedFiles: number;
+  total_files: number;
+  valid_files: number;
+  fixed_files: number;
+  skipped_files: number;
   errors: SyncError[];
   stats: SyncStats;
 }
@@ -44,11 +44,11 @@ export interface SyncError {
 }
 
 export interface SyncStats {
-  totalWordCount: number;
-  avgCompleteness: number;
-  byDomain: Record<string, number>;
-  byStatus: Record<string, number>;
-  byTier: Record<string, number>;
+  total_word_count: number;
+  avg_completeness: number;
+  by_domain: Record<string, number>;
+  by_status: Record<string, number>;
+  by_tier: Record<string, number>;
 }
 
 /**
@@ -56,26 +56,26 @@ export interface SyncStats {
  */
 export async function sync_metadata(options: SyncOptions): Promise<SyncResult> {
   const {
-    docsPath: docs_path,
-    projectRoot: project_root = process.cwd(),
-    dryRun: dry_run = false,
+    docs_path,
+    project_root = process.cwd(),
+    dry_run = false,
     fix = false,
     domain,
     silent = false,
   } = options;
 
   const result: SyncResult = {
-    totalFiles: 0,
-    validFiles: 0,
-    fixedFiles: 0,
-    skippedFiles: 0,
+    total_files: 0,
+    valid_files: 0,
+    fixed_files: 0,
+    skipped_files: 0,
     errors: [],
     stats: {
-      totalWordCount: 0,
-      avgCompleteness: 0,
-      byDomain: {},
-      byStatus: {},
-      byTier: {},
+      total_word_count: 0,
+      avg_completeness: 0,
+      by_domain: {},
+      by_status: {},
+      by_tier: {},
     },
   };
 
@@ -133,7 +133,7 @@ export async function sync_metadata(options: SyncOptions): Promise<SyncResult> {
     return !['INDEX.md', 'REGISTRY.md'].includes(name);
   });
 
-  result.totalFiles = files.length;
+  result.total_files = files.length;
 
   if (!silent) {
     logger.info(`Found ${files.length} documentation files`);
@@ -146,15 +146,15 @@ export async function sync_metadata(options: SyncOptions): Promise<SyncResult> {
       const sync_result = await sync_file(file, docs_path, dry_run, fix);
 
       if (sync_result.valid) {
-        result.validFiles++;
+        result.valid_files++;
       }
 
       if (sync_result.fixed) {
-        result.fixedFiles++;
+        result.fixed_files++;
       }
 
       if (sync_result.skipped) {
-        result.skippedFiles++;
+        result.skipped_files++;
       }
 
       if (sync_result.error) {
@@ -165,19 +165,19 @@ export async function sync_metadata(options: SyncOptions): Promise<SyncResult> {
       if (sync_result.metadata) {
         const meta = sync_result.metadata;
         completeness_sum += sync_result.completeness;
-        result.stats.totalWordCount += meta.word_count ?? 0;
+        result.stats.total_word_count += meta.word_count ?? 0;
 
         // Track by domain
         const domain = meta.domains?.[0] ?? 'unknown';
-        result.stats.byDomain[domain] = (result.stats.byDomain[domain] ?? 0) + 1;
+        result.stats.by_domain[domain] = (result.stats.by_domain[domain] ?? 0) + 1;
 
         // Track by status
         const status = meta.status ?? 'unknown';
-        result.stats.byStatus[status] = (result.stats.byStatus[status] ?? 0) + 1;
+        result.stats.by_status[status] = (result.stats.by_status[status] ?? 0) + 1;
 
         // Track by tier
         const tier = meta.tier ?? 'unknown';
-        result.stats.byTier[tier] = (result.stats.byTier[tier] ?? 0) + 1;
+        result.stats.by_tier[tier] = (result.stats.by_tier[tier] ?? 0) + 1;
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -190,20 +190,20 @@ export async function sync_metadata(options: SyncOptions): Promise<SyncResult> {
   }
 
   // Calculate average completeness
-  result.stats.avgCompleteness =
+  result.stats.avg_completeness =
     files.length > 0 ? completeness_sum / files.length : 0;
 
   if (!silent) {
     logger.newline();
     logger.success(`Sync complete!`);
-    logger.info(`Valid: ${result.validFiles}/${result.totalFiles}`);
-    if (result.fixedFiles > 0) {
-      logger.info(`Fixed: ${result.fixedFiles}`);
+    logger.info(`Valid: ${result.valid_files}/${result.total_files}`);
+    if (result.fixed_files > 0) {
+      logger.info(`Fixed: ${result.fixed_files}`);
     }
     if (result.errors.length > 0) {
       logger.warn(`Errors: ${result.errors.length}`);
     }
-    logger.info(`Avg completeness: ${result.stats.avgCompleteness.toFixed(1)}%`);
+    logger.info(`Avg completeness: ${result.stats.avg_completeness.toFixed(1)}%`);
   }
 
   return result;
@@ -300,10 +300,10 @@ async function sync_file(
 
   // Fix mode: generate missing metadata
   const generated = generate_metadata({
-    filePath: file_path,
+    file_path,
     content,
-    docsRoot: docs_path,
-    existingMetadata: data,
+    docs_root: docs_path,
+    existing_metadata: data,
   });
 
   const merged = normalize_date_fields(merge_metadata(data, generated));
@@ -369,8 +369,8 @@ function normalize_date_fields<T extends PartialDocumentMetadata>(metadata: T): 
  */
 export async function get_sync_stats(docs_path: string): Promise<SyncStats> {
   const result = await sync_metadata({
-    docsPath: docs_path,
-    dryRun: true,
+    docs_path,
+    dry_run: true,
     fix: false,
     silent: true,
   });

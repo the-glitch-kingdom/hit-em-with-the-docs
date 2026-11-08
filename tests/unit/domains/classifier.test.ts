@@ -43,8 +43,8 @@ describe('Tier Classifier', () => {
         expect(def.name).toBeTruthy();
         expect(def.description).toBeTruthy();
         expect(def.indicators).toBeInstanceOf(Array);
-        expect(def.headingPatterns).toBeInstanceOf(Array);
-        expect(def.sizeRange.min).toBeLessThan(def.sizeRange.max);
+        expect(def.heading_patterns).toBeInstanceOf(Array);
+        expect(def.size_range.min).toBeLessThan(def.size_range.max);
       }
     });
   });

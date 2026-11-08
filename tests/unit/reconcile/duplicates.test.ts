@@ -63,7 +63,7 @@ describe('triage and overview integration', () => {
     execFileSync('git', ['init', '-q'], { cwd: root });
     execFileSync('git', ['add', '.'], { cwd: root });
     execFileSync('git', ['commit', '-qm', 'x'], { cwd: root });
-    const t = await triage({ root, docsPath: docs, rels: ['guides/admin.md'], config });
+    const t = await triage({ root, docs_path: docs, rels: ['guides/admin.md'], config });
     const doc = t.docs[0]!;
     expect(doc.lane).toBe('check');
     expect(doc.reasons).toContain('copy of procedures/release-procedure.md#release-procedure');
@@ -71,7 +71,7 @@ describe('triage and overview integration', () => {
   });
   it('marks overview members that copy another member', async () => {
     const config = await load_plugin_config(root);
-    const seed = await seed_overview({ docsPath: docs, config, ledger: { version: 1, entries: {} }, question: 'release procedure cutting a release' });
+    const seed = await seed_overview({ docs_path: docs, config, ledger: { version: 1, entries: {} }, question: 'release procedure cutting a release' });
     const admin = seed.members.find((m) => m.path === 'guides/admin.md');
     expect(admin?.duplicates?.[0]?.owner).toBe('procedures/release-procedure.md');
   });

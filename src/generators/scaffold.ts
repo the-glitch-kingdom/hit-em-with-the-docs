@@ -11,7 +11,7 @@ import { logger } from '../utils/logger.js';
 import { path_exists, ARCHIVE_DIR } from '../utils/glob.js';
 
 export interface ScaffoldOptions {
-  rootPath: string;
+  root_path: string;
   overwrite?: boolean;
   domains?: Domain[];
   silent?: boolean;
@@ -29,7 +29,7 @@ export interface ScaffoldResult {
  */
 export async function create_scaffold(options: ScaffoldOptions): Promise<ScaffoldResult> {
   const {
-    rootPath: root_path,
+    root_path,
     overwrite = false,
     domains = get_all_domains(),
     silent = false,
@@ -334,7 +334,7 @@ export async function scaffold_exists(root_path: string): Promise<boolean> {
 export async function get_scaffold_status(root_path: string): Promise<{
   exists: boolean;
   domains: Domain[];
-  missingDomains: Domain[];
+  missing_domains: Domain[];
 }> {
   const exists = await scaffold_exists(root_path);
 
@@ -342,7 +342,7 @@ export async function get_scaffold_status(root_path: string): Promise<{
     return {
       exists: false,
       domains: [],
-      missingDomains: get_all_domains(),
+      missing_domains: get_all_domains(),
     };
   }
 
@@ -361,6 +361,6 @@ export async function get_scaffold_status(root_path: string): Promise<{
   return {
     exists: true,
     domains: present_domains,
-    missingDomains: missing_domains,
+    missing_domains,
   };
 }

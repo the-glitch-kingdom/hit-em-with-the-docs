@@ -107,8 +107,8 @@ export async function scan_peripheral(root: string, docs_path: string, config: P
 }
 
 /** Standalone masked scan for `reconcile --secrets`: no scope = the whole docs root (archive included) plus the periphery. */
-export async function scan_secrets(opts: { root: string; docsPath: string; config: PluginConfig; scope?: string[] }): Promise<SecretFinding[]> {
-  const { root, docsPath: docs_path, config } = opts;
+export async function scan_secrets(opts: { root: string; docs_path: string; config: PluginConfig; scope?: string[] }): Promise<SecretFinding[]> {
+  const { root, docs_path, config } = opts;
   const cfg = config.reconcile.secrets;
   const abs = opts.scope?.length
     ? (await resolve_scope(docs_path, opts.scope)).map((r) => join(docs_path, r))
@@ -194,13 +194,13 @@ function is_attributed(data: Record<string, unknown>): boolean {
 
 export async function triage(opts: {
   root: string;
-  docsPath: string;
+  docs_path: string;
   rels: string[];
   config: PluginConfig;
   mode?: 'serial' | 'team';
   ledger?: Ledger;
 }): Promise<TriageResult> {
-  const { docsPath: docs_path, rels, config } = opts;
+  const { docs_path, rels, config } = opts;
   const repo = git_root(docs_path) ?? opts.root;
   const idx = build_repo_index(repo, config.reconcile.schema_sources);
   const warnings: string[] = [];
@@ -246,7 +246,7 @@ export async function triage(opts: {
   let stale_warned = false;
   for (const d of loaded) {
     const abs = join(docs_path, d.rel);
-    const resolved: ResolvedReference[] = await resolve_references(idx, d.refs, { docFile: abs, docsPath: docs_path, related });
+    const resolved: ResolvedReference[] = await resolve_references(idx, d.refs, { doc_file: abs, docs_path, related });
     const sources = Array.isArray(d.data.sources) ? d.data.sources.filter((s): s is string => typeof s === 'string') : [];
     // Only path-like sources are checkable; URLs and prose citations are not claims about the repo.
     // `<name>:<path>` names a file in a related repo (read-only); checked there, not in this repo.
@@ -296,7 +296,7 @@ export async function triage(opts: {
     const sig = cited.length ? staleness_signal(repo, doc_rel, cited) : ({ status: 'none' } as const);
     if (sig.status === 'signal') stale_commits = sig.commits;
     if (rel_cited.size) {
-      let since = sig.status === 'signal' ? sig.docDate : undefined;
+      let since = sig.status === 'signal' ? sig.doc_date : undefined;
       if (!since) { try { since = body_change(repo, doc_rel)?.date; } catch { /* not in git */ } }
       if (since) stale_commits = (stale_commits ?? 0) + [...rel_cited].reduce((n, [rel, ps]) => n + sibling_commits(rel.root, since!, [...new Set(ps)]), 0);
     }
@@ -386,13 +386,13 @@ export async function triage(opts: {
     mode,
     shards,
     warnings,
-    schemaFiles: idx.schemaFiles,
+    schemaFiles: idx.schema_files,
     peripheral,
   };
 }
 
 /** Read-only resolution of some docs for the graph export: no ledger, no dirty-tree check (that lives in the CLI). */
-export async function resolve_docs(opts: { root: string; docsPath: string; rels: string[]; config: PluginConfig; ledger?: Ledger }): Promise<TriageDoc[]> {
+export async function resolve_docs(opts: { root: string; docs_path: string; rels: string[]; config: PluginConfig; ledger?: Ledger }): Promise<TriageDoc[]> {
   // A copy, so the ledger-driven reasons (pointer target / member changed) fire without recording anything.
   const { ledger, ...rest } = opts;
   return (await triage({ ...rest, ...(ledger && { ledger: structuredClone(ledger) }) })).docs;

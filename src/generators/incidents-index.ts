@@ -18,14 +18,14 @@ import type { CiterIndex, IncidentRef } from '../core/knowledge-base/citers.js';
 import { format_markdown_table } from './table.js';
 
 export interface GenerateIncidentsIndexOptions {
-  vaultRoot: string;
+  vault_root: string;
   index: CiterIndex;
 }
 
 export async function generate_incidents_index(
   options: GenerateIncidentsIndexOptions
 ): Promise<string> {
-  const { vaultRoot: vault_root, index } = options;
+  const { vault_root, index } = options;
 
   const incidents_dir = join(vault_root, 'incidents');
   await mkdir(incidents_dir, { recursive: true });

@@ -126,7 +126,7 @@ purpose: Quick reference for ${domain} documentation
     // Quick links to most important docs
     const active_entries = entries.filter((e) => e.status === 'active');
     const recent_entries = [...entries]
-      .sort((a, b) => b.lastUpdated.localeCompare(a.lastUpdated))
+      .sort((a, b) => b.last_updated.localeCompare(a.last_updated))
       .slice(0, 5);
 
     if (active_entries.length > 0) {
@@ -140,7 +140,7 @@ purpose: Quick reference for ${domain} documentation
     if (recent_entries.length > 0) {
       content += `## Recently Updated\n\n`;
       for (const entry of recent_entries) {
-        content += `- [${entry.title}](${entry.path}) - ${entry.lastUpdated}\n`;
+        content += `- [${entry.title}](${entry.path}) - ${entry.last_updated}\n`;
       }
       content += `\n`;
     }

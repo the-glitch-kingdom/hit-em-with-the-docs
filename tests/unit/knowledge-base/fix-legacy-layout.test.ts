@@ -46,8 +46,8 @@ components: [test]
     }
 
     const result = await fix_legacy_layout({
-      vaultRoot: vault_root,
-      projectRoot: tmp_project,
+      vault_root,
+      project_root: tmp_project,
     });
 
     expect(result.action).toBe('fixed');
@@ -90,8 +90,8 @@ components: [test]
     );
 
     const result = await fix_legacy_layout({
-      vaultRoot: vault_root,
-      projectRoot: tmp_project,
+      vault_root,
+      project_root: tmp_project,
     });
 
     expect(result.action).toBe('no_op');
@@ -145,8 +145,8 @@ components: [test]
     );
 
     const result = await fix_legacy_layout({
-      vaultRoot: vault_root,
-      projectRoot: tmp_project,
+      vault_root,
+      project_root: tmp_project,
     });
 
     expect(result.action).toBe('fixed');
@@ -203,16 +203,16 @@ provenance:
     );
 
     const result = await fix_legacy_layout({
-      vaultRoot: vault_root,
-      projectRoot: tmp_project,
+      vault_root,
+      project_root: tmp_project,
     });
 
     expect(result.action).toBe('fixed');
-    expect(result.rewrittenProvenance).toHaveLength(1);
-    expect(result.rewrittenProvenance[0]!.oldRef).toBe(
+    expect(result.rewritten_provenance).toHaveLength(1);
+    expect(result.rewritten_provenance[0]!.old_ref).toBe(
       '.documentation/knowledge-base/2026-04-23-foo/'
     );
-    expect(result.rewrittenProvenance[0]!.newRef).toBe(
+    expect(result.rewritten_provenance[0]!.new_ref).toBe(
       '.documentation/knowledge-base/incidents/2026-04-23-foo/'
     );
 
@@ -264,13 +264,13 @@ provenance:
     );
 
     const result = await fix_legacy_layout({
-      vaultRoot: vault_root,
-      projectRoot: tmp_project,
+      vault_root,
+      project_root: tmp_project,
     });
 
-    expect(result.rewrittenProvenance).toHaveLength(1);
-    expect(result.rewrittenProvenance[0]!.oldRef).toBe('2026-04-23-foo/');
-    expect(result.rewrittenProvenance[0]!.newRef).toBe(
+    expect(result.rewritten_provenance).toHaveLength(1);
+    expect(result.rewritten_provenance[0]!.old_ref).toBe('2026-04-23-foo/');
+    expect(result.rewritten_provenance[0]!.new_ref).toBe(
       '.documentation/knowledge-base/incidents/2026-04-23-foo/'
     );
   });
@@ -297,9 +297,9 @@ components: [test]
     );
 
     const result = await fix_legacy_layout({
-      vaultRoot: vault_root,
-      projectRoot: tmp_project,
-      dryRun: true,
+      vault_root,
+      project_root: tmp_project,
+      dry_run: true,
     });
 
     expect(result.action).toBe('dry_run');
@@ -330,8 +330,8 @@ version: '1.0.0'
     );
 
     const result = await fix_legacy_layout({
-      vaultRoot: vault_root,
-      projectRoot: tmp_project,
+      vault_root,
+      project_root: tmp_project,
     });
 
     expect(result.moved).toEqual([]);
@@ -382,8 +382,8 @@ components: [test]
     );
 
     const result = await fix_legacy_layout({
-      vaultRoot: vault_root,
-      projectRoot: tmp_project,
+      vault_root,
+      project_root: tmp_project,
     });
 
     expect(result.moved).toEqual([]);

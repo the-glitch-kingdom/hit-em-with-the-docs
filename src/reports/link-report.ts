@@ -6,7 +6,7 @@ import { format_date } from '../core/metadata/generator.js';
 import type { LinkCheckResult } from '../core/links/checker.js';
 
 export interface LinkReportOptions {
-  docsPath: string;
+  docs_path: string;
   result: LinkCheckResult;
   format?: 'markdown' | 'json';
 }
@@ -51,10 +51,10 @@ generated: true
 
 | Metric | Value |
 |--------|-------|
-| Files Checked | ${result.totalFiles} |
-| Total Links | ${result.totalLinks} |
-| Valid Links | ${result.validLinks} |
-| Broken Links | ${result.brokenLinks.length} |
+| Files Checked | ${result.total_files} |
+| Total Links | ${result.total_links} |
+| Valid Links | ${result.valid_links} |
+| Broken Links | ${result.broken_links.length} |
 | Internal Links | ${result.stats.internalLinks} |
 | External Links | ${result.stats.externalLinks} |
 | Cross-Domain Links | ${result.stats.crossDomainLinks} |
@@ -62,22 +62,22 @@ generated: true
 ## Link Health
 
 \`\`\`
-Total Links: ${result.totalLinks}
-├── Valid: ${result.validLinks} (${((result.validLinks / result.totalLinks) * 100).toFixed(1)}%)
-├── Broken: ${result.brokenLinks.length} (${result.stats.brokenPercentage.toFixed(1)}%)
-└── Cross-Domain: ${result.stats.crossDomainLinks} (${((result.stats.crossDomainLinks / result.totalLinks) * 100).toFixed(1)}%)
+Total Links: ${result.total_links}
+├── Valid: ${result.valid_links} (${((result.valid_links / result.total_links) * 100).toFixed(1)}%)
+├── Broken: ${result.broken_links.length} (${result.stats.brokenPercentage.toFixed(1)}%)
+└── Cross-Domain: ${result.stats.crossDomainLinks} (${((result.stats.crossDomainLinks / result.total_links) * 100).toFixed(1)}%)
 \`\`\`
 
 `;
 
   // Broken Links
-  if (result.brokenLinks.length > 0) {
-    content += `## Broken Links (${result.brokenLinks.length})
+  if (result.broken_links.length > 0) {
+    content += `## Broken Links (${result.broken_links.length})
 
 | Source File | Line | Target | Link Text |
 |-------------|------|--------|-----------|
 `;
-    for (const link of result.brokenLinks) {
+    for (const link of result.broken_links) {
       content += `| ${link.sourceFile} | ${link.lineNumber} | \`${link.targetPath}\` | ${link.linkText.slice(0, 30)} |\n`;
     }
     content += '\n';
@@ -103,27 +103,27 @@ Total Links: ${result.totalLinks}
   }
 
   // Cross-Domain Links Details
-  if (result.crossDomainLinks.length > 0) {
+  if (result.cross_domain_links.length > 0) {
     content += `## Cross-Domain Link Details
 
 <details>
-<summary>Show all ${result.crossDomainLinks.length} cross-domain links</summary>
+<summary>Show all ${result.cross_domain_links.length} cross-domain links</summary>
 
 | Source | From Domain | Target Domain | Link |
 |--------|-------------|---------------|------|
 `;
-    for (const link of result.crossDomainLinks.slice(0, 50)) {
+    for (const link of result.cross_domain_links.slice(0, 50)) {
       content += `| ${link.sourceFile} | ${link.sourceDomain} | ${link.targetDomain} | ${link.linkText.slice(0, 30)} |\n`;
     }
-    if (result.crossDomainLinks.length > 50) {
-      content += `\n*...and ${result.crossDomainLinks.length - 50} more*\n`;
+    if (result.cross_domain_links.length > 50) {
+      content += `\n*...and ${result.cross_domain_links.length - 50} more*\n`;
     }
     content += '\n</details>\n\n';
   }
 
   // External Links
-  if (result.externalLinks.length > 0) {
-    content += `## External Links (${result.externalLinks.length})
+  if (result.external_links.length > 0) {
+    content += `## External Links (${result.external_links.length})
 
 <details>
 <summary>Show external links</summary>
@@ -131,11 +131,11 @@ Total Links: ${result.totalLinks}
 | Source File | URL |
 |-------------|-----|
 `;
-    for (const link of result.externalLinks.slice(0, 30)) {
+    for (const link of result.external_links.slice(0, 30)) {
       content += `| ${link.sourceFile} | ${link.url.slice(0, 50)}${link.url.length > 50 ? '...' : ''} |\n`;
     }
-    if (result.externalLinks.length > 30) {
-      content += `\n*...and ${result.externalLinks.length - 30} more*\n`;
+    if (result.external_links.length > 30) {
+      content += `\n*...and ${result.external_links.length - 30} more*\n`;
     }
     content += '\n</details>\n\n';
   }
@@ -155,17 +155,17 @@ function generate_json_report(result: LinkCheckResult): string {
   return JSON.stringify({
     timestamp: new Date().toISOString(),
     summary: {
-      totalFiles: result.totalFiles,
-      totalLinks: result.totalLinks,
-      validLinks: result.validLinks,
-      brokenLinks: result.brokenLinks.length,
-      externalLinks: result.externalLinks.length,
-      crossDomainLinks: result.crossDomainLinks.length,
+      totalFiles: result.total_files,
+      totalLinks: result.total_links,
+      validLinks: result.valid_links,
+      brokenLinks: result.broken_links.length,
+      externalLinks: result.external_links.length,
+      crossDomainLinks: result.cross_domain_links.length,
     },
     stats: result.stats,
-    brokenLinks: result.brokenLinks,
-    crossDomainLinks: result.crossDomainLinks,
-    externalLinks: result.externalLinks,
+    brokenLinks: result.broken_links,
+    crossDomainLinks: result.cross_domain_links,
+    externalLinks: result.external_links,
   }, null, 2);
 }
 
@@ -188,7 +188,7 @@ export async function save_link_report(
   const file_name = `links-${timestamp}.${ext}`;
   const file_path = join(reports_dir, file_name);
 
-  const content = await generate_link_report({ docsPath: docs_path, result, format });
+  const content = await generate_link_report({ docs_path, result, format });
   await writeFile(file_path, content, 'utf-8');
 
   return file_path;

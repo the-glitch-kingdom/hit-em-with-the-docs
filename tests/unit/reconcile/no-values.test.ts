@@ -22,7 +22,7 @@ const run = async (e: ReviewEntry) => {
   mkdirSync(join(root, '.hewtd/reconcile'), { recursive: true });
   const f = join(root, '.hewtd/reconcile/review-1-1.md');
   writeFileSync(f, render_review({ batch: '1', shard: 1, scope: 'backend' }, [e]).replace('- [ ] accept', '- [x] accept').split(M).join(tok));
-  return apply_reviews({ root, docsPath: docs, files: [f], ledger: await load_ledger(ledger_file), ledgerFile: ledger_file, today: '2026-11-07' });
+  return apply_reviews({ root, docs_path: docs, files: [f], ledger: await load_ledger(ledger_file), ledger_file, today: '2026-11-07' });
 };
 
 beforeEach(() => {

@@ -56,7 +56,7 @@ describe('manage: addDomain / removeDomain / listDomains', () => {
   // ---- add ----
 
   it('adds a valid domain: writes config + scaffolds folder', async () => {
-    const res = await add_domain({ projectRoot: tmp_dir, docsPath: docs_path, spec: SPEC });
+    const res = await add_domain({ project_root: tmp_dir, docs_path, spec: SPEC });
     expect(res.ok).toBe(true);
     expect(res.action).toBe('added');
     expect(await exists(join(docs_path, 'compliance'))).toBe(true);
@@ -68,10 +68,10 @@ describe('manage: addDomain / removeDomain / listDomains', () => {
 
   it('dry-run writes nothing', async () => {
     const res = await add_domain({
-      projectRoot: tmp_dir,
-      docsPath: docs_path,
+      project_root: tmp_dir,
+      docs_path,
       spec: SPEC,
-      dryRun: true,
+      dry_run: true,
     });
     expect(res.action).toBe('dry_run');
     expect(res.spec!.id).toBe('compliance');
@@ -81,8 +81,8 @@ describe('manage: addDomain / removeDomain / listDomains', () => {
 
   it('rejects a built-in id', async () => {
     const res = await add_domain({
-      projectRoot: tmp_dir,
-      docsPath: docs_path,
+      project_root: tmp_dir,
+      docs_path,
       spec: { ...SPEC, id: 'security' },
     });
     expect(res.ok).toBe(false);
@@ -91,16 +91,16 @@ describe('manage: addDomain / removeDomain / listDomains', () => {
   });
 
   it('rejects a duplicate custom id', async () => {
-    await add_domain({ projectRoot: tmp_dir, docsPath: docs_path, spec: SPEC });
-    const res = await add_domain({ projectRoot: tmp_dir, docsPath: docs_path, spec: SPEC });
+    await add_domain({ project_root: tmp_dir, docs_path, spec: SPEC });
+    const res = await add_domain({ project_root: tmp_dir, docs_path, spec: SPEC });
     expect(res.ok).toBe(false);
     expect(res.errors.join(' ')).toMatch(/already exists/i);
   });
 
   it('rejects a reserved structural folder name (archive)', async () => {
     const res = await add_domain({
-      projectRoot: tmp_dir,
-      docsPath: docs_path,
+      project_root: tmp_dir,
+      docs_path,
       spec: { ...SPEC, id: 'archive' },
     });
     expect(res.ok).toBe(false);
@@ -109,14 +109,14 @@ describe('manage: addDomain / removeDomain / listDomains', () => {
 
   it('rejects an invalid spec (empty keywords, bad category)', async () => {
     const r1 = await add_domain({
-      projectRoot: tmp_dir,
-      docsPath: docs_path,
+      project_root: tmp_dir,
+      docs_path,
       spec: { ...SPEC, keywords: [] },
     });
     expect(r1.ok).toBe(false);
     const r2 = await add_domain({
-      projectRoot: tmp_dir,
-      docsPath: docs_path,
+      project_root: tmp_dir,
+      docs_path,
       spec: { ...SPEC, category: 'bogus' },
     });
     expect(r2.ok).toBe(false);
@@ -129,7 +129,7 @@ describe('manage: addDomain / removeDomain / listDomains', () => {
       JSON.stringify({ updatePolicy: 'nudge', vault: { audit_window_days: 45 } }),
       'utf-8'
     );
-    await add_domain({ projectRoot: tmp_dir, docsPath: docs_path, spec: SPEC });
+    await add_domain({ project_root: tmp_dir, docs_path, spec: SPEC });
     const cfg = await read_config(tmp_dir);
     expect(cfg.updatePolicy).toBe('nudge');
     expect((cfg.vault as { audit_window_days: number }).audit_window_days).toBe(45);
@@ -139,7 +139,7 @@ describe('manage: addDomain / removeDomain / listDomains', () => {
   // ---- list ----
 
   it('listDomains partitions built-in vs custom', async () => {
-    await add_domain({ projectRoot: tmp_dir, docsPath: docs_path, spec: SPEC });
+    await add_domain({ project_root: tmp_dir, docs_path, spec: SPEC });
     reset_registry();
     const { builtin, custom } = list_domains(tmp_dir);
     expect(builtin).toHaveLength(15);
@@ -150,14 +150,14 @@ describe('manage: addDomain / removeDomain / listDomains', () => {
   // ---- remove ----
 
   it('removes a custom domain non-destructively, reporting orphan count', async () => {
-    await add_domain({ projectRoot: tmp_dir, docsPath: docs_path, spec: SPEC });
+    await add_domain({ project_root: tmp_dir, docs_path, spec: SPEC });
     // Drop a doc into the domain so removal orphans it.
     await writeFile(join(docs_path, 'compliance', 'policy.md'), '# Policy\n', 'utf-8');
 
-    const res = await remove_domain({ projectRoot: tmp_dir, docsPath: docs_path, id: 'compliance' });
+    const res = await remove_domain({ project_root: tmp_dir, docs_path, id: 'compliance' });
     expect(res.ok).toBe(true);
     expect(res.action).toBe('removed');
-    expect(res.orphanedDocs).toBe(1);
+    expect(res.orphaned_docs).toBe(1);
     // Folder + doc survive (non-destructive).
     expect(await exists(join(docs_path, 'compliance'))).toBe(true);
     expect(await exists(join(docs_path, 'compliance', 'policy.md'))).toBe(true);
@@ -167,28 +167,28 @@ describe('manage: addDomain / removeDomain / listDomains', () => {
   });
 
   it('remove dry-run reports orphans but does not change config', async () => {
-    await add_domain({ projectRoot: tmp_dir, docsPath: docs_path, spec: SPEC });
+    await add_domain({ project_root: tmp_dir, docs_path, spec: SPEC });
     await writeFile(join(docs_path, 'compliance', 'a.md'), '# A\n', 'utf-8');
     const res = await remove_domain({
-      projectRoot: tmp_dir,
-      docsPath: docs_path,
+      project_root: tmp_dir,
+      docs_path,
       id: 'compliance',
-      dryRun: true,
+      dry_run: true,
     });
     expect(res.action).toBe('dry_run');
-    expect(res.orphanedDocs).toBe(1);
+    expect(res.orphaned_docs).toBe(1);
     const cfg = await read_config(tmp_dir);
     expect((cfg.domains as unknown[]).length).toBe(1);
   });
 
   it('refuses to remove a built-in domain', async () => {
-    const res = await remove_domain({ projectRoot: tmp_dir, docsPath: docs_path, id: 'security' });
+    const res = await remove_domain({ project_root: tmp_dir, docs_path, id: 'security' });
     expect(res.ok).toBe(false);
     expect(res.errors.join(' ')).toMatch(/built-in/i);
   });
 
   it('rejects removing a domain that is not configured', async () => {
-    const res = await remove_domain({ projectRoot: tmp_dir, docsPath: docs_path, id: 'ghost' });
+    const res = await remove_domain({ project_root: tmp_dir, docs_path, id: 'ghost' });
     expect(res.ok).toBe(false);
     expect(res.errors.join(' ')).toMatch(/not a configured custom domain/i);
   });

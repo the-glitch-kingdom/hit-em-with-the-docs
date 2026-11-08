@@ -210,8 +210,8 @@ function phrases_doc(raw: string, e: ReviewEntry, cfg: Awaited<ReturnType<typeof
 }
 
 /** point: check the owner section and the no-loss rule, then write the one-line pointer into the copy. */
-function point_doc(o: { raw: string; e: ReviewEntry; abs: string; ownerAbs: string; ownerRaw: string; today: string }): string {
-  const { raw, e, abs, ownerAbs: owner_abs, ownerRaw: owner_raw, today } = o;
+function point_doc(o: { raw: string; e: ReviewEntry; abs: string; owner_abs: string; owner_raw: string; today: string }): string {
+  const { raw, e, abs, owner_abs, owner_raw, today } = o;
   const { summary, target } = e.pointer ?? { summary: '', target: '' };
   const anchor = target.split('#')[1] ?? '';
   const old = e.remove?.old ?? '';
@@ -253,13 +253,13 @@ async function overview_doc(e: ReviewEntry, docs_path: string, ledger: Ledger): 
 
 export async function apply_reviews(opts: {
   root: string;
-  docsPath: string;
+  docs_path: string;
   files: string[];
   ledger: Ledger;
-  ledgerFile: string;
+  ledger_file: string;
   today?: string;
 }): Promise<ApplyResult> {
-  const { root, docsPath: docs_path, ledger } = opts;
+  const { root, docs_path, ledger } = opts;
   const today = opts.today ?? format_date(new Date());
   const cfg = await load_plugin_config(root);
   const secrets_cfg = cfg.reconcile.secrets;
@@ -281,7 +281,7 @@ export async function apply_reviews(opts: {
   const outcomes: ApplyOutcome[] = [];
   const touched = new Set<string>(); // repo-relative via absolute paths
   const domains = new Set<string>();
-  const applied: { entry: ReviewEntry; file: string; abs: string; outside?: boolean; envNames?: string[] }[] = [];
+  const applied: { entry: ReviewEntry; file: string; abs: string; outside?: boolean; env_names?: string[] }[] = [];
   let env_path: string | undefined; // set once .env.hewtd was written, so a rollback restores it
   const known = new Set<string>(get_all_domains());
 
@@ -307,7 +307,7 @@ export async function apply_reviews(opts: {
         if (ledger.entries[key]?.verdict && ledger.entries[key]?.review_file === review_ref) { outcomes.push({ path: e.path, status: 'already-applied' }); continue; }
         if (!accepted) { outcomes.push({ path: e.path, status: 'rejected' }); continue; }
         if (!e.verdict) { outcomes.push({ path: e.path, status: 'skipped', detail: 'no verdict' }); continue; }
-        const o = await apply_outside_entry({ docsPath: docs_path, entry: e });
+        const o = await apply_outside_entry({ docs_path, entry: e });
         if (o.status !== 'applied') { outcomes.push({ path: e.path, status: o.status, ...(o.detail && { detail: o.detail }) }); continue; }
         o.touched.forEach((t) => touched.add(t));
         if (o.domain) domains.add(o.domain);
@@ -366,7 +366,7 @@ export async function apply_reviews(opts: {
           }
           const owner_raw = await readFile(owner_abs, 'utf-8');
           if (!e.depends_on_merge && hash_content(owner_raw) !== e.target_hash) throw new Error('owner doc changed since the review was written (or target_hash missing)');
-          await writeFile(abs, point_doc({ raw, e, abs, ownerAbs: owner_abs, ownerRaw: owner_raw, today }), 'utf-8');
+          await writeFile(abs, point_doc({ raw, e, abs, owner_abs, owner_raw, today }), 'utf-8');
           pointers.set(e.path, { target, section_hash: hash_content(section_of(parse_frontmatter<Record<string, unknown>>(owner_raw).content, target.split('#')[1] ?? '') ?? '') });
           touched.add(abs);
         } else if (e.verdict === 'phrases') {
@@ -375,7 +375,7 @@ export async function apply_reviews(opts: {
           await writeFile(abs, next, 'utf-8');
           touched.add(abs);
         } else if (e.verdict === 'archive') {
-          const res = await archive_doc({ projectRoot: root, docsPath: docs_path, file: e.path, today, ...(e.reason && { reason: e.reason }) });
+          const res = await archive_doc({ project_root: root, docs_path, file: e.path, today, ...(e.reason && { reason: e.reason }) });
           if (!res.ok) throw new Error(res.errors.join('; '));
           touched.add(abs);
           touched.add(join(docs_path, res.to ?? ''));
@@ -396,7 +396,7 @@ export async function apply_reviews(opts: {
           touched.add(abs);
         }
         if (e.verdict !== 'rewrite') domains.add(e.path.split('/')[0] ?? '');
-        applied.push({ entry: e, file: review_ref, abs, ...(env_names_for && { envNames: env_names_for }) });
+        applied.push({ entry: e, file: review_ref, abs, ...(env_names_for && { env_names: env_names_for }) });
         outcomes.push({ path: e.path, status: 'applied' });
       } catch (err) {
         outcomes.push({ path: e.path, status: 'error', detail: (err as Error).message });
@@ -412,10 +412,10 @@ export async function apply_reviews(opts: {
   try {
     if (domains.size) {
       const reg = await regenerate_indexes({
-        docsPath: docs_path, silent: true,
+        docs_path, silent: true,
         domains: [...domains].filter((d) => known.has(d)) as never,
       });
-      reg.filesWritten.forEach((f) => touched.add(f));
+      reg.files_written.forEach((f) => touched.add(f));
     }
     if (top && touched.size) {
       const paths = [...touched].map((p) => relative(top, p));
@@ -451,8 +451,8 @@ export async function apply_reviews(opts: {
       lane: prev?.lane ?? a.entry.lane ?? 'check',
       content_hash: raw !== undefined ? hash_content(raw) : a.entry.content_hash,
     });
-    Object.assign(rec, { verdict: a.entry.verdict ?? '', reviewed_on: today, review_file: a.file, ...(a.envNames && { env_names: a.envNames }), ...(pointers.has(a.entry.path) && { pointer: pointers.get(a.entry.path)! }), ...(overview_members.has(a.entry.path) && { members: overview_members.get(a.entry.path)! }), ...(commit && { applied_commit: commit }) });
+    Object.assign(rec, { verdict: a.entry.verdict ?? '', reviewed_on: today, review_file: a.file, ...(a.env_names && { env_names: a.env_names }), ...(pointers.has(a.entry.path) && { pointer: pointers.get(a.entry.path)! }), ...(overview_members.has(a.entry.path) && { members: overview_members.get(a.entry.path)! }), ...(commit && { applied_commit: commit }) });
   }
-  await save_ledger(opts.ledgerFile, ledger);
+  await save_ledger(opts.ledger_file, ledger);
   return { ...result, ...(commit && { commit }), touched: [...touched] };
 }

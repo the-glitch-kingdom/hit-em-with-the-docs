@@ -4,7 +4,7 @@ import { glob } from '../../utils/glob.js';
 import { logger } from '../../utils/logger.js';
 
 export interface AntiPatternDiscoveryOptions {
-  rootPath: string;
+  root_path: string;
   silent?: boolean;
 }
 
@@ -170,7 +170,7 @@ const ANTI_PATTERN_DEFINITIONS: AntiPatternDefinition[] = [
 export async function discover_anti_patterns(
   options: AntiPatternDiscoveryOptions
 ): Promise<DiscoveredAntiPattern[]> {
-  const { rootPath: root_path, silent = false } = options;
+  const { root_path, silent = false } = options;
 
   const discovered: DiscoveredAntiPattern[] = [];
 

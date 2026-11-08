@@ -41,9 +41,9 @@ export interface IncidentRef {
   /** Incident id (from narrative.md frontmatter `id:`). */
   id: string;
   /** Absolute path to the incident folder. */
-  folderPath: string;
+  folder_path: string;
   /** Project-relative folder path. */
-  relFolderPath: string;
+  rel_folder_path: string;
   /** Frontmatter title from narrative.md. */
   title: string;
   /** YYYY-MM-DD. */
@@ -59,7 +59,7 @@ export interface IncidentRef {
 
 export interface PlaybookCitation {
   /** Project-relative path to the playbook. */
-  relPath: string;
+  rel_path: string;
   /** Absolute path. */
   path: string;
   /** Frontmatter title. */
@@ -102,15 +102,15 @@ export interface FindCitersResult {
 
 export interface BuildCiterIndexOptions {
   /** Absolute path to the project root. */
-  projectRoot: string;
+  project_root: string;
   /** Absolute path to the vault root (default config: <root>/.documentation/knowledge-base/). */
-  vaultRoot: string;
+  vault_root: string;
   /**
    * Glob patterns (absolute, project-rooted) used to scan playbooks for
    * `symptoms:` frontmatter blocks. The walker filters by frontmatter
    * presence — files without a `symptoms:` block are skipped quickly.
    */
-  playbookGlobs: string[];
+  playbook_globs: string[];
 }
 
 const is_string = (v: unknown): v is string => typeof v === 'string';
@@ -125,7 +125,7 @@ const is_string_array = (v: unknown): v is string[] =>
 export async function build_citer_index(
   options: BuildCiterIndexOptions
 ): Promise<CiterIndex> {
-  const { projectRoot: project_root, vaultRoot: vault_root, playbookGlobs: playbook_globs } = options;
+  const { project_root, vault_root, playbook_globs } = options;
 
   const facts = new Map<string, FactRef>();
   const incidents = new Map<string, IncidentRef>();
@@ -169,7 +169,7 @@ export async function build_citer_index(
     const cits = await extract_playbook_citations(playbook_path, project_root);
     for (const c of cits) {
       // Each citation has a list of fact ids implicit in the symptoms entry.
-      const fact_ids = c.factIds;
+      const fact_ids = c.fact_ids;
       for (const fact_id of fact_ids) {
         const existing = citers.get(fact_id) ?? [];
         existing.push(c.citation);
@@ -238,8 +238,8 @@ async function read_incident_ref(
 
     return {
       id: narrative.id,
-      folderPath: folder_path,
-      relFolderPath: relative(project_root, folder_path),
+      folder_path,
+      rel_folder_path: relative(project_root, folder_path),
       title: is_string(narrative.title) ? narrative.title : narrative.id,
       date: normalize_date(narrative.date),
       severity: is_string(narrative.severity) ? narrative.severity : undefined,
@@ -258,7 +258,7 @@ async function read_incident_ref(
 
 interface PlaybookCitationWithFacts {
   citation: PlaybookCitation;
-  factIds: string[];
+  fact_ids: string[];
 }
 
 async function extract_playbook_citations(
@@ -296,7 +296,7 @@ async function extract_playbook_citations(
 
       results.push({
         citation: {
-          relPath: relative(project_root, playbook_path),
+          rel_path: relative(project_root, playbook_path),
           path: playbook_path,
           title,
           target: s.target,
@@ -304,7 +304,7 @@ async function extract_playbook_citations(
           key,
           severity: is_string(s.severity) ? s.severity : undefined,
         },
-        factIds: s.cites,
+        fact_ids: s.cites,
       });
     }
 
@@ -336,7 +336,7 @@ export function find_citers_in_index(
   // playbook citing the same fact count as ONE citer.
   const citer_set = new Set<string>();
   for (const c of index.citers.get(fact_id) ?? []) {
-    citer_set.add(c.relPath);
+    citer_set.add(c.rel_path);
   }
 
   const incidents_produced_in: string[] = [];
@@ -349,7 +349,7 @@ export function find_citers_in_index(
   }
 
   return {
-    fact_id: fact_id,
+    fact_id,
     fact_exists: index.facts.has(fact_id),
     citers: [...citer_set].sort(),
     incidents_produced_in: incidents_produced_in.sort(),
@@ -367,6 +367,6 @@ export function citer_count(index: CiterIndex, fact_id: string): number {
   // Distinct by playbook relPath (multiple symptoms in the same playbook
   // citing the same fact count once).
   const seen = new Set<string>();
-  for (const c of list) seen.add(c.relPath);
+  for (const c of list) seen.add(c.rel_path);
   return seen.size;
 }

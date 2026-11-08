@@ -65,7 +65,7 @@ describe('ledger', () => {
     record_entry(l, { path: 'a.md', lane: 'judge', verdict: 'keep', content_hash: 'h' });
     record_entry(l, { path: 'b.md', lane: 'judge', verdict: 'keep', content_hash: 'old' });
     const st = ledger_status(l, [{ path: 'a.md', hash: 'h' }, { path: 'b.md', hash: 'new' }, { path: 'c.md', hash: 'z' }], 5);
-    expect(st).toMatchObject({ total: 3, reviewed: 1, byVerdict: { keep: 1 }, nextUnreviewed: ['b.md', 'c.md'] });
+    expect(st).toMatchObject({ total: 3, reviewed: 1, by_verdict: { keep: 1 }, next_unreviewed: ['b.md', 'c.md'] });
   });
 });
 

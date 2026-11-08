@@ -27,7 +27,7 @@ describe('seedOverview', () => {
     const config = await load_plugin_config(root);
     const h = hash_content(readFileSync(join(docs, 'deploy/build.md'), 'utf-8'));
     const seed = await seed_overview({
-      docsPath: docs, config, question: 'release deploy flow',
+      docs_path: docs, config, question: 'release deploy flow',
       ledger: ledger({ 'deploy/build.md': { path: 'deploy/build.md', lane: 'check', verdict: 'verify', content_hash: h } }),
     });
     expect(seed.members.map((m) => [m.path, m.state])).toEqual([['deploy/build.md', 'reconciled'], ['infra/rollout.md', 'unreviewed']]);
@@ -35,7 +35,7 @@ describe('seedOverview', () => {
   it('marks a changed doc stale and a secret-lane doc secret', async () => {
     const config = await load_plugin_config(root);
     const seed = await seed_overview({
-      docsPath: docs, config, question: 'release deploy flow',
+      docs_path: docs, config, question: 'release deploy flow',
       ledger: ledger({
         'deploy/build.md': { path: 'deploy/build.md', lane: 'check', verdict: 'verify', content_hash: 'old' },
         'infra/rollout.md': { path: 'infra/rollout.md', lane: 'secret', content_hash: 'x' },
@@ -46,7 +46,7 @@ describe('seedOverview', () => {
   it('reports an existing overview and caps members; writes only the members file', async () => {
     put('flows/release.md', '---\ntitle: Release overview\nkind: overview\n---\n[b](../deploy/build.md) [r](../infra/rollout.md)\n');
     const config = await load_plugin_config(root);
-    const seed = await seed_overview({ docsPath: docs, config, question: 'release deploy flow', ledger: ledger({}), limit: 2 });
+    const seed = await seed_overview({ docs_path: docs, config, question: 'release deploy flow', ledger: ledger({}), limit: 2 });
     expect(seed.members).toHaveLength(2);
     expect(seed.existingOverview?.path).toBe('flows/release.md');
     const before = readdirSync(docs, { recursive: true }).sort();

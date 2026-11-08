@@ -73,13 +73,13 @@ async function move_file(
 // ---------------------------------------------------------------------------
 
 export interface ArchiveDocInput {
-  projectRoot: string;
-  docsPath: string;
+  project_root: string;
+  docs_path: string;
   /** Doc to archive — docs-relative (e.g. `api/old.md`) or absolute. */
   file: string;
   reason?: string;
   force?: boolean;
-  dryRun?: boolean;
+  dry_run?: boolean;
   /** Override "today" (YYYY-MM-DD) for deterministic tests. */
   today?: string;
 }
@@ -90,15 +90,15 @@ export interface ArchiveDocResult {
   action: 'archived' | 'dry_run' | 'blocked' | 'rejected';
   from?: string;
   to?: string;
-  moveMethod?: 'git' | 'fs';
+  move_method?: 'git' | 'fs';
   /** Active docs that link to the target (the link guard). */
-  inboundLinks: InboundLink[];
+  inbound_links: InboundLink[];
 }
 
 export async function archive_doc(
   input: ArchiveDocInput
 ): Promise<ArchiveDocResult> {
-  const { projectRoot: project_root, docsPath: docs_path, reason, force = false, dryRun: dry_run = false } = input;
+  const { project_root, docs_path, reason, force = false, dry_run = false } = input;
   const today = input.today ?? format_date(new Date());
   const errors: string[] = [];
 
@@ -106,17 +106,17 @@ export async function archive_doc(
 
   if (!from_rel.endsWith('.md')) {
     errors.push(`Not a markdown file: ${from_rel}`);
-    return { ok: false, errors, action: 'rejected', inboundLinks: [] };
+    return { ok: false, errors, action: 'rejected', inbound_links: [] };
   }
   if (from_rel === `${ARCHIVE_DIR}/` || from_rel.startsWith(`${ARCHIVE_DIR}/`)) {
     errors.push(`"${from_rel}" is already under ${ARCHIVE_DIR}/.`);
-    return { ok: false, errors, action: 'rejected', inboundLinks: [] };
+    return { ok: false, errors, action: 'rejected', inbound_links: [] };
   }
 
   const from_abs = join(docs_path, from_rel);
   if (!(await exists(from_abs))) {
     errors.push(`File not found: ${from_rel}`);
-    return { ok: false, errors, action: 'rejected', inboundLinks: [] };
+    return { ok: false, errors, action: 'rejected', inbound_links: [] };
   }
 
   const to_rel = `${ARCHIVE_DIR}/${from_rel}`;
@@ -127,7 +127,7 @@ export async function archive_doc(
       `Archive target already exists: ${to_rel}. Archiving ${from_rel} would overwrite it. ` +
         `Rename one of them first.`
     );
-    return { ok: false, errors, action: 'rejected', from: from_rel, to: to_rel, inboundLinks: [] };
+    return { ok: false, errors, action: 'rejected', from: from_rel, to: to_rel, inbound_links: [] };
   }
 
   // Link guard: refuse by default if active docs link to this doc.
@@ -137,11 +137,11 @@ export async function archive_doc(
       `${inbound_links.length} active doc(s) link to ${from_rel}. ` +
         `Fix those links or pass --force.`
     );
-    return { ok: false, errors, action: 'blocked', from: from_rel, to: to_rel, inboundLinks: inbound_links };
+    return { ok: false, errors, action: 'blocked', from: from_rel, to: to_rel, inbound_links };
   }
 
   if (dry_run) {
-    return { ok: true, errors, action: 'dry_run', from: from_rel, to: to_rel, inboundLinks: inbound_links };
+    return { ok: true, errors, action: 'dry_run', from: from_rel, to: to_rel, inbound_links };
   }
 
   // Stamp lifecycle metadata, then move (git mv preserves history).
@@ -166,9 +166,9 @@ export async function archive_doc(
   }
 
   // Doc left its domain folder → refresh indexes so it drops out.
-  await regenerate_indexes({ docsPath: docs_path, silent: true });
+  await regenerate_indexes({ docs_path, silent: true });
 
-  return { ok: true, errors, action: 'archived', from: from_rel, to: to_rel, moveMethod: move_method, inboundLinks: inbound_links };
+  return { ok: true, errors, action: 'archived', from: from_rel, to: to_rel, move_method, inbound_links };
 }
 
 // ---------------------------------------------------------------------------
@@ -176,11 +176,11 @@ export async function archive_doc(
 // ---------------------------------------------------------------------------
 
 export interface UnarchiveDocInput {
-  projectRoot: string;
-  docsPath: string;
+  project_root: string;
+  docs_path: string;
   /** Archived doc — docs-relative (e.g. `archive/api/old.md`) or absolute. */
   file: string;
-  dryRun?: boolean;
+  dry_run?: boolean;
 }
 
 export interface UnarchiveDocResult {
@@ -189,13 +189,13 @@ export interface UnarchiveDocResult {
   action: 'unarchived' | 'dry_run' | 'rejected';
   from?: string;
   to?: string;
-  moveMethod?: 'git' | 'fs';
+  move_method?: 'git' | 'fs';
 }
 
 export async function unarchive_doc(
   input: UnarchiveDocInput
 ): Promise<UnarchiveDocResult> {
-  const { projectRoot: project_root, docsPath: docs_path, dryRun: dry_run = false } = input;
+  const { project_root, docs_path, dry_run = false } = input;
   const errors: string[] = [];
 
   const from_rel = to_docs_relative(docs_path, input.file, project_root);
@@ -245,7 +245,7 @@ export async function unarchive_doc(
     }
   }
 
-  await regenerate_indexes({ docsPath: docs_path, silent: true });
+  await regenerate_indexes({ docs_path, silent: true });
 
-  return { ok: true, errors, action: 'unarchived', from: from_rel, to: to_rel, moveMethod: move_method };
+  return { ok: true, errors, action: 'unarchived', from: from_rel, to: to_rel, move_method };
 }

@@ -20,7 +20,7 @@ const run = async (entries: ReviewEntry[], accept = true) => {
   const f = join(root, '.hewtd/reconcile/review-1-outside.md');
   mkdirSync(join(root, '.hewtd/reconcile'), { recursive: true });
   writeFileSync(f, t);
-  return apply_reviews({ root, docsPath: docs, files: [f], ledger: await load_ledger(ledger_file), ledgerFile: ledger_file, today: '2026-11-07' });
+  return apply_reviews({ root, docs_path: docs, files: [f], ledger: await load_ledger(ledger_file), ledger_file, today: '2026-11-07' });
 };
 
 beforeEach(() => {
@@ -73,7 +73,7 @@ describe('discoverOutside', () => {
   });
 
   it('writes a review skeleton: junk pre-set to delete, misplaced left open', async () => {
-    const f = await write_outside_review({ docsPath: docs, root, docs: await discover_outside(docs, ['README.md']) });
+    const f = await write_outside_review({ docs_path: docs, root, docs: await discover_outside(docs, ['README.md']) });
     const t = readFileSync(f, 'utf-8');
     expect(t).not.toContain('[x]');
     expect(t).toContain('"verdict": "delete"');

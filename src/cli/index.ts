@@ -95,7 +95,7 @@ program
     }
 
     const result = await create_scaffold({
-      rootPath: docs_path,
+      root_path: docs_path,
       overwrite: options.force,
     });
 
@@ -133,7 +133,7 @@ program
     const docs_path = resolve(process.cwd(), options.path);
 
     const result = await run_maintenance({
-      docsPath: docs_path,
+      docs_path,
       quick: options.quick,
       fix: options.fix,
     });
@@ -181,15 +181,15 @@ program
     }
 
     const result = await regenerate_indexes({
-      docsPath: docs_path,
+      docs_path,
       ...(domains ? { domains } : {}),
       silent: true,
-      dryRun: options.dryRun,
+      dry_run: options.dryRun,
     });
 
     let added = 0;
     for (const domain of get_all_domains()) {
-      const count = result.documentCounts[domain] ?? 0;
+      const count = result.document_counts[domain] ?? 0;
       let suffix = '';
       if (options.dryRun) {
         const delta = count - (listed_before[domain] ?? 0);
@@ -219,13 +219,13 @@ program
 
     if (!options.dryRun) {
       logger.success(
-        `${result.filesWritten.length} index files written · ${result.totalDocuments} documents total`
+        `${result.files_written.length} index files written · ${result.total_documents} documents total`
       );
       return;
     }
 
     logger.success(
-      `Would write ${result.filesWritten.length} index files · ${result.totalDocuments} documents total`
+      `Would write ${result.files_written.length} index files · ${result.total_documents} documents total`
     );
     if (added > 0) {
       logger.info(
@@ -240,11 +240,11 @@ program
 /** Write .hewtd/graph.json (#65). Never fails the caller: the export is a side product. */
 async function export_graph(docs_path: string, dry_run: boolean): Promise<void> {
   try {
-    const { load_plugin_config: load_plugin_config } = await import('../utils/config.js');
-    const { project_root_of: project_root_of } = await import('../core/reconcile/outside.js');
-    const { write_graph: write_graph } = await import('../core/graph/export.js');
+    const { load_plugin_config } = await import('../utils/config.js');
+    const { project_root_of } = await import('../core/reconcile/outside.js');
+    const { write_graph } = await import('../core/graph/export.js');
     const root = project_root_of(docs_path);
-    const r = await write_graph({ root, docsPath: docs_path, config: await load_plugin_config(root), dryRun: dry_run });
+    const r = await write_graph({ root, docs_path, config: await load_plugin_config(root), dry_run });
     if (r.status === 'no-git') logger.info('Graph export skipped: not a git checkout.');
     else if (r.status === 'written') logger.info('Graph export written: .hewtd/graph.json');
     else if (r.status === 'would-write') logger.info('Would update .hewtd/graph.json');
@@ -278,9 +278,9 @@ program
     const docs_path = resolve(process.cwd(), options.path);
 
     const result = await sync_metadata({
-      docsPath: docs_path,
+      docs_path,
       domain: options.domain,
-      dryRun: options.dryRun,
+      dry_run: options.dryRun,
       fix: options.fix,
     });
 
@@ -300,7 +300,7 @@ program
     const docs_path = resolve(process.cwd(), options.path);
 
     const result = await check_links({
-      docsPath: docs_path,
+      docs_path,
       domain: options.domain,
     });
 
@@ -309,7 +309,7 @@ program
       logger.success(`Report saved: ${report_path}`);
     }
 
-    if (result.brokenLinks.length > 0) {
+    if (result.broken_links.length > 0) {
       process.exit(1);
     }
   });
@@ -331,9 +331,9 @@ program
     const docs_path = resolve(process.cwd(), options.path);
 
     const result = await audit_documentation({
-      docsPath: docs_path,
+      docs_path,
       domain: options.domain,
-      issuesOnly: options.issuesOnly,
+      issues_only: options.issuesOnly,
       strict: options.strict,
     });
 
@@ -358,7 +358,7 @@ program
         logger.error('Strict mode: violations detected, exiting non-zero');
         process.exit(1);
       }
-    } else if (result.failedFiles > 0) {
+    } else if (result.failed_files > 0) {
       process.exit(1);
     }
   });
@@ -377,10 +377,10 @@ program
     const file_path = resolve(process.cwd(), file);
 
     const result = await integrate_document({
-      filePath: file_path,
-      docsPath: docs_path,
+      file_path,
+      docs_path,
       auto: options.auto,
-      dryRun: options.dryRun,
+      dry_run: options.dryRun,
       force: options.force,
       domain: options.domain,
     });
@@ -406,7 +406,7 @@ discover
     const root_path = resolve(process.cwd(), options.root);
 
     await discover_patterns({
-      rootPath: root_path,
+      root_path,
       language: options.language,
       category: options.category,
     });
@@ -420,7 +420,7 @@ discover
     const root_path = resolve(process.cwd(), options.root);
 
     await discover_anti_patterns({
-      rootPath: root_path,
+      root_path,
     });
   });
 
@@ -432,7 +432,7 @@ discover
     const root_path = resolve(process.cwd(), options.root);
 
     await discover_standards({
-      rootPath: root_path,
+      root_path,
     });
   });
 
@@ -444,7 +444,7 @@ discover
     const root_path = resolve(process.cwd(), options.root);
 
     await analyze_dependencies({
-      rootPath: root_path,
+      root_path,
     });
   });
 
@@ -459,19 +459,19 @@ program
 
     switch (type) {
       case 'health': {
-        const result = await run_maintenance({ docsPath: docs_path, quick: true, silent: true });
+        const result = await run_maintenance({ docs_path, quick: true, silent: true });
         const report_path = await save_health_report(docs_path, result, options.format);
         logger.success(`Health report saved: ${report_path}`);
         break;
       }
       case 'audit': {
-        const result = await audit_documentation({ docsPath: docs_path, silent: true });
+        const result = await audit_documentation({ docs_path, silent: true });
         const report_path = await save_audit_report(docs_path, result, options.format);
         logger.success(`Audit report saved: ${report_path}`);
         break;
       }
       case 'links': {
-        const result = await check_links({ docsPath: docs_path, silent: true });
+        const result = await check_links({ docs_path, silent: true });
         const report_path = await save_link_report(docs_path, result, options.format);
         logger.success(`Link report saved: ${report_path}`);
         break;
@@ -510,7 +510,7 @@ domain
   .description('List built-in and custom domains')
   .option('--json', 'Output as JSON', false)
   .action(async (options) => {
-    const { list_domains: list_domains } = await import('../core/domains/manage.js');
+    const { list_domains } = await import('../core/domains/manage.js');
     const result = list_domains(project_root_dir);
 
     if (options.json) {
@@ -561,7 +561,7 @@ domain
   .option('--load-priority <n>', 'Load priority 1-10', '5')
   .option('--dry-run', 'Preview without writing', false)
   .action(async (id, options) => {
-    const { add_domain: add_domain } = await import('../core/domains/manage.js');
+    const { add_domain } = await import('../core/domains/manage.js');
     const docs_path = resolve(process.cwd(), options.path);
 
     const title_case = (s: string) =>
@@ -582,10 +582,10 @@ domain
     };
 
     const result = await add_domain({
-      projectRoot: dirname(docs_path),
-      docsPath: docs_path,
+      project_root: dirname(docs_path),
+      docs_path,
       spec,
-      dryRun: options.dryRun,
+      dry_run: options.dryRun,
     });
 
     logger.header(`hewtd domain add: ${id}`);
@@ -593,8 +593,8 @@ domain
       for (const e of result.errors) logger.error(e);
       process.exit(1);
     }
-    logger.info(`Config:  ${result.configPath}`);
-    logger.info(`Folder:  ${result.domainFolder}`);
+    logger.info(`Config:  ${result.config_path}`);
+    logger.info(`Folder:  ${result.domain_folder}`);
     if (result.action === 'dry_run') {
       logger.info('');
       logger.info('--- proposed config entry ---');
@@ -604,7 +604,7 @@ domain
       return;
     }
     logger.success(`Added custom domain "${id}".`);
-    logger.info(`Wrote ${result.filesWritten?.length ?? 0} file(s).`);
+    logger.info(`Wrote ${result.files_written?.length ?? 0} file(s).`);
     logger.info('Run `hewtd maintain` any time to refresh indexes.');
   });
 
@@ -615,14 +615,14 @@ domain
   .option('-p, --path <path>', 'Documentation path', '.documentation')
   .option('--dry-run', 'Preview without writing', false)
   .action(async (id, options) => {
-    const { remove_domain: remove_domain } = await import('../core/domains/manage.js');
+    const { remove_domain } = await import('../core/domains/manage.js');
     const docs_path = resolve(process.cwd(), options.path);
 
     const result = await remove_domain({
-      projectRoot: dirname(docs_path),
-      docsPath: docs_path,
+      project_root: dirname(docs_path),
+      docs_path,
       id,
-      dryRun: options.dryRun,
+      dry_run: options.dryRun,
     });
 
     logger.header(`hewtd domain remove: ${id}`);
@@ -630,9 +630,9 @@ domain
       for (const e of result.errors) logger.error(e);
       process.exit(1);
     }
-    if (result.orphanedDocs > 0) {
+    if (result.orphaned_docs > 0) {
       logger.warn(
-        `${result.orphanedDocs} document(s) in ${result.domainFolder} will be ORPHANED (left on disk, no longer a recognized domain).`
+        `${result.orphaned_docs} document(s) in ${result.domain_folder} will be ORPHANED (left on disk, no longer a recognized domain).`
       );
     }
     if (result.action === 'dry_run') {
@@ -641,7 +641,7 @@ domain
       return;
     }
     logger.success(`Removed custom domain "${id}" from config.`);
-    logger.info(`Folder left intact: ${result.domainFolder}`);
+    logger.info(`Folder left intact: ${result.domain_folder}`);
   });
 
 // --- Archival process: archive / unarchive / archive-candidates ---
@@ -656,43 +656,43 @@ program
   .option('--force', 'Archive even if active docs still link to it', false)
   .option('--dry-run', 'Preview without moving anything', false)
   .action(async (file, options) => {
-    const { archive_doc: archive_doc } = await import('../core/archive/manage.js');
+    const { archive_doc } = await import('../core/archive/manage.js');
     const docs_path = resolve(process.cwd(), options.path);
     const result = await archive_doc({
-      projectRoot: dirname(docs_path),
-      docsPath: docs_path,
+      project_root: dirname(docs_path),
+      docs_path,
       file,
       reason: options.reason,
       force: options.force,
-      dryRun: options.dryRun,
+      dry_run: options.dryRun,
     });
 
     logger.header(`hewtd archive: ${file}`);
     if (!result.ok) {
       for (const e of result.errors) logger.error(e);
-      if (result.action === 'blocked' && result.inboundLinks.length > 0) {
+      if (result.action === 'blocked' && result.inbound_links.length > 0) {
         logger.info('');
         logger.info('Active docs linking here (fix these or use --force):');
-        for (const l of result.inboundLinks) {
-          logger.info(`  ${l.source}:${l.lineNumber}  "${l.linkText}"`);
+        for (const l of result.inbound_links) {
+          logger.info(`  ${l.source}:${l.line_number}  "${l.link_text}"`);
         }
       }
       process.exit(1);
     }
     logger.info(`From: ${result.from}`);
     logger.info(`To:   ${result.to}`);
-    if (result.inboundLinks.length > 0) {
+    if (result.inbound_links.length > 0) {
       logger.warn(
-        `${result.inboundLinks.length} active doc(s) link here — these become dangling:`
+        `${result.inbound_links.length} active doc(s) link here — these become dangling:`
       );
-      for (const l of result.inboundLinks) logger.info(`  ${l.source}:${l.lineNumber}`);
+      for (const l of result.inbound_links) logger.info(`  ${l.source}:${l.line_number}`);
     }
     if (result.action === 'dry_run') {
       logger.info('');
       logger.info('Dry-run — nothing moved. Re-run without --dry-run to apply.');
       return;
     }
-    logger.success(`Archived via ${result.moveMethod}. Run \`hewtd maintain\` any time to refresh.`);
+    logger.success(`Archived via ${result.move_method}. Run \`hewtd maintain\` any time to refresh.`);
   });
 
 program
@@ -701,13 +701,13 @@ program
   .option('-p, --path <path>', 'Documentation path', '.documentation')
   .option('--dry-run', 'Preview without moving anything', false)
   .action(async (file, options) => {
-    const { unarchive_doc: unarchive_doc } = await import('../core/archive/manage.js');
+    const { unarchive_doc } = await import('../core/archive/manage.js');
     const docs_path = resolve(process.cwd(), options.path);
     const result = await unarchive_doc({
-      projectRoot: dirname(docs_path),
-      docsPath: docs_path,
+      project_root: dirname(docs_path),
+      docs_path,
       file,
-      dryRun: options.dryRun,
+      dry_run: options.dryRun,
     });
 
     logger.header(`hewtd unarchive: ${file}`);
@@ -722,7 +722,7 @@ program
       logger.info('Dry-run — nothing moved. Re-run without --dry-run to apply.');
       return;
     }
-    logger.success(`Restored via ${result.moveMethod}.`);
+    logger.success(`Restored via ${result.move_method}.`);
   });
 
 program
@@ -731,14 +731,14 @@ program
   .option('-p, --path <path>', 'Documentation path', '.documentation')
   .option('--json', 'Output as JSON', false)
   .action(async (options) => {
-    const { load_plugin_config: load_plugin_config } = await import('../utils/config.js');
-    const { find_archive_candidates: find_archive_candidates } = await import('../core/archive/candidates.js');
+    const { load_plugin_config } = await import('../utils/config.js');
+    const { find_archive_candidates } = await import('../core/archive/candidates.js');
     const docs_path = resolve(process.cwd(), options.path);
     const config = await load_plugin_config(dirname(docs_path));
 
     const candidates = await find_archive_candidates({
-      docsPath: docs_path,
-      projectRoot: dirname(docs_path),
+      docs_path,
+      project_root: dirname(docs_path),
       config: config.archive,
     });
 
@@ -769,10 +769,10 @@ program
   .option('--json', 'Output as JSON', false)
   .action(async (fact_id, options) => {
     const project_root = project_root_dir;
-    const { load_plugin_config: load_plugin_config, resolve_vault_root: resolve_vault_root, resolve_playbook_globs: resolve_playbook_globs } = await import(
+    const { load_plugin_config, resolve_vault_root, resolve_playbook_globs } = await import(
       '../utils/config.js'
     );
-    const { build_citer_index: build_citer_index, find_citers_in_index: find_citers_in_index } = await import(
+    const { build_citer_index, find_citers_in_index } = await import(
       '../core/knowledge-base/citers.js'
     );
 
@@ -780,7 +780,7 @@ program
     const vault_root = resolve_vault_root(project_root, config);
     const playbook_globs = resolve_playbook_globs(project_root, config);
 
-    const index = await build_citer_index({ projectRoot: project_root, vaultRoot: vault_root, playbookGlobs: playbook_globs });
+    const index = await build_citer_index({ project_root, vault_root, playbook_globs });
     const result = find_citers_in_index(index, fact_id);
 
     if (options.json) {
@@ -813,11 +813,11 @@ program
   .option('--json', 'Output as JSON', false)
   .action(async (options) => {
     const project_root = project_root_dir;
-    const { load_plugin_config: load_plugin_config, resolve_vault_root: resolve_vault_root, resolve_playbook_globs: resolve_playbook_globs } = await import(
+    const { load_plugin_config, resolve_vault_root, resolve_playbook_globs } = await import(
       '../utils/config.js'
     );
-    const { build_citer_index: build_citer_index } = await import('../core/knowledge-base/citers.js');
-    const { audit_facts: audit_facts, run_fact_verify: run_fact_verify } = await import('../core/knowledge-base/audit.js');
+    const { build_citer_index } = await import('../core/knowledge-base/citers.js');
+    const { audit_facts, run_fact_verify } = await import('../core/knowledge-base/audit.js');
 
     const config = await load_plugin_config(project_root);
     const vault_root = resolve_vault_root(project_root, config);
@@ -826,13 +826,13 @@ program
       ? parseInt(options.window, 10)
       : config.vault.audit_window_days;
 
-    const index = await build_citer_index({ projectRoot: project_root, vaultRoot: vault_root, playbookGlobs: playbook_globs });
+    const index = await build_citer_index({ project_root, vault_root, playbook_globs });
 
     // --run-verify-all path (#39): one command for a periodic re-check.
     if (options.runVerifyAll) {
       const results = [];
       for (const fact of [...index.facts.values()].sort((a, b) => a.id.localeCompare(b.id))) {
-        const r = await run_fact_verify({ fact, vaultRoot: vault_root });
+        const r = await run_fact_verify({ fact, vault_root });
         if (r.executed) results.push(r);
       }
       const failed = results.filter((r) => !r.updated);
@@ -859,7 +859,7 @@ program
         process.exit(1);
       }
       logger.header(`Running verify command for: ${fact_id}`);
-      const result = await run_fact_verify({ fact: fact!, vaultRoot: vault_root });
+      const result = await run_fact_verify({ fact: fact!, vault_root });
       if (options.json) {
         logger.info(JSON.stringify(result, null, 2));
       } else {
@@ -876,7 +876,7 @@ program
     }
 
     // List stale path
-    const audit = audit_facts({ index, auditWindowDays: window });
+    const audit = audit_facts({ index, audit_window_days: window });
 
     if (options.json) {
       logger.info(JSON.stringify(audit, null, 2));
@@ -924,29 +924,29 @@ program
     const playbook_path = resolve(process.cwd(), options.file);
     const { cite } = await import('../core/knowledge-base/cite.js');
 
-    const symptom_match: NonNullable<Parameters<typeof cite>[0]['symptomMatch']> = {};
+    const symptom_match: NonNullable<Parameters<typeof cite>[0]['symptom_match']> = {};
     if (options.alertName) symptom_match.alert_name = options.alertName;
     if (options.userPhrase) symptom_match.user_phrase = options.userPhrase;
     if (options.errorPattern) symptom_match.error_pattern = options.errorPattern;
 
     const cite_opts: Parameters<typeof cite>[0] = {
-      playbookPath: playbook_path,
-      factId: fact_id,
-      dryRun: options.dryRun,
+      playbook_path,
+      fact_id,
+      dry_run: options.dryRun,
     };
     if (Object.keys(symptom_match).length > 0) {
-      cite_opts.symptomMatch = symptom_match;
+      cite_opts.symptom_match = symptom_match;
     }
     const result = await cite(cite_opts);
 
     logger.header(`hewtd cite: ${fact_id}`);
-    logger.info(`Playbook: ${result.playbookPath}`);
+    logger.info(`Playbook: ${result.playbook_path}`);
     logger.info(`Action:   ${result.action}`);
-    logger.info(`Symptom:  index ${result.symptomIndex}`);
+    logger.info(`Symptom:  index ${result.symptom_index}`);
     if (options.dryRun) {
       logger.info('');
       logger.info('--- proposed content ---');
-      logger.info(result.newContent);
+      logger.info(result.new_content);
     }
   });
 
@@ -958,42 +958,42 @@ program
   .action(async (flat_file, options) => {
     const project_root = project_root_dir;
     const flat_file_path = resolve(process.cwd(), flat_file);
-    const { migrate_incident: migrate_incident } = await import('../core/knowledge-base/migrate.js');
-    const { load_plugin_config: load_plugin_config, resolve_vault_root: resolve_vault_root } = await import('../utils/config.js');
+    const { migrate_incident } = await import('../core/knowledge-base/migrate.js');
+    const { load_plugin_config, resolve_vault_root } = await import('../utils/config.js');
 
     const config = await load_plugin_config(project_root);
     const vault_root = resolve_vault_root(project_root, config);
 
     const result = await migrate_incident({
-      flatFilePath: flat_file_path,
-      vaultRoot: vault_root,
-      dryRun: options.dryRun,
+      flat_file_path,
+      vault_root,
+      dry_run: options.dryRun,
       force: options.force,
     });
 
     logger.header(`hewtd migrate-incident`);
-    logger.info(`Source:        ${result.flatFilePath}`);
-    logger.info(`Target folder: ${result.targetFolder}`);
+    logger.info(`Source:        ${result.flat_file_path}`);
+    logger.info(`Target folder: ${result.target_folder}`);
     logger.info(`Action:        ${result.action}`);
     if (result.action === 'dry_run') {
       logger.info('');
       logger.info('--- narrative.md ---');
-      logger.info(result.narrativeContent);
+      logger.info(result.narrative_content);
       logger.info('--- facts.md ---');
-      logger.info(result.factsContent);
+      logger.info(result.facts_content);
     } else if (result.action === 'migrated') {
-      logger.success(`Migrated to ${result.targetFolder}`);
-      logger.info(`  narrative: ${result.narrativePath}`);
-      logger.info(`  facts:     ${result.factsPath}`);
-      logger.info(`  evidence:  ${result.evidencePath} (empty)`);
-      logger.info(`  original:  ${result.flatFilePath}.migrated (renamed for rollback)`);
+      logger.success(`Migrated to ${result.target_folder}`);
+      logger.info(`  narrative: ${result.narrative_path}`);
+      logger.info(`  facts:     ${result.facts_path}`);
+      logger.info(`  evidence:  ${result.evidence_path} (empty)`);
+      logger.info(`  original:  ${result.flat_file_path}.migrated (renamed for rollback)`);
     } else if (result.action === 'already_migrated') {
       logger.warn(`Already migrated.`);
-      if (result.existingLocation === 'legacy') {
-        logger.warn(`  Existing folder is at the 2.3.0 legacy location: ${result.narrativePath}`);
+      if (result.existing_location === 'legacy') {
+        logger.warn(`  Existing folder is at the 2.3.0 legacy location: ${result.narrative_path}`);
         logger.warn(`  Run \`hewtd fix-legacy-layout\` to relocate it under incidents/.`);
       } else {
-        logger.info(`  Existing folder: ${result.narrativePath}`);
+        logger.info(`  Existing folder: ${result.narrative_path}`);
       }
       logger.info(`  Use --force to re-migrate (overwrites).`);
     }
@@ -1005,10 +1005,10 @@ program
   .option('--dry-run', 'Report what would be moved without writing', false)
   .action(async (options) => {
     const project_root = project_root_dir;
-    const { fix_legacy_layout: fix_legacy_layout } = await import(
+    const { fix_legacy_layout } = await import(
       '../core/knowledge-base/fix-legacy-layout.js'
     );
-    const { load_plugin_config: load_plugin_config, resolve_vault_root: resolve_vault_root } = await import(
+    const { load_plugin_config, resolve_vault_root } = await import(
       '../utils/config.js'
     );
 
@@ -1016,13 +1016,13 @@ program
     const vault_root = resolve_vault_root(project_root, config);
 
     const result = await fix_legacy_layout({
-      vaultRoot: vault_root,
-      projectRoot: project_root,
-      dryRun: options.dryRun,
+      vault_root,
+      project_root,
+      dry_run: options.dryRun,
     });
 
     logger.header(`hewtd fix-legacy-layout`);
-    logger.info(`Vault root: ${result.vaultRoot}`);
+    logger.info(`Vault root: ${result.vault_root}`);
     logger.info(`Action:     ${result.action}`);
 
     if (result.action === 'no_op') {
@@ -1038,11 +1038,11 @@ program
       }
     }
 
-    if (result.rewrittenProvenance.length > 0) {
+    if (result.rewritten_provenance.length > 0) {
       logger.info('');
-      logger.info(`Rewrote ${result.rewrittenProvenance.length} provenance reference${result.rewrittenProvenance.length === 1 ? '' : 's'}:`);
-      for (const r of result.rewrittenProvenance) {
-        logger.info(`  ${r.factPath}: ${r.oldRef} → ${r.newRef}`);
+      logger.info(`Rewrote ${result.rewritten_provenance.length} provenance reference${result.rewritten_provenance.length === 1 ? '' : 's'}:`);
+      for (const r of result.rewritten_provenance) {
+        logger.info(`  ${r.fact_path}: ${r.old_ref} → ${r.new_ref}`);
       }
     }
 
@@ -1069,9 +1069,9 @@ program
   .option('-p, --docs-path <path>', 'Documentation path', '.documentation')
   .option('--apply', 'Write the changes', false)
   .action(async (options) => {
-    const { fix_retrieval_fields: fix_retrieval_fields } = await import('../core/metadata/fix-retrieval-fields.js');
+    const { fix_retrieval_fields } = await import('../core/metadata/fix-retrieval-fields.js');
     const result = await fix_retrieval_fields({
-      docsPath: resolve(process.cwd(), options.docsPath),
+      docs_path: resolve(process.cwd(), options.docsPath),
       apply: options.apply,
     });
     logger.header('hewtd fix-retrieval-fields');
@@ -1116,8 +1116,8 @@ program
 
     const project_root = project_root_dir;
     const incident_folder = resolve(process.cwd(), incident_folder_arg);
-    const { load_plugin_config: load_plugin_config, resolve_vault_root: resolve_vault_root } = await import('../utils/config.js');
-    const { extract_facts: extract_facts } = await import('../core/knowledge-base/extract.js');
+    const { load_plugin_config, resolve_vault_root } = await import('../utils/config.js');
+    const { extract_facts } = await import('../core/knowledge-base/extract.js');
 
     const config = await load_plugin_config(project_root);
     const vault_root = resolve_vault_root(project_root, config);
@@ -1125,20 +1125,20 @@ program
     // Trust the caller's JSON shape — the slash command produced it after
     // the user accepted proposals. Runtime errors surface naturally.
     const result = await extract_facts({
-      incidentFolder: incident_folder,
-      vaultRoot: vault_root,
-      projectRoot: project_root,
+      incident_folder,
+      vault_root,
+      project_root,
       accept: accept as Parameters<typeof extract_facts>[0]['accept'],
-      dryRun: options.dryRun,
+      dry_run: options.dryRun,
     });
 
-    logger.header(`hewtd extract-facts: ${result.incidentId}`);
-    for (const f of result.extractedFacts) {
+    logger.header(`hewtd extract-facts: ${result.incident_id}`);
+    for (const f of result.extracted_facts) {
       const tag = f.action === 'created' ? '✓ created' : '· skipped (exists)';
-      logger.info(`  ${tag}  ${f.factPath}`);
+      logger.info(`  ${tag}  ${f.fact_path}`);
     }
-    if (result.factsMdUpdated) {
-      logger.success(`Updated ${result.factsMdPath} (produced: list)`);
+    if (result.facts_md_updated) {
+      logger.success(`Updated ${result.facts_md_path} (produced: list)`);
     }
   });
 
@@ -1162,10 +1162,10 @@ program
   .option('--apply <files...>', 'Apply the accepted entries of review files (serial, one commit per batch)')
   .option('--gaps <file>', 'Classify missed search queries (gaps.v1 file or one question per line) into user_phrase proposals, new-doc candidates and open questions; writes only .hewtd/reconcile/gaps-report-<date>.md', undefined)
   .action(async (scope: string[], options) => {
-    const { load_plugin_config: load_plugin_config } = await import('../utils/config.js');
-    const { load_ledger: load_ledger, ledger_status: ledger_status, hash_content: hash_content } = await import('../core/reconcile/ledger.js');
+    const { load_plugin_config } = await import('../utils/config.js');
+    const { load_ledger, ledger_status, hash_content } = await import('../core/reconcile/ledger.js');
     const { glob } = await import('../utils/glob.js');
-    const { project_root_of: project_root_of } = await import('../core/reconcile/outside.js');
+    const { project_root_of } = await import('../core/reconcile/outside.js');
     const docs_path = resolve(process.cwd(), options.docsPath);
     // State (ledger, review files, config) lives at the project root, so a run from a subdirectory shares it.
     const root = project_root_of(docs_path);
@@ -1173,9 +1173,9 @@ program
     const ledger_file = resolve(root, config.reconcile.ledger_path);
     if (options.apply) {
       try {
-        const { apply_reviews: apply_reviews } = await import('../core/reconcile/apply.js');
+        const { apply_reviews } = await import('../core/reconcile/apply.js');
         const res = await apply_reviews({
-          root, docsPath: docs_path, ledger: await load_ledger(ledger_file), ledgerFile: ledger_file,
+          root, docs_path, ledger: await load_ledger(ledger_file), ledger_file,
           files: (options.apply as string[]).map((f) => resolve(root, f)),
         });
         logger.header('hewtd reconcile --apply');
@@ -1187,11 +1187,11 @@ program
         if (n('applied')) await export_graph(docs_path, false); // a rolled-back batch has no 'applied' outcome
         const after = await load_ledger(ledger_file);
         if (res.outcomes.some((o) => o.status === 'applied' && after.entries[o.path]?.env_names?.length)) {
-          const { build_secrets_report: build_secrets_report, write_secrets_report: write_secrets_report } = await import('../core/reconcile/secrets-report.js');
+          const { build_secrets_report, write_secrets_report } = await import('../core/reconcile/secrets-report.js');
           // Re-scan, so findings still pending stay in the report instead of being overwritten by the moved ones.
-          const { scan_secrets: scan_secrets } = await import('../core/reconcile/triage.js');
-          const pending = await scan_secrets({ root, docsPath: docs_path, config });
-          const rep = await build_secrets_report({ root, docsPath: docs_path, findings: pending, ledger: after, cfg: config.reconcile.secrets });
+          const { scan_secrets } = await import('../core/reconcile/triage.js');
+          const pending = await scan_secrets({ root, docs_path, config });
+          const rep = await build_secrets_report({ root, docs_path, findings: pending, ledger: after, cfg: config.reconcile.secrets });
           logger.info(`  secrets report with next steps (rotate, then purge): ${relative(root, await write_secrets_report(root, rep.text))}`);
         }
       } catch (e) {
@@ -1202,10 +1202,10 @@ program
     }
     if (options.secrets) {
       try {
-        const { scan_secrets: scan_secrets } = await import('../core/reconcile/triage.js');
-        const found = await scan_secrets({ root, docsPath: docs_path, config, scope });
-        const { build_secrets_report: build_secrets_report, write_secrets_report: write_secrets_report } = await import('../core/reconcile/secrets-report.js');
-        const report = await build_secrets_report({ root, docsPath: docs_path, findings: found, ledger: await load_ledger(ledger_file), cfg: config.reconcile.secrets });
+        const { scan_secrets } = await import('../core/reconcile/triage.js');
+        const found = await scan_secrets({ root, docs_path, config, scope });
+        const { build_secrets_report, write_secrets_report } = await import('../core/reconcile/secrets-report.js');
+        const report = await build_secrets_report({ root, docs_path, findings: found, ledger: await load_ledger(ledger_file), cfg: config.reconcile.secrets });
         const report_file = relative(root, await write_secrets_report(root, report.text));
         if (options.json) { console.log(JSON.stringify(found, null, 2)); return; }
         logger.header('hewtd reconcile --secrets');
@@ -1221,12 +1221,12 @@ program
     if (options.gaps) {
       try {
         const { readFile: read_file } = await import('fs/promises');
-        const { parse_gaps: parse_gaps, classify_gaps: classify_gaps } = await import('../core/reconcile/gaps.js');
-        const { render_gaps_report: render_gaps_report, write_gaps_report: write_gaps_report } = await import('../core/reconcile/gaps-report.js');
-        const read = parse_gaps(await read_file(resolve(process.cwd(), options.gaps), 'utf-8'), { docsRoot: docs_path, repoRoot: root });
-        const res = await classify_gaps(read.gaps, { root, docsRoot: docs_path, config });
+        const { parse_gaps, classify_gaps } = await import('../core/reconcile/gaps.js');
+        const { render_gaps_report, write_gaps_report } = await import('../core/reconcile/gaps-report.js');
+        const read = parse_gaps(await read_file(resolve(process.cwd(), options.gaps), 'utf-8'), { docs_root: docs_path, repo_root: root });
+        const res = await classify_gaps(read.gaps, { root, docs_root: docs_path, config });
         const report_file = relative(root, await write_gaps_report(root, render_gaps_report(res, config.reconcile.secrets)));
-        const review_file = options.writeReview ? await (await import('../core/reconcile/review.js')).write_gaps_review({ root, docsPath: docs_path, proposals: res.proposals, batch: options.batch }) : undefined;
+        const review_file = options.writeReview ? await (await import('../core/reconcile/review.js')).write_gaps_review({ root, docs_path, proposals: res.proposals, batch: options.batch }) : undefined;
         if (options.json) { console.log(JSON.stringify({ ...res, errors: read.errors, report: report_file, ...(review_file && { review: relative(root, review_file) }) }, null, 2)); return; }
         logger.header('hewtd reconcile --gaps');
         for (const e of read.errors) logger.warn(`  ${e}`);
@@ -1241,8 +1241,8 @@ program
     }
     if (options.overview && options.writeReview) {
       try {
-        const { write_overview_review: write_overview_review } = await import('../core/reconcile/overview.js');
-        logger.info(`  wrote ${relative(root, await write_overview_review({ root, docsPath: docs_path, membersFile: resolve(root, options.overview), batch: options.batch }))}`);
+        const { write_overview_review } = await import('../core/reconcile/overview.js');
+        logger.info(`  wrote ${relative(root, await write_overview_review({ root, docs_path, members_file: resolve(root, options.overview), batch: options.batch }))}`);
       } catch (e) {
         logger.error((e as Error).message);
         process.exitCode = 1;
@@ -1251,9 +1251,9 @@ program
     }
     if (options.overview) {
       try {
-        const { seed_overview: seed_overview, write_members_file: write_members_file } = await import('../core/reconcile/overview.js');
+        const { seed_overview, write_members_file } = await import('../core/reconcile/overview.js');
         const seed = await seed_overview({
-          docsPath: docs_path, config, ledger: await load_ledger(ledger_file), question: options.overview,
+          docs_path, config, ledger: await load_ledger(ledger_file), question: options.overview,
           limit: options.limit ? parseInt(options.limit, 10) || undefined : undefined,
         });
         const file = relative(root, await write_members_file(root, seed));
@@ -1271,9 +1271,9 @@ program
     }
     if (options.outside) {
       try {
-        const { discover_outside: discover_outside, write_outside_review: write_outside_review } = await import('../core/reconcile/outside.js');
+        const { discover_outside, write_outside_review } = await import('../core/reconcile/outside.js');
         const docs = await discover_outside(docs_path, (await load_plugin_config(project_root_of(docs_path))).reconcile.keep_in_place);
-        if (options.writeReview) logger.info(`  wrote ${relative(root, await write_outside_review({ docsPath: docs_path, root, docs, batch: options.batch }))}`);
+        if (options.writeReview) logger.info(`  wrote ${relative(root, await write_outside_review({ docs_path, root, docs, batch: options.batch }))}`);
         if (options.json) { console.log(JSON.stringify(docs, null, 2)); return; }
         logger.header('hewtd reconcile --outside');
         for (const d of docs) logger.info(`  [${d.cls}] ${d.path} - ${d.reason}`);
@@ -1284,8 +1284,8 @@ program
       return;
     }
     if (!options.status) {
-      const { resolve_scope: resolve_scope, dirty_in_scope: dirty_in_scope, triage } = await import('../core/reconcile/triage.js');
-      const { save_ledger: save_ledger } = await import('../core/reconcile/ledger.js');
+      const { resolve_scope, dirty_in_scope, triage } = await import('../core/reconcile/triage.js');
+      const { save_ledger } = await import('../core/reconcile/ledger.js');
       try {
         if (options.serial && options.team) throw new Error('--serial and --team are mutually exclusive');
         const ledger = await load_ledger(ledger_file);
@@ -1296,13 +1296,13 @@ program
           throw new Error(`Refusing to start: uncommitted changes in scope (commit or stash first):\n${dirty.map((d) => `  ${d}`).join('\n')}`);
         }
         const result = await triage({
-          root, docsPath: docs_path, rels, config, ledger,
+          root, docs_path, rels, config, ledger,
           ...((options.serial && { mode: 'serial' }) || (options.team && { mode: 'team' }) || {}),
         });
         await save_ledger(ledger_file, ledger);
         if (options.writeReview) {
-          const { write_review_skeletons: write_review_skeletons } = await import('../core/reconcile/review.js');
-          const files = await write_review_skeletons({ root, docsPath: docs_path, triage: result, scope: scope.join(' ') || `next ${options.next}`, batch: options.batch });
+          const { write_review_skeletons } = await import('../core/reconcile/review.js');
+          const files = await write_review_skeletons({ root, docs_path, triage: result, scope: scope.join(' ') || `next ${options.next}`, batch: options.batch });
           files.forEach((f) => logger.info(`  wrote ${relative(root, f)}`));
         }
         if (options.json) {
@@ -1333,9 +1333,9 @@ program
     const st = ledger_status(ledger, docs, parseInt(options.next ?? '10', 10) || 10);
     logger.header('hewtd reconcile --status');
     logger.info(`  reviewed ${st.reviewed} of ${st.total}`);
-    for (const [k, v] of Object.entries(st.byLane)) logger.info(`  lane ${k}: ${v}`);
-    for (const [k, v] of Object.entries(st.byVerdict)) logger.info(`  verdict ${k}: ${v}`);
-    if (st.nextUnreviewed.length) logger.info(`  next unreviewed:\n${st.nextUnreviewed.map((p) => `    ${p}`).join('\n')}`);
+    for (const [k, v] of Object.entries(st.by_lane)) logger.info(`  lane ${k}: ${v}`);
+    for (const [k, v] of Object.entries(st.by_verdict)) logger.info(`  verdict ${k}: ${v}`);
+    if (st.next_unreviewed.length) logger.info(`  next unreviewed:\n${st.next_unreviewed.map((p) => `    ${p}`).join('\n')}`);
   });
 
 // Secrets command: baseline management (later: --staged)
@@ -1349,15 +1349,15 @@ program
   .option('--staged', 'Scan only the lines the staged diff adds under the docs root (exit 1 on a secret); used by the pre-commit hook', false)
   .action(async (options) => {
     try {
-      const { load_plugin_config: load_plugin_config } = await import('../utils/config.js');
-      const { project_root_of: project_root_of } = await import('../core/reconcile/outside.js');
-      const { add_baseline: add_baseline, load_baseline: load_baseline, save_baseline: save_baseline, scan_file: scan_file, BASELINE_PATH } = await import('../core/reconcile/secrets.js');
+      const { load_plugin_config } = await import('../utils/config.js');
+      const { project_root_of } = await import('../core/reconcile/outside.js');
+      const { add_baseline, load_baseline, save_baseline, scan_file, BASELINE_PATH } = await import('../core/reconcile/secrets.js');
       const docs_path = resolve(process.cwd(), options.docsPath);
       const root = project_root_of(docs_path);
       const config = await load_plugin_config(root);
       const cfg = config.reconcile.secrets;
       if (options.staged) {
-        const { scan_staged: scan_staged } = await import('../core/reconcile/hooks.js');
+        const { scan_staged } = await import('../core/reconcile/hooks.js');
         const hits = scan_staged(root, docs_path, cfg);
         if (!hits.length) return;
         logger.error(`commit refused: ${hits.length} added line(s) contain a secret (masked, first4…length):`);
@@ -1383,11 +1383,11 @@ program
         }
       }
       if (options.baselinePrune) {
-        const { scan_secrets: scan_secrets } = await import('../core/reconcile/triage.js');
+        const { scan_secrets } = await import('../core/reconcile/triage.js');
         const entries = await load_baseline(root);
         // Scan with the baseline off, so a still-present value shows up.
         const bare = { ...config, reconcile: { ...config.reconcile, secrets: { ...cfg, allow: cfg.allow.filter((a) => !entries.some((e) => e.fingerprint === a.fingerprint)) } } };
-        const seen = new Set((await scan_secrets({ root, docsPath: docs_path, config: bare })).map((f) => f.fingerprint));
+        const seen = new Set((await scan_secrets({ root, docs_path, config: bare })).map((f) => f.fingerprint));
         for (const e of entries) for (const f of await scan_file(join(root, e.file), e.file, bare.reconcile.secrets)) seen.add(f.fingerprint);
         const kept = entries.filter((e) => seen.has(e.fingerprint));
         if (kept.length !== entries.length) await save_baseline(root, kept);
@@ -1408,8 +1408,8 @@ program
   .action(async (action, options) => {
     try {
       if (action !== 'install' && action !== 'uninstall') throw new Error('expected install or uninstall');
-      const { project_root_of: project_root_of } = await import('../core/reconcile/outside.js');
-      const { install_hook: install_hook, uninstall_hook: uninstall_hook } = await import('../core/reconcile/hooks.js');
+      const { project_root_of } = await import('../core/reconcile/outside.js');
+      const { install_hook, uninstall_hook } = await import('../core/reconcile/hooks.js');
       const root = project_root_of(resolve(process.cwd(), options.docsPath));
       const r = await (action === 'install' ? install_hook : uninstall_hook)(root);
       logger.info(`${r.changed ? action + 'ed' : 'unchanged'}: ${relative(root, r.path)}`);
@@ -1426,7 +1426,7 @@ program
   .option('-p, --path <path>', 'Documentation path', '.documentation')
   .action(async (query, options) => {
     const docs_path = resolve(process.cwd(), options.path);
-    const { find_markdown_files: find_markdown_files } = await import('../utils/glob.js');
+    const { find_markdown_files } = await import('../utils/glob.js');
     const { readFile: read_file } = await import('fs/promises');
     const { relative } = await import('path');
 

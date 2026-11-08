@@ -7,8 +7,8 @@ export interface IndexEntry {
   title: string;
   tier: string;
   status: string;
-  lastUpdated: string;
-  wordCount?: number;
+  last_updated: string;
+  word_count?: number;
   description?: string;
   purpose?: string;
 }
@@ -70,7 +70,7 @@ purpose: Navigation hub for all documentation
       content += `|----------|------|--------|----------|---------|\n`;
 
       for (const entry of domain_entries) {
-        content += `| [${entry.title}](${entry.path}) | ${entry.tier} | ${entry.status} | ${entry.lastUpdated} | ${purpose_cell(entry.purpose)} |\n`;
+        content += `| [${entry.title}](${entry.path}) | ${entry.tier} | ${entry.status} | ${entry.last_updated} | ${purpose_cell(entry.purpose)} |\n`;
       }
       content += `\n`;
     }
@@ -143,8 +143,8 @@ purpose: Complete listing of ${domain} documentation
       content += `|----------|--------|---------|-------|---------|\n`;
 
       for (const entry of tier_entries) {
-        const words = entry.wordCount ? entry.wordCount.toLocaleString() : '-';
-        content += `| [${entry.title}](${entry.path}) | ${entry.status} | ${entry.lastUpdated} | ${words} | ${purpose_cell(entry.purpose)} |\n`;
+        const words = entry.word_count ? entry.word_count.toLocaleString() : '-';
+        content += `| [${entry.title}](${entry.path}) | ${entry.status} | ${entry.last_updated} | ${words} | ${purpose_cell(entry.purpose)} |\n`;
       }
       content += `\n`;
     }

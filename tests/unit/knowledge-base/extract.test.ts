@@ -61,9 +61,9 @@ produced: []
 
   it('writes accepted fact specs to <vault>/facts/ with provenance auto-populated', async () => {
     const result = await extract_facts({
-      incidentFolder: incident_folder,
-      vaultRoot: vault_root,
-      projectRoot: tmp_project,
+      incident_folder,
+      vault_root,
+      project_root: tmp_project,
       accept: [
         {
           id: 'test-fact-one',
@@ -83,12 +83,12 @@ produced: []
       ],
     });
 
-    expect(result.extractedFacts).toHaveLength(2);
-    expect(result.extractedFacts[0]!.action).toBe('created');
-    expect(result.extractedFacts[1]!.action).toBe('created');
+    expect(result.extracted_facts).toHaveLength(2);
+    expect(result.extracted_facts[0]!.action).toBe('created');
+    expect(result.extracted_facts[1]!.action).toBe('created');
 
     // Verify file contents
-    const fact_one = await readFile(result.extractedFacts[0]!.factPath, 'utf-8');
+    const fact_one = await readFile(result.extracted_facts[0]!.fact_path, 'utf-8');
     expect(fact_one).toContain('tier: fact');
     expect(fact_one).toContain('id: test-fact-one');
     expect(fact_one).toContain('confidence: high');
@@ -103,9 +103,9 @@ produced: []
 
   it('updates the incident facts.md produced: list', async () => {
     await extract_facts({
-      incidentFolder: incident_folder,
-      vaultRoot: vault_root,
-      projectRoot: tmp_project,
+      incident_folder,
+      vault_root,
+      project_root: tmp_project,
       accept: [
         {
           id: 'test-fact-one',
@@ -124,9 +124,9 @@ produced: []
   it('is idempotent — already-existing facts are not overwritten', async () => {
     // First pass: create the fact
     await extract_facts({
-      incidentFolder: incident_folder,
-      vaultRoot: vault_root,
-      projectRoot: tmp_project,
+      incident_folder,
+      vault_root,
+      project_root: tmp_project,
       accept: [
         {
           id: 'test-fact-one',
@@ -141,9 +141,9 @@ produced: []
 
     // Second pass: same id but different content
     const result = await extract_facts({
-      incidentFolder: incident_folder,
-      vaultRoot: vault_root,
-      projectRoot: tmp_project,
+      incident_folder,
+      vault_root,
+      project_root: tmp_project,
       accept: [
         {
           id: 'test-fact-one',
@@ -154,7 +154,7 @@ produced: []
       ],
     });
 
-    expect(result.extractedFacts[0]!.action).toBe('already_exists');
+    expect(result.extracted_facts[0]!.action).toBe('already_exists');
 
     const after = await readFile(join(vault_root, 'facts/test-fact-one.md'), 'utf-8');
     expect(after).toBe(original); // unchanged
@@ -162,9 +162,9 @@ produced: []
 
   it('dry-run does not write files', async () => {
     const result = await extract_facts({
-      incidentFolder: incident_folder,
-      vaultRoot: vault_root,
-      projectRoot: tmp_project,
+      incident_folder,
+      vault_root,
+      project_root: tmp_project,
       accept: [
         {
           id: 'dry-test',
@@ -173,14 +173,14 @@ produced: []
           claim: 'A claim',
         },
       ],
-      dryRun: true,
+      dry_run: true,
     });
 
-    expect(result.extractedFacts[0]!.action).toBe('created');
+    expect(result.extracted_facts[0]!.action).toBe('created');
     // But file doesn't exist on disk
     let exists = true;
     try {
-      await readFile(result.extractedFacts[0]!.factPath, 'utf-8');
+      await readFile(result.extracted_facts[0]!.fact_path, 'utf-8');
     } catch {
       exists = false;
     }
@@ -189,11 +189,11 @@ produced: []
 
   it('writes purpose and symptoms into fact frontmatter when given', async () => {
     const r = await extract_facts({
-      incidentFolder: incident_folder, vaultRoot: vault_root, projectRoot: tmp_project,
+      incident_folder, vault_root, project_root: tmp_project,
       accept: [{ id: 'f-one', title: 'F one', confidence: 'high', claim: 'c',
         purpose: 'Why does X fail?', symptoms: ['x fails on boot', 'ERR_X'] }],
     });
-    const c = r.extractedFacts[0].content;
+    const c = r.extracted_facts[0].content;
     expect(c).toContain('purpose: Why does X fail?');
     expect(c).toMatch(/symptoms:\n  - x fails on boot\n  - ERR_X/);
   });

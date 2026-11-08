@@ -55,9 +55,9 @@ export function list_domains(project_root: string): DomainListResult {
 // ---------------------------------------------------------------------------
 
 export interface AddDomainInput {
-  projectRoot: string;
+  project_root: string;
   /** Documentation root (e.g. absolute path to `.documentation`). */
-  docsPath: string;
+  docs_path: string;
   spec: {
     id: string;
     name: string;
@@ -66,7 +66,7 @@ export interface AddDomainInput {
     loadPriority: number;
     category: string;
   };
-  dryRun?: boolean;
+  dry_run?: boolean;
 }
 
 export interface AddDomainResult {
@@ -75,9 +75,9 @@ export interface AddDomainResult {
   errors: string[];
   action: 'added' | 'dry_run' | 'rejected';
   spec?: CustomDomainConfig;
-  configPath: string;
-  domainFolder?: string;
-  filesWritten?: string[];
+  config_path: string;
+  domain_folder?: string;
+  files_written?: string[];
 }
 
 /**
@@ -87,7 +87,7 @@ export interface AddDomainResult {
  * built-in or already a configured custom domain.
  */
 export async function add_domain(input: AddDomainInput): Promise<AddDomainResult> {
-  const { projectRoot: project_root, docsPath: docs_path, spec, dryRun: dry_run = false } = input;
+  const { project_root, docs_path, spec, dry_run = false } = input;
   const config_path = config_file_path(project_root);
   const errors: string[] = [];
 
@@ -98,20 +98,20 @@ export async function add_domain(input: AddDomainInput): Promise<AddDomainResult
     for (const issue of parsed.error.issues) {
       errors.push(`${issue.path.join('.') || '(root)'}: ${issue.message}`);
     }
-    return { ok: false, errors, action: 'rejected', configPath: config_path };
+    return { ok: false, errors, action: 'rejected', config_path };
   }
   const valid = parsed.data;
 
   if (is_builtin_domain(valid.id)) {
     errors.push(`"${valid.id}" is a built-in domain; pick a different id.`);
-    return { ok: false, errors, action: 'rejected', configPath: config_path };
+    return { ok: false, errors, action: 'rejected', config_path };
   }
 
   if (RESERVED_DIR_NAMES.includes(valid.id)) {
     errors.push(
       `"${valid.id}" is a reserved documentation folder (not a domain); pick a different id.`
     );
-    return { ok: false, errors, action: 'rejected', configPath: config_path };
+    return { ok: false, errors, action: 'rejected', config_path };
   }
 
   const raw = await read_raw_config(project_root);
@@ -123,7 +123,7 @@ export async function add_domain(input: AddDomainInput): Promise<AddDomainResult
   );
   if (already_configured) {
     errors.push(`Custom domain "${valid.id}" already exists in config.`);
-    return { ok: false, errors, action: 'rejected', configPath: config_path };
+    return { ok: false, errors, action: 'rejected', config_path };
   }
 
   const domain_folder = `${docs_path}/${valid.id}`;
@@ -134,8 +134,8 @@ export async function add_domain(input: AddDomainInput): Promise<AddDomainResult
       errors,
       action: 'dry_run',
       spec: valid,
-      configPath: config_path,
-      domainFolder: domain_folder,
+      config_path,
+      domain_folder,
     };
   }
 
@@ -149,20 +149,20 @@ export async function add_domain(input: AddDomainInput): Promise<AddDomainResult
   // createScaffold creates the (missing) domain folder + initial INDEX/REGISTRY.
   // regenerateIndexes then refreshes the ROOT index so it lists the new domain.
   const scaffold = await create_scaffold({
-    rootPath: docs_path,
+    root_path: docs_path,
     domains: [valid.id],
     silent: true,
   });
-  const regen = await regenerate_indexes({ docsPath: docs_path, silent: true });
+  const regen = await regenerate_indexes({ docs_path, silent: true });
 
   return {
     ok: true,
     errors,
     action: 'added',
     spec: valid,
-    configPath: config_path,
-    domainFolder: domain_folder,
-    filesWritten: [...scaffold.created, ...regen.filesWritten],
+    config_path,
+    domain_folder,
+    files_written: [...scaffold.created, ...regen.files_written],
   };
 }
 
@@ -171,20 +171,20 @@ export async function add_domain(input: AddDomainInput): Promise<AddDomainResult
 // ---------------------------------------------------------------------------
 
 export interface RemoveDomainInput {
-  projectRoot: string;
-  docsPath: string;
+  project_root: string;
+  docs_path: string;
   id: string;
-  dryRun?: boolean;
+  dry_run?: boolean;
 }
 
 export interface RemoveDomainResult {
   ok: boolean;
   errors: string[];
   action: 'removed' | 'dry_run' | 'rejected';
-  configPath: string;
+  config_path: string;
   /** Number of documents left behind in the folder (NOT deleted). */
-  orphanedDocs: number;
-  domainFolder: string;
+  orphaned_docs: number;
+  domain_folder: string;
 }
 
 /**
@@ -195,7 +195,7 @@ export interface RemoveDomainResult {
 export async function remove_domain(
   input: RemoveDomainInput
 ): Promise<RemoveDomainResult> {
-  const { projectRoot: project_root, docsPath: docs_path, id, dryRun: dry_run = false } = input;
+  const { project_root, docs_path, id, dry_run = false } = input;
   const config_path = config_file_path(project_root);
   const domain_folder = `${docs_path}/${id}`;
   const errors: string[] = [];
@@ -208,9 +208,9 @@ export async function remove_domain(
       ok: false,
       errors,
       action: 'rejected',
-      configPath: config_path,
-      orphanedDocs: 0,
-      domainFolder: domain_folder,
+      config_path,
+      orphaned_docs: 0,
+      domain_folder,
     };
   }
 
@@ -225,9 +225,9 @@ export async function remove_domain(
       ok: false,
       errors,
       action: 'rejected',
-      configPath: config_path,
-      orphanedDocs: 0,
-      domainFolder: domain_folder,
+      config_path,
+      orphaned_docs: 0,
+      domain_folder,
     };
   }
 
@@ -239,9 +239,9 @@ export async function remove_domain(
       ok: true,
       errors,
       action: 'dry_run',
-      configPath: config_path,
-      orphanedDocs: orphaned_docs,
-      domainFolder: domain_folder,
+      config_path,
+      orphaned_docs,
+      domain_folder,
     };
   }
 
@@ -255,9 +255,9 @@ export async function remove_domain(
     ok: true,
     errors,
     action: 'removed',
-    configPath: config_path,
-    orphanedDocs: orphaned_docs,
-    domainFolder: domain_folder,
+    config_path,
+    orphaned_docs,
+    domain_folder,
   };
 }
 

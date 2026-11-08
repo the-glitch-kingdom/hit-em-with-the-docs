@@ -134,12 +134,12 @@ export async function next_batch(dir: string): Promise<string> {
 /** Turn a triage result into one empty review file per shard (one file in serial mode). */
 export async function write_review_skeletons(opts: {
   root: string;
-  docsPath: string;
+  docs_path: string;
   triage: TriageResult;
   scope: string;
   batch?: string;
 }): Promise<string[]> {
-  const { root, docsPath: docs_path, triage, scope } = opts;
+  const { root, docs_path, triage, scope } = opts;
   const dir = review_dir(root);
   const batch = opts.batch ?? (await next_batch(dir));
   const judged = triage.docs.filter((d) => d.lane !== 'clean');
@@ -185,8 +185,8 @@ export async function write_review_skeletons(opts: {
 }
 
 /** gaps: one unticked `phrases` entry per doc with proposals, as `review-<batch>-gaps.md`. */
-export async function write_gaps_review(opts: { root: string; docsPath: string; proposals: { doc: string; accepted: { query: string }[] }[]; batch?: string }): Promise<string | undefined> {
-  const { root, docsPath: docs_path, proposals } = opts;
+export async function write_gaps_review(opts: { root: string; docs_path: string; proposals: { doc: string; accepted: { query: string }[] }[]; batch?: string }): Promise<string | undefined> {
+  const { root, docs_path, proposals } = opts;
   if (!proposals.length) return undefined;
   const dir = review_dir(root);
   const batch = opts.batch ?? (await next_batch(dir));

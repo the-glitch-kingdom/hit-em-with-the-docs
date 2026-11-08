@@ -49,7 +49,7 @@ describe('Index regeneration (2.5.0 — issue #7)', () => {
   beforeEach(async () => {
     tmp_project = await mkdtemp(join(tmpdir(), 'hewtd-index-'));
     docs_path = join(tmp_project, '.documentation');
-    await create_scaffold({ rootPath: docs_path, overwrite: false, silent: true });
+    await create_scaffold({ root_path: docs_path, overwrite: false, silent: true });
   });
 
   afterEach(async () => {
@@ -75,8 +75,8 @@ login security, and access control for the service.
     );
 
     const result = await integrate_document({
-      filePath: src_path,
-      docsPath: docs_path,
+      file_path: src_path,
+      docs_path,
       auto: true,
       force: true,
       silent: true,
@@ -104,18 +104,18 @@ Authentication, authorization, OAuth, JWT tokens, login security and access cont
     const integrate = async (frontmatter: string, domain?: string) => {
       const src_path = join(tmp_project, 'login-outage.md');
       await writeFile(src_path, `---\ntitle: Login outage\n${frontmatter}---\n\n${security_prose}`, 'utf-8');
-      return integrate_document({ filePath: src_path, docsPath: docs_path, force: true, silent: true, dryRun: true, domain });
+      return integrate_document({ file_path: src_path, docs_path, force: true, silent: true, dry_run: true, domain });
     };
 
     it('uses the first declared domain over keyword detection', async () => {
       const result = await integrate('domains: [troubleshooting]\ntier: reference\n');
       expect(result.domain).toBe('troubleshooting');
-      expect(result.targetPath).toBe(join(docs_path, 'troubleshooting', 'login-outage.md'));
+      expect(result.target_path).toBe(join(docs_path, 'troubleshooting', 'login-outage.md'));
     });
 
     it('lets --domain override both, and puts it first in domains:', async () => {
       const result = await integrate('domains: [troubleshooting]\n', 'procedures');
-      expect(result.targetPath).toBe(join(docs_path, 'procedures', 'login-outage.md'));
+      expect(result.target_path).toBe(join(docs_path, 'procedures', 'login-outage.md'));
       expect(result.metadata?.domains?.[0]).toBe('procedures');
     });
 
@@ -140,12 +140,12 @@ Authentication, authorization, OAuth, JWT tokens, login security and access cont
       'utf-8'
     );
 
-    const result = await regenerate_indexes({ docsPath: docs_path, silent: true });
+    const result = await regenerate_indexes({ docs_path, silent: true });
 
-    expect(result.documentCounts.security).toBe(2);
-    expect(result.totalDocuments).toBe(2);
+    expect(result.document_counts.security).toBe(2);
+    expect(result.total_documents).toBe(2);
     // 15 domains × INDEX+REGISTRY + root INDEX+REGISTRY.
-    expect(result.filesWritten).toHaveLength(15 * 2 + 2);
+    expect(result.files_written).toHaveLength(15 * 2 + 2);
 
     const domain_index = await readFile(join(docs_path, 'security', 'INDEX.md'), 'utf-8');
     expect(domain_index).toContain('Doc One');
@@ -167,7 +167,7 @@ Authentication, authorization, OAuth, JWT tokens, login security and access cont
     const before = await readFile(join(docs_path, 'database', 'INDEX.md'), 'utf-8');
     expect(before).not.toContain('schema-notes.md');
 
-    await run_maintenance({ docsPath: docs_path, quick: true, silent: true });
+    await run_maintenance({ docs_path, quick: true, silent: true });
 
     const after = await readFile(join(docs_path, 'database', 'INDEX.md'), 'utf-8');
     expect(after).toContain('schema-notes.md');
@@ -181,7 +181,7 @@ Authentication, authorization, OAuth, JWT tokens, login security and access cont
       'utf-8'
     );
 
-    const drifted = await audit_documentation({ docsPath: docs_path, silent: true });
+    const drifted = await audit_documentation({ docs_path, silent: true });
     const drift_issue = drifted.issues.find(
       (i) => i.rule === 'index-drift' && i.file === 'testing/INDEX.md'
     );
@@ -189,9 +189,9 @@ Authentication, authorization, OAuth, JWT tokens, login security and access cont
     expect(drift_issue?.severity).toBe('error');
     expect(drift_issue?.fixable).toBe(true);
 
-    await regenerate_indexes({ docsPath: docs_path, silent: true });
+    await regenerate_indexes({ docs_path, silent: true });
 
-    const clean = await audit_documentation({ docsPath: docs_path, silent: true });
+    const clean = await audit_documentation({ docs_path, silent: true });
     expect(clean.issues.some((i) => i.rule === 'index-drift')).toBe(false);
   });
 });
@@ -218,7 +218,7 @@ describe('Recursive domain indexing (2.7.1 — issue #12)', () => {
   beforeEach(async () => {
     tmp_project = await mkdtemp(join(tmpdir(), 'hewtd-nested-'));
     docs_path = join(tmp_project, '.documentation');
-    await create_scaffold({ rootPath: docs_path, overwrite: false, silent: true });
+    await create_scaffold({ root_path: docs_path, overwrite: false, silent: true });
   });
 
   afterEach(async () => {
@@ -231,8 +231,8 @@ describe('Recursive domain indexing (2.7.1 — issue #12)', () => {
       doc('Entity Schema Contract')
     );
 
-    const result = await regenerate_indexes({ docsPath: docs_path, silent: true });
-    expect(result.documentCounts.standards).toBe(1);
+    const result = await regenerate_indexes({ docs_path, silent: true });
+    expect(result.document_counts.standards).toBe(1);
 
     // Domain INDEX links it domain-relative...
     const domain_index = await readFile(join(docs_path, 'standards', 'INDEX.md'), 'utf-8');
@@ -254,11 +254,11 @@ describe('Recursive domain indexing (2.7.1 — issue #12)', () => {
       doc('Property Form')
     );
 
-    await regenerate_indexes({ docsPath: docs_path, silent: true });
+    await regenerate_indexes({ docs_path, silent: true });
     const after_first = await readFile(join(docs_path, 'INDEX.md'), 'utf-8');
     expect(after_first).toContain('(features/portfolio/property-form.md)');
 
-    await regenerate_indexes({ docsPath: docs_path, silent: true });
+    await regenerate_indexes({ docs_path, silent: true });
     const after_second = await readFile(join(docs_path, 'INDEX.md'), 'utf-8');
     expect(after_second).toContain('(features/portfolio/property-form.md)');
 
@@ -284,8 +284,8 @@ describe('Recursive domain indexing (2.7.1 — issue #12)', () => {
       doc('Somebody Else Doc')
     );
 
-    const result = await regenerate_indexes({ docsPath: docs_path, silent: true });
-    expect(result.documentCounts.features).toBe(1);
+    const result = await regenerate_indexes({ docs_path, silent: true });
+    expect(result.document_counts.features).toBe(1);
 
     const domain_index = await readFile(join(docs_path, 'features', 'INDEX.md'), 'utf-8');
     const root_index = await readFile(join(docs_path, 'INDEX.md'), 'utf-8');
@@ -313,14 +313,14 @@ describe('Recursive domain indexing (2.7.1 — issue #12)', () => {
     const files = await list_domain_doc_files(docs_path, 'standards');
     expect(files).toEqual(['backend/real-doc.md']);
 
-    const result = await regenerate_indexes({ docsPath: docs_path, silent: true });
-    expect(result.documentCounts.standards).toBe(1);
+    const result = await regenerate_indexes({ docs_path, silent: true });
+    expect(result.document_counts.standards).toBe(1);
   });
 
   it('falls back to the basename for a nested doc with no frontmatter title', async () => {
     await write_doc(join(docs_path, 'standards', 'backend', 'foo-bar.md'), doc(null));
 
-    await regenerate_indexes({ docsPath: docs_path, silent: true });
+    await regenerate_indexes({ docs_path, silent: true });
 
     const domain_index = await readFile(join(docs_path, 'standards', 'INDEX.md'), 'utf-8');
     // "Foo Bar" — not "Backend/foo Bar".
@@ -338,11 +338,11 @@ describe('Recursive domain indexing (2.7.1 — issue #12)', () => {
       `---\ntitle: Broken\nstatus: SUPERSEDED (lean: shared <Strip> + per-page: thing)\n---\n\n# Broken\n`
     );
 
-    const result = await regenerate_indexes({ docsPath: docs_path, silent: true });
+    const result = await regenerate_indexes({ docs_path, silent: true });
 
     // Both docs indexed — the malformed one is NOT silently dropped, which
     // would recreate the very bug being fixed (a doc invisible to the index).
-    expect(result.documentCounts.features).toBe(2);
+    expect(result.document_counts.features).toBe(2);
 
     const domain_index = await readFile(join(docs_path, 'features', 'INDEX.md'), 'utf-8');
     expect(domain_index).toContain('(ok/good.md)');
@@ -355,11 +355,11 @@ describe('Recursive domain indexing (2.7.1 — issue #12)', () => {
     await write_doc(join(docs_path, 'standards', 'backend', 'fastapi.md'), doc('FastAPI'));
     const before = await readFile(join(docs_path, 'standards', 'INDEX.md'), 'utf-8');
 
-    const result = await regenerate_indexes({ docsPath: docs_path, silent: true, dryRun: true });
+    const result = await regenerate_indexes({ docs_path, silent: true, dry_run: true });
 
     // Reports everything it WOULD do...
-    expect(result.documentCounts.standards).toBe(1);
-    expect(result.filesWritten.length).toBe(15 * 2 + 2);
+    expect(result.document_counts.standards).toBe(1);
+    expect(result.files_written.length).toBe(15 * 2 + 2);
 
     // ...and touches nothing.
     const after = await readFile(join(docs_path, 'standards', 'INDEX.md'), 'utf-8');
@@ -375,15 +375,15 @@ describe('Recursive domain indexing (2.7.1 — issue #12)', () => {
       doc('Playwright Strategy')
     );
 
-    const drifted = await audit_documentation({ docsPath: docs_path, silent: true });
+    const drifted = await audit_documentation({ docs_path, silent: true });
     const drift_issue = drifted.issues.find(
       (i) => i.rule === 'index-drift' && i.file === 'testing/INDEX.md'
     );
     expect(drift_issue).toBeDefined();
 
-    await regenerate_indexes({ docsPath: docs_path, silent: true });
+    await regenerate_indexes({ docs_path, silent: true });
 
-    const clean = await audit_documentation({ docsPath: docs_path, silent: true });
+    const clean = await audit_documentation({ docs_path, silent: true });
     expect(clean.issues.some((i) => i.rule === 'index-drift')).toBe(false);
   });
 
@@ -440,8 +440,8 @@ describe('Recursive domain indexing (2.7.1 — issue #12)', () => {
       // withheld.
       expect(files).toEqual(['README.md']);
 
-      const result = await regenerate_indexes({ docsPath: docs_path, silent: true });
-      expect(result.documentCounts['knowledge-base']).toBe(1);
+      const result = await regenerate_indexes({ docs_path, silent: true });
+      expect(result.document_counts['knowledge-base']).toBe(1);
 
       const domain_index = await readFile(join(vault, 'INDEX.md'), 'utf-8');
       const root_index = await readFile(join(docs_path, 'INDEX.md'), 'utf-8');
@@ -493,10 +493,10 @@ describe('Generated indexes link only to domains that exist (#45)', () => {
     for (const d of ['reference', 'troubleshooting', 'compliance']) {
       await write_doc(join(docs_path, d, 'a.md'), doc(`${d} doc`));
     }
-    await regenerate_indexes({ docsPath: docs_path, silent: true });
+    await regenerate_indexes({ docs_path, silent: true });
 
-    const result = await check_links({ docsPath: docs_path, silent: true });
-    expect(result.brokenLinks).toEqual([]);
+    const result = await check_links({ docs_path, silent: true });
+    expect(result.broken_links).toEqual([]);
 
     const registry = await readFile(join(docs_path, 'REGISTRY.md'), 'utf-8');
     expect(registry).toContain('[troubleshooting/](troubleshooting/)');
@@ -509,12 +509,12 @@ describe('Generated indexes link only to domains that exist (#45)', () => {
 
   it('a partial scaffold links only the scaffolded domains', async () => {
     await create_scaffold({
-      rootPath: docs_path,
+      root_path: docs_path,
       domains: ['reference', 'troubleshooting'],
       overwrite: false,
       silent: true,
     });
-    const result = await check_links({ docsPath: docs_path, silent: true });
-    expect(result.brokenLinks).toEqual([]);
+    const result = await check_links({ docs_path, silent: true });
+    expect(result.broken_links).toEqual([]);
   });
 });

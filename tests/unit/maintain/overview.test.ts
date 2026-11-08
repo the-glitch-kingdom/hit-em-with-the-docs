@@ -71,7 +71,7 @@ describe('addOverviewBacklinks', () => {
     await setup();
     await put('api/ov2.md', `${FM('Second', 'kind: overview\n')}\n# O2\n\n[a](a.md)\n`);
     const before = await readFile(join(docs, 'api/a.md'), 'utf-8');
-    const changes = await add_overview_backlinks(docs, { dryRun: true });
+    const changes = await add_overview_backlinks(docs, { dry_run: true });
     expect(changes.find((c) => c.file === 'api/a.md')!.overviews).toEqual(['api/ov.md', 'api/ov2.md']);
     expect(await readFile(join(docs, 'api/a.md'), 'utf-8')).toBe(before);
     await add_overview_backlinks(docs);
@@ -83,19 +83,19 @@ describe('addOverviewBacklinks', () => {
 describe('maintain overview integration', () => {
   it('--fix writes back-links; without it only lists; backlinks:false does nothing', async () => {
     await setup();
-    let r = await run_maintenance({ docsPath: docs, quick: true, silent: true });
-    expect(r.overviewBacklinks!.length).toBe(5);
+    let r = await run_maintenance({ docs_path: docs, quick: true, silent: true });
+    expect(r.overview_backlinks!.length).toBe(5);
     expect(await readFile(join(docs, 'api/a.md'), 'utf-8')).not.toContain('Part of:');
-    await run_maintenance({ docsPath: docs, quick: true, silent: true, fix: true });
+    await run_maintenance({ docs_path: docs, quick: true, silent: true, fix: true });
     expect(await readFile(join(docs, 'api/a.md'), 'utf-8')).toContain('Part of:');
-    r = await run_maintenance({ docsPath: docs, quick: true, silent: true, fix: true });
-    expect(r.overviewBacklinks).toEqual([]);
+    r = await run_maintenance({ docs_path: docs, quick: true, silent: true, fix: true });
+    expect(r.overview_backlinks).toEqual([]);
 
     await writeFile(join(root, '.claude/hit-em-with-the-docs.json'), JSON.stringify({ overview: { backlinks: false } }));
     await put('api/z.md', `${FM('z')}\n# Z\n`);
     await put('api/ov.md', (await readFile(join(docs, 'api/ov.md'), 'utf-8')) + '[z](z.md)\n');
-    r = await run_maintenance({ docsPath: docs, quick: true, silent: true, fix: true });
-    expect(r.overviewBacklinks).toBeUndefined();
+    r = await run_maintenance({ docs_path: docs, quick: true, silent: true, fix: true });
+    expect(r.overview_backlinks).toBeUndefined();
     expect(await readFile(join(docs, 'api/z.md'), 'utf-8')).not.toContain('Part of:');
   });
 });
@@ -105,22 +105,22 @@ describe('health report overview coverage', () => {
     // Members link the next two, so ops is a dense flow with no overview.
     for (const [i, n] of names.entries()) await put(`ops/${n}.md`, `${FM(n)}\nText [x](${names[(i + 1) % 5]}.md) [y](${names[(i + 2) % 5]}.md)\n`);
     await setup();
-    const result = await run_maintenance({ docsPath: docs, quick: true, silent: true });
-    expect(result.overviewCoverage!.withOverview).toBe(1);
-    expect(result.overviewCoverage!.withoutOverview).toBe(1);
-    expect(result.overviewCoverage!.missing[0]).toMatchObject({ id: 'ops', size: 5 });
-    const md = await generate_health_report({ docsPath: docs, result, format: 'markdown' });
+    const result = await run_maintenance({ docs_path: docs, quick: true, silent: true });
+    expect(result.overview_coverage!.withOverview).toBe(1);
+    expect(result.overview_coverage!.withoutOverview).toBe(1);
+    expect(result.overview_coverage!.missing[0]).toMatchObject({ id: 'ops', size: 5 });
+    const md = await generate_health_report({ docs_path: docs, result, format: 'markdown' });
     expect(md).toContain('1 cluster(s) with an overview, 1 without');
     expect(md).toContain('| ops | 5 |');
-    const json = JSON.parse(await generate_health_report({ docsPath: docs, result, format: 'json' }));
+    const json = JSON.parse(await generate_health_report({ docs_path: docs, result, format: 'json' }));
     expect(json.overviewCoverage.withoutOverview).toBe(1);
   });
 
   it('renders on an empty tree', async () => {
     await mkdir(docs, { recursive: true });
-    const result = await run_maintenance({ docsPath: docs, quick: true, silent: true });
-    expect(result.overviewCoverage).toEqual({ withOverview: 0, withoutOverview: 0, missing: [] });
-    const md = await generate_health_report({ docsPath: docs, result, format: 'markdown' });
+    const result = await run_maintenance({ docs_path: docs, quick: true, silent: true });
+    expect(result.overview_coverage).toEqual({ withOverview: 0, withoutOverview: 0, missing: [] });
+    const md = await generate_health_report({ docs_path: docs, result, format: 'markdown' });
     expect(md).toContain('0 cluster(s) with an overview, 0 without');
   });
 });

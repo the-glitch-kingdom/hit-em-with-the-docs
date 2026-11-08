@@ -26,7 +26,7 @@ const retrieval_rules = (): string[] =>
       'node',
       [
         '-e',
-        `import('${join(REPO, 'dist/core/audit/auditor.js')}').then(async m=>{const r=await m.audit_documentation({docsPath:process.argv[1],silent:true});console.log(JSON.stringify(r.issues.filter(i=>i.rule&&i.rule.startsWith('RETRIEVAL_')).map(i=>i.rule+'|'+i.file)))})`,
+        `import('${join(REPO, 'dist/core/audit/auditor.js')}').then(async m=>{const r=await m.audit_documentation({docs_path:process.argv[1],silent:true});console.log(JSON.stringify(r.issues.filter(i=>i.rule&&i.rule.startsWith('RETRIEVAL_')).map(i=>i.rule+'|'+i.file)))})`,
         docs,
       ],
       { encoding: 'utf8', cwd: root }
@@ -93,7 +93,7 @@ describe('retrieval end to end (built CLI)', () => {
     const audit = JSON.parse(
       execFileSync(
         'node',
-        ['-e', `import('${join(REPO, 'dist/core/audit/auditor.js')}').then(async m=>{const r=await m.audit_documentation({docsPath:process.argv[1],silent:true});console.log(JSON.stringify(r.issues.filter(i=>i.rule==='RETRIEVAL_MISSING_PURPOSE')))})`, docs],
+        ['-e', `import('${join(REPO, 'dist/core/audit/auditor.js')}').then(async m=>{const r=await m.audit_documentation({docs_path:process.argv[1],silent:true});console.log(JSON.stringify(r.issues.filter(i=>i.rule==='RETRIEVAL_MISSING_PURPOSE')))})`, docs],
         { encoding: 'utf8', cwd: root }
       ).trim().split('\n').pop()!
     );

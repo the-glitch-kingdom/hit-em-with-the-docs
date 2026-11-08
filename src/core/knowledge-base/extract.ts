@@ -40,37 +40,37 @@ export interface FactSpec {
 
 export interface ExtractFactsOptions {
   /** Absolute path to the incident folder (must contain narrative.md). */
-  incidentFolder: string;
+  incident_folder: string;
   /** Absolute path to the vault root. Facts go into `<vault>/facts/`. */
-  vaultRoot: string;
+  vault_root: string;
   /** Project root for provenance relpath computation. */
-  projectRoot: string;
+  project_root: string;
   /** Accepted fact specs (already curated by the LLM proposer + user). */
   accept: FactSpec[];
   /** If true, returns the plan without writing files. */
-  dryRun?: boolean;
+  dry_run?: boolean;
 }
 
 export interface ExtractedFact {
   id: string;
-  factPath: string;
+  fact_path: string;
   action: 'created' | 'already_exists';
   content: string;
 }
 
 export interface ExtractFactsResult {
-  incidentId: string;
-  incidentFolder: string;
-  extractedFacts: ExtractedFact[];
+  incident_id: string;
+  incident_folder: string;
+  extracted_facts: ExtractedFact[];
   /** Whether the incident's facts.md was updated. */
-  factsMdUpdated: boolean;
-  factsMdPath: string;
+  facts_md_updated: boolean;
+  facts_md_path: string;
 }
 
 export async function extract_facts(
   options: ExtractFactsOptions
 ): Promise<ExtractFactsResult> {
-  const { incidentFolder: incident_folder, vaultRoot: vault_root, projectRoot: project_root, accept, dryRun: dry_run = false } = options;
+  const { incident_folder, vault_root, project_root, accept, dry_run = false } = options;
 
   const narrative_path = join(incident_folder, 'narrative.md');
   const narrative_raw = await readFile(narrative_path, 'utf-8');
@@ -92,7 +92,7 @@ export async function extract_facts(
     if (existsSync(fact_path)) {
       extracted_facts.push({
         id: spec.id,
-        factPath: fact_path,
+        fact_path,
         action: 'already_exists',
         content: await readFile(fact_path, 'utf-8'),
       });
@@ -127,7 +127,7 @@ export async function extract_facts(
 
     extracted_facts.push({
       id: spec.id,
-      factPath: fact_path,
+      fact_path,
       action: 'created',
       content,
     });
@@ -166,11 +166,11 @@ export async function extract_facts(
   }
 
   return {
-    incidentId: incident_id,
-    incidentFolder: incident_folder,
-    extractedFacts: extracted_facts,
-    factsMdUpdated: facts_md_updated,
-    factsMdPath: facts_md_path,
+    incident_id,
+    incident_folder,
+    extracted_facts,
+    facts_md_updated,
+    facts_md_path,
   };
 }
 

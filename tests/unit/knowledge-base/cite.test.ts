@@ -40,12 +40,12 @@ symptoms:
     );
 
     const result = await cite({
-      playbookPath: playbook_path,
-      factId: 'new-fact',
+      playbook_path,
+      fact_id: 'new-fact',
     });
 
     expect(result.action).toBe('inserted');
-    expect(result.symptomIndex).toBe(0);
+    expect(result.symptom_index).toBe(0);
 
     const updated = await readFile(playbook_path, 'utf-8');
     expect(updated).toContain('existing-fact');
@@ -76,8 +76,8 @@ symptoms:
 
     const original = await readFile(playbook_path, 'utf-8');
     const result = await cite({
-      playbookPath: playbook_path,
-      factId: 'my-fact',
+      playbook_path,
+      fact_id: 'my-fact',
     });
 
     expect(result.action).toBe('already_present');
@@ -104,8 +104,8 @@ version: '1.0.0'
     );
 
     const result = await cite({
-      playbookPath: playbook_path,
-      factId: 'new-fact',
+      playbook_path,
+      fact_id: 'new-fact',
     });
 
     expect(result.action).toBe('created_block');
@@ -143,13 +143,13 @@ symptoms:
     );
 
     const result = await cite({
-      playbookPath: playbook_path,
-      factId: 'new-fact',
-      symptomMatch: { alert_name: 'Alert B' },
+      playbook_path,
+      fact_id: 'new-fact',
+      symptom_match: { alert_name: 'Alert B' },
     });
 
     expect(result.action).toBe('inserted');
-    expect(result.symptomIndex).toBe(1);
+    expect(result.symptom_index).toBe(1);
 
     const updated = await readFile(playbook_path, 'utf-8');
     // Alert B should have new-fact; Alert A should NOT.
@@ -183,13 +183,13 @@ symptoms:
 
     const original = await readFile(playbook_path, 'utf-8');
     const result = await cite({
-      playbookPath: playbook_path,
-      factId: 'new-fact',
-      dryRun: true,
+      playbook_path,
+      fact_id: 'new-fact',
+      dry_run: true,
     });
 
     expect(result.action).toBe('inserted');
-    expect(result.newContent).toContain('new-fact');
+    expect(result.new_content).toContain('new-fact');
 
     const after = await readFile(playbook_path, 'utf-8');
     expect(after).toBe(original); // unchanged on disk
@@ -204,15 +204,15 @@ symptoms:
       fm('symptoms:\n  - "pkill -f: Exit code 144"\n  - error_pattern: "x"\n    target: "#a"\n    cites: [old]\n'),
       'utf-8'
     );
-    const on_object = await cite({ playbookPath: playbook_path, factId: 'new-fact' });
+    const on_object = await cite({ playbook_path, fact_id: 'new-fact' });
     expect(on_object.action).toBe('inserted');
-    expect(on_object.symptomIndex).toBe(1);
+    expect(on_object.symptom_index).toBe(1);
 
     // Only strings → a placeholder entry is appended; the strings stay.
     await writeFile(playbook_path, fm('symptoms:\n  - "pkill -f: Exit code 144"\n'), 'utf-8');
-    const appended = await cite({ playbookPath: playbook_path, factId: 'new-fact' });
+    const appended = await cite({ playbook_path, fact_id: 'new-fact' });
     expect(appended.action).toBe('created_block');
-    expect(appended.symptomIndex).toBe(1);
+    expect(appended.symptom_index).toBe(1);
     const after = await readFile(playbook_path, 'utf-8');
     expect(after).toContain('pkill -f: Exit code 144');
     expect(after).toContain('new-fact');

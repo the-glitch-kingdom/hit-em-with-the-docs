@@ -10,14 +10,14 @@ const VALID_FIXTURE_ROOT = resolve(__dirname, '../../fixtures/knowledge-base/val
 describe('auditFacts (2.3.0)', () => {
   it('identifies stale facts past audit_window_days', async () => {
     const index = await build_citer_index({
-      projectRoot: VALID_FIXTURE_ROOT,
-      vaultRoot: VALID_FIXTURE_ROOT,
-      playbookGlobs: [resolve(VALID_FIXTURE_ROOT, 'playbooks/*.md')],
+      project_root: VALID_FIXTURE_ROOT,
+      vault_root: VALID_FIXTURE_ROOT,
+      playbook_globs: [resolve(VALID_FIXTURE_ROOT, 'playbooks/*.md')],
     });
 
     // The fixture fact has last_verified: 2026-05-14. Pretend "now" is 200 days later.
     const now = new Date('2026-11-30T00:00:00Z');
-    const result = audit_facts({ index, now, auditWindowDays: 90 });
+    const result = audit_facts({ index, now, audit_window_days: 90 });
 
     expect(result.stale).toHaveLength(1);
     expect(result.stale[0]!.id).toBe('alloy-env-set-at-entrypoint-only');
@@ -26,14 +26,14 @@ describe('auditFacts (2.3.0)', () => {
 
   it('returns no stale facts when within audit_window_days', async () => {
     const index = await build_citer_index({
-      projectRoot: VALID_FIXTURE_ROOT,
-      vaultRoot: VALID_FIXTURE_ROOT,
-      playbookGlobs: [resolve(VALID_FIXTURE_ROOT, 'playbooks/*.md')],
+      project_root: VALID_FIXTURE_ROOT,
+      vault_root: VALID_FIXTURE_ROOT,
+      playbook_globs: [resolve(VALID_FIXTURE_ROOT, 'playbooks/*.md')],
     });
 
     // 30 days after verification — well inside window
     const now = new Date('2026-06-13T00:00:00Z');
-    const result = audit_facts({ index, now, auditWindowDays: 90 });
+    const result = audit_facts({ index, now, audit_window_days: 90 });
 
     expect(result.stale).toHaveLength(0);
     expect(result.unverifiable).toHaveLength(0);
@@ -41,9 +41,9 @@ describe('auditFacts (2.3.0)', () => {
 
   it('sorts stale facts by daysSinceVerified desc, id asc', async () => {
     const index = await build_citer_index({
-      projectRoot: VALID_FIXTURE_ROOT,
-      vaultRoot: VALID_FIXTURE_ROOT,
-      playbookGlobs: [resolve(VALID_FIXTURE_ROOT, 'playbooks/*.md')],
+      project_root: VALID_FIXTURE_ROOT,
+      vault_root: VALID_FIXTURE_ROOT,
+      playbook_globs: [resolve(VALID_FIXTURE_ROOT, 'playbooks/*.md')],
     });
 
     // Inject a couple more facts with different last_verified dates,
@@ -71,7 +71,7 @@ describe('auditFacts (2.3.0)', () => {
     // days before 2026-08-01, so it's NOT stale at the 90-day window. Order
     // contains only the two injected facts.
     const now = new Date('2026-08-01T00:00:00Z');
-    const result = audit_facts({ index, now, auditWindowDays: 90 });
+    const result = audit_facts({ index, now, audit_window_days: 90 });
 
     expect(result.stale.map((s) => s.id)).toEqual([
       'fact-older-stale',
@@ -130,7 +130,7 @@ provenance:
     const now = new Date('2026-05-14T12:00:00Z');
     const result = await run_fact_verify({
       fact,
-      vaultRoot: tmp_vault,
+      vault_root: tmp_vault,
       now,
     });
 
@@ -177,7 +177,7 @@ provenance:
 
     const result = await run_fact_verify({
       fact,
-      vaultRoot: tmp_vault,
+      vault_root: tmp_vault,
     });
 
     expect(result.updated).toBe(false);
@@ -220,7 +220,7 @@ provenance:
 
     const result = await run_fact_verify({
       fact,
-      vaultRoot: tmp_vault,
+      vault_root: tmp_vault,
     });
 
     expect(result.executed).toBe(false);

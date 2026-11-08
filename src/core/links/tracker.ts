@@ -16,21 +16,21 @@ export interface LinkNode {
   path: string;
   domain: Domain | null;
   title?: string;
-  inDegree: number;
-  outDegree: number;
+  in_degree: number;
+  out_degree: number;
 }
 
 export interface LinkEdge {
   source: string;
   target: string;
-  linkText: string;
-  lineNumber: number;
+  link_text: string;
+  line_number: number;
 }
 
 export interface DomainConnectionMatrix {
   domains: Domain[];
   matrix: number[][];
-  totalConnections: number;
+  total_connections: number;
 }
 
 /**
@@ -50,8 +50,8 @@ export async function build_link_graph(docs_path: string): Promise<LinkGraph> {
       id: rel_path,
       path: rel_path,
       domain,
-      inDegree: 0,
-      outDegree: 0,
+      in_degree: 0,
+      out_degree: 0,
     });
   }
 
@@ -63,7 +63,7 @@ export async function build_link_graph(docs_path: string): Promise<LinkGraph> {
     const file_dir = dirname(file);
 
     for (const link of links) {
-      if (link.isInternal) {
+      if (link.is_internal) {
         // Resolve the link
         const path_part = link.url.split('#')[0] ?? '';
         if (!path_part) continue;
@@ -82,16 +82,16 @@ export async function build_link_graph(docs_path: string): Promise<LinkGraph> {
           edges.push({
             source: rel_path,
             target: target_path,
-            linkText: link.text,
-            lineNumber: link.lineNumber,
+            link_text: link.text,
+            line_number: link.line_number,
           });
 
           // Update degrees
           const source_node = nodes.get(rel_path);
           const target_node = nodes.get(target_path);
 
-          if (source_node) source_node.outDegree++;
-          if (target_node) target_node.inDegree++;
+          if (source_node) source_node.out_degree++;
+          if (target_node) target_node.in_degree++;
         }
       }
     }
@@ -141,7 +141,7 @@ export async function build_domain_connection_matrix(
   return {
     domains,
     matrix,
-    totalConnections: total_connections,
+    total_connections,
   };
 }
 
@@ -179,7 +179,7 @@ export async function get_top_connected_domains(
 export async function get_backlinks(
   target_file: string,
   docs_path: string
-): Promise<{ source: string; linkText: string; lineNumber: number }[]> {
+): Promise<{ source: string; link_text: string; line_number: number }[]> {
   const graph = await build_link_graph(docs_path);
   const target_path = relative(docs_path, target_file).replace(/\\/g, '/');
 
@@ -187,8 +187,8 @@ export async function get_backlinks(
     .filter((e) => e.target === target_path)
     .map((e) => ({
       source: e.source,
-      linkText: e.linkText,
-      lineNumber: e.lineNumber,
+      link_text: e.link_text,
+      line_number: e.line_number,
     }));
 }
 
@@ -199,7 +199,7 @@ export async function find_orphan_files(docs_path: string): Promise<string[]> {
   const graph = await build_link_graph(docs_path);
 
   return graph.nodes
-    .filter((n) => n.inDegree === 0)
+    .filter((n) => n.in_degree === 0)
     .filter((n) => {
       // Exclude index files
       const name = n.path.split('/').pop() ?? '';
@@ -218,29 +218,29 @@ export async function find_hub_files(
   const graph = await build_link_graph(docs_path);
 
   return graph.nodes
-    .filter((n) => n.inDegree >= min_degree || n.outDegree >= min_degree)
-    .sort((a, b) => (b.inDegree + b.outDegree) - (a.inDegree + a.outDegree));
+    .filter((n) => n.in_degree >= min_degree || n.out_degree >= min_degree)
+    .sort((a, b) => (b.in_degree + b.out_degree) - (a.in_degree + a.out_degree));
 }
 
 /**
  * Get link statistics summary
  */
 export async function get_link_statistics(docs_path: string): Promise<{
-  totalNodes: number;
-  totalEdges: number;
-  avgInDegree: number;
-  avgOutDegree: number;
-  orphanCount: number;
-  hubCount: number;
-  crossDomainPercentage: number;
+  total_nodes: number;
+  total_edges: number;
+  avg_in_degree: number;
+  avg_out_degree: number;
+  orphan_count: number;
+  hub_count: number;
+  cross_domain_percentage: number;
 }> {
   const graph = await build_link_graph(docs_path);
 
-  const total_in_degree = graph.nodes.reduce((sum, n) => sum + n.inDegree, 0);
-  const total_out_degree = graph.nodes.reduce((sum, n) => sum + n.outDegree, 0);
+  const total_in_degree = graph.nodes.reduce((sum, n) => sum + n.in_degree, 0);
+  const total_out_degree = graph.nodes.reduce((sum, n) => sum + n.out_degree, 0);
 
-  const orphans = graph.nodes.filter((n) => n.inDegree === 0).length;
-  const hubs = graph.nodes.filter((n) => n.inDegree >= 5 || n.outDegree >= 5).length;
+  const orphans = graph.nodes.filter((n) => n.in_degree === 0).length;
+  const hubs = graph.nodes.filter((n) => n.in_degree >= 5 || n.out_degree >= 5).length;
 
   // Count cross-domain edges
   let cross_domain_edges = 0;
@@ -254,13 +254,13 @@ export async function get_link_statistics(docs_path: string): Promise<{
   }
 
   return {
-    totalNodes: graph.nodes.length,
-    totalEdges: graph.edges.length,
-    avgInDegree: graph.nodes.length > 0 ? total_in_degree / graph.nodes.length : 0,
-    avgOutDegree: graph.nodes.length > 0 ? total_out_degree / graph.nodes.length : 0,
-    orphanCount: orphans,
-    hubCount: hubs,
-    crossDomainPercentage:
+    total_nodes: graph.nodes.length,
+    total_edges: graph.edges.length,
+    avg_in_degree: graph.nodes.length > 0 ? total_in_degree / graph.nodes.length : 0,
+    avg_out_degree: graph.nodes.length > 0 ? total_out_degree / graph.nodes.length : 0,
+    orphan_count: orphans,
+    hub_count: hubs,
+    cross_domain_percentage:
       graph.edges.length > 0 ? (cross_domain_edges / graph.edges.length) * 100 : 0,
   };
 }

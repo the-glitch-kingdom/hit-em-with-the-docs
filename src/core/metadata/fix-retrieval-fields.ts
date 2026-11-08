@@ -29,12 +29,12 @@ const as_list = (v: unknown): string[] =>
   Array.isArray(v) ? v.map(String) : is_str(v) ? [v] : [];
 
 export async function fix_retrieval_fields(opts: {
-  docsPath: string;
+  docs_path: string;
   apply?: boolean;
 }): Promise<FixRetrievalFieldsResult> {
   const result: FixRetrievalFieldsResult = { changed: [], conflicts: [], errors: [], dropped: 0, cleared: 0 };
-  const cfg = (await load_plugin_config(dirname(opts.docsPath))).retrieval;
-  const files = (await glob('**/*.md', { cwd: opts.docsPath, absolute: true })).sort();
+  const cfg = (await load_plugin_config(dirname(opts.docs_path))).retrieval;
+  const files = (await glob('**/*.md', { cwd: opts.docs_path, absolute: true })).sort();
 
   for (const file of files) {
     if (/(^|[\\/])(INDEX|REGISTRY)\.md$/.test(file)) continue;

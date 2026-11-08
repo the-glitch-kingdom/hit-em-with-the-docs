@@ -38,7 +38,7 @@ const FRONTMATTER_ENGINES = {
 export interface FrontmatterResult<T = Record<string, unknown>> {
   data: T;
   content: string;
-  isEmpty: boolean;
+  is_empty: boolean;
   excerpt?: string;
 }
 
@@ -52,7 +52,7 @@ export function parse_frontmatter<T = Record<string, unknown>>(
   const parsed: FrontmatterResult<T> = {
     data: result.data as T,
     content: result.content,
-    isEmpty: Object.keys(result.data).length === 0,
+    is_empty: Object.keys(result.data).length === 0,
   };
   if (result.excerpt) {
     parsed.excerpt = result.excerpt;
@@ -224,13 +224,13 @@ export function set_frontmatter_field(
 export function validate_frontmatter(
   content: string,
   required_fields: string[]
-): { valid: boolean; missingFields: string[] } {
+): { valid: boolean; missing_fields: string[] } {
   const { data } = parse_frontmatter(content);
   const missing_fields = required_fields.filter(
     (field) => !(field in data) || data[field] === undefined || data[field] === null
   );
   return {
     valid: missing_fields.length === 0,
-    missingFields: missing_fields,
+    missing_fields,
   };
 }

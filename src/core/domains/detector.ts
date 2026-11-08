@@ -11,7 +11,7 @@ export interface DomainDetectionResult {
   domain: Domain | null;
   confidence: number; // 0-1
   method: 'path' | 'content' | 'keywords' | 'none';
-  alternativeDomains: { domain: Domain; confidence: number }[];
+  alternative_domains: { domain: Domain; confidence: number }[];
 }
 
 /**
@@ -36,7 +36,7 @@ export function detect_domain(
     if (path_result.domain) {
       if (content_result.confidence > path_result.confidence) {
         // Content wins but add path result as alternative
-        content_result.alternativeDomains.unshift({
+        content_result.alternative_domains.unshift({
           domain: path_result.domain,
           confidence: path_result.confidence,
         });
@@ -64,7 +64,7 @@ export function detect_domain_from_path(
     domain: null,
     confidence: 0,
     method: 'path',
-    alternativeDomains: [],
+    alternative_domains: [],
   };
 
   // Normalize path separators
@@ -115,7 +115,7 @@ export function detect_domain_from_content(content: string): DomainDetectionResu
     domain: null,
     confidence: 0,
     method: 'content',
-    alternativeDomains: [],
+    alternative_domains: [],
   };
 
   const lower_content = content.toLowerCase();
@@ -159,7 +159,7 @@ export function detect_domain_from_content(content: string): DomainDetectionResu
     // Add alternatives
     for (let i = 1; i < Math.min(sorted_domains.length, 4); i++) {
       const [domain, score] = sorted_domains[i]!;
-      result.alternativeDomains.push({
+      result.alternative_domains.push({
         domain,
         confidence: (score / max_score) * result.confidence * 0.8,
       });
@@ -205,16 +205,16 @@ export function suggest_domains_for_file(file_name: string): Domain[] {
 export function validate_domain_placement(
   file_path: string,
   docs_root: string = '.documentation'
-): { isCorrect: boolean; currentDomain: Domain | null; suggestedDomain: Domain | null } {
+): { is_correct: boolean; current_domain: Domain | null; suggested_domain: Domain | null } {
   // Get the domain from the path
   const path_result = detect_domain_from_path(file_path, docs_root);
 
   // Read the file content would be needed here for full validation
   // For now, just return the path-based result
   return {
-    isCorrect: path_result.confidence >= 0.8,
-    currentDomain: path_result.domain,
-    suggestedDomain: path_result.domain,
+    is_correct: path_result.confidence >= 0.8,
+    current_domain: path_result.domain,
+    suggested_domain: path_result.domain,
   };
 }
 

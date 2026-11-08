@@ -35,7 +35,7 @@ describe('archive/ — deprecated-docs convention', () => {
   });
 
   it('scaffold creates an archive/ folder with an instructional README', async () => {
-    await create_scaffold({ rootPath: docs_path, silent: true });
+    await create_scaffold({ root_path: docs_path, silent: true });
     expect(await exists(join(docs_path, ARCHIVE_DIR))).toBe(true);
     expect(await exists(join(docs_path, ARCHIVE_DIR, 'README.md'))).toBe(true);
   });
@@ -57,7 +57,7 @@ describe('archive/ — deprecated-docs convention', () => {
   });
 
   it('audit does not flag a malformed doc parked in archive/', async () => {
-    await create_scaffold({ rootPath: docs_path, silent: true });
+    await create_scaffold({ root_path: docs_path, silent: true });
     // A doc with deliberately broken frontmatter — would fail audit if scanned.
     await writeFile(
       join(docs_path, ARCHIVE_DIR, 'retired-guide.md'),
@@ -65,7 +65,7 @@ describe('archive/ — deprecated-docs convention', () => {
       'utf-8'
     );
 
-    const result = await audit_documentation({ docsPath: docs_path, silent: true });
+    const result = await audit_documentation({ docs_path, silent: true });
     const flagged_archive = result.issues.some((i) =>
       i.file.includes(`${ARCHIVE_DIR}/`)
     );

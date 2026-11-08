@@ -14,8 +14,8 @@ import { is_generated_index_rel } from '../enforce/guard.js';
 export interface InboundLink {
   /** docs-relative path of the doc that links to the target. */
   source: string;
-  lineNumber: number;
-  linkText: string;
+  line_number: number;
+  link_text: string;
 }
 
 /**
@@ -39,8 +39,8 @@ export async function find_inbound_links(
     .filter((e) => !is_generated_index_rel(e.source))
     .map((e) => ({
       source: e.source.replace(/\\/g, '/'),
-      lineNumber: e.lineNumber,
-      linkText: e.linkText,
+      line_number: e.line_number,
+      link_text: e.link_text,
     }));
 }
 

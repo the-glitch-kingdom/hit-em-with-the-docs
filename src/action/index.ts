@@ -37,7 +37,7 @@ async function run(): Promise<void> {
       case 'init': {
         core.info('Initializing documentation structure...');
         const result = await create_scaffold({
-          rootPath: docs_path,
+          root_path: docs_path,
           overwrite: false,
           silent: false,
         });
@@ -53,19 +53,19 @@ async function run(): Promise<void> {
       case 'maintain': {
         core.info('Running maintenance...');
         const result = await run_maintenance({
-          docsPath: docs_path,
+          docs_path,
           quick: mode === 'quick',
           fix: mode === 'fix',
           silent: false,
         });
 
-        health_score = result.healthScore;
-        total_documents = result.metadataSync?.totalFiles ?? 0;
+        health_score = result.health_score;
+        total_documents = result.metadata_sync?.total_files ?? 0;
         issues_found = count_actionable_issues(result.audit?.issues ?? []);
-        issues_fixed = result.metadataSync?.fixedFiles ?? 0;
-        broken_links = result.linkCheck?.brokenLinks.length ?? 0;
+        issues_fixed = result.metadata_sync?.fixed_files ?? 0;
+        broken_links = result.link_check?.broken_links.length ?? 0;
         metadata_compliance = result.audit?.stats.metadataCompliance ?? 100;
-        report_path = result.reportPath ?? '';
+        report_path = result.report_path ?? '';
 
         if (result.errors.length > 0) {
           core.warning(`Maintenance completed with errors: ${result.errors.join(', ')}`);
@@ -76,35 +76,35 @@ async function run(): Promise<void> {
       case 'metadata-sync': {
         core.info('Syncing metadata...');
         const result = await sync_metadata({
-          docsPath: docs_path,
+          docs_path,
           ...(domain ? { domain } : {}),
           fix: mode === 'fix',
-          dryRun: mode !== 'fix',
+          dry_run: mode !== 'fix',
           silent: false,
         });
 
-        total_documents = result.totalFiles;
+        total_documents = result.total_files;
         issues_found = result.errors.length;
-        issues_fixed = result.fixedFiles;
-        metadata_compliance = result.stats.avgCompleteness;
+        issues_fixed = result.fixed_files;
+        metadata_compliance = result.stats.avg_completeness;
         break;
       }
 
       case 'link-check': {
         core.info('Checking links...');
         const result = await check_links({
-          docsPath: docs_path,
+          docs_path,
           ...(domain ? { domain } : {}),
           silent: false,
         });
 
-        total_documents = result.totalFiles;
-        broken_links = result.brokenLinks.length;
+        total_documents = result.total_files;
+        broken_links = result.broken_links.length;
         issues_found = broken_links;
 
         if (broken_links > 0) {
           core.warning(`Found ${broken_links} broken links`);
-          for (const link of result.brokenLinks.slice(0, 10)) {
+          for (const link of result.broken_links.slice(0, 10)) {
             core.warning(`  ${link.sourceFile}:${link.lineNumber} -> ${link.targetPath}`);
           }
         }
@@ -114,13 +114,13 @@ async function run(): Promise<void> {
       case 'audit': {
         core.info('Auditing documentation...');
         const result = await audit_documentation({
-          docsPath: docs_path,
+          docs_path,
           ...(domain ? { domain } : {}),
           silent: false,
         });
 
-        health_score = result.healthScore;
-        total_documents = result.totalFiles;
+        health_score = result.health_score;
+        total_documents = result.total_files;
         issues_found = count_actionable_issues(result.issues);
         metadata_compliance = result.stats.metadataCompliance;
 
@@ -136,16 +136,16 @@ async function run(): Promise<void> {
 
         switch (discover_type) {
           case 'patterns':
-            await discover_patterns({ rootPath: process.cwd(), silent: false });
+            await discover_patterns({ root_path: process.cwd(), silent: false });
             break;
           case 'anti-patterns':
-            await discover_anti_patterns({ rootPath: process.cwd(), silent: false });
+            await discover_anti_patterns({ root_path: process.cwd(), silent: false });
             break;
           case 'standards':
-            await discover_standards({ rootPath: process.cwd(), silent: false });
+            await discover_standards({ root_path: process.cwd(), silent: false });
             break;
           case 'dependencies':
-            await analyze_dependencies({ rootPath: process.cwd(), silent: false });
+            await analyze_dependencies({ root_path: process.cwd(), silent: false });
             break;
           default:
             throw new Error(`Unknown discover type: ${discover_type}`);

@@ -132,7 +132,7 @@ describe('field test #58 fixture (built CLI)', () => {
 
   it('overview: root README is not a flow member and the ring is one flow of 5', () => {
     const issues: string[] = JSON.parse(execFileSync('node', ['-e',
-      `import('${join(resolve(__dirname, '../..'), 'dist/core/audit/auditor.js')}').then(async m=>{const r=await m.audit_documentation({docsPath:process.argv[1],silent:true});console.log(JSON.stringify(r.issues.filter(i=>i.rule==='OVERVIEW_MISSING').map(i=>i.message)))})`, docs],
+      `import('${join(resolve(__dirname, '../..'), 'dist/core/audit/auditor.js')}').then(async m=>{const r=await m.audit_documentation({docs_path:process.argv[1],silent:true});console.log(JSON.stringify(r.issues.filter(i=>i.rule==='OVERVIEW_MISSING').map(i=>i.message)))})`, docs],
       { encoding: 'utf8', cwd: root }).trim().split('\n').pop()!);
     expect(issues).toHaveLength(1);
     expect(issues[0]).toMatch(/^Flow — 5 docs /);

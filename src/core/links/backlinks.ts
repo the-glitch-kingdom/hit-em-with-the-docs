@@ -21,7 +21,7 @@ export interface BacklinkChange {
 
 const FRONTMATTER = /^---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/;
 
-export async function add_overview_backlinks(docs_path: string, opts: { dryRun?: boolean } = {}): Promise<BacklinkChange[]> {
+export async function add_overview_backlinks(docs_path: string, opts: { dry_run?: boolean } = {}): Promise<BacklinkChange[]> {
   const graph = await build_link_graph(docs_path);
   const read = new Map<string, { raw: string; data: Record<string, unknown> }>();
   const load = async (id: string) => {
@@ -78,7 +78,7 @@ export async function add_overview_backlinks(docs_path: string, opts: { dryRun?:
     } else {
       next = fm + block + '\n\n' + body;
     }
-    if (!opts.dryRun) await writeFile(join(docs_path, file), next);
+    if (!opts.dry_run) await writeFile(join(docs_path, file), next);
     changes.push({ file, overviews });
   }
   return changes;

@@ -21,7 +21,7 @@ const review = (name: string, entries: ReviewEntry[], accept: boolean[] = entrie
   writeFileSync(f, t);
   return f;
 };
-const run = async (files: string[]) => apply_reviews({ root, docsPath: docs, files, ledger: await load_ledger(ledger_file), ledgerFile: ledger_file, today: '2026-11-07' });
+const run = async (files: string[]) => apply_reviews({ root, docs_path: docs, files, ledger: await load_ledger(ledger_file), ledger_file, today: '2026-11-07' });
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'apply-'));
@@ -112,7 +112,7 @@ describe('applyReviews', () => {
 
   it('skeleton review files parse back, are unjudged, and are never applied', async () => {
     const triage: any = { docs: [{ path: 'backend/a.md', lane: 'check', reasons: ['r'] }, { path: 'backend/b.md', lane: 'clean', reasons: [] }], shards: [], totals: {}, mode: 'serial', warnings: [] };
-    const [f] = await write_review_skeletons({ root, docsPath: docs, triage, scope: 'backend' });
+    const [f] = await write_review_skeletons({ root, docs_path: docs, triage, scope: 'backend' });
     expect(f).toMatch(/review-1-1\.md$/);
     const r = await parse_review(f!);
     expect(r.entries.map((e) => [e.entry.path, e.entry.verdict, e.accepted])).toEqual([['backend/a.md', null, false]]);

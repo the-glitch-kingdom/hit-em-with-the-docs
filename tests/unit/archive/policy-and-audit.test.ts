@@ -60,7 +60,7 @@ describe('audit nudge: deprecated-not-archived', () => {
       `---\ntitle: Old\ntier: reference\ndomains: [api]\nstatus: deprecated\nlast_updated: '2026-06-01'\nversion: '1.0.0'\n---\n# Old\n`,
       'utf-8'
     );
-    const result = await audit_documentation({ docsPath: docs_path, silent: true });
+    const result = await audit_documentation({ docs_path, silent: true });
     const nudge = result.issues.find((i) => i.rule === 'deprecated-not-archived');
     expect(nudge).toBeDefined();
     expect(nudge!.severity).toBe('info');
@@ -73,7 +73,7 @@ describe('audit nudge: deprecated-not-archived', () => {
       `---\ntitle: Live\ntier: reference\ndomains: [api]\nstatus: active\nlast_updated: '2026-06-01'\nversion: '1.0.0'\n---\n# Live\n`,
       'utf-8'
     );
-    const result = await audit_documentation({ docsPath: docs_path, silent: true });
+    const result = await audit_documentation({ docs_path, silent: true });
     expect(result.issues.find((i) => i.rule === 'deprecated-not-archived')).toBeUndefined();
   });
 });

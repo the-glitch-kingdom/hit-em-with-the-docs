@@ -32,7 +32,7 @@ export interface AuditFactsOptions {
   /** Reference date for "now". Defaults to today. Tests inject a fixed date. */
   now?: Date;
   /** Stale threshold in days. Defaults to 90. */
-  auditWindowDays?: number;
+  audit_window_days?: number;
 }
 
 export interface AuditFactsResult {
@@ -42,7 +42,7 @@ export interface AuditFactsResult {
 }
 
 export function audit_facts(options: AuditFactsOptions): AuditFactsResult {
-  const { index, now = new Date(), auditWindowDays: audit_window_days = 90 } = options;
+  const { index, now = new Date(), audit_window_days = 90 } = options;
   const cutoff_ms = now.getTime() - audit_window_days * 24 * 60 * 60 * 1000;
 
   const stale: StaleFact[] = [];
@@ -89,13 +89,13 @@ export function audit_facts(options: AuditFactsOptions): AuditFactsResult {
 export interface RunVerifyOptions {
   fact: FactRef;
   /** Absolute vault root (used to compute default CWD). */
-  vaultRoot: string;
+  vault_root: string;
   /** Override CWD (test seam). */
-  cwdOverride?: string;
+  cwd_override?: string;
   /** Inject a fake date for the `last_verified` rewrite. */
   now?: Date;
   /** Skip the actual shell-out (test seam). Returns success without running. */
-  skipExec?: boolean;
+  skip_exec?: boolean;
 }
 
 export interface RunVerifyResult {
@@ -122,7 +122,7 @@ export interface RunVerifyResult {
 export async function run_fact_verify(
   options: RunVerifyOptions
 ): Promise<RunVerifyResult> {
-  const { fact, vaultRoot: vault_root, cwdOverride: cwd_override, now = new Date(), skipExec: skip_exec = false } = options;
+  const { fact, vault_root, cwd_override, now = new Date(), skip_exec = false } = options;
 
   // Read the fact file fresh — we need the full frontmatter (verify_command,
   // working_dir) which isn't in the lightweight CiterIndex FactRef.
@@ -152,7 +152,7 @@ export async function run_fact_verify(
   if (skip_exec) {
     return finalize({
       success: true,
-      exitCode: 0,
+      exit_code: 0,
       stdout: '[skipExec=true]',
       stderr: '',
     });
@@ -163,7 +163,7 @@ export async function run_fact_verify(
 
   async function finalize(r: {
     success: boolean;
-    exitCode: number;
+    exit_code: number;
     stdout: string;
     stderr: string;
   }): Promise<RunVerifyResult> {
@@ -171,7 +171,7 @@ export async function run_fact_verify(
       return {
         factId: fact.id,
         executed: true,
-        exitCode: r.exitCode,
+        exitCode: r.exit_code,
         stdout: r.stdout,
         stderr: r.stderr,
         updated: false,
@@ -185,7 +185,7 @@ export async function run_fact_verify(
     return {
       factId: fact.id,
       executed: true,
-      exitCode: r.exitCode,
+      exitCode: r.exit_code,
       stdout: r.stdout,
       stderr: r.stderr,
       updated: true,
@@ -196,7 +196,7 @@ export async function run_fact_verify(
 
 interface ShellResult {
   success: boolean;
-  exitCode: number;
+  exit_code: number;
   stdout: string;
   stderr: string;
 }
@@ -206,7 +206,7 @@ function exec_shell(command: string, cwd: string): Promise<ShellResult> {
     if (!existsSync(cwd)) {
       resolve_promise({
         success: false,
-        exitCode: -1,
+        exit_code: -1,
         stdout: '',
         stderr: `working dir does not exist: ${cwd}`,
       });
@@ -221,7 +221,7 @@ function exec_shell(command: string, cwd: string): Promise<ShellResult> {
     child.on('close', (code) => {
       resolve_promise({
         success: code === 0,
-        exitCode: code ?? -1,
+        exit_code: code ?? -1,
         stdout,
         stderr,
       });
@@ -229,7 +229,7 @@ function exec_shell(command: string, cwd: string): Promise<ShellResult> {
     child.on('error', (err) => {
       resolve_promise({
         success: false,
-        exitCode: -1,
+        exit_code: -1,
         stdout: '',
         stderr: err.message,
       });

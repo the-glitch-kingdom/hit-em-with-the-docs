@@ -30,7 +30,7 @@ const posix_path = (p: string): string => p.split('\\').join('/');
 function link_targets(rel: string, content: string): string[] {
   const out: string[] = [];
   for (const l of extract_links(content)) {
-    if (!l.isInternal || /^[a-z][a-z0-9+.-]*:/i.test(l.url)) continue;
+    if (!l.is_internal || /^[a-z][a-z0-9+.-]*:/i.test(l.url)) continue;
     const u = l.url.split('#')[0]!;
     if (u.endsWith('.md')) out.push(posix.normalize(posix.join(posix.dirname(rel), u)));
   }
@@ -56,9 +56,9 @@ export function member_state(ledger: Ledger, rel: string, hash: string): MemberS
 }
 
 export async function seed_overview(opts: {
-  docsPath: string; config: PluginConfig; ledger: Ledger; question: string; limit?: number | undefined;
+  docs_path: string; config: PluginConfig; ledger: Ledger; question: string; limit?: number | undefined;
 }): Promise<OverviewSeed> {
-  const { docsPath: docs_path, config, ledger, question } = opts;
+  const { docs_path, config, ledger, question } = opts;
   const limit = opts.limit ?? 12;
   const hits = await search_docs(docs_path, question, { limit: Number.MAX_SAFE_INTEGER, config });
   const scored = new Set(hits.map((h) => h.path));
@@ -105,10 +105,10 @@ export async function write_members_file(root: string, seed: OverviewSeed): Prom
 }
 
 /** `--write-review --overview <members-file>`: a one-entry review skeleton, members hashed now; the draft is filled by the slash command. */
-export async function write_overview_review(opts: { root: string; docsPath: string; membersFile: string; batch?: string | undefined }): Promise<string> {
-  const seed = JSON.parse(await readFile(opts.membersFile, 'utf-8')) as OverviewSeed;
+export async function write_overview_review(opts: { root: string; docs_path: string; members_file: string; batch?: string | undefined }): Promise<string> {
+  const seed = JSON.parse(await readFile(opts.members_file, 'utf-8')) as OverviewSeed;
   const members = await Promise.all(seed.members.filter((m) => m.state !== 'secret').map(async (m) => ({
-    path: m.path, content_hash: hash_content(await readFile(join(opts.docsPath, m.path), 'utf-8')),
+    path: m.path, content_hash: hash_content(await readFile(join(opts.docs_path, m.path), 'utf-8')),
   })));
   if (!members.length) throw new Error('members file has no usable members');
   const dir = review_dir(opts.root);

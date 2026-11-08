@@ -28,9 +28,9 @@ describe('checkLinks anchors', () => {
       await mkdir(join(dir, 'guides'), { recursive: true });
       await writeFile(join(dir, 'guides', 'a.md'), '# A\n\n[ok](b.md#target) [old](b.md#renamed) [self](#a) [bad self](#zzz)\n');
       await writeFile(join(dir, 'guides', 'b.md'), '# B\n\n## Target\n');
-      const r = await check_links({ docsPath: dir, silent: true });
-      expect(r.brokenLinks).toHaveLength(0);
-      expect(r.anchorWarnings.map((w) => w.targetPath).sort()).toEqual(['#zzz', 'b.md#renamed']);
+      const r = await check_links({ docs_path: dir, silent: true });
+      expect(r.broken_links).toHaveLength(0);
+      expect(r.anchor_warnings.map((w) => w.targetPath).sort()).toEqual(['#zzz', 'b.md#renamed']);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -43,7 +43,7 @@ describe('checkLinks anchors', () => {
 
 describe('anchor scanning matches GitHub more closely (review fixes)', () => {
   it('setext headings, blockquoted headings and combining marks get anchors; frontmatter comments do not', async () => {
-    const { heading_anchors: heading_anchors } = await import('../../../src/core/links/anchors');
+    const { heading_anchors } = await import('../../../src/core/links/anchors');
     const md = '---\ntitle: x\n# foo\n---\n\nTag the release\n---------------\n\nIntro\n=====\n\n> ## Quoted part\n\n# foo\n\n# Café\n';
     const a = heading_anchors(md);
     expect(a.has('tag-the-release')).toBe(true);

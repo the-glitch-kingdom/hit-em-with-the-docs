@@ -12,21 +12,21 @@ export { type MarkdownLink } from '../../utils/markdown.js';
 export { heading_anchors as headingAnchors, section_of as sectionOf, LINK_BROKEN_ANCHOR } from './anchors.js';
 
 export interface LinkCheckOptions {
-  docsPath: string;
+  docs_path: string;
   domain?: string;
-  checkExternal?: boolean;
+  check_external?: boolean;
   silent?: boolean;
 }
 
 export interface LinkCheckResult {
-  totalFiles: number;
-  totalLinks: number;
-  validLinks: number;
-  brokenLinks: BrokenLink[];
+  total_files: number;
+  total_links: number;
+  valid_links: number;
+  broken_links: BrokenLink[];
   /** Advisory LINK_BROKEN_ANCHOR warnings (#59); never counted as broken links. */
-  anchorWarnings: BrokenLink[];
-  crossDomainLinks: CrossDomainLink[];
-  externalLinks: ExternalLink[];
+  anchor_warnings: BrokenLink[];
+  cross_domain_links: CrossDomainLink[];
+  external_links: ExternalLink[];
   stats: LinkStats;
 }
 
@@ -66,20 +66,20 @@ export interface LinkStats {
  */
 export async function check_links(options: LinkCheckOptions): Promise<LinkCheckResult> {
   const {
-    docsPath: docs_path,
+    docs_path,
     domain,
-    checkExternal: check_external = false,
+    check_external = false,
     silent = false,
   } = options;
 
   const result: LinkCheckResult = {
-    totalFiles: 0,
-    totalLinks: 0,
-    validLinks: 0,
-    brokenLinks: [],
-    anchorWarnings: [],
-    crossDomainLinks: [],
-    externalLinks: [],
+    total_files: 0,
+    total_links: 0,
+    valid_links: 0,
+    broken_links: [],
+    anchor_warnings: [],
+    cross_domain_links: [],
+    external_links: [],
     stats: {
       internalLinks: 0,
       externalLinks: 0,
@@ -104,7 +104,7 @@ export async function check_links(options: LinkCheckOptions): Promise<LinkCheckR
     });
   }
 
-  result.totalFiles = files.length;
+  result.total_files = files.length;
 
   if (!silent) {
     logger.info(`Checking ${files.length} files...`);
@@ -120,9 +120,9 @@ export async function check_links(options: LinkCheckOptions): Promise<LinkCheckR
       const file_dir = dirname(file);
 
       for (const link of links) {
-        result.totalLinks++;
+        result.total_links++;
 
-        if (link.isInternal) {
+        if (link.is_internal) {
           result.stats.internalLinks++;
 
           // Resolve the link path
@@ -132,24 +132,24 @@ export async function check_links(options: LinkCheckOptions): Promise<LinkCheckR
           const exists = await path_exists(target_path);
 
           if (!exists) {
-            result.brokenLinks.push({
+            result.broken_links.push({
               sourceFile: rel_file,
               targetPath: link.url,
-              lineNumber: link.lineNumber,
+              lineNumber: link.line_number,
               linkText: link.text,
               reason: 'Target file does not exist',
             });
           } else {
-            result.validLinks++;
+            result.valid_links++;
 
             const anchor = anchor_of(link.url);
             if (anchor && target_path.endsWith('.md')) {
               const md = target_path === file ? content : await readFile(target_path, 'utf-8').catch(() => null);
               if (md !== null && !heading_anchors(md).has(anchor)) {
-                result.anchorWarnings.push({
+                result.anchor_warnings.push({
                   sourceFile: rel_file,
                   targetPath: link.url,
-                  lineNumber: link.lineNumber,
+                  lineNumber: link.line_number,
                   linkText: link.text,
                   reason: `${LINK_BROKEN_ANCHOR}: no heading #${anchor}`,
                 });
@@ -162,7 +162,7 @@ export async function check_links(options: LinkCheckOptions): Promise<LinkCheckR
 
             if (source_domain && target_domain && source_domain !== target_domain) {
               result.stats.crossDomainLinks++;
-              result.crossDomainLinks.push({
+              result.cross_domain_links.push({
                 sourceFile: rel_file,
                 sourceDomain: source_domain,
                 targetPath: link.url,
@@ -179,17 +179,17 @@ export async function check_links(options: LinkCheckOptions): Promise<LinkCheckR
           // extractLinks treats `#x` as non-internal; check it against the doc itself (counts unchanged)
           const self = link.url.startsWith('#') ? anchor_of(link.url) : null;
           if (self && !heading_anchors(content).has(self)) {
-            result.anchorWarnings.push({
+            result.anchor_warnings.push({
               sourceFile: rel_file,
               targetPath: link.url,
-              lineNumber: link.lineNumber,
+              lineNumber: link.line_number,
               linkText: link.text,
               reason: `${LINK_BROKEN_ANCHOR}: no heading #${self}`,
             });
           }
           // External link
           result.stats.externalLinks++;
-          result.externalLinks.push({
+          result.external_links.push({
             sourceFile: rel_file,
             url: link.url,
             linkText: link.text,
@@ -213,7 +213,7 @@ export async function check_links(options: LinkCheckOptions): Promise<LinkCheckR
   // Calculate stats
   result.stats.brokenPercentage =
     result.stats.internalLinks > 0
-      ? (result.brokenLinks.length / result.stats.internalLinks) * 100
+      ? (result.broken_links.length / result.stats.internalLinks) * 100
       : 0;
 
   // Get top connected domains
@@ -228,13 +228,13 @@ export async function check_links(options: LinkCheckOptions): Promise<LinkCheckR
   if (!silent) {
     logger.newline();
     logger.success(`Link check complete!`);
-    logger.info(`Total links: ${result.totalLinks}`);
-    logger.info(`Valid: ${result.validLinks}`);
-    if (result.brokenLinks.length > 0) {
-      logger.warn(`Broken: ${result.brokenLinks.length}`);
+    logger.info(`Total links: ${result.total_links}`);
+    logger.info(`Valid: ${result.valid_links}`);
+    if (result.broken_links.length > 0) {
+      logger.warn(`Broken: ${result.broken_links.length}`);
     }
     logger.info(`Cross-domain: ${result.stats.crossDomainLinks}`);
-    for (const w of result.anchorWarnings) {
+    for (const w of result.anchor_warnings) {
       logger.warn(`${w.sourceFile}:${w.lineNumber} ${w.targetPath} - ${w.reason}`);
     }
   }
@@ -307,7 +307,7 @@ export async function get_file_broken_links(
   const rel_file = relative(docs_path, file_path);
 
   for (const link of links) {
-    if (link.isInternal) {
+    if (link.is_internal) {
       const target_path = resolve_link(link.url, file_dir, docs_path);
       const exists = await path_exists(target_path);
 
@@ -315,7 +315,7 @@ export async function get_file_broken_links(
         broken_links.push({
           sourceFile: rel_file,
           targetPath: link.url,
-          lineNumber: link.lineNumber,
+          lineNumber: link.line_number,
           linkText: link.text,
           reason: 'Target file does not exist',
         });

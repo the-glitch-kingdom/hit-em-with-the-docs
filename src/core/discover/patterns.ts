@@ -4,7 +4,7 @@ import { glob } from '../../utils/glob.js';
 import { logger } from '../../utils/logger.js';
 
 export interface PatternDiscoveryOptions {
-  rootPath: string;
+  root_path: string;
   language?: string;
   category?: string;
   silent?: boolean;
@@ -16,7 +16,7 @@ export interface DiscoveredPattern {
   description: string;
   occurrences: number;
   examples: PatternExample[];
-  suggestedDocumentation?: string;
+  suggested_documentation?: string;
 }
 
 export interface PatternExample {
@@ -41,7 +41,7 @@ export interface PatternDefinition {
   category: PatternCategory;
   description: string;
   patterns: RegExp[];
-  filePatterns?: string[];
+  file_patterns?: string[];
   languages?: string[];
 }
 
@@ -242,7 +242,7 @@ const PATTERN_DEFINITIONS: PatternDefinition[] = [
       /use(?:State|Effect|Context|Reducer|Callback|Memo|Ref)\s*\(/g,
     ],
     languages: ['typescript', 'javascript'],
-    filePatterns: ['*.tsx', '*.jsx'],
+    file_patterns: ['*.tsx', '*.jsx'],
   },
   {
     name: 'Redux/Zustand Store',
@@ -264,7 +264,7 @@ export async function discover_patterns(
   options: PatternDiscoveryOptions
 ): Promise<DiscoveredPattern[]> {
   const {
-    rootPath: root_path,
+    root_path,
     language,
     category,
     silent = false,
@@ -345,9 +345,9 @@ async function scan_for_pattern(
 
   for (const file of files) {
     // Check file pattern filter
-    if (definition.filePatterns) {
+    if (definition.file_patterns) {
       const ext = extname(file);
-      const matches = definition.filePatterns.some((p) =>
+      const matches = definition.file_patterns.some((p) =>
         p.endsWith(ext) || p === `*${ext}`
       );
       if (!matches) continue;

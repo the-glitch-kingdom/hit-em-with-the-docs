@@ -6,7 +6,7 @@ import { format_date } from '../core/metadata/generator.js';
 import type { AuditResult } from '../core/audit/auditor.js';
 
 export interface AuditReportOptions {
-  docsPath: string;
+  docs_path: string;
   result: AuditResult;
   format?: 'markdown' | 'json';
 }
@@ -50,15 +50,15 @@ generated: true
 # Documentation Audit Report
 
 **Generated:** ${timestamp}
-**Health Score:** ${result.healthScore.toFixed(1)}/100
+**Health Score:** ${result.health_score.toFixed(1)}/100
 
 ## Summary
 
 | Metric | Value |
 |--------|-------|
-| Total Files | ${result.totalFiles} |
-| Passed | ${result.passedFiles} |
-| Failed | ${result.failedFiles} |
+| Total Files | ${result.total_files} |
+| Passed | ${result.passed_files} |
+| Failed | ${result.failed_files} |
 | Errors | ${error_issues.length} |
 | Warnings | ${warning_issues.length} |
 | Info | ${info_issues.length} |
@@ -144,11 +144,11 @@ npx hit-em-with-the-docs maintain --fix
 function generate_json_report(result: AuditResult): string {
   return JSON.stringify({
     timestamp: new Date().toISOString(),
-    healthScore: result.healthScore,
+    healthScore: result.health_score,
     summary: {
-      totalFiles: result.totalFiles,
-      passedFiles: result.passedFiles,
-      failedFiles: result.failedFiles,
+      totalFiles: result.total_files,
+      passedFiles: result.passed_files,
+      failedFiles: result.failed_files,
       totalIssues: result.issues.length,
     },
     stats: result.stats,
@@ -175,7 +175,7 @@ export async function save_audit_report(
   const file_name = `audit-${timestamp}.${ext}`;
   const file_path = join(reports_dir, file_name);
 
-  const content = await generate_audit_report({ docsPath: docs_path, result, format });
+  const content = await generate_audit_report({ docs_path, result, format });
   await writeFile(file_path, content, 'utf-8');
 
   return file_path;

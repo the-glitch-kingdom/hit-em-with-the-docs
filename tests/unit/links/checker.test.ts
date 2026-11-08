@@ -27,7 +27,7 @@ Line 2
 [Link](./path.md)
 Line 4`;
       const links = extract_links(content);
-      expect(links[0]?.lineNumber).toBe(3);
+      expect(links[0]?.line_number).toBe(3);
     });
 
     it('should extract multiple links on same line', () => {
@@ -42,8 +42,8 @@ Line 4`;
 [external](https://example.com)
 `;
       const links = extract_links(content);
-      expect(links[0]?.isInternal).toBe(true);
-      expect(links[1]?.isInternal).toBe(false);
+      expect(links[0]?.is_internal).toBe(true);
+      expect(links[1]?.is_internal).toBe(false);
     });
 
     it('should extract link text and url', () => {
@@ -63,7 +63,7 @@ Line 4`;
 `;
       const links = extract_internal_links(content);
       expect(links).toHaveLength(2);
-      expect(links.every(l => l.isInternal)).toBe(true);
+      expect(links.every(l => l.is_internal)).toBe(true);
     });
   });
 

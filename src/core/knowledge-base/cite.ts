@@ -15,32 +15,32 @@ import matter from 'gray-matter';
 
 export interface CiteOptions {
   /** Absolute path to the playbook file. */
-  playbookPath: string;
+  playbook_path: string;
   /** Fact id to insert into the symptoms block. */
-  factId: string;
+  fact_id: string;
   /**
    * Optional symptom identifier — if present, adds the citation to the
    * matching entry. If absent, adds to the FIRST object symptoms entry (or creates
    * a single placeholder symptom).
    */
-  symptomMatch?: {
+  symptom_match?: {
     alert_name?: string;
     user_phrase?: string;
     error_pattern?: string;
   };
   /** If true, returns the proposed content without writing the file. */
-  dryRun?: boolean;
+  dry_run?: boolean;
 }
 
 export interface CiteResult {
-  playbookPath: string;
-  factId: string;
+  playbook_path: string;
+  fact_id: string;
   /** What we did: inserted, already_present (no-op), or created_block. */
   action: 'inserted' | 'already_present' | 'created_block';
   /** Index of the symptoms entry the citation was added to. */
-  symptomIndex: number;
+  symptom_index: number;
   /** The full new file content. */
-  newContent: string;
+  new_content: string;
 }
 
 interface SymptomEntry {
@@ -53,7 +53,7 @@ interface SymptomEntry {
 }
 
 export async function cite(options: CiteOptions): Promise<CiteResult> {
-  const { playbookPath: playbook_path, factId: fact_id, symptomMatch: symptom_match, dryRun: dry_run = false } = options;
+  const { playbook_path, fact_id, symptom_match, dry_run = false } = options;
 
   const content = await readFile(playbook_path, 'utf-8');
   const parsed = matter(content);
@@ -109,17 +109,17 @@ export async function cite(options: CiteOptions): Promise<CiteResult> {
   }
 
   return {
-    playbookPath: playbook_path,
-    factId: fact_id,
+    playbook_path,
+    fact_id,
     action,
-    symptomIndex: symptom_index,
-    newContent: new_content,
+    symptom_index,
+    new_content,
   };
 }
 
 function matches_symptom(
   entry: SymptomEntry,
-  match: NonNullable<CiteOptions['symptomMatch']>
+  match: NonNullable<CiteOptions['symptom_match']>
 ): boolean {
   if (match.alert_name && entry.alert_name === match.alert_name) return true;
   if (match.error_pattern && entry.error_pattern === match.error_pattern) return true;

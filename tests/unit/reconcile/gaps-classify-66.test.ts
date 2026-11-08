@@ -26,7 +26,7 @@ beforeAll(() => {
 afterAll(() => rmSync(repo, { recursive: true, force: true }));
 
 const run = async (gaps: Array<{ query: string; used_doc: string | null; count?: number }>) =>
-  classify_gaps(gaps, { root: repo, docsRoot: docs, config: await load_plugin_config(repo) });
+  classify_gaps(gaps, { root: repo, docs_root: docs, config: await load_plugin_config(repo) });
 
 describe('classifyGaps (#66)', () => {
   it('known used doc -> phrase proposal, counts of repeated queries added', async () => {

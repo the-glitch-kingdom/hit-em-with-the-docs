@@ -25,14 +25,14 @@ const CONFIDENCE_ORDER = ['high', 'medium', 'low', 'hypothesis'] as const;
 const UNTAGGED_BUCKET = '(untagged)';
 
 export interface GenerateFactsIndexOptions {
-  vaultRoot: string;
+  vault_root: string;
   index: CiterIndex;
 }
 
 export async function generate_facts_index(
   options: GenerateFactsIndexOptions
 ): Promise<string> {
-  const { vaultRoot: vault_root, index } = options;
+  const { vault_root, index } = options;
 
   const facts_dir = join(vault_root, 'facts');
   await mkdir(facts_dir, { recursive: true });

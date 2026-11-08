@@ -9,7 +9,7 @@ import type { Domain } from '../domains/constants.js';
 
 // Re-export types from utils/markdown.js
 export { type MarkdownLink } from '../../utils/markdown.js';
-export { extract_heading_anchors as headingAnchors, find_section as sectionOf, LINK_BROKEN_ANCHOR } from './anchors.js';
+export { extract_heading_anchors as heading_anchors, find_section as section_of, LINK_BROKEN_ANCHOR } from './anchors.js';
 
 export interface LinkCheckOptions {
   docs_path: string;

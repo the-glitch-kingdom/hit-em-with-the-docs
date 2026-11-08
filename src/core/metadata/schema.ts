@@ -786,7 +786,7 @@ export function get_field_category(
 // Re-export tier-related symbols that consumers (and the auditor) need.
 export {
   LIFECYCLE_TRACKED_TIERS,
-  is_lifecycle_tracked_tier as isLifecycleTrackedTier,
+  is_lifecycle_tracked_tier,
   DOC_STATUS_VALUES,
   FACT_CONFIDENCE_VALUES,
   INCIDENT_SEVERITY_VALUES,

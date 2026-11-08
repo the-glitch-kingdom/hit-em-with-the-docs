@@ -2,22 +2,22 @@ import { describe, it, expect } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { headingAnchors, sectionOf, check_links } from '../../../src/core/links/checker.js';
+import { heading_anchors, section_of, check_links } from '../../../src/core/links/checker.js';
 import { count_actionable_issues } from '../../../src/core/audit/auditor.js';
 
-describe('headingAnchors / sectionOf', () => {
+describe('heading_anchors / section_of', () => {
   const md = '# Title\n\n## Setup & Run\n\ntext\n\n## Setup & Run\n\n### Deep\n\n## Custom {#my-id}\n\n<a id="legacy"></a>\n\n```\n## Not a heading\n```\n';
 
   it('slugs, duplicate suffixes, {#id}, <a id>, ignores fences', () => {
-    const a = headingAnchors(md);
+    const a = heading_anchors(md);
     for (const id of ['title', 'setup--run', 'setup--run-1', 'deep', 'my-id', 'legacy']) expect(a.has(id)).toBe(true);
     expect(a.has('not-a-heading')).toBe(false);
   });
 
-  it('sectionOf runs to the next heading of same or higher level', () => {
-    expect(sectionOf(md, 'setup--run')).toBe('## Setup & Run\n\ntext\n');
-    expect(sectionOf(md, 'setup--run-1')).toContain('### Deep');
-    expect(sectionOf(md, 'nope')).toBeNull();
+  it('section_of runs to the next heading of same or higher level', () => {
+    expect(section_of(md, 'setup--run')).toBe('## Setup & Run\n\ntext\n');
+    expect(section_of(md, 'setup--run-1')).toContain('### Deep');
+    expect(section_of(md, 'nope')).toBeNull();
   });
 });
 

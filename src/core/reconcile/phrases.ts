@@ -17,12 +17,16 @@ export const normalizeQuery = (q: string): string => q.replace(/\s+/g, ' ').trim
 
 const tokens = (s: string): Set<string> => new Set((s.toLowerCase().match(/[a-z0-9_]+/g) ?? []).filter((w) => !STOP.has(w)));
 
-/** Token-set Jaccard >= 0.8 (stop words removed), or one set contained in the other. */
+/**
+ * Token-set Jaccard >= 0.8 (stop words removed), or one set contained in the other when the
+ * smaller has >= 2 tokens and the larger adds at most one (so one shared keyword never merges).
+ */
 export function nearDuplicate(a: string, b: string): boolean {
   const x = tokens(a), y = tokens(b);
   if (!x.size || !y.size) return a.toLowerCase() === b.toLowerCase();
   const inter = [...x].filter((t) => y.has(t)).length;
-  return inter === Math.min(x.size, y.size) || inter / (x.size + y.size - inter) >= 0.8;
+  const lo = Math.min(x.size, y.size);
+  return (inter === lo && lo >= 2 && Math.max(x.size, y.size) - lo <= 1) || inter / (x.size + y.size - inter) >= 0.8;
 }
 
 /** `existing` = the doc's current user_phrase/symptoms text; they count toward `max`. */

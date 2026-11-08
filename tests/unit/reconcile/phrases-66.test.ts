@@ -18,6 +18,12 @@ describe('buildPhrases (#66)', () => {
     expect(r.accepted.map((a) => a.query)).toEqual(['how do I roll back a bad deploy']);
     expect(r.dropped.filter((d) => d.reason === 'duplicate')).toHaveLength(2);
   });
+  it('does not merge distinct questions that share one keyword', () => {
+    const r = buildPhrases([
+      { query: 'how do I roll back a bad deploy', count: 3 }, { query: 'how to deploy to staging', count: 2 },
+    ], ['how do I deploy'], cfg, 5);
+    expect(r.accepted.map((a) => a.query)).toEqual(['how do I roll back a bad deploy', 'how to deploy to staging']);
+  });
   it('merges against existing phrases and counts them toward the cap', () => {
     const r = buildPhrases([
       { query: 'restore the database from backup' }, { query: 'rotate the signing keys safely' }, { query: 'clear the stuck job queue' },

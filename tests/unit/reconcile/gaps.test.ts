@@ -44,6 +44,12 @@ describe('parseGaps', () => {
     expect(bad.gaps.map((g) => g.used_doc)).toEqual([null, null]);
     expect(bad.errors).toHaveLength(2);
   });
+  it('a generated index or a non-markdown file is not a live doc', () => {
+    writeFileSync(join(ctx.docsRoot, 'devops/INDEX.md'), '---\ngenerated: true\n---\n# Index\n');
+    writeFileSync(join(ctx.docsRoot, 'devops/notes.txt'), 'x\n');
+    const r = parseGaps(JSON.stringify([{ query: 'q', used_doc: 'devops/INDEX.md' }, { query: 'q', used_doc: 'devops/notes.txt' }]), ctx);
+    expect(r.gaps.map((g) => g.used_doc)).toEqual([null, null]);
+  });
   it('ships a schema whose gap shape matches the reader', () => {
     const s = JSON.parse(readFileSync(join(__dirname, '../../../schemas/gaps.v1.schema.json'), 'utf8'));
     expect(s.properties.version.const).toBe(1);

@@ -304,7 +304,9 @@ Each query ends in one of three places:
 - **Open question**: anything else.
 
 Phrase rules: whitespace collapsed, trailing punctuation dropped, 3 to 20 words,
-wording kept. Near-duplicates merge (highest count, then shortest); counts of the same
+wording kept. Near-duplicates merge (highest count, then shortest): same keywords after stop
+words, or one adding a single keyword to two or more shared ones, so questions sharing just one
+keyword stay apart. Counts of the same
 query add up. At most `reconcile.gaps.max_phrases_per_doc` (default 5) per doc, counting
 phrases already there. Dropped: `too short`, `too long`, `secret`, `duplicate`, `over cap`.
 A secret-shaped query is shown only as `[redacted]` with a masked note (rule, first 4

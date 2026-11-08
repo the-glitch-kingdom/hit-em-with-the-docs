@@ -2,7 +2,7 @@
  * Search gaps (#66): reader for the `gaps.v1` file (schemas/gaps.v1.schema.json, docs/gaps-format.md).
  * Accepts the v1 object, a bare array of gap objects, a JSON array of strings, or one question per line.
  */
-import { existsSync, statSync } from 'fs';
+import { existsSync, readFileSync, statSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { isAbsolute, join, relative, resolve } from 'path';
 import { parseFrontmatter } from '../../utils/frontmatter.js';
@@ -37,14 +37,17 @@ export interface GapsContext {
   repoRoot?: string;
 }
 
-/** Resolve a docs-relative, vault-relative or absolute path to a docs-relative one; null when it is not a live doc. */
+/** Resolve a docs-relative, vault-relative or absolute path to a docs-relative one; null when it is not a live doc
+ * (a missing file, outside the docs root, not markdown, or `generated: true` such as INDEX.md). */
 export function normalizeUsedDoc(p: string, ctx: GapsContext): string | null {
   const repo = ctx.repoRoot ?? resolve(ctx.docsRoot, '..');
   const candidates = isAbsolute(p) ? [p] : [join(ctx.docsRoot, p), join(repo, p)];
   for (const c of candidates) {
     const rel = relative(ctx.docsRoot, resolve(c));
     if (rel.startsWith('..') || isAbsolute(rel) || !rel) continue;
-    if (existsSync(c) && statSync(c).isFile()) return rel.split('\\').join('/');
+    if (!c.endsWith('.md') || !existsSync(c) || !statSync(c).isFile()) continue;
+    if (parseFrontmatter<Record<string, unknown>>(readFileSync(c, 'utf-8')).data.generated === true) continue;
+    return rel.split('\\').join('/');
   }
   return null;
 }

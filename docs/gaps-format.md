@@ -20,7 +20,7 @@ Input to `hewtd reconcile --gaps <file>`: queries a reader searched for and how 
 | `version` | yes | Must be `1`. Any other value is refused with a message naming the supported version. Additive fields keep `1`. |
 | `source` | no | Free text naming the producer. |
 | `gaps[].query` | yes | The reader's words. Whitespace is collapsed and trailing punctuation dropped; the wording is kept. |
-| `gaps[].used_doc` | no | The doc the reader finally used, or `null`. Docs-relative, vault-relative (`.documentation/...`) or absolute; resolved against the docs root. An unknown, archived or secret-lane doc is treated as no doc (unknown paths are also reported). |
+| `gaps[].used_doc` | no | The doc the reader finally used, or `null`. Docs-relative, vault-relative (`.documentation/...`) or absolute; resolved against the docs root. An unknown, archived, secret-lane, non-markdown or generated (`generated: true`, such as `INDEX.md`) doc is treated as no doc (unknown paths are also reported). |
 | `gaps[].suggested` | no | `symptoms.user_phrase` or `new doc`. A hint only; hewtd re-derives the outcome. |
 | `gaps[].count` | no | Integer >= 1. Ranks gaps and picks the winning wording among near-duplicates. |
 | `gaps[].last_seen` | no | `YYYY-MM-DD`. |

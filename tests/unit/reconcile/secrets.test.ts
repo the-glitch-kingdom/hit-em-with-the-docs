@@ -103,3 +103,19 @@ describe('review fixes (#59)', () => {
     expect(scan(`t ${hvs}`, { allow: [{ fingerprint: fp.slice(0, 8), reason: 'too short' }], disabled_rules: [] })).toHaveLength(1);
   });
 });
+
+describe('field test 69: false positives and recall', () => {
+  const real = rnd(32, 11);
+  it.each([
+    'self.vault_token_cache = x', 'VAULT_TOKEN = settings.VAULT_TOKEN_PATH', 'password = f"{db_password}"',
+    'secret = os.environ.get("X")', 'TOKEN = process.env.API_TOKEN', 'token = getToken(a)',
+    'secret_id = <VAULT_APPROLE_SECRET_ID from Vault: kv/app>', '<secret: NAME, see .env.hewtd>',
+    'ADMIN_PASSWORD = "admin@' + rnd(12) + '.com"',
+  ])('ignores %s', (t) => expect(scan(t).filter((f) => f.kind === 'secret')).toEqual([]));
+
+  it('still flags a real literal under the same key names; email stays personal', () => {
+    expect(scan(`VAULT_TOKEN = "${real}"`).map((f) => f.rule)).toEqual(['generic-secret']);
+    expect(scan(`ADMIN_PASSWORD = "admin@corp.io"`).map((f) => f.kind)).toEqual(['personal']);
+  });
+
+});

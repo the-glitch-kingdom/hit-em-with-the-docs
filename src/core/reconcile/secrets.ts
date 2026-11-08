@@ -37,7 +37,7 @@ export const entropy = (s: string): number => {
 // where the value is free text; known-shape keys like sk_test_ are real credentials.
 export function isPlaceholder(v: string, weak: boolean): boolean {
   const l = v.toLowerCase();
-  if (/^your[_-]|<[^>]*>|\$\{|^\$[a-z_]|x{3,}|\*{3,}|\.{3}|…|example|changeme|change_me|dummy|placeholder|redacted/.test(l)) return true;
+  if (/^your[_-]|^<|<[^>]*>|\$\{|^\$[a-z_]|x{3,}|\*{3,}|\.{3}|…|example|changeme|change_me|dummy|placeholder|redacted/.test(l)) return true;
   if (new Set(l).size <= 2) return true;
   return weak && /password|passwd|secret|(^|[^a-z])test([^a-z]|$)/.test(l);
 }
@@ -49,6 +49,9 @@ const jwtOk = (v: string): boolean => {
 const NAME = 'SECRET|TOKEN|PASSWORD|PASSWD|API_?KEY|PRIVATE_?KEY|ACCESS_?KEY|SECRET_?ID|ROLE_?ID|CLIENT_?SECRET';
 const NAME_RE = new RegExp(`(?:${NAME})`, 'i');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Code, not a credential: a dotted identifier chain (self.x, settings.X, os.environ.get), a call, or a {name} template slot.
+const looksLikeCode = (v: string) => /^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+$/.test(v) || /\w\(/.test(v) || /\{[A-Za-z_]\w*\}/.test(v);
+const looksLikeEmail = (v: string) => /^[^@\s]{1,64}@[^@\s]{1,255}\.[A-Za-z]{2,}$/.test(v);
 const looksLikePathOrUrl = (v: string) => /^(\/|\.{1,2}\/|~)/.test(v) || /^[a-z][a-z0-9+.-]*:\/\/[^@]*$/i.test(v);
 
 // Order matters: specific shapes first, so the generic rule skips what they already found.
@@ -73,7 +76,7 @@ const RULES: Rule[] = [
   // Key matched as one bounded token starting at a token boundary, then checked for a secret-ish name in code:
   // the old `[\w.-]*(?:NAME)[\w.-]*` form backtracked quadratically on long lines.
   { id: 'generic-secret', re: /(?<![\w.-])["'`]?([A-Za-z_][\w.-]{0,80})["'`]?[ \t]{0,8}[:=][ \t]{0,8}["'`]?([^\s"'`,;]{1,512})/g, group: 2, weak: true,
-    accept: (v, m) => NAME_RE.test(m[1]!) && !looksLikePathOrUrl(v) &&
+    accept: (v, m) => NAME_RE.test(m[1]!) && !looksLikePathOrUrl(v) && !looksLikeCode(v) && !looksLikeEmail(v) &&
       // AppRole role/secret ids are uuids, which often fall under the entropy bar: a non-trivial uuid always counts.
       ((UUID.test(v) && new Set(v.replace(/-/g, '')).size > 4) || (v.length >= 16 && entropy(v) >= 3.5)) },
 ];

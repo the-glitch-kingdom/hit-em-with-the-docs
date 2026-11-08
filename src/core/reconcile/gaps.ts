@@ -119,7 +119,7 @@ export interface GapsClassification {
 const asList = (v: unknown): string[] => (Array.isArray(v) ? v : [v]).filter((x): x is string => typeof x === 'string');
 
 /** Current symptom text of a doc: plain symptoms plus playbook `user_phrase` values. */
-function symptomText(data: Record<string, unknown>): string[] {
+export function symptomText(data: Record<string, unknown>): string[] {
   const out: string[] = [];
   for (const s of Array.isArray(data.symptoms) ? data.symptoms : []) {
     if (typeof s === 'string') out.push(s);

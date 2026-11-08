@@ -1225,11 +1225,13 @@ program
         const read = parseGaps(await readFile(resolve(process.cwd(), options.gaps), 'utf-8'), { docsRoot: docsPath, repoRoot: root });
         const res = await classifyGaps(read.gaps, { root, docsRoot: docsPath, config });
         const reportFile = relative(root, await writeGapsReport(root, renderGapsReport(res, config.reconcile.secrets)));
-        if (options.json) { console.log(JSON.stringify({ ...res, errors: read.errors, report: reportFile }, null, 2)); return; }
+        const reviewFile = options.writeReview ? await (await import('../core/reconcile/review.js')).writeGapsReview({ root, docsPath, proposals: res.proposals, batch: options.batch }) : undefined;
+        if (options.json) { console.log(JSON.stringify({ ...res, errors: read.errors, report: reportFile, ...(reviewFile && { review: relative(root, reviewFile) }) }, null, 2)); return; }
         logger.header('hewtd reconcile --gaps');
         for (const e of read.errors) logger.warn(`  ${e}`);
         logger.info(`  ${res.proposals.length} doc(s) with phrase proposals (${res.proposals.reduce((n, p) => n + p.accepted.length, 0)} phrases), ${res.candidates.length} new-doc candidate(s), ${res.questions.length} open question(s), ${res.dropped.length} dropped`);
         logger.info(`  report: ${reportFile}`);
+        if (reviewFile) logger.info(`  wrote ${relative(root, reviewFile)}`);
       } catch (e) {
         logger.error((e as Error).message);
         process.exitCode = 1;

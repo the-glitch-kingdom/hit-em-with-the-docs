@@ -20,6 +20,8 @@ import { applyOutsideEntry, outsideKey } from './outside.js';
 import { headingAnchors, sectionOf } from '../links/anchors.js';
 import { missingTokens } from './noloss.js';
 import { memberState } from './overview.js';
+import { buildPhrases } from './phrases.js';
+import { symptomText } from './gaps.js';
 import { envNames, parseReview, reviewDir, type ReviewEntry } from './review.js';
 
 export interface ApplyOutcome {
@@ -191,6 +193,20 @@ function editDoc(raw: string, e: ReviewEntry, today: string): string {
   return setFrontmatter(body, next, raw);
 }
 
+/** phrases: add new user_phrase entries to symptoms (cap and duplicates re-checked); returns null when nothing is left to add. */
+function phrasesDoc(raw: string, e: ReviewEntry, cfg: Awaited<ReturnType<typeof loadPluginConfig>>): string | null {
+  const { data, content } = parseFrontmatter<Record<string, unknown>>(raw);
+  const symptoms: unknown[] = Array.isArray(data.symptoms) ? [...data.symptoms] : [];
+  const add = buildPhrases((e.phrases ?? []).map((query) => ({ query })), symptomText(data), cfg.reconcile.secrets, cfg.reconcile.gaps.max_phrases_per_doc).accepted.map((a) => a.query);
+  if (!add.length) return null;
+  const i = symptoms.findIndex((s) => s && typeof s === 'object');
+  if (i >= 0) {
+    const s = symptoms[i] as Record<string, unknown>;
+    symptoms[i] = { ...s, user_phrase: [...(Array.isArray(s.user_phrase) ? s.user_phrase : s.user_phrase ? [s.user_phrase] : []), ...add] };
+  } else symptoms.push(...add);
+  return setFrontmatter(content, { ...data, symptoms }, raw);
+}
+
 /** point: check the owner section and the no-loss rule, then write the one-line pointer into the copy. */
 function pointDoc(o: { raw: string; e: ReviewEntry; abs: string; ownerAbs: string; ownerRaw: string; today: string }): string {
   const { raw, e, abs, ownerAbs, ownerRaw, today } = o;
@@ -243,7 +259,8 @@ export async function applyReviews(opts: {
 }): Promise<ApplyResult> {
   const { root, docsPath, ledger } = opts;
   const today = opts.today ?? formatDate(new Date());
-  const secretsCfg = (await loadPluginConfig(root)).reconcile.secrets;
+  const cfg = await loadPluginConfig(root);
+  const secretsCfg = cfg.reconcile.secrets;
   const reviews = await Promise.all(opts.files.map((f) => parseReview(f)));
   const top0 = gitRoot(root);
   const snap = top0 ? snapshot(top0, relative(top0, docsPath) || '.') : new Map<string, Buffer>();
@@ -317,7 +334,7 @@ export async function applyReviews(opts: {
       let envNamesFor: string[] | undefined;
       try {
         // Nothing the review proposes to write may carry a secret.
-        assertNoSecrets([...(e.patch ?? []).map((p) => p.new), e.draft ?? '', e.pointer?.summary ?? '', JSON.stringify(e.frontmatter ?? {})].join('\n'), e.path, secretsCfg);
+        assertNoSecrets([...(e.patch ?? []).map((p) => p.new), e.draft ?? '', e.pointer?.summary ?? '', ...(e.phrases ?? []), JSON.stringify(e.frontmatter ?? {})].join('\n'), e.path, secretsCfg);
         if (e.verdict === 'merge') {
           const body = parseFrontmatter(raw).content;
           if (!e.section || !headingAnchors(body).has(e.section)) throw new Error(`section #${e.section ?? ''} not found in ${e.path}`);
@@ -349,6 +366,11 @@ export async function applyReviews(opts: {
           if (!e.depends_on_merge && hashContent(ownerRaw) !== e.target_hash) throw new Error('owner doc changed since the review was written (or target_hash missing)');
           await writeFile(abs, pointDoc({ raw, e, abs, ownerAbs, ownerRaw, today }), 'utf-8');
           pointers.set(e.path, { target, section_hash: hashContent(sectionOf(parseFrontmatter<Record<string, unknown>>(ownerRaw).content, target.split('#')[1] ?? '') ?? '') });
+          touched.add(abs);
+        } else if (e.verdict === 'phrases') {
+          const next = phrasesDoc(raw, e, cfg);
+          if (next === null) { outcomes.push({ path: e.path, status: 'skipped', detail: 'no new phrases to add' }); continue; }
+          await writeFile(abs, next, 'utf-8');
           touched.add(abs);
         } else if (e.verdict === 'archive') {
           const res = await archiveDoc({ projectRoot: root, docsPath, file: e.path, today, ...(e.reason && { reason: e.reason }) });

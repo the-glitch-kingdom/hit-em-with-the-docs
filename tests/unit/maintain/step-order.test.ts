@@ -24,7 +24,7 @@ describe('maintain step order', () => {
   );
 
   it('generates knowledge-base indexes before the link check', () => {
-    const generate = src.indexOf('maybe_generate_kb_indexes(');
+    const generate = src.indexOf('ensure_knowledge_base_indexes(');
     const check = src.indexOf('await check_links(');
 
     expect(generate).toBeGreaterThan(-1);

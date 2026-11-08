@@ -24,7 +24,7 @@ import {
   list_domain_doc_files,
 } from '../../src/generators/regenerate.js';
 import { run_maintenance } from '../../src/core/maintain/orchestrator.js';
-import { audit_documentation } from '../../src/core/audit/auditor.js';
+import { check_documentation } from '../../src/core/audit/auditor.js';
 import { reset_registry } from '../../src/core/domains/registry.js';
 import { check_links } from '../../src/core/links/checker.js';
 
@@ -181,7 +181,7 @@ Authentication, authorization, OAuth, JWT tokens, login security and access cont
       'utf-8'
     );
 
-    const drifted = await audit_documentation({ docs_path, silent: true });
+    const drifted = await check_documentation({ docs_path, silent: true });
     const drift_issue = drifted.issues.find(
       (i) => i.rule === 'index-drift' && i.file === 'testing/INDEX.md'
     );
@@ -191,7 +191,7 @@ Authentication, authorization, OAuth, JWT tokens, login security and access cont
 
     await regenerate_indexes({ docs_path, silent: true });
 
-    const clean = await audit_documentation({ docs_path, silent: true });
+    const clean = await check_documentation({ docs_path, silent: true });
     expect(clean.issues.some((i) => i.rule === 'index-drift')).toBe(false);
   });
 });
@@ -375,7 +375,7 @@ describe('Recursive domain indexing (2.7.1 — issue #12)', () => {
       doc('Playwright Strategy')
     );
 
-    const drifted = await audit_documentation({ docs_path, silent: true });
+    const drifted = await check_documentation({ docs_path, silent: true });
     const drift_issue = drifted.issues.find(
       (i) => i.rule === 'index-drift' && i.file === 'testing/INDEX.md'
     );
@@ -383,7 +383,7 @@ describe('Recursive domain indexing (2.7.1 — issue #12)', () => {
 
     await regenerate_indexes({ docs_path, silent: true });
 
-    const clean = await audit_documentation({ docs_path, silent: true });
+    const clean = await check_documentation({ docs_path, silent: true });
     expect(clean.issues.some((i) => i.rule === 'index-drift')).toBe(false);
   });
 

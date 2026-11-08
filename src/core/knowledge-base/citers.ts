@@ -113,9 +113,9 @@ export interface BuildCiterIndexOptions {
   playbook_globs: string[];
 }
 
-const is_string = (v: unknown): v is string => typeof v === 'string';
-const is_string_array = (v: unknown): v is string[] =>
-  Array.isArray(v) && v.every(is_string);
+const is_string = (value: unknown): value is string => typeof value === 'string';
+const is_string_array = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every(is_string);
 
 /**
  * Walk the corpus and build a citer index. Designed to be cheap on no-vault
@@ -137,8 +137,8 @@ export async function build_citer_index(
     absolute: true,
   });
   for (const fact_path of fact_files) {
-    const ref = await read_fact_ref(fact_path, project_root);
-    if (ref) facts.set(ref.id, ref);
+    const reference = await load_fact_ref(fact_path, project_root);
+    if (reference) facts.set(reference.id, reference);
   }
 
   // ----- Incidents -----
@@ -147,8 +147,8 @@ export async function build_citer_index(
     { nodir: true, absolute: true }
   );
   for (const narrative_path of narrative_files) {
-    const ref = await read_incident_ref(narrative_path, project_root);
-    if (ref) incidents.set(ref.id, ref);
+    const reference = await load_incident_ref(narrative_path, project_root);
+    if (reference) incidents.set(reference.id, reference);
   }
 
   // Short-circuit: if no facts and no incidents, no point scanning playbooks.
@@ -162,17 +162,17 @@ export async function build_citer_index(
   const playbook_candidates = new Set<string>();
   for (const pattern of playbook_globs) {
     const matches = await glob(pattern, { nodir: true, absolute: true });
-    for (const m of matches) playbook_candidates.add(m);
+    for (const match of matches) playbook_candidates.add(match);
   }
 
   for (const playbook_path of playbook_candidates) {
     const cits = await extract_playbook_citations(playbook_path, project_root);
-    for (const c of cits) {
+    for (const citation of cits) {
       // Each citation has a list of fact ids implicit in the symptoms entry.
-      const fact_ids = c.fact_ids;
+      const fact_ids = citation.fact_ids;
       for (const fact_id of fact_ids) {
         const existing = citers.get(fact_id) ?? [];
-        existing.push(c.citation);
+        existing.push(citation.citation);
         citers.set(fact_id, existing);
       }
     }
@@ -181,7 +181,7 @@ export async function build_citer_index(
   return { facts, incidents, citers };
 }
 
-async function read_fact_ref(
+async function load_fact_ref(
   path: string,
   project_root: string
 ): Promise<FactRef | null> {
@@ -207,7 +207,7 @@ async function read_fact_ref(
   }
 }
 
-async function read_incident_ref(
+async function load_incident_ref(
   narrative_path: string,
   project_root: string
 ): Promise<IncidentRef | null> {
@@ -276,20 +276,20 @@ async function extract_playbook_citations(
     const results: PlaybookCitationWithFacts[] = [];
 
     for (const sym of data.symptoms) {
-      const s = sym as Record<string, unknown>;
-      if (!is_string(s.target) || !is_string_array(s.cites)) continue;
+      const text = sym as Record<string, unknown>;
+      if (!is_string(text.target) || !is_string_array(text.cites)) continue;
 
       let kind: PlaybookCitation['kind'];
       let key: string | string[];
-      if (is_string(s.alert_name)) {
+      if (is_string(text.alert_name)) {
         kind = 'alert_name';
-        key = s.alert_name;
-      } else if (is_string_array(s.user_phrase) || is_string(s.user_phrase)) {
+        key = text.alert_name;
+      } else if (is_string_array(text.user_phrase) || is_string(text.user_phrase)) {
         kind = 'user_phrase';
-        key = s.user_phrase as string | string[];
-      } else if (is_string(s.error_pattern)) {
+        key = text.user_phrase as string | string[];
+      } else if (is_string(text.error_pattern)) {
         kind = 'error_pattern';
-        key = s.error_pattern;
+        key = text.error_pattern;
       } else {
         continue; // malformed — caught by audit-strict, ignored here
       }
@@ -299,12 +299,12 @@ async function extract_playbook_citations(
           rel_path: relative(project_root, playbook_path),
           path: playbook_path,
           title,
-          target: s.target,
+          target: text.target,
           kind,
           key,
-          severity: is_string(s.severity) ? s.severity : undefined,
+          severity: is_string(text.severity) ? text.severity : undefined,
         },
-        fact_ids: s.cites,
+        fact_ids: text.cites,
       });
     }
 
@@ -335,8 +335,8 @@ export function find_citers_in_index(
   // Dedup citers by playbook relPath — multiple symptoms entries in the same
   // playbook citing the same fact count as ONE citer.
   const citer_set = new Set<string>();
-  for (const c of index.citers.get(fact_id) ?? []) {
-    citer_set.add(c.rel_path);
+  for (const citer of index.citers.get(fact_id) ?? []) {
+    citer_set.add(citer.rel_path);
   }
 
   const incidents_produced_in: string[] = [];
@@ -361,12 +361,12 @@ export function find_citers_in_index(
 /**
  * Count distinct citers for a fact id. Used by the facts-index generator.
  */
-export function citer_count(index: CiterIndex, fact_id: string): number {
+export function count_citers(index: CiterIndex, fact_id: string): number {
   const list = index.citers.get(fact_id);
   if (!list) return 0;
   // Distinct by playbook relPath (multiple symptoms in the same playbook
   // citing the same fact count once).
   const seen = new Set<string>();
-  for (const c of list) seen.add(c.rel_path);
+  for (const citer of list) seen.add(citer.rel_path);
   return seen.size;
 }

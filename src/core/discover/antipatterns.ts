@@ -185,6 +185,7 @@ export async function discover_anti_patterns(
 
   for (const pattern of patterns) {
     const matches = await glob(pattern, {
+      // eslint-disable-next-line id-denylist -- child_process/glob option name
       cwd: root_path,
       absolute: true,
       ignore: ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**'],
@@ -228,18 +229,18 @@ export async function discover_anti_patterns(
     logger.newline();
     logger.success(`Found ${discovered.length} anti-pattern types`);
 
-    const high = discovered.filter((d) => d.severity === 'high');
-    const medium = discovered.filter((d) => d.severity === 'medium');
-    const low = discovered.filter((d) => d.severity === 'low');
+    const high = discovered.filter((doc) => doc.severity === 'high');
+    const medium = discovered.filter((doc) => doc.severity === 'medium');
+    const low = discovered.filter((doc) => doc.severity === 'low');
 
     if (high.length > 0) {
-      logger.error(`High severity: ${high.length} types, ${high.reduce((s, d) => s + d.locations.length, 0)} occurrences`);
+      logger.error(`High severity: ${high.length} types, ${high.reduce((text, doc) => text + doc.locations.length, 0)} occurrences`);
     }
     if (medium.length > 0) {
-      logger.warn(`Medium severity: ${medium.length} types, ${medium.reduce((s, d) => s + d.locations.length, 0)} occurrences`);
+      logger.warn(`Medium severity: ${medium.length} types, ${medium.reduce((text, doc) => text + doc.locations.length, 0)} occurrences`);
     }
     if (low.length > 0) {
-      logger.info(`Low severity: ${low.length} types, ${low.reduce((s, d) => s + d.locations.length, 0)} occurrences`);
+      logger.info(`Low severity: ${low.length} types, ${low.reduce((text, doc) => text + doc.locations.length, 0)} occurrences`);
     }
   }
 
@@ -258,7 +259,7 @@ async function scan_for_anti_pattern(
 
   for (const file of files) {
     // Check exclusions
-    if (definition.exclude?.some((ex) => ex.test(file))) {
+    if (definition.exclude?.some((exclusion) => exclusion.test(file))) {
       continue;
     }
 
@@ -272,7 +273,7 @@ async function scan_for_anti_pattern(
         let match: RegExpExecArray | null;
         while ((match = pattern.exec(content)) !== null) {
           // Check if excluded pattern
-          if (definition.exclude?.some((ex) => ex.test(match![0]))) {
+          if (definition.exclude?.some((exclusion) => exclusion.test(match![0]))) {
             continue;
           }
 

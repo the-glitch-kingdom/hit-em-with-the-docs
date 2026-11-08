@@ -228,11 +228,11 @@ export function classify_tier(content: string): TierClassificationResult {
 
   // Score based on indicators
   for (const tier of TIERS) {
-    const def = TIER_DEFINITIONS[tier];
+    const definition = TIER_DEFINITIONS[tier];
 
     // Check indicators
-    for (const indicator of def.indicators) {
-      const regex = new RegExp(`\\b${escape_reg_exp(indicator)}\\b`, 'gi');
+    for (const indicator of definition.indicators) {
+      const regex = new RegExp(`\\b${escape_regex(indicator)}\\b`, 'gi');
       const matches = lower_content.match(regex);
       if (matches) {
         scores[tier] += matches.length * 2;
@@ -243,7 +243,7 @@ export function classify_tier(content: string): TierClassificationResult {
     }
 
     // Check heading patterns
-    for (const pattern of def.heading_patterns) {
+    for (const pattern of definition.heading_patterns) {
       const matches = content.match(new RegExp(pattern.source, 'gim'));
       if (matches) {
         scores[tier] += matches.length * 5;
@@ -252,7 +252,7 @@ export function classify_tier(content: string): TierClassificationResult {
     }
 
     // Size-based scoring
-    if (size_kb >= def.size_range.min && size_kb <= def.size_range.max) {
+    if (size_kb >= definition.size_range.min && size_kb <= definition.size_range.max) {
       scores[tier] += 10;
       reasoning.push(`Size ${size_kb.toFixed(1)}KB matches ${tier} range`);
     }
@@ -348,6 +348,6 @@ export function get_tier_display_name(tier: Tier): string {
 /**
  * Escape special regex characters
  */
-function escape_reg_exp(string: string): string {
+function escape_regex(string: string): string {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

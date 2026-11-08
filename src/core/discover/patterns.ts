@@ -279,12 +279,13 @@ export async function discover_patterns(
 
   // Determine file extensions to scan
   const extensions = get_extensions_for_language(language);
-  const patterns = extensions.map((ext) => `**/*${ext}`);
+  const patterns = extensions.map((extension) => `**/*${extension}`);
 
   // Find all source files
   let files: string[] = [];
   for (const pattern of patterns) {
     const matches = await glob(pattern, {
+      // eslint-disable-next-line id-denylist -- child_process/glob option name
       cwd: root_path,
       absolute: true,
       ignore: ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**'],
@@ -303,11 +304,11 @@ export async function discover_patterns(
   let definitions = PATTERN_DEFINITIONS;
   if (language) {
     definitions = definitions.filter(
-      (d) => !d.languages || d.languages.includes(language)
+      (definition) => !definition.languages || definition.languages.includes(language)
     );
   }
   if (category) {
-    definitions = definitions.filter((d) => d.category === category);
+    definitions = definitions.filter((definition) => definition.category === category);
   }
 
   // Scan for patterns
@@ -346,9 +347,9 @@ async function scan_for_pattern(
   for (const file of files) {
     // Check file pattern filter
     if (definition.file_patterns) {
-      const ext = extname(file);
-      const matches = definition.file_patterns.some((p) =>
-        p.endsWith(ext) || p === `*${ext}`
+      const extension = extname(file);
+      const matches = definition.file_patterns.some((file_pattern) =>
+        file_pattern.endsWith(extension) || file_pattern === `*${extension}`
       );
       if (!matches) continue;
     }

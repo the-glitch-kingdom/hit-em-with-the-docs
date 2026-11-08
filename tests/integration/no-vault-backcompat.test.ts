@@ -16,7 +16,7 @@ import { mkdtemp, mkdir, writeFile, readdir, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { run_maintenance } from '../../src/core/maintain/orchestrator.js';
-import { audit_documentation } from '../../src/core/audit/auditor.js';
+import { check_documentation } from '../../src/core/audit/auditor.js';
 import { regenerate_indexes } from '../../src/generators/regenerate.js';
 
 describe('Backward compatibility — no-vault project (2.3.0 regression test)', () => {
@@ -82,7 +82,7 @@ Body content for the guide.
   });
 
   it('audit emits no KB-coded errors on a pre-2.3.0 doc tree', async () => {
-    const result = await audit_documentation({ docs_path, silent: true });
+    const result = await check_documentation({ docs_path, silent: true });
     const kb_issues = result.issues.filter((i) => i.code !== undefined);
     expect(kb_issues).toEqual([]);
   });
@@ -99,7 +99,7 @@ Body content for the guide.
   });
 
   it('strict audit still passes on a pre-2.3.0 tree (no KB violations to escalate)', async () => {
-    const result = await audit_documentation({
+    const result = await check_documentation({
       docs_path,
       silent: true,
       strict: true,

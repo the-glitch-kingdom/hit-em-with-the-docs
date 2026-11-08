@@ -13,13 +13,13 @@ const pkg = require_('../../package.json') as { version: string };
 import { create_scaffold, scaffold_exists } from '../generators/scaffold.js';
 import { sync_metadata } from '../core/metadata/sync.js';
 import { check_links } from '../core/links/checker.js';
-import { audit_documentation } from '../core/audit/auditor.js';
+import { check_documentation } from '../core/audit/auditor.js';
 import { integrate_document } from '../core/integrate/integrator.js';
 import { run_maintenance } from '../core/maintain/orchestrator.js';
 import { discover_patterns } from '../core/discover/patterns.js';
 import { discover_anti_patterns } from '../core/discover/antipatterns.js';
 import { discover_standards } from '../core/discover/standards.js';
-import { analyze_dependencies } from '../core/discover/dependencies.js';
+import { discover_dependencies } from '../core/discover/dependencies.js';
 import { save_health_report } from '../reports/health-report.js';
 import { save_audit_report } from '../reports/audit-report.js';
 import { save_link_report } from '../reports/link-report.js';
@@ -330,7 +330,7 @@ program
   .action(async (options) => {
     const docs_path = resolve(process.cwd(), options.path);
 
-    const result = await audit_documentation({
+    const result = await check_documentation({
       docs_path,
       domain: options.domain,
       issues_only: options.issuesOnly,
@@ -443,7 +443,7 @@ discover
   .action(async (options) => {
     const root_path = resolve(process.cwd(), options.root);
 
-    await analyze_dependencies({
+    await discover_dependencies({
       root_path,
     });
   });
@@ -465,7 +465,7 @@ program
         break;
       }
       case 'audit': {
-        const result = await audit_documentation({ docs_path, silent: true });
+        const result = await check_documentation({ docs_path, silent: true });
         const report_path = await save_audit_report(docs_path, result, options.format);
         logger.success(`Audit report saved: ${report_path}`);
         break;
@@ -817,7 +817,7 @@ program
       '../utils/config.js'
     );
     const { build_citer_index } = await import('../core/knowledge-base/citers.js');
-    const { audit_facts, run_fact_verify } = await import('../core/knowledge-base/audit.js');
+    const { check_facts: audit_facts, run_fact_verify } = await import('../core/knowledge-base/audit.js');
 
     const config = await load_plugin_config(project_root);
     const vault_root = resolve_vault_root(project_root, config);
@@ -922,7 +922,7 @@ program
       process.exit(1);
     }
     const playbook_path = resolve(process.cwd(), options.file);
-    const { cite } = await import('../core/knowledge-base/cite.js');
+    const { add_citation: cite } = await import('../core/knowledge-base/cite.js');
 
     const symptom_match: NonNullable<Parameters<typeof cite>[0]['symptom_match']> = {};
     if (options.alertName) symptom_match.alert_name = options.alertName;

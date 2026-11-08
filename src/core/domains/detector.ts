@@ -126,7 +126,7 @@ export function detect_domain_from_content(content: string): DomainDetectionResu
 
   for (const [keyword, domains] of keyword_map) {
     // Count occurrences of keyword
-    const regex = new RegExp(`\\b${escape_reg_exp(keyword)}\\b`, 'gi');
+    const regex = new RegExp(`\\b${escape_regex(keyword)}\\b`, 'gi');
     const matches = lower_content.match(regex);
     if (matches) {
       const count = matches.length;
@@ -172,14 +172,14 @@ export function detect_domain_from_content(content: string): DomainDetectionResu
 /**
  * Get suggested domains for a file based on its name
  */
-export function suggest_domains_for_file(file_name: string): Domain[] {
+export function find_domains_for_file(file_name: string): Domain[] {
   const base_name = basename(file_name, '.md').toLowerCase();
   const suggestions: Domain[] = [];
 
   // Check each domain's keywords against the filename
   for (const domain of get_all_domains()) {
-    const def = get_domain_definition(domain);
-    for (const keyword of def.keywords) {
+    const definition = get_domain_definition(domain);
+    for (const keyword of definition.keywords) {
       if (base_name.includes(keyword.replace(/-/g, ''))) {
         if (!suggestions.includes(domain)) {
           suggestions.push(domain);
@@ -221,6 +221,6 @@ export function validate_domain_placement(
 /**
  * Escape special regex characters
  */
-function escape_reg_exp(string: string): string {
+function escape_regex(string: string): string {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

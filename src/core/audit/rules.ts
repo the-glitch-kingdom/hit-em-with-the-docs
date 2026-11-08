@@ -100,8 +100,8 @@ export function check_file_placement(
 
   // If file is in root (not in any domain folder)
   if (!detected_domain) {
-    const rel = relative(docs_path, file_path);
-    const path_parts = rel.split(/[/\\]/);
+    const doc_path = relative(docs_path, file_path);
+    const path_parts = doc_path.split(/[/\\]/);
 
     // Check if it's in root
     if (path_parts.length === 1) {
@@ -198,7 +198,7 @@ export function check_required_sections(
       new RegExp(`^#+\\s*.*${section}`, 'mi'),
     ];
 
-    const found = patterns.some((p) => p.test(lower_content));
+    const found = patterns.some((pattern) => pattern.test(lower_content));
     if (!found) {
       missing_sections.push(section);
     }
@@ -208,7 +208,7 @@ export function check_required_sections(
     return {
       valid: false,
       message: `Missing recommended sections for ${tier}: ${missing_sections.join(', ')}`,
-      suggestion: `Consider adding sections: ${missing_sections.map((s) => `## ${capitalize(s)}`).join(', ')}`,
+      suggestion: `Consider adding sections: ${missing_sections.map((missing_section) => `## ${format_capitalized(missing_section)}`).join(', ')}`,
     };
   }
 
@@ -263,8 +263,8 @@ export function check_relative_links(
 /**
  * Capitalize first letter
  */
-function capitalize(str: string): string {
-  return str.charAt(0).toUpperCase() + str.slice(1);
+function format_capitalized(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 /**

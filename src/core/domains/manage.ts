@@ -43,9 +43,9 @@ export function list_domains(project_root: string): DomainListResult {
   const builtin: DomainDefinition[] = [];
   const custom: DomainDefinition[] = [];
   for (const id of registry.ids) {
-    const def = registry.definitions.get(id)!;
-    if (is_builtin_domain(id)) builtin.push(def);
-    else custom.push(def);
+    const definition = registry.definitions.get(id)!;
+    if (is_builtin_domain(id)) builtin.push(definition);
+    else custom.push(definition);
   }
   return { builtin, custom };
 }
@@ -114,12 +114,12 @@ export async function add_domain(input: AddDomainInput): Promise<AddDomainResult
     return { ok: false, errors, action: 'rejected', config_path };
   }
 
-  const raw = await read_raw_config(project_root);
-  const existing = Array.isArray(raw.domains)
-    ? (raw.domains as unknown[])
+  const raw_text = await read_raw_config(project_root);
+  const existing = Array.isArray(raw_text.domains)
+    ? (raw_text.domains as unknown[])
     : [];
   const already_configured = existing.some(
-    (d) => d && typeof d === 'object' && (d as { id?: unknown }).id === valid.id
+    (doc) => doc && typeof doc === 'object' && (doc as { id?: unknown }).id === valid.id
   );
   if (already_configured) {
     errors.push(`Custom domain "${valid.id}" already exists in config.`);
@@ -140,8 +140,8 @@ export async function add_domain(input: AddDomainInput): Promise<AddDomainResult
   }
 
   // Persist the config entry, preserving every other key (vault, updatePolicy…).
-  raw.domains = [...existing, valid];
-  await write_raw_config(project_root, raw);
+  raw_text.domains = [...existing, valid];
+  await write_raw_config(project_root, raw_text);
 
   // Invalidate the cached registry so scaffolding sees the new domain.
   reset_registry();
@@ -214,10 +214,10 @@ export async function remove_domain(
     };
   }
 
-  const raw = await read_raw_config(project_root);
-  const existing = Array.isArray(raw.domains) ? (raw.domains as unknown[]) : [];
+  const raw_text = await read_raw_config(project_root);
+  const existing = Array.isArray(raw_text.domains) ? (raw_text.domains as unknown[]) : [];
   const present = existing.some(
-    (d) => d && typeof d === 'object' && (d as { id?: unknown }).id === id
+    (doc) => doc && typeof doc === 'object' && (doc as { id?: unknown }).id === id
   );
   if (!present) {
     errors.push(`"${id}" is not a configured custom domain. Nothing to remove.`);
@@ -245,10 +245,10 @@ export async function remove_domain(
     };
   }
 
-  raw.domains = existing.filter(
-    (d) => !(d && typeof d === 'object' && (d as { id?: unknown }).id === id)
+  raw_text.domains = existing.filter(
+    (doc) => !(doc && typeof doc === 'object' && (doc as { id?: unknown }).id === id)
   );
-  await write_raw_config(project_root, raw);
+  await write_raw_config(project_root, raw_text);
   reset_registry();
 
   return {

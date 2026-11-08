@@ -16,11 +16,11 @@ import { parse_frontmatter, set_frontmatter } from '../../utils/frontmatter.js';
 import { format_date } from '../metadata/generator.js';
 import { regenerate_indexes } from '../../generators/regenerate.js';
 import { ARCHIVE_DIR } from '../../utils/glob.js';
-import { find_inbound_links, to_docs_relative, type InboundLink } from './links.js';
+import { find_inbound_links, resolve_doc_path, type InboundLink } from './links.js';
 
-async function exists(p: string): Promise<boolean> {
+async function is_present(path_text: string): Promise<boolean> {
   try {
-    await stat(p);
+    await stat(path_text);
     return true;
   } catch {
     return false;
@@ -31,6 +31,7 @@ async function exists(p: string): Promise<boolean> {
 function is_git_repo(project_root: string): boolean {
   try {
     execFileSync('git', ['rev-parse', '--is-inside-work-tree'], {
+      // eslint-disable-next-line id-denylist -- child_process/glob option name
       cwd: project_root,
       stdio: 'ignore',
     });
@@ -51,11 +52,12 @@ async function move_file(
   to_abs: string
 ): Promise<'git' | 'fs'> {
   // Both git mv's fallback (fs.rename) and git mv -f replace an existing file.
-  if (await exists(to_abs)) throw new Error(`Refusing to overwrite existing file: ${to_abs}`);
+  if (await is_present(to_abs)) throw new Error(`Refusing to overwrite existing file: ${to_abs}`);
   await mkdir(dirname(to_abs), { recursive: true });
   if (is_git_repo(project_root)) {
     try {
       execFileSync('git', ['mv', from_abs, to_abs], {
+        // eslint-disable-next-line id-denylist -- child_process/glob option name
         cwd: project_root,
         stdio: 'ignore',
       });
@@ -102,7 +104,7 @@ export async function archive_doc(
   const today = input.today ?? format_date(new Date());
   const errors: string[] = [];
 
-  const from_rel = to_docs_relative(docs_path, input.file, project_root);
+  const from_rel = resolve_doc_path(docs_path, input.file, project_root);
 
   if (!from_rel.endsWith('.md')) {
     errors.push(`Not a markdown file: ${from_rel}`);
@@ -114,7 +116,7 @@ export async function archive_doc(
   }
 
   const from_abs = join(docs_path, from_rel);
-  if (!(await exists(from_abs))) {
+  if (!(await is_present(from_abs))) {
     errors.push(`File not found: ${from_rel}`);
     return { ok: false, errors, action: 'rejected', inbound_links: [] };
   }
@@ -122,7 +124,7 @@ export async function archive_doc(
   const to_rel = `${ARCHIVE_DIR}/${from_rel}`;
   const to_abs = join(docs_path, to_rel);
 
-  if (await exists(to_abs)) {
+  if (await is_present(to_abs)) {
     errors.push(
       `Archive target already exists: ${to_rel}. Archiving ${from_rel} would overwrite it. ` +
         `Rename one of them first.`
@@ -145,8 +147,8 @@ export async function archive_doc(
   }
 
   // Stamp lifecycle metadata, then move (git mv preserves history).
-  const raw = await readFile(from_abs, 'utf-8');
-  const { data } = parse_frontmatter<Record<string, unknown>>(raw);
+  const raw_text = await readFile(from_abs, 'utf-8');
+  const { data } = parse_frontmatter<Record<string, unknown>>(raw_text);
   const stamped: Record<string, unknown> = {
     ...data,
     status: 'archived',
@@ -156,9 +158,10 @@ export async function archive_doc(
   if (reason) stamped.archived_reason = reason;
 
   const move_method = await move_file(project_root, from_abs, to_abs);
-  await writeFile(to_abs, set_frontmatter(raw, stamped), 'utf-8');
+  await writeFile(to_abs, set_frontmatter(raw_text, stamped), 'utf-8');
   if (move_method === 'git') {
     try {
+      // eslint-disable-next-line id-denylist -- child_process/glob option name
       execFileSync('git', ['add', to_abs], { cwd: project_root, stdio: 'ignore' });
     } catch {
       /* staging is best-effort */
@@ -198,20 +201,20 @@ export async function unarchive_doc(
   const { project_root, docs_path, dry_run = false } = input;
   const errors: string[] = [];
 
-  const from_rel = to_docs_relative(docs_path, input.file, project_root);
+  const from_rel = resolve_doc_path(docs_path, input.file, project_root);
   if (!from_rel.startsWith(`${ARCHIVE_DIR}/`)) {
     errors.push(`"${from_rel}" is not under ${ARCHIVE_DIR}/ — nothing to unarchive.`);
     return { ok: false, errors, action: 'rejected' };
   }
 
   const from_abs = join(docs_path, from_rel);
-  if (!(await exists(from_abs))) {
+  if (!(await is_present(from_abs))) {
     errors.push(`File not found: ${from_rel}`);
     return { ok: false, errors, action: 'rejected' };
   }
 
-  const raw = await readFile(from_abs, 'utf-8');
-  const { data } = parse_frontmatter<Record<string, unknown>>(raw);
+  const raw_text = await readFile(from_abs, 'utf-8');
+  const { data } = parse_frontmatter<Record<string, unknown>>(raw_text);
 
   // Restore path: prefer the recorded archived_from, else strip the archive/ prefix.
   const to_rel =
@@ -220,7 +223,7 @@ export async function unarchive_doc(
       : from_rel.slice(`${ARCHIVE_DIR}/`.length);
   const to_abs = join(docs_path, to_rel);
 
-  if (await exists(to_abs)) {
+  if (await is_present(to_abs)) {
     errors.push(`Restore target already exists: ${to_rel}. Move or remove it first.`);
     return { ok: false, errors, action: 'rejected', from: from_rel, to: to_rel };
   }
@@ -236,9 +239,10 @@ export async function unarchive_doc(
   delete restored.archived_reason;
 
   const move_method = await move_file(project_root, from_abs, to_abs);
-  await writeFile(to_abs, set_frontmatter(raw, restored), 'utf-8');
+  await writeFile(to_abs, set_frontmatter(raw_text, restored), 'utf-8');
   if (move_method === 'git') {
     try {
+      // eslint-disable-next-line id-denylist -- child_process/glob option name
       execFileSync('git', ['add', to_abs], { cwd: project_root, stdio: 'ignore' });
     } catch {
       /* best-effort */

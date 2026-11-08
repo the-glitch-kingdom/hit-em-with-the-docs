@@ -21,8 +21,8 @@ import { join, resolve } from 'path';
 
 import { migrate_incident } from '../../src/core/knowledge-base/migrate.js';
 import { extract_facts } from '../../src/core/knowledge-base/extract.js';
-import { cite } from '../../src/core/knowledge-base/cite.js';
-import { audit_facts } from '../../src/core/knowledge-base/audit.js';
+import { add_citation } from '../../src/core/knowledge-base/cite.js';
+import { check_facts } from '../../src/core/knowledge-base/audit.js';
 import {
   build_citer_index,
   find_citers_in_index,
@@ -148,7 +148,7 @@ version: '1.0.0'
     expect(facts_md).toContain('alloy-env-set-at-entrypoint-only');
 
     // === Step 3: cite (enrich the playbook) ===
-    const citation = await cite({
+    const citation = await add_citation({
       playbook_path,
       fact_id: 'alloy-env-set-at-entrypoint-only',
     });
@@ -170,7 +170,7 @@ version: '1.0.0'
     expect(index.facts.size).toBe(1);
     expect(index.incidents.size).toBe(1);
 
-    const audit = audit_facts({
+    const audit = check_facts({
       index,
       now: new Date(), // today
       audit_window_days: 90,

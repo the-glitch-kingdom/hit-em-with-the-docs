@@ -104,11 +104,11 @@ export function get_all_domains(): Domain[] {
  * `getAllDomains()` or guard with `isValidDomain()` first, so a miss is a bug.
  */
 export function get_domain_definition(domain: Domain): DomainDefinition {
-  const def = get_registry().definitions.get(domain);
-  if (!def) {
+  const definition = get_registry().definitions.get(domain);
+  if (!definition) {
     throw new Error(`Unknown domain: ${domain}`);
   }
-  return def;
+  return definition;
 }
 
 /** True if `value` is a valid domain in the active set (built-in OR custom). */
@@ -119,7 +119,7 @@ export function is_valid_domain(value: string): value is Domain {
 /** Active domains in a given category. */
 export function get_domains_by_category(category: DomainCategoryArg): Domain[] {
   const reg = get_registry();
-  return reg.ids.filter((d) => reg.definitions.get(d)!.category === category);
+  return reg.ids.filter((doc) => reg.definitions.get(doc)!.category === category);
 }
 type DomainCategoryArg = DomainDefinition['category'];
 
@@ -138,8 +138,8 @@ export function get_all_keywords(): Map<string, Domain[]> {
   const keyword_map = new Map<string, Domain[]>();
 
   for (const id of reg.ids) {
-    const def = reg.definitions.get(id)!;
-    for (const keyword of def.keywords) {
+    const definition = reg.definitions.get(id)!;
+    for (const keyword of definition.keywords) {
       const existing = keyword_map.get(keyword) ?? [];
       existing.push(id);
       keyword_map.set(keyword, existing);

@@ -43,7 +43,7 @@ describe('checkLinks anchors', () => {
 
 describe('anchor scanning matches GitHub more closely (review fixes)', () => {
   it('setext headings, blockquoted headings and combining marks get anchors; frontmatter comments do not', async () => {
-    const { heading_anchors } = await import('../../../src/core/links/anchors');
+    const { extract_heading_anchors: heading_anchors } = await import('../../../src/core/links/anchors');
     const md = '---\ntitle: x\n# foo\n---\n\nTag the release\n---------------\n\nIntro\n=====\n\n> ## Quoted part\n\n# foo\n\n# Café\n';
     const a = heading_anchors(md);
     expect(a.has('tag-the-release')).toBe(true);

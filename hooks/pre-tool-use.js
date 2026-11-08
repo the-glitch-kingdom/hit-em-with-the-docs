@@ -71,7 +71,7 @@ async function main() {
 
   // The decision function ships compiled in dist/, so the hook stays a thin
   // I/O shell and the rules themselves are unit-testable.
-  const { evaluate } = await import('../dist/core/enforce/guard.js');
+  const { check_guard } = await import('../dist/core/enforce/guard.js');
 
   // The active domain ids decide which INDEX.md files hewtd actually generates.
   // Reading them is I/O (the registry merges built-ins with this project's config),
@@ -92,7 +92,7 @@ async function main() {
   }
 
   const toolInput = payload.tool_input ?? {};
-  const decision = evaluate(
+  const decision = check_guard(
     {
       toolName: payload.tool_name,
       filePath: toolInput.file_path,

@@ -68,7 +68,7 @@ export interface UnusedDependency {
 /**
  * Analyze project dependencies
  */
-export async function analyze_dependencies(
+export async function discover_dependencies(
   options: DependencyAnalysisOptions
 ): Promise<DependencyAnalysis> {
   const { root_path, silent = false } = options;
@@ -79,14 +79,14 @@ export async function analyze_dependencies(
   }
 
   // Analyze package.json dependencies
-  const packages = await analyze_packages(root_path);
+  const packages = await scan_packages(root_path);
 
   if (!silent) {
     logger.info(`Found ${packages.total} packages (${packages.production} prod, ${packages.development} dev)`);
   }
 
   // Analyze module imports
-  const modules = await analyze_modules(root_path);
+  const modules = await scan_modules(root_path);
 
   if (!silent) {
     logger.info(`Analyzed ${modules.total_files} files, ${modules.imports} imports`);
@@ -96,7 +96,7 @@ export async function analyze_dependencies(
   }
 
   // Check for security issues (basic check)
-  const security = await analyze_security_basic(packages);
+  const security = await scan_security(packages);
 
   // Find unused dependencies
   const unused = await find_unused_dependencies(root_path, packages);
@@ -116,7 +116,7 @@ export async function analyze_dependencies(
 /**
  * Analyze package.json
  */
-async function analyze_packages(root_path: string): Promise<PackageAnalysis> {
+async function scan_packages(root_path: string): Promise<PackageAnalysis> {
   const result: PackageAnalysis = {
     total: 0,
     production: 0,
@@ -133,11 +133,11 @@ async function analyze_packages(root_path: string): Promise<PackageAnalysis> {
 
   try {
     const content = await readFile(package_json_path, 'utf-8');
-    const pkg = JSON.parse(content);
+    const package_info = JSON.parse(content);
 
     // Production dependencies
-    if (pkg.dependencies) {
-      for (const [name, version] of Object.entries(pkg.dependencies)) {
+    if (package_info.dependencies) {
+      for (const [name, version] of Object.entries(package_info.dependencies)) {
         result.dependencies.push({
           name,
           version: String(version),
@@ -148,8 +148,8 @@ async function analyze_packages(root_path: string): Promise<PackageAnalysis> {
     }
 
     // Dev dependencies
-    if (pkg.devDependencies) {
-      for (const [name, version] of Object.entries(pkg.devDependencies)) {
+    if (package_info.devDependencies) {
+      for (const [name, version] of Object.entries(package_info.devDependencies)) {
         result.dev_dependencies.push({
           name,
           version: String(version),
@@ -170,7 +170,7 @@ async function analyze_packages(root_path: string): Promise<PackageAnalysis> {
 /**
  * Analyze module imports and dependencies
  */
-async function analyze_modules(root_path: string): Promise<ModuleAnalysis> {
+async function scan_modules(root_path: string): Promise<ModuleAnalysis> {
   const result: ModuleAnalysis = {
     total_files: 0,
     imports: 0,
@@ -180,6 +180,7 @@ async function analyze_modules(root_path: string): Promise<ModuleAnalysis> {
 
   // Find all source files
   const files = await glob('**/*.{ts,tsx,js,jsx}', {
+    // eslint-disable-next-line id-denylist -- child_process/glob option name
     cwd: root_path,
     absolute: true,
     ignore: ['**/node_modules/**', '**/dist/**', '**/build/**'],
@@ -284,7 +285,7 @@ function detect_circular_dependencies(
   const visited = new Set<string>();
   const recursion_stack = new Set<string>();
 
-  function dfs(node: string, path: string[]): boolean {
+  function has_cycle_from(node: string, path: string[]): boolean {
     if (recursion_stack.has(node)) {
       // Found a cycle
       const cycle_start = path.indexOf(node);
@@ -304,7 +305,7 @@ function detect_circular_dependencies(
 
     const imports = graph.get(node) ?? new Set();
     for (const imported of imports) {
-      dfs(imported, [...path]);
+      has_cycle_from(imported, [...path]);
     }
 
     recursion_stack.delete(node);
@@ -313,7 +314,7 @@ function detect_circular_dependencies(
 
   for (const node of graph.keys()) {
     if (!visited.has(node)) {
-      dfs(node, []);
+      has_cycle_from(node, []);
     }
   }
 
@@ -335,7 +336,7 @@ function detect_circular_dependencies(
 /**
  * Basic security check (pattern-based)
  */
-async function analyze_security_basic(
+async function scan_security(
   packages: PackageAnalysis
 ): Promise<SecurityAnalysis> {
   const vulnerabilities: SecurityVulnerability[] = [];
@@ -361,12 +362,12 @@ async function analyze_security_basic(
 
   const all_packages = [...packages.dependencies, ...packages.dev_dependencies];
 
-  for (const pkg of all_packages) {
-    const vuln = known_vulnerable[pkg.name];
+  for (const package_info of all_packages) {
+    const vuln = known_vulnerable[package_info.name];
     if (vuln) {
       // Check version (simplified - real implementation would do proper semver comparison)
       vulnerabilities.push({
-        package: pkg.name,
+        package: package_info.name,
         severity: vuln.severity,
         title: vuln.title,
         recommendation: vuln.fix,
@@ -388,6 +389,7 @@ async function find_unused_dependencies(
 
   // Get all source files
   const files = await glob('**/*.{ts,tsx,js,jsx,json}', {
+    // eslint-disable-next-line id-denylist -- child_process/glob option name
     cwd: root_path,
     absolute: true,
     ignore: ['**/node_modules/**', '**/dist/**'],
@@ -407,11 +409,11 @@ async function find_unused_dependencies(
   // Check each dependency
   const all_packages = [...packages.dependencies, ...packages.dev_dependencies];
 
-  for (const pkg of all_packages) {
-    const name = pkg.name;
+  for (const package_info of all_packages) {
+    const name = package_info.name;
 
     // Skip common false positives
-    if (['typescript', '@types/', 'eslint', 'prettier', 'vitest', 'jest'].some((p) => name.includes(p))) {
+    if (['typescript', '@types/', 'eslint', 'prettier', 'vitest', 'jest'].some((substring) => name.includes(substring))) {
       continue;
     }
 
@@ -425,12 +427,12 @@ async function find_unused_dependencies(
       `from "${name}/`,
     ];
 
-    const is_used = import_patterns.some((p) => all_content.includes(p));
+    const is_used = import_patterns.some((import_pattern) => all_content.includes(import_pattern));
 
     if (!is_used) {
       unused.push({
         name,
-        type: pkg.type,
+        type: package_info.type,
         reason: 'No import found in source files',
       });
     }

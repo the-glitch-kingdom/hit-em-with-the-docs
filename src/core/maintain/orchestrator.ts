@@ -2,12 +2,12 @@ import { dirname, join } from 'path';
 import { writeFile, mkdir } from 'fs/promises';
 import { logger } from '../../utils/logger.js';
 import { path_exists, find_markdown_files } from '../../utils/glob.js';
-import { collect_retrieval_docs, retrieval_coverage, type RetrievalCoverage } from '../audit/retrieval.js';
+import { load_retrieval_docs, compute_retrieval_coverage, type RetrievalCoverage } from '../audit/retrieval.js';
 import { find_clusters } from '../links/clusters.js';
 import { add_overview_backlinks, type BacklinkChange } from '../links/backlinks.js';
 import { sync_metadata, type SyncResult } from '../metadata/sync.js';
 import { check_links, type LinkCheckResult } from '../links/checker.js';
-import { audit_documentation, type AuditResult } from '../audit/auditor.js';
+import { check_documentation, type AuditResult } from '../audit/auditor.js';
 import { get_all_domains } from '../domains/registry.js';
 import { format_date } from '../metadata/generator.js';
 import { load_plugin_config, resolve_reports_dir } from '../../utils/config.js';
@@ -113,8 +113,8 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
   // Overview back-links (#51): body edits, so only written under --fix; always listed.
   // Runs before metadata sync so word_count/read-time and the indexes see the edit in the same run.
   try {
-    const cfg = await load_plugin_config(dirname(docs_path));
-    if (cfg.overview.backlinks) {
+    const config = await load_plugin_config(dirname(docs_path));
+    if (config.overview.backlinks) {
       result.overview_backlinks = await add_overview_backlinks(docs_path, { dry_run: !fix });
     }
   } catch (error) {
@@ -166,7 +166,7 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
   // inputs reported different broken-link counts, and a generator fix appeared not to work
   // until you ran maintain twice. Generated output has to exist before anything validates it.
   try {
-    await maybe_generate_kb_indexes(docs_path, silent, result);
+    await ensure_knowledge_base_indexes(docs_path, silent, result);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     result.errors.push(`Knowledge-base index generation failed: ${message}`);
@@ -197,7 +197,7 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
   }
 
   try {
-    result.audit = await audit_documentation({
+    result.audit = await check_documentation({
       docs_path,
       silent,
     });
@@ -208,29 +208,29 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
 
   // Retrieval coverage (#50): shown in the health report only, not part of the score.
   try {
-    const docs = await collect_retrieval_docs(docs_path, await find_markdown_files(docs_path));
-    const cfg = await load_plugin_config(dirname(docs_path));
-    result.retrieval_coverage = retrieval_coverage(docs, cfg.retrieval);
+    const docs = await load_retrieval_docs(docs_path, await find_markdown_files(docs_path));
+    const config = await load_plugin_config(dirname(docs_path));
+    result.retrieval_coverage = compute_retrieval_coverage(docs, config.retrieval);
   } catch (error) {
     result.errors.push(`Retrieval coverage failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   // Overview coverage (#51): clusters with and without an overview.
   try {
-    const cfg = await load_plugin_config(dirname(docs_path));
-    const clusters = await find_clusters(docs_path, cfg.overview);
-    const missing = clusters.filter((c) => !c.overview);
+    const config = await load_plugin_config(dirname(docs_path));
+    const clusters = await find_clusters(docs_path, config.overview);
+    const missing = clusters.filter((cluster) => !cluster.overview);
     result.overview_coverage = {
       withOverview: clusters.length - missing.length,
       withoutOverview: missing.length,
-      missing: missing.map((c) => ({ id: c.id, size: c.members.length, generatedOnlyHub: c.generated_only_hub })),
+      missing: missing.map((cluster) => ({ id: cluster.id, size: cluster.members.length, generatedOnlyHub: cluster.generated_only_hub })),
     };
   } catch (error) {
     result.errors.push(`Overview coverage failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   // Calculate overall health score
-  result.health_score = calculate_health_score(result);
+  result.health_score = compute_health_score(result);
 
   // Generate report
   if (!silent) {
@@ -238,7 +238,7 @@ export async function run_maintenance(options: MaintainOptions): Promise<Maintai
   }
 
   try {
-    result.report_path = await generate_maintenance_report(docs_path, result, start_time);
+    result.report_path = await write_maintenance_report(docs_path, result, start_time);
     if (!silent) {
       logger.success(`Report saved: ${result.report_path}`);
     }
@@ -325,7 +325,7 @@ async function check_domain_health(docs_path: string): Promise<DomainHealthResul
 /**
  * Calculate overall health score
  */
-function calculate_health_score(result: MaintainResult): number {
+function compute_health_score(result: MaintainResult): number {
   let score = 100;
 
   // Domain health penalty
@@ -360,7 +360,7 @@ function calculate_health_score(result: MaintainResult): number {
 /**
  * Generate maintenance report
  */
-async function generate_maintenance_report(
+async function write_maintenance_report(
   docs_path: string,
   result: MaintainResult,
   start_time: number
@@ -406,19 +406,19 @@ generated: true
   } else {
     if (result.domain_health.missingDomains.length > 0) {
       content += `### Missing Domains\n\n`;
-      content += result.domain_health.missingDomains.map((d) => `- ${d}`).join('\n');
+      content += result.domain_health.missingDomains.map((missing_domain) => `- ${missing_domain}`).join('\n');
       content += '\n\n';
     }
 
     if (result.domain_health.missingIndexes.length > 0) {
       content += `### Missing INDEX.md Files\n\n`;
-      content += result.domain_health.missingIndexes.map((d) => `- ${d}/INDEX.md`).join('\n');
+      content += result.domain_health.missingIndexes.map((missing_index) => `- ${missing_index}/INDEX.md`).join('\n');
       content += '\n\n';
     }
 
     if (result.domain_health.missingRegistries.length > 0) {
       content += `### Missing REGISTRY.md Files\n\n`;
-      content += result.domain_health.missingRegistries.map((d) => `- ${d}/REGISTRY.md`).join('\n');
+      content += result.domain_health.missingRegistries.map((missing_registry) => `- ${missing_registry}/REGISTRY.md`).join('\n');
       content += '\n\n';
     }
   }
@@ -521,19 +521,19 @@ generated: true
  * No-op (silent) when the vault root doesn't exist — backward-compat hard
  * requirement: a 2.2.0-era project tree must observe zero behavior change.
  */
-async function maybe_generate_kb_indexes(
+async function ensure_knowledge_base_indexes(
   docs_path: string,
   silent: boolean,
   result: MaintainResult
 ): Promise<void> {
-  const kb = await generate_kb_indexes(docs_path);
-  if (!kb) return;
+  const knowledge_base_indexes = await generate_kb_indexes(docs_path);
+  if (!knowledge_base_indexes) return;
 
   if (!silent) {
     logger.subheader('Step 3.5: Knowledge-base Indexes');
-    logger.success(`Generated ${kb.facts} facts → ${kb.facts_path}`);
-    logger.success(`Generated ${kb.incidents} incidents → ${kb.incidents_path}`);
-    logger.success(`Generated symptoms index → ${kb.symptoms_path}`);
+    logger.success(`Generated ${knowledge_base_indexes.facts} facts → ${knowledge_base_indexes.facts_path}`);
+    logger.success(`Generated ${knowledge_base_indexes.incidents} incidents → ${knowledge_base_indexes.incidents_path}`);
+    logger.success(`Generated symptoms index → ${knowledge_base_indexes.symptoms_path}`);
   }
 
   // Suppress unused-var: result is part of the signature for future use
@@ -544,7 +544,7 @@ async function maybe_generate_kb_indexes(
 /**
  * Quick health check without full maintenance
  */
-export async function quick_health_check(docs_path: string): Promise<{
+export async function check_quick_health(docs_path: string): Promise<{
   healthy: boolean;
   score: number;
   issues: string[];

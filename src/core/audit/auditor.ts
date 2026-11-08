@@ -15,7 +15,7 @@ import { detect_domain_from_path } from '../domains/detector.js';
 import { is_valid_tier, TIERS } from '../domains/classifier.js';
 import { is_valid_domain, get_all_domains } from '../domains/registry.js';
 import { load_plugin_config } from '../../utils/config.js';
-import { collect_retrieval_docs, check_retrieval } from './retrieval.js';
+import { load_retrieval_docs, check_retrieval } from './retrieval.js';
 import { check_overview } from './overview.js';
 import { check_naming_convention, check_file_placement } from './rules.js';
 
@@ -81,7 +81,7 @@ export function count_actionable_issues(issues: { rule: string }[]): number {
   return issues.filter((i) => !/^(RETRIEVAL|OVERVIEW|LINK_BROKEN_ANCHOR)(_|$)/.test(i.rule)).length;
 }
 
-export async function audit_documentation(options: AuditOptions): Promise<AuditResult> {
+export async function check_documentation(options: AuditOptions): Promise<AuditResult> {
   const {
     docs_path,
     domain,
@@ -113,15 +113,15 @@ export async function audit_documentation(options: AuditOptions): Promise<AuditR
 
   // Filter by domain if specified
   if (domain) {
-    files = files.filter((f) => {
-      const rel = relative(docs_path, f);
-      return rel.startsWith(domain + '/') || rel.startsWith(domain + '\\');
+    files = files.filter((file) => {
+      const doc_path = relative(docs_path, file);
+      return doc_path.startsWith(domain + '/') || doc_path.startsWith(domain + '\\');
     });
   }
 
   // Exclude system files
-  files = files.filter((f) => {
-    const name = basename(f);
+  files = files.filter((file) => {
+    const name = basename(file);
     return !['INDEX.md', 'REGISTRY.md'].includes(name);
   });
 
@@ -137,7 +137,7 @@ export async function audit_documentation(options: AuditOptions): Promise<AuditR
   const tag_counts = new Map<string, number>();
 
   for (const file of files) {
-    const file_issues = await audit_file(file, docs_path);
+    const file_issues = await check_file(file, docs_path);
 
     // Track per-file results
     const has_errors = file_issues.some((i) => i.severity === 'error');
@@ -197,7 +197,7 @@ export async function audit_documentation(options: AuditOptions): Promise<AuditR
   // so `audit --strict` (which fails on any coded issue) is unaffected.
   const plugin_cfg = await load_plugin_config(options.project_root);
   const retrieval_cfg = plugin_cfg.retrieval;
-  const retrieval_docs = await collect_retrieval_docs(docs_path, files);
+  const retrieval_docs = await load_retrieval_docs(docs_path, files);
   result.issues.push(...check_retrieval(retrieval_docs, retrieval_cfg));
   result.issues.push(...(await check_overview(docs_path, plugin_cfg.overview)));
 
@@ -207,7 +207,7 @@ export async function audit_documentation(options: AuditOptions): Promise<AuditR
   result.stats.placementCompliance = (placement_compliant / files.length) * 100 || 0;
 
   // Tag consistency: percentage of tags used more than once
-  const tags_used_multiple = [...tag_counts.values()].filter((c) => c > 1).length;
+  const tags_used_multiple = [...tag_counts.values()].filter((tag_total) => tag_total > 1).length;
   result.stats.tagConsistency = tag_counts.size > 0
     ? (tags_used_multiple / tag_counts.size) * 100
     : 100;
@@ -243,7 +243,7 @@ export async function audit_documentation(options: AuditOptions): Promise<AuditR
 /**
  * Audit a single file
  */
-async function audit_file(file_path: string, docs_path: string): Promise<AuditIssue[]> {
+async function check_file(file_path: string, docs_path: string): Promise<AuditIssue[]> {
   const issues: AuditIssue[] = [];
   const rel_path = relative(docs_path, file_path);
 
@@ -294,27 +294,27 @@ async function audit_file(file_path: string, docs_path: string): Promise<AuditIs
     // incident-facts / symptoms). Runs after the partial-schema check so
     // we don't double-report missing universal fields.
     const kb_errors = validate_knowledge_base_fields(data as Record<string, unknown>);
-    for (const err of kb_errors) {
-      const severity = KB_ERROR_SEVERITY[err.code];
+    for (const error of kb_errors) {
+      const severity = KB_ERROR_SEVERITY[error.code];
       issues.push({
         file: rel_path,
-        rule: `metadata-${err.code.toLowerCase().replace(/_/g, '-')}`,
+        rule: `metadata-${error.code.toLowerCase().replace(/_/g, '-')}`,
         severity,
-        message: err.message,
+        message: error.message,
         fixable: false,
-        code: err.code,
+        code: error.code,
       });
     }
 
     // Check domain validity
     if (data.domains) {
-      for (const d of data.domains) {
-        if (!is_valid_domain(d)) {
+      for (const doc of data.domains) {
+        if (!is_valid_domain(doc)) {
           issues.push({
             file: rel_path,
             rule: 'metadata-domain',
             severity: 'warning',
-            message: `Unknown domain: ${d}`,
+            message: `Unknown domain: ${doc}`,
             fixable: false,
             suggestion: 'Consider using a standard domain or adding this as a custom domain',
           });
@@ -453,7 +453,7 @@ async function check_index_drift(
     }
 
     const content = index_content;
-    const unlisted = doc_files.filter((f) => !content.includes(f));
+    const unlisted = doc_files.filter((doc_file) => !content.includes(doc_file));
     if (unlisted.length > 0) {
       issues.push({
         file: `${domain}/INDEX.md`,
@@ -474,11 +474,11 @@ async function check_index_drift(
 /**
  * Get audit summary for a domain
  */
-export async function get_audit_summary_for_domain(
+export async function load_audit_summary_for_domain(
   docs_path: string,
   domain: string
 ): Promise<DomainAuditStats> {
-  const result = await audit_documentation({
+  const result = await check_documentation({
     docs_path,
     domain,
     silent: true,

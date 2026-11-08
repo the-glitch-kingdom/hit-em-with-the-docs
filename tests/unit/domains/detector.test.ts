@@ -3,7 +3,7 @@ import {
   detect_domain,
   detect_domain_from_path,
   detect_domain_from_content,
-  suggest_domains_for_file,
+  find_domains_for_file,
 } from '../../../src/core/domains/detector.js';
 
 describe('Domain Detector', () => {
@@ -125,22 +125,22 @@ Use proper database queries for user validation.
 
   describe('suggestDomainsForFile', () => {
     it('should suggest security for auth-related filename', () => {
-      const suggestions = suggest_domains_for_file('authentication-guide.md');
+      const suggestions = find_domains_for_file('authentication-guide.md');
       expect(suggestions).toContain('security');
     });
 
     it('should suggest api for endpoint-related filename', () => {
-      const suggestions = suggest_domains_for_file('rest-api-endpoints.md');
+      const suggestions = find_domains_for_file('rest-api-endpoints.md');
       expect(suggestions).toContain('api');
     });
 
     it('should suggest testing for test-related filename', () => {
-      const suggestions = suggest_domains_for_file('test-strategy.md');
+      const suggestions = find_domains_for_file('test-strategy.md');
       expect(suggestions).toContain('testing');
     });
 
     it('should return empty array for generic filename', () => {
-      const suggestions = suggest_domains_for_file('readme.md');
+      const suggestions = find_domains_for_file('readme.md');
       expect(suggestions).toBeInstanceOf(Array);
     });
   });

@@ -9,7 +9,7 @@ import { logger } from '../../utils/logger.js';
 import {
   validate_partial_metadata,
   get_missing_required_fields,
-  calculate_metadata_completeness,
+  compute_metadata_completeness,
   type PartialDocumentMetadata,
 } from './schema.js';
 import { generate_metadata, merge_metadata, format_date } from './generator.js';
@@ -121,15 +121,15 @@ export async function sync_metadata(options: SyncOptions): Promise<SyncResult> {
 
   // Filter by domain if specified
   if (domain) {
-    files = files.filter((f) => {
-      const rel = relative(docs_path, f);
-      return rel.startsWith(domain + '/') || rel.startsWith(domain + '\\');
+    files = files.filter((file) => {
+      const doc_path = relative(docs_path, file);
+      return doc_path.startsWith(domain + '/') || doc_path.startsWith(domain + '\\');
     });
   }
 
   // Exclude INDEX.md and REGISTRY.md files (system files)
-  files = files.filter((f) => {
-    const name = f.split(/[/\\]/).pop() ?? '';
+  files = files.filter((file) => {
+    const name = file.split(/[/\\]/).pop() ?? '';
     return !['INDEX.md', 'REGISTRY.md'].includes(name);
   });
 
@@ -265,7 +265,7 @@ async function sync_file(
   // Validate existing metadata
   const validation = validate_partial_metadata(data);
   const missing_required = get_missing_required_fields(data as Record<string, unknown>);
-  result.completeness = calculate_metadata_completeness(data as Record<string, unknown>);
+  result.completeness = compute_metadata_completeness(data as Record<string, unknown>);
 
   // Check if file is valid
   if (validation.valid && missing_required.length === 0) {
@@ -274,7 +274,7 @@ async function sync_file(
 
     // Still update auto-generated fields if fix mode
     if (fix) {
-      const updated = update_auto_fields(data, body);
+      const updated = with_auto_fields(data, body);
       if (JSON.stringify(updated) !== JSON.stringify(data)) {
         if (!dry_run) {
           const new_content = set_frontmatter(content, updated as Record<string, unknown>);
@@ -316,7 +316,7 @@ async function sync_file(
 
   result.fixed = true;
   result.valid = true;
-  result.completeness = calculate_metadata_completeness(merged as unknown as Record<string, unknown>);
+  result.completeness = compute_metadata_completeness(merged as unknown as Record<string, unknown>);
 
   return result;
 }
@@ -324,7 +324,7 @@ async function sync_file(
 /**
  * Update auto-generated fields
  */
-function update_auto_fields(
+function with_auto_fields(
   metadata: PartialDocumentMetadata,
   content: string
 ): PartialDocumentMetadata {
@@ -354,20 +354,20 @@ const DATE_FIELDS = [
  * other tool looking at the same frontmatter.
  */
 function normalize_date_fields<T extends PartialDocumentMetadata>(metadata: T): T {
-  const out = { ...metadata } as Record<string, unknown>;
+  const found = { ...metadata } as Record<string, unknown>;
   for (const field of DATE_FIELDS) {
-    const value = out[field];
+    const value = found[field];
     if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
-      out[field] = value.slice(0, 10);
+      found[field] = value.slice(0, 10);
     }
   }
-  return out as T;
+  return found as T;
 }
 
 /**
  * Get sync statistics for a documentation root
  */
-export async function get_sync_stats(docs_path: string): Promise<SyncStats> {
+export async function load_sync_stats(docs_path: string): Promise<SyncStats> {
   const result = await sync_metadata({
     docs_path,
     dry_run: true,

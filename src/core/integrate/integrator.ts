@@ -94,15 +94,15 @@ export async function integrate_document(
 
     // Secret guard (#61): the whole input is new, so any secret in it refuses the write.
     // --force does not bypass this; only the allowlist/baseline does. Findings are masked.
-    const root = find_git_top(docs_path) ?? dirname(resolve(docs_path));
-    const config = await load_plugin_config(root);
+    const repo_root = find_git_top(docs_path) ?? dirname(resolve(docs_path));
+    const config = await load_plugin_config(repo_root);
     const found = scan_text(content, basename(file_path), config.reconcile.secrets);
-    const secrets = found.filter((f) => f.kind === 'secret');
-    if (!silent) for (const f of found.filter((f) => f.kind === 'personal')) logger.warn(`personal data (${f.rule}) at ${f.file}:${f.line}`);
+    const secrets = found.filter((finding) => finding.kind === 'secret');
+    if (!silent) for (const personal_finding of found.filter((file_item) => file_item.kind === 'personal')) logger.warn(`personal data (${personal_finding.rule}) at ${personal_finding.file}:${personal_finding.line}`);
     if (secrets.length) {
       result.error =
         `Refusing to integrate: ${secrets.length} secret(s) found (rule file:line first4…length): ` +
-        secrets.slice(0, 5).map((f) => `${f.rule} ${f.file}:${f.line} ${f.masked}`).join(', ') +
+        secrets.slice(0, 5).map((secret) => `${secret.rule} ${secret.file}:${secret.line} ${secret.masked}`).join(', ') +
         (secrets.length > 5 ? ` (+${secrets.length - 5} more)` : '') +
         '. Move the value with `hewtd reconcile --secrets` (value to .env.hewtd, pointer left in the doc), ' +
         'or baseline a false positive with `hewtd secrets --baseline-add <file:line> --reason "..."`. --force does not bypass this.';
@@ -145,7 +145,7 @@ export async function integrate_document(
       }
 
       // If high similarity and not force, don't integrate
-      const high_similarity = duplicates.some((d) => d.similarity > 0.7);
+      const high_similarity = duplicates.some((duplicate) => duplicate.similarity > 0.7);
       if (high_similarity && !force && !auto) {
         result.error = 'Potential duplicate detected. Use --force to override.';
         return result;
@@ -164,7 +164,7 @@ export async function integrate_document(
     result.metadata = final_metadata;
 
     // Sources (#61): record cited code files, never `last_verified`.
-    const added = await cited_sources(body, root, config, Array.isArray(existing_metadata.sources) ? existing_metadata.sources : undefined, silent);
+    const added = await load_cited_sources(body, repo_root, config, Array.isArray(existing_metadata.sources) ? existing_metadata.sources : undefined, silent);
     if (added.length) {
       final_metadata.sources = [...(Array.isArray(existing_metadata.sources) ? existing_metadata.sources : []), ...added.map((a) => a.path)];
       result.sources_added = added.map((a) => a.path);
@@ -185,7 +185,7 @@ export async function integrate_document(
     if (domain_override) {
       final_metadata.domains = [
         domain_override,
-        ...(final_metadata.domains ?? []).filter((d) => d !== domain_override),
+        ...(final_metadata.domains ?? []).filter((doc) => doc !== domain_override),
       ];
     }
     const file_name = basename(file_path);
@@ -194,9 +194,9 @@ export async function integrate_document(
 
     // A doc already in the tree must not be copied (that leaves two). Moving it
     // would break inbound links, so only the in-place rewrite is allowed.
-    const rel = relative(resolve(docs_path), resolve(file_path));
-    if (rel && !rel.startsWith('..') && !isAbsolute(rel) && resolve(file_path) !== resolve(target_path)) {
-      result.error = `${rel} is already in the docs tree; use maintain --fix / metadata-sync`;
+    const doc_path = relative(resolve(docs_path), resolve(file_path));
+    if (doc_path && !doc_path.startsWith('..') && !isAbsolute(doc_path) && resolve(file_path) !== resolve(target_path)) {
+      result.error = `${doc_path} is already in the docs tree; use maintain --fix / metadata-sync`;
       return result;
     }
 
@@ -262,9 +262,9 @@ export async function integrate_document(
  * mention), appended after any hand-written entries until `integrate.sources_max` is reached.
  * Best effort: outside a git repo there is nothing to resolve, so nothing is added.
  */
-export async function cited_sources(
+export async function load_cited_sources(
   body: string,
-  root: string,
+  repo_root: string,
   config: PluginConfig,
   hand: unknown[] | undefined,
   silent: boolean
@@ -273,53 +273,54 @@ export async function cited_sources(
   if (room <= 0) return [];
   // `path#symbol` and `path#anchor` fold into the path before extraction
   const text = body.replace(/(\.[A-Za-z]\w{0,4})#[\w.:-]+(?=[`\s)\]]|$)/g, '$1');
-  const count = (s: string): number => text.split(s).length - 1;
-  const cand = new Map<string, { count: number; first: number }>();
-  const add = (path: string, ref: string): void => {
-    const c = cand.get(path) ?? { count: 0, first: text.indexOf(ref) };
-    c.count += count(ref);
-    cand.set(path, c);
+  const count_occurrences = (needle: string): number => text.split(needle).length - 1;
+  const candidate = new Map<string, { count: number; first: number }>();
+  const add_cited_source = (path: string, reference: string): void => {
+    const content = candidate.get(path) ?? { count: 0, first: text.indexOf(reference) };
+    content.count += count_occurrences(reference);
+    candidate.set(path, content);
   };
   try {
-    const idx = build_repo_index(root, config.reconcile.schema_sources);
-    const related: RelatedRepo[] = config.reconcile.related_repos.map((r) => ({ name: r.name, root: resolve(root, r.path) }));
-    const refs = await resolve_references(idx, extract_references(text), { related });
-    for (const r of refs) {
-      if (r.status === 'missing' || r.status === 'unknown') {
-        if (!silent && r.status === 'missing' && r.kind !== 'doc-link') logger.warn(`  ${r.status}: ${r.ref} (not recorded in sources)`);
+    const index = build_repo_index(repo_root, config.reconcile.schema_sources);
+    const sibling_repos: RelatedRepo[] = config.reconcile.related_repos.map((sibling_repo) => ({ name: sibling_repo.name, root: resolve(repo_root, sibling_repo.path) }));
+    const references = await resolve_references(index, extract_references(text), { related: sibling_repos });
+    for (const resolved of references) {
+      if (resolved.status === 'missing' || resolved.status === 'unknown') {
+        if (!silent && resolved.status === 'missing' && resolved.kind !== 'doc-link') logger.warn(`  ${resolved.status}: ${resolved.ref} (not recorded in sources)`);
         continue;
       }
-      if (r.status !== 'ok') continue;
-      if (r.kind === 'path' && r.where) add(r.where, r.ref);
-      else if (r.kind === 'command' && r.ref.startsWith('npm')) {
-        const dir = idx.scripts.get(r.ref.replace(/^\S+ run /, ''));
-        if (r.where) add(r.where, r.ref);
-        else if (dir !== undefined) add(dir ? `${dir}/package.json` : 'package.json', r.ref);
-      } else if ((r.kind === 'symbol' || r.kind === 'env') && r.where && !/^[\w.-]+:/.test(r.where)) {
-        const only = unique_file(root, r.ref);
-        if (only) add(only, r.ref);
+      if (resolved.status !== 'ok') continue;
+      if (resolved.kind === 'path' && resolved.where) add_cited_source(resolved.where, resolved.ref);
+      else if (resolved.kind === 'command' && resolved.ref.startsWith('npm')) {
+        const script_dir = index.scripts.get(resolved.ref.replace(/^\S+ run /, ''));
+        if (resolved.where) add_cited_source(resolved.where, resolved.ref);
+        else if (script_dir !== undefined) add_cited_source(script_dir ? `${script_dir}/package.json` : 'package.json', resolved.ref);
+      } else if ((resolved.kind === 'symbol' || resolved.kind === 'env') && resolved.where && !/^[\w.-]+:/.test(resolved.where)) {
+        const only = find_unique_file(repo_root, resolved.ref);
+        if (only) add_cited_source(only, resolved.ref);
       }
     }
   } catch {
     return []; // not a git checkout: nothing resolvable
   }
-  for (const m of text.matchAll(/\]\((https?:\/\/[^)\s]+)\)|`(https?:\/\/[^`\s]+)`/g)) add((m[1] ?? m[2])!, (m[1] ?? m[2])!);
-  const have = new Set((hand ?? []).filter((h): h is string => typeof h === 'string'));
-  return [...cand]
-    .filter(([p]) => !have.has(p))
+  for (const match of text.matchAll(/\]\((https?:\/\/[^)\s]+)\)|`(https?:\/\/[^`\s]+)`/g)) add_cited_source((match[1] ?? match[2])!, (match[1] ?? match[2])!);
+  const have = new Set((hand ?? []).filter((heading): heading is string => typeof heading === 'string'));
+  return [...candidate]
+    .filter(([heading]) => !have.has(heading))
     .sort((a, b) => b[1].count - a[1].count || a[1].first - b[1].first)
     .slice(0, room)
-    .map(([path, c]) => ({ path, count: c.count }));
+    .map(([path, content]) => ({ path, count: content.count }));
 }
 
 /** Data and generated files: a name found there is not a citation of that file (#58). */
 const NOT_CODE = ['*.md', '*.mdx', '*.json', '*.jsonl', '*.csv', '*.tsv', '*.txt', '*.log', '*.svg', '*.xml', '*.lock', '*.min.js', '*.map', '*.snap'];
 
 /** The one tracked code file holding `name`, or undefined when it is in none or several (#58). */
-function unique_file(root: string, name: string): string | undefined {
+function find_unique_file(repo_root: string, name: string): string | undefined {
   try {
-    const out = execFileSync('git', ['grep', '-I', '-l', '-w', '-F', '-e', name, '--', '.', ...NOT_CODE.map((g) => `:!${g}`)], { cwd: root, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
-    const files = out.split('\n').filter(Boolean);
+    // eslint-disable-next-line id-denylist -- child_process/glob option name
+    const found = execFileSync('git', ['grep', '-I', '-l', '-w', '-F', '-e', name, '--', '.', ...NOT_CODE.map((graph) => `:!${graph}`)], { cwd: repo_root, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const files = found.split('\n').filter(Boolean);
     return files.length === 1 ? files[0] : undefined;
   } catch {
     return undefined;
@@ -353,7 +354,7 @@ async function find_duplicates(
       const title_similarity = max_len > 0 ? 1 - title_distance / max_len : 1;
 
       // Also check content similarity (simple approach: word overlap)
-      const content_similarity = calculate_content_similarity(content, file_content);
+      const content_similarity = compute_content_similarity(content, file_content);
 
       // Combined similarity
       const similarity = title_similarity * 0.6 + content_similarity * 0.4;
@@ -376,7 +377,7 @@ async function find_duplicates(
 /**
  * Calculate content similarity using word overlap
  */
-function calculate_content_similarity(content1: string, content2: string): number {
+function compute_content_similarity(content1: string, content2: string): number {
   const words1 = new Set(content1.toLowerCase().match(/\b\w+\b/g) ?? []);
   const words2 = new Set(content2.toLowerCase().match(/\b\w+\b/g) ?? []);
 
@@ -394,7 +395,7 @@ function calculate_content_similarity(content1: string, content2: string): numbe
 /**
  * Batch integrate multiple documents
  */
-export async function batch_integrate(
+export async function integrate_batch(
   files: string[],
   options: Omit<IntegrateOptions, 'filePath'>
 ): Promise<IntegrateResult[]> {

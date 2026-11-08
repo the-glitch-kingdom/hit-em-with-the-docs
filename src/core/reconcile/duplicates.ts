@@ -8,7 +8,7 @@ import { readFileSync } from 'fs';
 import { readdir } from 'fs/promises';
 import { basename, join, relative } from 'path';
 import { normalize_block } from '../audit/retrieval.js';
-import { flat_sections } from '../links/anchors.js';
+import { build_flat_sections } from '../links/anchors.js';
 import type { PluginConfig } from '../../utils/config.js';
 import { parse_frontmatter } from '../../utils/frontmatter.js';
 import { extract_tokens } from './search.js';
@@ -74,7 +74,7 @@ export async function find_duplicates(docs_path: string, config: PluginConfig): 
     if (find_secrets(raw_text, doc_path, config.reconcile.secrets).some((raw_secret) => raw_secret.finding.kind === 'secret')) continue;
     const doc_label = `${typeof data.title === 'string' ? data.title : ''} ${typeof data.purpose === 'string' ? data.purpose : ''} ${basename(doc_path, '.md')}`;
     const doc_size = extract_tokens(content).length || 1;
-    for (const section of flat_sections(content)) {
+    for (const section of build_flat_sections(content)) {
       if (normalize_block(section.text).length < floor) continue;
       const tokens = extract_tokens(normalize_block(section.text));
       const shingles = new Set<string>();

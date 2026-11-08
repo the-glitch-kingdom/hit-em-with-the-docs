@@ -7,11 +7,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { evaluate, DEFAULT_ENFORCEMENT } from '../../../src/core/enforce/guard.js';
+import { check_guard, DEFAULT_ENFORCEMENT } from '../../../src/core/enforce/guard.js';
 
 const docs_dir = '.documentation';
-const ev = (input: Parameters<typeof evaluate>[0], policy = DEFAULT_ENFORCEMENT) =>
-  evaluate({ docsDir: docs_dir, ...input }, policy);
+const ev = (input: Parameters<typeof check_guard>[0], policy = DEFAULT_ENFORCEMENT) =>
+  check_guard({ docsDir: docs_dir, ...input }, policy);
 
 describe('guard — only denies indexes hewtd actually generates', () => {
   // hewtd writes `<docs>/INDEX.md` and `<docs>/<domain>/INDEX.md` and nothing else
@@ -49,7 +49,7 @@ describe('guard — only denies indexes hewtd actually generates', () => {
     expect(ev({ toolName: 'Edit', filePath: file_path }).action).toBe('allow');
     // Declared as a domain by this project => hewtd does generate it => deny.
     expect(
-      evaluate({ docsDir: docs_dir, toolName: 'Edit', filePath: file_path, domains: ['features/tiers'] }).action
+      check_guard({ docsDir: docs_dir, toolName: 'Edit', filePath: file_path, domains: ['features/tiers'] }).action
     ).toBe('deny');
   });
 

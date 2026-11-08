@@ -2,14 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { check_retrieval, retrieval_coverage, type RetrievalDoc } from '../../../src/core/audit/retrieval.js';
-import { audit_documentation } from '../../../src/core/audit/auditor.js';
+import { check_retrieval, compute_retrieval_coverage, type RetrievalDoc } from '../../../src/core/audit/retrieval.js';
+import { check_documentation } from '../../../src/core/audit/auditor.js';
 import { load_plugin_config } from '../../../src/utils/config.js';
 
 const cfg = (await load_plugin_config('/nonexistent')).retrieval;
 const GOOD = 'Explains how the deploy pipeline promotes builds to production safely';
 const doc = (rel: string, data: Record<string, unknown>, body = 'x'): RetrievalDoc => ({
-  rel,
+  doc_path: rel,
   data: { title: `Title of ${rel}`, purpose: GOOD, ...data },
   body,
 });
@@ -64,7 +64,7 @@ describe('retrieval rules', () => {
       doc('a/p.md', { ...bad, tier: 'plan' }),
     ];
     expect(codes(docs)).toEqual([]);
-    expect(retrieval_coverage(docs, cfg).total).toBe(0);
+    expect(compute_retrieval_coverage(docs, cfg).total).toBe(0);
   });
 
   it('honors config overrides and falls back on invalid values', () => {
@@ -75,7 +75,7 @@ describe('retrieval rules', () => {
   });
 
   it('computes coverage', () => {
-    const c = retrieval_coverage(
+    const c = compute_retrieval_coverage(
       [doc('a/x.md', { symptoms: ['s'] }), doc('a/y.md', { purpose: undefined })],
       cfg
     );
@@ -93,7 +93,7 @@ describe('audit integration', () => {
       await writeFile(join(dir, 'guides', 'a.md'), fm(''));
       await writeFile(join(dir, 'guides', 'INDEX.md'), fm('generated: true\n'));
       await writeFile(join(dir, 'guides', 'plain.md'), fm('generated: true\n'));
-      const r = await audit_documentation({ docs_path: dir, silent: true, project_root: dir });
+      const r = await check_documentation({ docs_path: dir, silent: true, project_root: dir });
       const ret = r.issues.filter((i) => i.rule.startsWith('RETRIEVAL_'));
       expect(ret.length).toBeGreaterThan(0);
       expect(ret.every((i) => i.severity === 'warning' && i.code === undefined)).toBe(true);

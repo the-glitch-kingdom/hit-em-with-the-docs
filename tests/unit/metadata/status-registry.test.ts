@@ -9,7 +9,7 @@ import {
   is_valid_status,
   reset_status_registry,
 } from '../../../src/core/metadata/status-registry.js';
-import { MetadataSchema } from '../../../src/core/metadata/schema.js';
+import { metadata_schema } from '../../../src/core/metadata/schema.js';
 
 /** Write a project config with the given `status` block and return its root. */
 async function project_with_status(status: unknown): Promise<string> {
@@ -140,8 +140,8 @@ describe('MetadataSchema status validation against the active vocabulary', () =>
     process.chdir(root);
     reset_status_registry();
 
-    expect(MetadataSchema.safeParse({ ...base, status: 'complete' }).success).toBe(true);
-    expect(MetadataSchema.safeParse({ ...base, status: 'current' }).success).toBe(true);
+    expect(metadata_schema.safeParse({ ...base, status: 'complete' }).success).toBe(true);
+    expect(metadata_schema.safeParse({ ...base, status: 'current' }).success).toBe(true);
   });
 
   it('still rejects a status outside the active vocabulary', async () => {
@@ -150,7 +150,7 @@ describe('MetadataSchema status validation against the active vocabulary', () =>
     process.chdir(root);
     reset_status_registry();
 
-    const result = MetadataSchema.safeParse({ ...base, status: 'nonsense' });
+    const result = metadata_schema.safeParse({ ...base, status: 'nonsense' });
     expect(result.success).toBe(false);
   });
 
@@ -160,7 +160,7 @@ describe('MetadataSchema status validation against the active vocabulary', () =>
     process.chdir(root);
     reset_status_registry();
 
-    const result = MetadataSchema.safeParse({ ...base, status: 'nonsense' });
+    const result = metadata_schema.safeParse({ ...base, status: 'nonsense' });
     expect(result.success).toBe(false);
     if (result.success) return;
     const message = result.error.issues.find((i) => i.path[0] === 'status')?.message ?? '';
@@ -174,8 +174,8 @@ describe('MetadataSchema status validation against the active vocabulary', () =>
     process.chdir(root);
     reset_status_registry();
 
-    expect(MetadataSchema.safeParse({ ...base, status: 'active' }).success).toBe(true);
-    expect(MetadataSchema.safeParse({ ...base, status: 'complete' }).success).toBe(false);
+    expect(metadata_schema.safeParse({ ...base, status: 'active' }).success).toBe(true);
+    expect(metadata_schema.safeParse({ ...base, status: 'complete' }).success).toBe(false);
   });
 
   it('lifecycle-tracked tiers keep their own status vocabulary, unaffected', async () => {
@@ -184,7 +184,7 @@ describe('MetadataSchema status validation against the active vocabulary', () =>
     process.chdir(root);
     reset_status_registry();
 
-    const plan = MetadataSchema.safeParse({
+    const plan = metadata_schema.safeParse({
       title: 'P',
       tier: 'plan',
       domains: ['plans'],

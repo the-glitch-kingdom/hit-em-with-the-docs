@@ -41,7 +41,7 @@ export interface AuditFactsResult {
   unverifiable: FactRef[];
 }
 
-export function audit_facts(options: AuditFactsOptions): AuditFactsResult {
+export function check_facts(options: AuditFactsOptions): AuditFactsResult {
   const { index, now = new Date(), audit_window_days = 90 } = options;
   const cutoff_ms = now.getTime() - audit_window_days * 24 * 60 * 60 * 1000;
 
@@ -143,14 +143,14 @@ export async function run_fact_verify(
     };
   }
 
-  const cwd =
+  const resolved_working_dir =
     cwd_override ??
     (typeof working_dir === 'string'
       ? resolve(vault_root, working_dir)
       : resolve(vault_root, 'facts'));
 
   if (skip_exec) {
-    return finalize({
+    return write_run_verify_result({
       success: true,
       exit_code: 0,
       stdout: '[skipExec=true]',
@@ -158,22 +158,22 @@ export async function run_fact_verify(
     });
   }
 
-  const result = await exec_shell(verify_command, cwd);
-  return finalize(result);
+  const result = await run_shell(verify_command, resolved_working_dir);
+  return write_run_verify_result(result);
 
-  async function finalize(r: {
+  async function write_run_verify_result(shell_result: {
     success: boolean;
     exit_code: number;
     stdout: string;
     stderr: string;
   }): Promise<RunVerifyResult> {
-    if (!r.success) {
+    if (!shell_result.success) {
       return {
         factId: fact.id,
         executed: true,
-        exitCode: r.exit_code,
-        stdout: r.stdout,
-        stderr: r.stderr,
+        exitCode: shell_result.exit_code,
+        stdout: shell_result.stdout,
+        stderr: shell_result.stderr,
         updated: false,
         newLastVerified: undefined,
       };
@@ -185,9 +185,9 @@ export async function run_fact_verify(
     return {
       factId: fact.id,
       executed: true,
-      exitCode: r.exit_code,
-      stdout: r.stdout,
-      stderr: r.stderr,
+      exitCode: shell_result.exit_code,
+      stdout: shell_result.stdout,
+      stderr: shell_result.stderr,
       updated: true,
       newLastVerified: new_date,
     };
@@ -201,19 +201,20 @@ interface ShellResult {
   stderr: string;
 }
 
-function exec_shell(command: string, cwd: string): Promise<ShellResult> {
+function run_shell(command: string, working_dir: string): Promise<ShellResult> {
   return new Promise((resolve_promise) => {
-    if (!existsSync(cwd)) {
+    if (!existsSync(working_dir)) {
       resolve_promise({
         success: false,
         exit_code: -1,
         stdout: '',
-        stderr: `working dir does not exist: ${cwd}`,
+        stderr: `working dir does not exist: ${working_dir}`,
       });
       return;
     }
 
-    const child = spawn('bash', ['-c', command], { cwd });
+    // eslint-disable-next-line id-denylist -- child_process/glob option name
+    const child = spawn('bash', ['-c', command], { cwd: working_dir });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (chunk) => (stdout += chunk.toString()));
@@ -226,12 +227,12 @@ function exec_shell(command: string, cwd: string): Promise<ShellResult> {
         stderr,
       });
     });
-    child.on('error', (err) => {
+    child.on('error', (error) => {
       resolve_promise({
         success: false,
         exit_code: -1,
         stdout: '',
-        stderr: err.message,
+        stderr: error.message,
       });
     });
   });

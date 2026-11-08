@@ -20,7 +20,7 @@ import { tmpdir } from 'os';
 import { join, relative } from 'path';
 
 import { find_markdown_files } from '../../../src/utils/glob.js';
-import { audit_documentation } from '../../../src/core/audit/auditor.js';
+import { check_documentation } from '../../../src/core/audit/auditor.js';
 
 const DOC = (title: string, domain: string) =>
   [
@@ -104,7 +104,7 @@ describe('reports/ is excluded from documentation scans', () => {
   });
 
   it('raises no audit issues against generated reports', async () => {
-    const result = await audit_documentation({ docs_path });
+    const result = await check_documentation({ docs_path });
     const from_reports = result.issues.filter((i) =>
       i.file.replace(/\\/g, '/').startsWith('reports/')
     );
@@ -114,7 +114,7 @@ describe('reports/ is excluded from documentation scans', () => {
   it('does not degrade as more reports accumulate', async () => {
     // The point of the fix: the score must track documentation quality, not how
     // often maintenance has been run.
-    const before = await audit_documentation({ docs_path });
+    const before = await check_documentation({ docs_path });
 
     for (let i = 0; i < 8; i++) {
       await writeFile(
@@ -124,7 +124,7 @@ describe('reports/ is excluded from documentation scans', () => {
       );
     }
 
-    const after = await audit_documentation({ docs_path });
+    const after = await check_documentation({ docs_path });
     expect(after.issues.length).toBe(before.issues.length);
     expect(after.total_files).toBe(before.total_files);
   });

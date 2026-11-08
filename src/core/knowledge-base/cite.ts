@@ -52,7 +52,7 @@ interface SymptomEntry {
   cites?: string[];
 }
 
-export async function cite(options: CiteOptions): Promise<CiteResult> {
+export async function add_citation(options: CiteOptions): Promise<CiteResult> {
   const { playbook_path, fact_id, symptom_match, dry_run = false } = options;
 
   const content = await readFile(playbook_path, 'utf-8');
@@ -63,8 +63,8 @@ export async function cite(options: CiteOptions): Promise<CiteResult> {
   const symptoms = Array.isArray(data.symptoms)
     ? (data.symptoms as (SymptomEntry | string)[])
     : [];
-  const is_entry = (s: SymptomEntry | string): s is SymptomEntry =>
-    typeof s === 'object' && s !== null;
+  const is_entry = (text: SymptomEntry | string): text is SymptomEntry =>
+    typeof text === 'object' && text !== null;
   const first_entry = symptoms.findIndex(is_entry);
 
   let action: CiteResult['action'];
@@ -84,7 +84,7 @@ export async function cite(options: CiteOptions): Promise<CiteResult> {
     // otherwise default to the first entry.
     let target_idx = first_entry;
     if (symptom_match) {
-      const matched = symptoms.findIndex((s) => is_entry(s) && matches_symptom(s, symptom_match));
+      const matched = symptoms.findIndex((symptom) => is_entry(symptom) && is_symptom_match(symptom, symptom_match));
       if (matched >= 0) target_idx = matched;
     }
 
@@ -117,7 +117,7 @@ export async function cite(options: CiteOptions): Promise<CiteResult> {
   };
 }
 
-function matches_symptom(
+function is_symptom_match(
   entry: SymptomEntry,
   match: NonNullable<CiteOptions['symptom_match']>
 ): boolean {

@@ -6,7 +6,7 @@ import { load_plugin_config } from '../../../src/utils/config.js';
 import {
   load_ledger, write_ledger, build_ledger_entry, is_reviewed, get_ledger_status, compute_content_hash,
 } from '../../../src/core/reconcile/ledger.js';
-import { MetadataSchema } from '../../../src/core/metadata/schema.js';
+import { metadata_schema } from '../../../src/core/metadata/schema.js';
 
 let dir: string;
 beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), 'recon-')); });
@@ -71,7 +71,7 @@ describe('ledger', () => {
 
 describe('schema moved_from', () => {
   it('accepts moved_from, sources, last_verified, confidence on a non-fact tier', () => {
-    const r = MetadataSchema.safeParse({
+    const r = metadata_schema.safeParse({
       title: 'T', tier: 'guide', domains: ['api'], purpose: 'x', version: '1.0.0', status: 'active', last_updated: '2026-01-01',
       moved_from: 'docs/old.md', sources: ['src/a.ts'], last_verified: '2026-01-01', confidence: 'high',
     });

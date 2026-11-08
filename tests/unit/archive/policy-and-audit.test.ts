@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, writeFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { load_plugin_config_sync, DEFAULT_ARCHIVE_CANDIDATE_DAYS } from '../../../src/utils/config.js';
-import { audit_documentation } from '../../../src/core/audit/auditor.js';
+import { check_documentation } from '../../../src/core/audit/auditor.js';
 import { reset_registry } from '../../../src/core/domains/registry.js';
 
 describe('archive config defaults', () => {
@@ -60,7 +60,7 @@ describe('audit nudge: deprecated-not-archived', () => {
       `---\ntitle: Old\ntier: reference\ndomains: [api]\nstatus: deprecated\nlast_updated: '2026-06-01'\nversion: '1.0.0'\n---\n# Old\n`,
       'utf-8'
     );
-    const result = await audit_documentation({ docs_path, silent: true });
+    const result = await check_documentation({ docs_path, silent: true });
     const nudge = result.issues.find((i) => i.rule === 'deprecated-not-archived');
     expect(nudge).toBeDefined();
     expect(nudge!.severity).toBe('info');
@@ -73,7 +73,7 @@ describe('audit nudge: deprecated-not-archived', () => {
       `---\ntitle: Live\ntier: reference\ndomains: [api]\nstatus: active\nlast_updated: '2026-06-01'\nversion: '1.0.0'\n---\n# Live\n`,
       'utf-8'
     );
-    const result = await audit_documentation({ docs_path, silent: true });
+    const result = await check_documentation({ docs_path, silent: true });
     expect(result.issues.find((i) => i.rule === 'deprecated-not-archived')).toBeUndefined();
   });
 });

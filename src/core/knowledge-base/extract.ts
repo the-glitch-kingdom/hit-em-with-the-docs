@@ -148,8 +148,8 @@ export async function extract_facts(
       ? [...(facts_md.data.produced as string[])]
       : [];
     const new_ids = extracted_facts
-      .filter((e) => e.action === 'created')
-      .map((e) => e.id);
+      .filter((extracted_fact) => extracted_fact.action === 'created')
+      .map((extracted_fact) => extracted_fact.id);
     const to_add = new_ids.filter((id) => !existing.includes(id));
     if (to_add.length > 0) {
       const new_data = {
@@ -197,6 +197,6 @@ function render_fact_body(spec: FactSpec): string {
 /**
  * Re-export the resolved vault root so callers don't have to recompute it.
  */
-export function default_vault_root(project_root: string): string {
+export function get_default_vault_root(project_root: string): string {
   return resolve(project_root, '.documentation/knowledge-base');
 }

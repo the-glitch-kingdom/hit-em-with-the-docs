@@ -5,7 +5,7 @@ import {
   is_lifecycle_tracked_tier,
   type Tier,
 } from '../domains/classifier.js';
-import { KB_ERROR_CODES, format_kb_error, type KbErrorCode } from './errors.js';
+import { KB_ERROR_CODES, format_knowledge_base_error, type KbErrorCode } from './errors.js';
 import {
   DOC_STATUS_VALUES,
   get_status_values,
@@ -58,19 +58,19 @@ const core_identity_schema = z.object({
  * `last_updated:` fields) also benefit.
  */
 const date_string_schema = z.preprocess(
-  (v) => {
-    if (v instanceof Date && !Number.isNaN(v.getTime())) {
-      return v.toISOString().slice(0, 10);
+  (value) => {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return value.toISOString().slice(0, 10);
     }
     // A full ISO timestamp carries the date this field is for, so rejecting it
     // outright helped nobody: `2026-04-18T00:00:00.000Z` was neither accepted
     // nor truncated, and no `--fix` could resolve it (#28). Until the engine
     // fix in `utils/frontmatter.ts` these survived only by accident — written
     // unquoted, re-read as a `Date`, and rescued by the branch above.
-    if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) {
-      return v.slice(0, 10);
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
+      return value.slice(0, 10);
     }
-    return v;
+    return value;
   },
   z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD format')
 );
@@ -86,11 +86,12 @@ export const DOC_KIND_VALUES = ['overview'] as const;
 const discovery_schema = z.object({
   kind: z
     .enum(DOC_KIND_VALUES, {
-      errorMap: (issue, ctx) => ({
+      // eslint-disable-next-line @typescript-eslint/naming-convention -- zod option name
+      errorMap: (issue, context) => ({
         message:
           issue.code === 'invalid_enum_value'
-            ? `Invalid kind "${String(ctx.data)}". Allowed values: ${DOC_KIND_VALUES.join(', ')}`
-            : ctx.defaultError,
+            ? `Invalid kind "${String(context.data)}". Allowed values: ${DOC_KIND_VALUES.join(', ')}`
+            : context.defaultError,
       }),
     })
     .optional(),
@@ -271,15 +272,15 @@ const refine_incident_facts_requirements = (
  */
 const refine_symptoms_entries = (data: z.infer<typeof _base_merged_schema>) => {
   if (!Array.isArray(data.symptoms)) return true;
-  for (const s of data.symptoms) {
-    if (typeof s === 'string') continue;
+  for (const symptom of data.symptoms) {
+    if (typeof symptom === 'string') continue;
     const has_key =
-      s.alert_name !== undefined ||
-      s.user_phrase !== undefined ||
-      s.error_pattern !== undefined;
+      symptom.alert_name !== undefined ||
+      symptom.user_phrase !== undefined ||
+      symptom.error_pattern !== undefined;
     if (!has_key) return false;
-    if (typeof s.target !== 'string' || s.target.length === 0) return false;
-    if (!Array.isArray(s.cites) || s.cites.length === 0) return false;
+    if (typeof symptom.target !== 'string' || symptom.target.length === 0) return false;
+    if (!Array.isArray(symptom.cites) || symptom.cites.length === 0) return false;
   }
   return true;
 };
@@ -300,7 +301,7 @@ const refine_symptoms_entries = (data: z.infer<typeof _base_merged_schema>) => {
  *   - incident-facts: title, tier, domains, status, last_updated,
  *       incident_id, produced (no version)
  */
-export const MetadataSchema = _base_merged_schema
+export const metadata_schema = _base_merged_schema
   .refine(refine_version_required, {
     message: 'version is required unless tier is plan, fact, incident-narrative, or incident-facts',
     path: ['version'],
@@ -312,43 +313,43 @@ export const MetadataSchema = _base_merged_schema
     path: ['status'],
   }))
   .refine(refine_fact_requirements, {
-    message: format_kb_error(
+    message: format_knowledge_base_error(
       KB_ERROR_CODES.FACT_MISSING_ID,
       'fact tier requires id (kebab-case), confidence (high|medium|low|hypothesis), last_verified (YYYY-MM-DD), and provenance (≥1 entry)'
     ),
     path: ['fact'],
   })
   .refine(refine_incident_narrative_requirements, {
-    message: format_kb_error(
+    message: format_knowledge_base_error(
       KB_ERROR_CODES.INCIDENT_NARRATIVE_MISSING_DATE,
       'incident-narrative tier requires id, date (YYYY-MM-DD), severity (low|medium|high|critical), resolution_status (resolved|partial|open|planned), and components (array)'
     ),
     path: ['incident-narrative'],
   })
   .refine(refine_incident_facts_requirements, {
-    message: format_kb_error(
+    message: format_knowledge_base_error(
       KB_ERROR_CODES.INCIDENT_FACTS_MISSING_INCIDENT_ID,
       'incident-facts tier requires incident_id and produced (array, may be empty)'
     ),
     path: ['incident-facts'],
   })
   .refine(refine_symptoms_entries, {
-    message: format_kb_error(
+    message: format_knowledge_base_error(
       KB_ERROR_CODES.PLAYBOOK_SYMPTOM_MISSING_KEY,
       'each symptoms[] entry requires one of alert_name|user_phrase|error_pattern AND a target AND a non-empty cites[] array (or be a plain string, on any tier)'
     ),
     path: ['symptoms'],
   });
 
-export type DocumentMetadata = z.infer<typeof MetadataSchema>;
+export type DocumentMetadata = z.infer<typeof metadata_schema>;
 
 /**
  * Partial schema for documents that may have incomplete metadata.
  * Built from the un-refined base so every field is optional regardless of
  * tier — used by `hewtd fix` to identify incomplete docs.
  */
-export const PartialMetadataSchema = _base_merged_schema.partial();
-export type PartialDocumentMetadata = z.infer<typeof PartialMetadataSchema>;
+export const partial_metadata_schema = _base_merged_schema.partial();
+export type PartialDocumentMetadata = z.infer<typeof partial_metadata_schema>;
 
 /**
  * Required fields shared across all tiers.
@@ -445,14 +446,14 @@ export function validate_metadata(data: unknown): {
   errors: string[];
   data?: DocumentMetadata;
 } {
-  const result = MetadataSchema.safeParse(data);
+  const result = metadata_schema.safeParse(data);
 
   if (result.success) {
     return { valid: true, errors: [], data: result.data };
   }
 
   const errors = result.error.errors.map(
-    (e) => `${e.path.join('.')}: ${e.message}`
+    (error) => `${error.path.join('.')}: ${error.message}`
   );
 
   return { valid: false, errors };
@@ -650,12 +651,12 @@ export function validate_knowledge_base_fields(
       if (typeof data.symptoms[i] === 'string') {
         continue;
       }
-      const s = data.symptoms[i] as Record<string, unknown>;
+      const text = data.symptoms[i] as Record<string, unknown>;
       const has_key =
-        typeof s.alert_name === 'string' ||
-        typeof s.user_phrase === 'string' ||
-        Array.isArray(s.user_phrase) ||
-        typeof s.error_pattern === 'string';
+        typeof text.alert_name === 'string' ||
+        typeof text.user_phrase === 'string' ||
+        Array.isArray(text.user_phrase) ||
+        typeof text.error_pattern === 'string';
       if (!has_key) {
         errors.push({
           code: KB_ERROR_CODES.PLAYBOOK_SYMPTOM_MISSING_KEY,
@@ -663,14 +664,14 @@ export function validate_knowledge_base_fields(
           path: `symptoms[${i}]`,
         });
       }
-      if (typeof s.target !== 'string' || s.target.length === 0) {
+      if (typeof text.target !== 'string' || text.target.length === 0) {
         errors.push({
           code: KB_ERROR_CODES.PLAYBOOK_SYMPTOM_MISSING_TARGET,
           message: `symptoms[${i}] requires a target (anchor or path)`,
           path: `symptoms[${i}].target`,
         });
       }
-      if (!Array.isArray(s.cites) || s.cites.length === 0) {
+      if (!Array.isArray(text.cites) || text.cites.length === 0) {
         errors.push({
           code: KB_ERROR_CODES.PLAYBOOK_SYMPTOM_MISSING_CITES,
           message: `symptoms[${i}] requires at least one cite (fact id)`,
@@ -688,14 +689,14 @@ export function validate_partial_metadata(data: unknown): {
   errors: string[];
   data?: PartialDocumentMetadata;
 } {
-  const result = PartialMetadataSchema.safeParse(data);
+  const result = partial_metadata_schema.safeParse(data);
 
   if (result.success) {
     return { valid: true, errors: [], data: result.data };
   }
 
   const errors = result.error.errors.map(
-    (e) => `${e.path.join('.')}: ${e.message}`
+    (error) => `${error.path.join('.')}: ${error.message}`
   );
 
   return { valid: false, errors };
@@ -751,7 +752,7 @@ export function get_missing_fields(
   return { required, optional };
 }
 
-export function calculate_metadata_completeness(
+export function compute_metadata_completeness(
   data: Record<string, unknown>
 ): number {
   const present_fields = ALL_METADATA_FIELDS.filter(

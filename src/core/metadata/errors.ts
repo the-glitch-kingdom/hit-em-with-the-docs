@@ -103,7 +103,7 @@ export const KB_ERROR_SEVERITY: Record<KbErrorCode, 'error' | 'warning'> = {
  * `[CODE]` to populate `AuditIssue.code` without losing the human-readable
  * description.
  */
-export function format_kb_error(code: KbErrorCode, message: string): string {
+export function format_knowledge_base_error(code: KbErrorCode, message: string): string {
   return `[${code}] ${message}`;
 }
 
@@ -113,7 +113,7 @@ const KB_ERROR_PREFIX_RE = /^\[([A-Z_]+)\]\s+(.*)$/;
  * Extract a KB error code from a refine() message, if present. Returns null
  * for messages that don't begin with `[CODE] `.
  */
-export function parse_kb_error_code(
+export function parse_knowledge_base_error_code(
   message: string
 ): { code: KbErrorCode; message: string } | null {
   const match = message.match(KB_ERROR_PREFIX_RE);

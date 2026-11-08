@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
-  MetadataSchema,
+  metadata_schema,
   validate_metadata,
   validate_partial_metadata,
   validate_knowledge_base_fields,
   get_missing_required_fields,
   get_missing_fields,
-  calculate_metadata_completeness,
+  compute_metadata_completeness,
   REQUIRED_FIELDS,
   ALL_METADATA_FIELDS,
   get_field_category,
@@ -171,7 +171,7 @@ describe('Metadata Schema', () => {
         data[field] = 'value';
       }
 
-      const completeness = calculate_metadata_completeness(data);
+      const completeness = compute_metadata_completeness(data);
       expect(completeness).toBe(100);
     });
 
@@ -185,13 +185,13 @@ describe('Metadata Schema', () => {
         version: '1.0.0',
       };
 
-      const completeness = calculate_metadata_completeness(data);
+      const completeness = compute_metadata_completeness(data);
       // 6 out of 21 fields = ~28.57%
       expect(completeness).toBeCloseTo(28.57, 1);
     });
 
     it('should return 0 for empty metadata', () => {
-      const completeness = calculate_metadata_completeness({});
+      const completeness = compute_metadata_completeness({});
       expect(completeness).toBe(0);
     });
   });

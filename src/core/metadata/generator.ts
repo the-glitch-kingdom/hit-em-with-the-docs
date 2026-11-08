@@ -262,7 +262,7 @@ function generate_purpose(content: string): string | undefined {
     .replace(/^---[\s\S]*?---\n*/m, '') // Remove frontmatter
     .replace(/^#+\s+.*$/gm, '') // Remove headings
     .split(/\n\n+/)
-    .filter((p) => p.trim().length > 0);
+    .filter((paragraph) => paragraph.trim().length > 0);
 
   const first_paragraph = paragraphs[0];
   if (first_paragraph && first_paragraph.length > 20 && first_paragraph.length < 200) {

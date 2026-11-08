@@ -18,7 +18,7 @@ import { tmpdir } from 'os';
 import { join, relative } from 'path';
 
 import { find_markdown_files } from '../../../src/utils/glob.js';
-import { audit_documentation } from '../../../src/core/audit/auditor.js';
+import { check_documentation } from '../../../src/core/audit/auditor.js';
 import { check_links } from '../../../src/core/links/checker.js';
 
 describe('archive/ is excluded from every scan, at any depth', () => {
@@ -65,7 +65,7 @@ describe('archive/ is excluded from every scan, at any depth', () => {
   });
 
   it('audit never validates archived content', async () => {
-    const result = await audit_documentation({ docs_path, silent: true });
+    const result = await check_documentation({ docs_path, silent: true });
 
     // No issue may be attributed to a file under an archive/ folder — an
     // archived doc's stale frontmatter is not a problem to be reported.

@@ -4,12 +4,12 @@ import { find_markdown_files, path_exists } from '../../utils/glob.js';
 import { extract_links } from '../../utils/markdown.js';
 import { logger } from '../../utils/logger.js';
 import { detect_domain_from_path } from '../domains/detector.js';
-import { heading_anchors, LINK_BROKEN_ANCHOR } from './anchors.js';
+import { extract_heading_anchors, LINK_BROKEN_ANCHOR } from './anchors.js';
 import type { Domain } from '../domains/constants.js';
 
 // Re-export types from utils/markdown.js
 export { type MarkdownLink } from '../../utils/markdown.js';
-export { heading_anchors as headingAnchors, section_of as sectionOf, LINK_BROKEN_ANCHOR } from './anchors.js';
+export { extract_heading_anchors as headingAnchors, find_section as sectionOf, LINK_BROKEN_ANCHOR } from './anchors.js';
 
 export interface LinkCheckOptions {
   docs_path: string;
@@ -98,9 +98,9 @@ export async function check_links(options: LinkCheckOptions): Promise<LinkCheckR
 
   // Filter by domain if specified
   if (domain) {
-    files = files.filter((f) => {
-      const rel = relative(docs_path, f);
-      return rel.startsWith(domain + '/') || rel.startsWith(domain + '\\');
+    files = files.filter((file) => {
+      const doc_path = relative(docs_path, file);
+      return doc_path.startsWith(domain + '/') || doc_path.startsWith(domain + '\\');
     });
   }
 
@@ -142,10 +142,10 @@ export async function check_links(options: LinkCheckOptions): Promise<LinkCheckR
           } else {
             result.valid_links++;
 
-            const anchor = anchor_of(link.url);
+            const anchor = extract_anchor(link.url);
             if (anchor && target_path.endsWith('.md')) {
               const md = target_path === file ? content : await readFile(target_path, 'utf-8').catch(() => null);
-              if (md !== null && !heading_anchors(md).has(anchor)) {
+              if (md !== null && !extract_heading_anchors(md).has(anchor)) {
                 result.anchor_warnings.push({
                   sourceFile: rel_file,
                   targetPath: link.url,
@@ -177,8 +177,8 @@ export async function check_links(options: LinkCheckOptions): Promise<LinkCheckR
           }
         } else {
           // extractLinks treats `#x` as non-internal; check it against the doc itself (counts unchanged)
-          const self = link.url.startsWith('#') ? anchor_of(link.url) : null;
-          if (self && !heading_anchors(content).has(self)) {
+          const self = link.url.startsWith('#') ? extract_anchor(link.url) : null;
+          if (self && !extract_heading_anchors(content).has(self)) {
             result.anchor_warnings.push({
               sourceFile: rel_file,
               targetPath: link.url,
@@ -234,21 +234,21 @@ export async function check_links(options: LinkCheckOptions): Promise<LinkCheckR
       logger.warn(`Broken: ${result.broken_links.length}`);
     }
     logger.info(`Cross-domain: ${result.stats.crossDomainLinks}`);
-    for (const w of result.anchor_warnings) {
-      logger.warn(`${w.sourceFile}:${w.lineNumber} ${w.targetPath} - ${w.reason}`);
+    for (const word of result.anchor_warnings) {
+      logger.warn(`${word.sourceFile}:${word.lineNumber} ${word.targetPath} - ${word.reason}`);
     }
   }
 
   return result;
 }
 
-function anchor_of(url: string): string | null {
-  const raw = url.split('#')[1];
-  if (!raw) return null;
+function extract_anchor(url: string): string | null {
+  const raw_text = url.split('#')[1];
+  if (!raw_text) return null;
   try {
-    return decodeURIComponent(raw);
+    return decodeURIComponent(raw_text);
   } catch {
-    return raw;
+    return raw_text;
   }
 }
 
@@ -296,7 +296,7 @@ export async function check_single_link(
 /**
  * Get broken links for a specific file
  */
-export async function get_file_broken_links(
+export async function find_file_broken_links(
   file_path: string,
   docs_path: string
 ): Promise<BrokenLink[]> {

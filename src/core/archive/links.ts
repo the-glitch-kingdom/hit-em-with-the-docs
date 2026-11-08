@@ -9,7 +9,7 @@
 
 import { relative, resolve, sep } from 'path';
 import { build_link_graph } from '../links/tracker.js';
-import { is_generated_index_rel } from '../enforce/guard.js';
+import { is_generated_index_relative } from '../enforce/guard.js';
 
 export interface InboundLink {
   /** docs-relative path of the doc that links to the target. */
@@ -33,14 +33,14 @@ export async function find_inbound_links(
   const normalized_target = target_rel_path.replace(/\\/g, '/');
   const graph = await build_link_graph(docs_path);
   return graph.edges
-    .filter((e) => e.target.replace(/\\/g, '/') === normalized_target)
+    .filter((edge) => edge.target.replace(/\\/g, '/') === normalized_target)
     // ponytail: built-in domain shapes only; a custom domain id containing a
     // slash is treated as hand-written, which blocks (the safe direction).
-    .filter((e) => !is_generated_index_rel(e.source))
-    .map((e) => ({
-      source: e.source.replace(/\\/g, '/'),
-      line_number: e.line_number,
-      link_text: e.link_text,
+    .filter((edge) => !is_generated_index_relative(edge.source))
+    .map((edge) => ({
+      source: edge.source.replace(/\\/g, '/'),
+      line_number: edge.line_number,
+      link_text: edge.link_text,
     }));
 }
 
@@ -51,8 +51,8 @@ export async function find_inbound_links(
  * docs-relative worked: a project-relative path became
  * `<docs>/.documentation/...` and was reported as not found.
  */
-export function to_docs_relative(docs_path: string, file: string, base = process.cwd()): string {
-  const abs = resolve(base, file);
-  const rel = abs.startsWith(docs_path + sep) ? relative(docs_path, abs) : file;
-  return rel.replace(/\\/g, '/').replace(/^\.\//, '');
+export function resolve_doc_path(docs_path: string, file: string, base = process.cwd()): string {
+  const abs_path = resolve(base, file);
+  const doc_path = abs_path.startsWith(docs_path + sep) ? relative(docs_path, abs_path) : file;
+  return doc_path.replace(/\\/g, '/').replace(/^\.\//, '');
 }

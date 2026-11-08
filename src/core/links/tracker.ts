@@ -124,8 +124,8 @@ export async function build_domain_connection_matrix(
 
   // Count connections between domains
   for (const edge of graph.edges) {
-    const source_node = graph.nodes.find((n) => n.id === edge.source);
-    const target_node = graph.nodes.find((n) => n.id === edge.target);
+    const source_node = graph.nodes.find((node) => node.id === edge.source);
+    const target_node = graph.nodes.find((node) => node.id === edge.target);
 
     if (source_node?.domain && target_node?.domain) {
       const source_idx = domains.indexOf(source_node.domain);
@@ -148,7 +148,7 @@ export async function build_domain_connection_matrix(
 /**
  * Get top connected domain pairs
  */
-export async function get_top_connected_domains(
+export async function find_top_connected_domains(
   docs_path: string,
   limit: number = 10
 ): Promise<{ from: Domain; to: Domain; count: number }[]> {
@@ -176,7 +176,7 @@ export async function get_top_connected_domains(
 /**
  * Get backlinks for a specific file
  */
-export async function get_backlinks(
+export async function find_backlinks(
   target_file: string,
   docs_path: string
 ): Promise<{ source: string; link_text: string; line_number: number }[]> {
@@ -184,11 +184,11 @@ export async function get_backlinks(
   const target_path = relative(docs_path, target_file).replace(/\\/g, '/');
 
   return graph.edges
-    .filter((e) => e.target === target_path)
-    .map((e) => ({
-      source: e.source,
-      link_text: e.link_text,
-      line_number: e.line_number,
+    .filter((edge) => edge.target === target_path)
+    .map((edge) => ({
+      source: edge.source,
+      link_text: edge.link_text,
+      line_number: edge.line_number,
     }));
 }
 
@@ -199,13 +199,13 @@ export async function find_orphan_files(docs_path: string): Promise<string[]> {
   const graph = await build_link_graph(docs_path);
 
   return graph.nodes
-    .filter((n) => n.in_degree === 0)
-    .filter((n) => {
+    .filter((node) => node.in_degree === 0)
+    .filter((node) => {
       // Exclude index files
-      const name = n.path.split('/').pop() ?? '';
+      const name = node.path.split('/').pop() ?? '';
       return !['INDEX.md', 'REGISTRY.md', 'README.md'].includes(name);
     })
-    .map((n) => n.path);
+    .map((node) => node.path);
 }
 
 /**
@@ -218,14 +218,14 @@ export async function find_hub_files(
   const graph = await build_link_graph(docs_path);
 
   return graph.nodes
-    .filter((n) => n.in_degree >= min_degree || n.out_degree >= min_degree)
+    .filter((node) => node.in_degree >= min_degree || node.out_degree >= min_degree)
     .sort((a, b) => (b.in_degree + b.out_degree) - (a.in_degree + a.out_degree));
 }
 
 /**
  * Get link statistics summary
  */
-export async function get_link_statistics(docs_path: string): Promise<{
+export async function load_link_statistics(docs_path: string): Promise<{
   total_nodes: number;
   total_edges: number;
   avg_in_degree: number;
@@ -236,17 +236,17 @@ export async function get_link_statistics(docs_path: string): Promise<{
 }> {
   const graph = await build_link_graph(docs_path);
 
-  const total_in_degree = graph.nodes.reduce((sum, n) => sum + n.in_degree, 0);
-  const total_out_degree = graph.nodes.reduce((sum, n) => sum + n.out_degree, 0);
+  const total_in_degree = graph.nodes.reduce((sum, node) => sum + node.in_degree, 0);
+  const total_out_degree = graph.nodes.reduce((sum, node) => sum + node.out_degree, 0);
 
-  const orphans = graph.nodes.filter((n) => n.in_degree === 0).length;
-  const hubs = graph.nodes.filter((n) => n.in_degree >= 5 || n.out_degree >= 5).length;
+  const orphans = graph.nodes.filter((node) => node.in_degree === 0).length;
+  const hubs = graph.nodes.filter((node) => node.in_degree >= 5 || node.out_degree >= 5).length;
 
   // Count cross-domain edges
   let cross_domain_edges = 0;
   for (const edge of graph.edges) {
-    const source_node = graph.nodes.find((n) => n.id === edge.source);
-    const target_node = graph.nodes.find((n) => n.id === edge.target);
+    const source_node = graph.nodes.find((node) => node.id === edge.source);
+    const target_node = graph.nodes.find((node) => node.id === edge.target);
 
     if (source_node?.domain && target_node?.domain && source_node.domain !== target_node.domain) {
       cross_domain_edges++;

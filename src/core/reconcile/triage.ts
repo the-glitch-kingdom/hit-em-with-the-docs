@@ -14,7 +14,7 @@ import { find_clusters } from '../links/clusters.js';
 import { build_repo_index, extract_references, add_known_symbols, load_sibling_index, resolve_references, type RelatedRepo, type ResolvedReference } from './references.js';
 import { find_body_change, count_sibling_commits, find_staleness_signal } from './staleness.js';
 import { compute_content_hash, is_reviewed, build_ledger_entry, type Ledger } from './ledger.js';
-import { section_of } from '../links/anchors.js';
+import { find_section } from '../links/anchors.js';
 import { find_duplicates, type Duplicate } from './duplicates.js';
 import { find_secrets, scan_file, type SecretFinding } from './secrets.js';
 
@@ -225,8 +225,7 @@ export async function triage_docs(options: {
   add_known_symbols(index, loaded.flatMap((doc) => doc.references.filter((reference) => reference.kind === 'symbol' || reference.kind === 'env').map((reference) => reference.ref)));
 
   const retrieval = check_retrieval(
-    // eslint-disable-next-line id-denylist -- input key of check_retrieval, owned by core/audit
-    loaded.map((doc) => ({ rel: doc.doc_path, data: doc.data, body: doc.body })),
+    loaded.map((doc) => ({ doc_path: doc.doc_path, data: doc.data, body: doc.body })),
     config.retrieval
   );
   const needs_fields = new Set(retrieval.filter((issue) => /MISSING_PURPOSE|WEAK_PURPOSE|MISSING_SYMPTOMS/.test(issue.rule)).map((issue) => issue.file));
@@ -361,7 +360,7 @@ export async function triage_docs(options: {
     if (ledger_entry?.pointer && lane !== 'secret') {
       const [owner_doc_path, anchor = ''] = ledger_entry.pointer.target.split('#');
       let owner_section_hash: string | undefined;
-      try { const owner_section = section_of(parse_frontmatter<Record<string, unknown>>(readFileSync(resolve(docs_path, owner_doc_path!), 'utf-8')).content, anchor); owner_section_hash = owner_section === null ? undefined : compute_content_hash(owner_section); } catch { /* owner gone */ }
+      try { const owner_section = find_section(parse_frontmatter<Record<string, unknown>>(readFileSync(resolve(docs_path, owner_doc_path!), 'utf-8')).content, anchor); owner_section_hash = owner_section === null ? undefined : compute_content_hash(owner_section); } catch { /* owner gone */ }
       if (owner_section_hash !== ledger_entry.pointer.section_hash) {
         if (lane === 'clean' || lane === 'fields-only') lane = 'check';
         reasons.push(owner_section_hash === undefined ? `pointer target changed: ${ledger_entry.pointer.target} (section missing)` : `pointer target changed: ${ledger_entry.pointer.target}`);

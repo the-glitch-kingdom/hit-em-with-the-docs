@@ -8,7 +8,7 @@ import { isAbsolute, join, relative, resolve } from 'path';
 import { parse_frontmatter } from '../../utils/frontmatter.js';
 import { find_markdown_files } from '../../utils/glob.js';
 import type { PluginConfig } from '../../utils/config.js';
-import { cited_sources } from '../integrate/integrator.js';
+import { load_cited_sources } from '../integrate/integrator.js';
 import { build_phrases, type DroppedPhrase, type PhraseInput } from './phrases.js';
 import { scan_text } from './secrets.js';
 
@@ -196,7 +196,7 @@ export async function classify_gaps(gaps: Gap[], options: { root: string; docs_r
   };
   for (const gap of rest) {
     const body = extract_identifier_body(gap.query);
-    const cited_list = body ? await cited_sources(body, repo_root, config, undefined, true) : [];
+    const cited_list = body ? await load_cited_sources(body, repo_root, config, undefined, true) : [];
     if (!cited_list.length) { classification.questions.push({ query: gap.query, count: gap.count }); continue; }
     const sources = cited_list.map((cited) => cited.path);
     const domain = (await Promise.all(sources.map(find_owner))).find(Boolean);

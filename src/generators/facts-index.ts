@@ -18,7 +18,7 @@
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import type { CiterIndex, FactRef } from '../core/knowledge-base/citers.js';
-import { citer_count } from '../core/knowledge-base/citers.js';
+import { count_citers } from '../core/knowledge-base/citers.js';
 import { format_markdown_table } from './table.js';
 
 const CONFIDENCE_ORDER = ['high', 'medium', 'low', 'hypothesis'] as const;
@@ -104,7 +104,7 @@ export function render_facts_index(index: CiterIndex): string {
           `\`${f.id}\``,
           escape_md(f.title),
           f.lastVerified ?? '—',
-          String(citer_count(index, f.id)),
+          String(count_citers(index, f.id)),
         ]);
 
       lines.push(

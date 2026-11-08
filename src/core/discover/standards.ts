@@ -71,12 +71,14 @@ export async function discover_standards(
 
   // Find all source files
   const ts_files = await glob('**/*.{ts,tsx}', {
+    // eslint-disable-next-line id-denylist -- child_process/glob option name
     cwd: root_path,
     absolute: true,
     ignore: ['**/node_modules/**', '**/dist/**'],
   });
 
   const js_files = await glob('**/*.{js,jsx,mjs}', {
+    // eslint-disable-next-line id-denylist -- child_process/glob option name
     cwd: root_path,
     absolute: true,
     ignore: ['**/node_modules/**', '**/dist/**'],
@@ -162,38 +164,42 @@ async function discover_naming_standards(
   }
 
   // Analyze file naming
-  const file_name_examples = files.slice(0, 20).map((f) => ({
-    name: basename(f),
-    file: relative(root_path, f),
+  const file_name_examples = files.slice(0, 20).map((file) => ({
+    name: basename(file),
+    file: relative(root_path, file),
   }));
 
   return {
-    functions: analyze_naming_convention(function_names, 'camelCase'),
-    classes: analyze_naming_convention(class_names, 'PascalCase'),
-    constants: analyze_naming_convention(constant_names, 'UPPER_SNAKE_CASE'),
-    variables: analyze_naming_convention(variable_names, 'camelCase'),
-    files: analyze_file_naming(file_name_examples),
+    functions: check_naming_convention(function_names, 'camelCase'),
+    classes: check_naming_convention(class_names, 'PascalCase'),
+    constants: check_naming_convention(constant_names, 'UPPER_SNAKE_CASE'),
+    variables: check_naming_convention(variable_names, 'camelCase'),
+    files: check_file_naming(file_name_examples),
   };
 }
 
 /**
  * Analyze naming convention compliance
  */
-function analyze_naming_convention(
+function check_naming_convention(
   names: { name: string; file: string }[],
   expected_convention: string
 ): ConventionCompliance {
   const checks = {
-    camelCase: (n: string) => /^[a-z][a-zA-Z0-9]*$/.test(n),
-    PascalCase: (n: string) => /^[A-Z][a-zA-Z0-9]*$/.test(n),
-    UPPER_SNAKE_CASE: (n: string) => /^[A-Z][A-Z0-9_]*$/.test(n),
-    'kebab-case': (n: string) => /^[a-z][a-z0-9-]*$/.test(n),
-    snake_case: (n: string) => /^[a-z][a-z0-9_]*$/.test(n),
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- key is the convention name being checked
+    camelCase: (name: string) => /^[a-z][a-zA-Z0-9]*$/.test(name),
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- key is the convention name being checked
+    PascalCase: (name: string) => /^[A-Z][a-zA-Z0-9]*$/.test(name),
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- key is the convention name being checked
+    UPPER_SNAKE_CASE: (name: string) => /^[A-Z][A-Z0-9_]*$/.test(name),
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- key is the convention name being checked
+    'kebab-case': (name: string) => /^[a-z][a-z0-9-]*$/.test(name),
+    snake_case: (name: string) => /^[a-z][a-z0-9_]*$/.test(name),
   };
 
   const check = checks[expected_convention as keyof typeof checks] ?? checks.camelCase;
 
-  const compliant = names.filter((n) => check(n.name));
+  const compliant = names.filter((name) => check(name.name));
   const compliance = names.length > 0 ? (compliant.length / names.length) * 100 : 100;
 
   // Detect actual convention used
@@ -201,7 +207,7 @@ function analyze_naming_convention(
   let max_compliance = compliance;
 
   for (const [convention, check_fn] of Object.entries(checks)) {
-    const convention_compliance = names.filter((n) => check_fn(n.name)).length / Math.max(names.length, 1) * 100;
+    const convention_compliance = names.filter((name) => check_fn(name.name)).length / Math.max(names.length, 1) * 100;
     if (convention_compliance > max_compliance) {
       max_compliance = convention_compliance;
       detected_convention = convention;
@@ -211,9 +217,9 @@ function analyze_naming_convention(
   return {
     convention: detected_convention,
     compliance: max_compliance,
-    examples: names.slice(0, 5).map((n) => ({
-      ...n,
-      compliant: check(n.name),
+    examples: names.slice(0, 5).map((name) => ({
+      ...name,
+      compliant: check(name.name),
     })),
   };
 }
@@ -221,13 +227,13 @@ function analyze_naming_convention(
 /**
  * Analyze file naming convention
  */
-function analyze_file_naming(
+function check_file_naming(
   files: { name: string; file: string }[]
 ): ConventionCompliance {
-  const kebab_case = files.filter((f) => /^[a-z][a-z0-9-]*\./.test(f.name)).length;
-  const camel_case = files.filter((f) => /^[a-z][a-zA-Z0-9]*\./.test(f.name)).length;
-  const pascal_case = files.filter((f) => /^[A-Z][a-zA-Z0-9]*\./.test(f.name)).length;
-  const snake_case = files.filter((f) => /^[a-z][a-z0-9_]*\./.test(f.name)).length;
+  const kebab_case = files.filter((file) => /^[a-z][a-z0-9-]*\./.test(file.name)).length;
+  const camel_case = files.filter((file) => /^[a-z][a-zA-Z0-9]*\./.test(file.name)).length;
+  const pascal_case = files.filter((file) => /^[A-Z][a-zA-Z0-9]*\./.test(file.name)).length;
+  const snake_case = files.filter((file) => /^[a-z][a-z0-9_]*\./.test(file.name)).length;
 
   const total = files.length || 1;
   const conventions = [
@@ -242,9 +248,9 @@ function analyze_file_naming(
   return {
     convention: best.name,
     compliance: (best.count / total) * 100,
-    examples: files.slice(0, 5).map((f) => ({
-      ...f,
-      compliant: best.name === 'kebab-case' ? /^[a-z][a-z0-9-]*\./.test(f.name) : true,
+    examples: files.slice(0, 5).map((file) => ({
+      ...file,
+      compliant: best.name === 'kebab-case' ? /^[a-z][a-z0-9-]*\./.test(file.name) : true,
     })),
   };
 }
@@ -275,6 +281,7 @@ async function discover_file_organization(
 
   for (const { pattern: name, glob: glob_pattern } of folder_patterns) {
     const files = await glob(glob_pattern, {
+      // eslint-disable-next-line id-denylist -- child_process/glob option name
       cwd: root_path,
       ignore: ['**/node_modules/**', '**/dist/**'],
     });
@@ -289,8 +296,9 @@ async function discover_file_organization(
   }
 
   // Get root folders
+  // eslint-disable-next-line id-denylist -- child_process/glob option name
   const root_entries = await glob('*', { cwd: root_path });
-  const root_folders = root_entries.filter((e) => !e.includes('.'));
+  const root_folders = root_entries.filter((root_entry) => !root_entry.includes('.'));
 
   return {
     patterns: patterns.sort((a, b) => b.files - a.files),
@@ -447,6 +455,7 @@ async function discover_testing_standards(
 
   for (const pattern of patterns) {
     const files = await glob(pattern, {
+      // eslint-disable-next-line id-denylist -- child_process/glob option name
       cwd: root_path,
       ignore: ['**/node_modules/**'],
     });
@@ -459,6 +468,7 @@ async function discover_testing_standards(
 
   // Check for fixtures
   const fixtures = await glob('**/fixtures/**/*', {
+    // eslint-disable-next-line id-denylist -- child_process/glob option name
     cwd: root_path,
     ignore: ['**/node_modules/**'],
   });

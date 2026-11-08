@@ -17,7 +17,7 @@ import { find_git_top } from './triage.js';
 import { validate_no_secrets, find_secrets } from './secrets.js';
 import { load_plugin_config } from '../../utils/config.js';
 import { apply_outside_entry, build_outside_key } from './outside.js';
-import { heading_anchors, section_of } from '../links/anchors.js';
+import { extract_heading_anchors, find_section } from '../links/anchors.js';
 import { find_missing_tokens } from './noloss.js';
 import { get_member_state } from './overview.js';
 import { build_phrases } from './phrases.js';
@@ -220,8 +220,8 @@ function build_pointer_doc(option: { raw_text: string; entry: ReviewEntry; abs_p
   if (!removed_text || !summary.trim() || /[\r\n]/.test(summary) || !anchor) throw new Error('point needs remove.old, a one-line pointer.summary and a target with #anchor');
   if (owner_abs_path === abs_path) throw new Error('a doc cannot point at itself');
   const owner = parse_frontmatter<Record<string, unknown>>(owner_raw_text);
-  if (!heading_anchors(owner.content).has(anchor)) throw new Error(`anchor #${anchor} not found in ${target.split('#')[0]}`);
-  const section = section_of(owner.content, anchor) ?? '';
+  if (!extract_heading_anchors(owner.content).has(anchor)) throw new Error(`anchor #${anchor} not found in ${target.split('#')[0]}`);
+  const section = find_section(owner.content, anchor) ?? '';
   const missing = find_missing_tokens(removed_text, section, summary);
   if (missing.length) throw new Error(`no-loss check failed, missing: ${missing.join(', ')}`);
   const heading = (section.split('\n')[0] ?? '').replace(/^#+\s*/, '').replace(/\s*\{#[^}]*\}\s*$/, '').trim() || anchor;
@@ -341,10 +341,10 @@ export async function apply_reviews(options: {
         validate_no_secrets([...(entry.patch ?? []).map((patch) => patch.new), entry.draft ?? '', entry.pointer?.summary ?? '', ...(entry.phrases ?? []), JSON.stringify(entry.frontmatter ?? {})].join('\n'), entry.path, secrets_config);
         if (entry.verdict === 'merge') {
           const body = parse_frontmatter(raw_text).content;
-          if (!entry.section || !heading_anchors(body).has(entry.section)) throw new Error(`section #${entry.section ?? ''} not found in ${entry.path}`);
+          if (!entry.section || !extract_heading_anchors(body).has(entry.section)) throw new Error(`section #${entry.section ?? ''} not found in ${entry.path}`);
           if (!entry.patch?.length) throw new Error('merge needs a patch');
           const next = build_edit_doc(raw_text, entry, today);
-          if (!heading_anchors(parse_frontmatter(next).content).has(entry.section)) throw new Error(`section #${entry.section} gone after the merge`);
+          if (!extract_heading_anchors(parse_frontmatter(next).content).has(entry.section)) throw new Error(`section #${entry.section} gone after the merge`);
           // A merge only adds to the owner: whatever a patch replaces must still be there afterwards.
           const lost = [...new Set(entry.patch.flatMap((patch) => find_missing_tokens(patch.old, parse_frontmatter(next).content, '')))];
           if (lost.length) throw new Error(`merge would drop owner text; missing: ${lost.join(', ')}`);
@@ -369,7 +369,7 @@ export async function apply_reviews(options: {
           const owner_raw_text = await readFile(owner_abs_path, 'utf-8');
           if (!entry.depends_on_merge && compute_content_hash(owner_raw_text) !== entry.target_hash) throw new Error('owner doc changed since the review was written (or target_hash missing)');
           await writeFile(abs_path, build_pointer_doc({ raw_text, entry, abs_path, owner_abs_path, owner_raw_text, today }), 'utf-8');
-          pointers.set(entry.path, { target, section_hash: compute_content_hash(section_of(parse_frontmatter<Record<string, unknown>>(owner_raw_text).content, target.split('#')[1] ?? '') ?? '') });
+          pointers.set(entry.path, { target, section_hash: compute_content_hash(find_section(parse_frontmatter<Record<string, unknown>>(owner_raw_text).content, target.split('#')[1] ?? '') ?? '') });
           touched.add(abs_path);
         } else if (entry.verdict === 'phrases') {
           const next = build_phrases_doc(raw_text, entry, config);

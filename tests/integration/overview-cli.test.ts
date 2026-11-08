@@ -26,7 +26,7 @@ const overview_issues = (): string[] =>
       'node',
       [
         '-e',
-        `import('${join(REPO, 'dist/core/audit/auditor.js')}').then(async m=>{const r=await m.audit_documentation({docs_path:process.argv[1],silent:true});console.log(JSON.stringify(r.issues.filter(i=>i.rule&&i.rule.startsWith('OVERVIEW_')).map(i=>i.rule+'|'+i.file+'|'+i.message)))})`,
+        `import('${join(REPO, 'dist/core/audit/auditor.js')}').then(async m=>{const r=await m.check_documentation({docs_path:process.argv[1],silent:true});console.log(JSON.stringify(r.issues.filter(i=>i.rule&&i.rule.startsWith('OVERVIEW_')).map(i=>i.rule+'|'+i.file+'|'+i.message)))})`,
         docs,
       ],
       { encoding: 'utf8', cwd: root }

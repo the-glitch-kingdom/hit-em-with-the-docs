@@ -100,7 +100,7 @@ export async function fix_legacy_layout(
     // Confirm this is genuinely an incident folder by reading the narrative
     // frontmatter — protects against false positives (e.g. user-created
     // folders that happen to contain a narrative.md from some other context).
-    const is_incident = await looks_like_incident_folder(narrative_path);
+    const is_incident = await is_incident_folder(narrative_path);
     if (!is_incident) {
       result.skipped.push({
         path: folder_path,
@@ -144,12 +144,12 @@ export async function fix_legacy_layout(
 
       let did_rewrite = false;
       const new_provenance: string[] = [];
-      for (const ref of provenance) {
-        if (typeof ref !== 'string') {
-          new_provenance.push(ref);
+      for (const reference of provenance) {
+        if (typeof reference !== 'string') {
+          new_provenance.push(reference);
           continue;
         }
-        let rewritten = ref;
+        let rewritten = reference;
         for (const candidate of legacy_candidates) {
           // Generate possible old-ref shapes and rewrite.
           // - relative from project root: `<rel-vault>/<slug>/`
@@ -158,21 +158,21 @@ export async function fix_legacy_layout(
           const rel_old = `${relative(project_root, candidate.from)}/`;
           const rel_new = `${relative(project_root, candidate.to)}/`;
 
-          if (ref === rel_old || ref === rel_old.slice(0, -1)) {
+          if (reference === rel_old || reference === rel_old.slice(0, -1)) {
             rewritten = rel_new;
             break;
           }
-          if (ref === `${candidate.slug}/` || ref === candidate.slug) {
+          if (reference === `${candidate.slug}/` || reference === candidate.slug) {
             // Bare-slug reference; rewrite to the canonical relative path.
             rewritten = rel_new;
             break;
           }
         }
-        if (rewritten !== ref) {
+        if (rewritten !== reference) {
           did_rewrite = true;
           provenance_rewrites.push({
             fact_path,
-            old_ref: ref,
+            old_ref: reference,
             new_ref: rewritten,
           });
         }
@@ -228,7 +228,7 @@ export async function fix_legacy_layout(
   return result;
 }
 
-async function looks_like_incident_folder(narrative_path: string): Promise<boolean> {
+async function is_incident_folder(narrative_path: string): Promise<boolean> {
   try {
     const content = await readFile(narrative_path, 'utf-8');
     const { data } = matter(content);

@@ -3,7 +3,7 @@ import { resolve } from 'path';
 import {
   build_citer_index,
   find_citers_in_index,
-  citer_count,
+  count_citers,
 } from '../../../src/core/knowledge-base/citers.js';
 
 const VALID_FIXTURE_ROOT = resolve(__dirname, '../../fixtures/knowledge-base/valid');
@@ -38,7 +38,7 @@ describe('buildCiterIndex (2.3.0)', () => {
     expect(citation_list).toBeDefined();
     expect(citation_list!.length).toBeGreaterThan(0);
     // Distinct playbook count (citerCount dedups by relPath)
-    expect(citer_count(index, 'alloy-env-set-at-entrypoint-only')).toBe(1);
+    expect(count_citers(index, 'alloy-env-set-at-entrypoint-only')).toBe(1);
   });
 
   it('returns an empty index when vault root has no facts and no incidents', async () => {

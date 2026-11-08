@@ -78,7 +78,7 @@ export async function migrate_incident(
 
   const source_content = await readFile(flat_file_path, 'utf-8');
   const parsed = matter(source_content);
-  const fm = (parsed.data ?? {}) as Record<string, unknown>;
+  const frontmatter = (parsed.data ?? {}) as Record<string, unknown>;
 
   // Derive the target folder name. Priority:
   //   1. Frontmatter `id:` (if YYYY-MM-DD-slug shape)
@@ -86,12 +86,12 @@ export async function migrate_incident(
   //      `incident-2026-09-28-x` becomes `2026-09-28-x`, and an undated name
   //      takes its date from frontmatter `date:` when there is one.
   const flat_base = basename(flat_file_path, '.md');
-  const id_from_frontmatter = typeof fm.id === 'string' ? fm.id : undefined;
-  const fm_date = normalize_date(fm.date);
+  const id_from_frontmatter = typeof frontmatter.id === 'string' ? frontmatter.id : undefined;
+  const fm_date = normalize_date(frontmatter.date);
   const folder_slug =
     id_from_frontmatter && /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/.test(id_from_frontmatter)
       ? id_from_frontmatter
-      : dated_slug(flat_base, fm_date);
+      : build_dated_slug(flat_base, fm_date);
   // 2.3.0 named folders after the raw basename; keep finding those.
   const legacy_slug =
     id_from_frontmatter && /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/.test(id_from_frontmatter)
@@ -110,27 +110,27 @@ export async function migrate_incident(
 
   // Build narrative.md frontmatter — promote/normalize fields, set tier.
   const narrative_frontmatter: Record<string, unknown> = {
-    title: fm.title ?? flat_base,
+    title: frontmatter.title ?? flat_base,
     tier: 'incident-narrative',
-    domains: Array.isArray(fm.domains) ? fm.domains : ['incidents'],
-    status: typeof fm.status === 'string' ? fm.status : 'active',
+    domains: Array.isArray(frontmatter.domains) ? frontmatter.domains : ['incidents'],
+    status: typeof frontmatter.status === 'string' ? frontmatter.status : 'active',
     last_updated:
-      typeof fm.last_updated === 'string'
-        ? fm.last_updated
+      typeof frontmatter.last_updated === 'string'
+        ? frontmatter.last_updated
         : new Date().toISOString().slice(0, 10),
     id: folder_slug,
     // Never a slice of the slug: that wrote `date: incident-2` (#39).
     date:
-      derive_date_from_slug(folder_slug) ??
+      parse_date_from_slug(folder_slug) ??
       fm_date ??
-      normalize_date(fm.last_updated) ??
+      normalize_date(frontmatter.last_updated) ??
       new Date().toISOString().slice(0, 10),
-    severity: typeof fm.severity === 'string' ? fm.severity : 'medium',
+    severity: typeof frontmatter.severity === 'string' ? frontmatter.severity : 'medium',
     resolution_status:
-      typeof fm.resolution_status === 'string' ? fm.resolution_status : 'resolved',
-    components: Array.isArray(fm.components) ? fm.components : ['unknown'],
+      typeof frontmatter.resolution_status === 'string' ? frontmatter.resolution_status : 'resolved',
+    components: Array.isArray(frontmatter.components) ? frontmatter.components : ['unknown'],
   };
-  if (Array.isArray(fm.tags)) narrative_frontmatter.tags = fm.tags;
+  if (Array.isArray(frontmatter.tags)) narrative_frontmatter.tags = frontmatter.tags;
 
   const narrative_content = matter.stringify(parsed.content, narrative_frontmatter);
 
@@ -214,9 +214,9 @@ export async function migrate_incident(
   };
 }
 
-function derive_date_from_slug(slug: string): string | undefined {
-  const m = slug.match(/^(\d{4}-\d{2}-\d{2})/);
-  return m ? m[1] : undefined;
+function parse_date_from_slug(slug: string): string | undefined {
+  const match = slug.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : undefined;
 }
 
 /**
@@ -224,10 +224,10 @@ function derive_date_from_slug(slug: string): string | undefined {
  * or kept as the slug when nothing follows the date). An undated name gets
  * `fallbackDate` prepended when one is known, else stays as-is.
  */
-function dated_slug(name: string, fallback_date: string | undefined): string {
-  const m = name.match(/^(.*?)-?(\d{4}-\d{2}-\d{2})-?(.*)$/);
-  if (m) {
-    const [, prefix, date, rest] = m;
+function build_dated_slug(name: string, fallback_date: string | undefined): string {
+  const match = name.match(/^(.*?)-?(\d{4}-\d{2}-\d{2})-?(.*)$/);
+  if (match) {
+    const [, prefix, date, rest] = match;
     const slug = rest || prefix;
     return slug ? `${date}-${slug}` : date!;
   }

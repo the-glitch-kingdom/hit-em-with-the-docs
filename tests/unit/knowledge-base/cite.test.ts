@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, writeFile, readFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { cite } from '../../../src/core/knowledge-base/cite.js';
+import { add_citation } from '../../../src/core/knowledge-base/cite.js';
 
 describe('cite (2.3.0)', () => {
   let tmp_dir: string;
@@ -39,7 +39,7 @@ symptoms:
       'utf-8'
     );
 
-    const result = await cite({
+    const result = await add_citation({
       playbook_path,
       fact_id: 'new-fact',
     });
@@ -75,7 +75,7 @@ symptoms:
     );
 
     const original = await readFile(playbook_path, 'utf-8');
-    const result = await cite({
+    const result = await add_citation({
       playbook_path,
       fact_id: 'my-fact',
     });
@@ -103,7 +103,7 @@ version: '1.0.0'
       'utf-8'
     );
 
-    const result = await cite({
+    const result = await add_citation({
       playbook_path,
       fact_id: 'new-fact',
     });
@@ -142,7 +142,7 @@ symptoms:
       'utf-8'
     );
 
-    const result = await cite({
+    const result = await add_citation({
       playbook_path,
       fact_id: 'new-fact',
       symptom_match: { alert_name: 'Alert B' },
@@ -182,7 +182,7 @@ symptoms:
     );
 
     const original = await readFile(playbook_path, 'utf-8');
-    const result = await cite({
+    const result = await add_citation({
       playbook_path,
       fact_id: 'new-fact',
       dry_run: true,
@@ -204,13 +204,13 @@ symptoms:
       fm('symptoms:\n  - "pkill -f: Exit code 144"\n  - error_pattern: "x"\n    target: "#a"\n    cites: [old]\n'),
       'utf-8'
     );
-    const on_object = await cite({ playbook_path, fact_id: 'new-fact' });
+    const on_object = await add_citation({ playbook_path, fact_id: 'new-fact' });
     expect(on_object.action).toBe('inserted');
     expect(on_object.symptom_index).toBe(1);
 
     // Only strings → a placeholder entry is appended; the strings stay.
     await writeFile(playbook_path, fm('symptoms:\n  - "pkill -f: Exit code 144"\n'), 'utf-8');
-    const appended = await cite({ playbook_path, fact_id: 'new-fact' });
+    const appended = await add_citation({ playbook_path, fact_id: 'new-fact' });
     expect(appended.action).toBe('created_block');
     expect(appended.symptom_index).toBe(1);
     const after = await readFile(playbook_path, 'utf-8');

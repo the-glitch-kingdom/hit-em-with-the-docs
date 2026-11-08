@@ -4,7 +4,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { find_markdown_files, ARCHIVE_DIR } from '../../src/utils/glob.js';
 import { create_scaffold } from '../../src/generators/scaffold.js';
-import { audit_documentation } from '../../src/core/audit/auditor.js';
+import { check_documentation } from '../../src/core/audit/auditor.js';
 import { reset_registry } from '../../src/core/domains/registry.js';
 
 async function exists(p: string): Promise<boolean> {
@@ -65,7 +65,7 @@ describe('archive/ — deprecated-docs convention', () => {
       'utf-8'
     );
 
-    const result = await audit_documentation({ docs_path, silent: true });
+    const result = await check_documentation({ docs_path, silent: true });
     const flagged_archive = result.issues.some((i) =>
       i.file.includes(`${ARCHIVE_DIR}/`)
     );

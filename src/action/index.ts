@@ -3,12 +3,12 @@ import { resolve } from 'path';
 import { create_scaffold } from '../generators/scaffold.js';
 import { sync_metadata } from '../core/metadata/sync.js';
 import { check_links } from '../core/links/checker.js';
-import { audit_documentation, count_actionable_issues } from '../core/audit/auditor.js';
+import { check_documentation, count_actionable_issues } from '../core/audit/auditor.js';
 import { run_maintenance } from '../core/maintain/orchestrator.js';
 import { discover_patterns } from '../core/discover/patterns.js';
 import { discover_anti_patterns } from '../core/discover/antipatterns.js';
 import { discover_standards } from '../core/discover/standards.js';
-import { analyze_dependencies } from '../core/discover/dependencies.js';
+import { discover_dependencies } from '../core/discover/dependencies.js';
 
 async function run(): Promise<void> {
   try {
@@ -113,7 +113,7 @@ async function run(): Promise<void> {
 
       case 'audit': {
         core.info('Auditing documentation...');
-        const result = await audit_documentation({
+        const result = await check_documentation({
           docs_path,
           ...(domain ? { domain } : {}),
           silent: false,
@@ -145,7 +145,7 @@ async function run(): Promise<void> {
             await discover_standards({ root_path: process.cwd(), silent: false });
             break;
           case 'dependencies':
-            await analyze_dependencies({ root_path: process.cwd(), silent: false });
+            await discover_dependencies({ root_path: process.cwd(), silent: false });
             break;
           default:
             throw new Error(`Unknown discover type: ${discover_type}`);

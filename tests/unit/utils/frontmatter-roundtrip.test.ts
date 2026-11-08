@@ -17,7 +17,7 @@ import {
   stringify_frontmatter,
   set_frontmatter,
 } from '../../../src/utils/frontmatter.js';
-import { MetadataSchema } from '../../../src/core/metadata/schema.js';
+import { metadata_schema } from '../../../src/core/metadata/schema.js';
 
 const doc = (fm: string) => `---\n${fm}\n---\n\nBody text.\n`;
 
@@ -106,13 +106,13 @@ describe('frontmatter round-trip (#28)', () => {
       ].join('\n')
     );
     const round_tripped = parse_frontmatter(set_frontmatter(src, parse_frontmatter(src).data)).data;
-    expect(MetadataSchema.safeParse(round_tripped).success).toBe(true);
+    expect(metadata_schema.safeParse(round_tripped).success).toBe(true);
   });
 });
 
 describe('ISO timestamps in date fields (#28)', () => {
   it('accepts a full ISO timestamp, normalizing it to YYYY-MM-DD', () => {
-    const result = MetadataSchema.safeParse({
+    const result = metadata_schema.safeParse({
       title: 'T',
       tier: 'guide',
       domains: ['procedures'],
@@ -125,7 +125,7 @@ describe('ISO timestamps in date fields (#28)', () => {
   });
 
   it('still rejects a value that is not a date at all', () => {
-    const result = MetadataSchema.safeParse({
+    const result = metadata_schema.safeParse({
       title: 'T',
       tier: 'guide',
       domains: ['procedures'],

@@ -9,49 +9,49 @@ import type { OverviewConfig } from '../../utils/config.js';
 import { KB_ERROR_CODES } from '../metadata/errors.js';
 import type { AuditIssue } from './auditor.js';
 
-const O = KB_ERROR_CODES;
+const error_codes = KB_ERROR_CODES;
 const TEMPLATE = '`templates/overview.template.md`';
 
-export async function check_overview(docs_path: string, cfg: OverviewConfig): Promise<AuditIssue[]> {
-  const on = (c: string): boolean => !cfg.disabled.includes(c);
-  const want_missing = on(O.OVERVIEW_MISSING);
-  const want_stale = on(O.OVERVIEW_STALE_LINKS);
+export async function check_overview(docs_path: string, config: OverviewConfig): Promise<AuditIssue[]> {
+  const is_check_enabled = (content: string): boolean => !config.disabled.includes(content);
+  const want_missing = is_check_enabled(error_codes.OVERVIEW_MISSING);
+  const want_stale = is_check_enabled(error_codes.OVERVIEW_STALE_LINKS);
   if (!want_missing && !want_stale) return [];
 
-  const clusters = await find_clusters(docs_path, cfg);
+  const clusters = await find_clusters(docs_path, config);
   const issues: AuditIssue[] = [];
-  const out = want_stale && clusters.some((c) => c.kind_overview)
+  const found = want_stale && clusters.some((cluster) => cluster.kind_overview)
     ? new Map<string, Set<string>>()
     : null;
-  if (out) {
-    for (const e of (await build_link_graph(docs_path)).edges) {
-      (out.get(e.source) ?? out.set(e.source, new Set()).get(e.source)!).add(e.target);
+  if (found) {
+    for (const edge of (await build_link_graph(docs_path)).edges) {
+      (found.get(edge.source) ?? found.set(edge.source, new Set()).get(edge.source)!).add(edge.target);
     }
   }
 
-  for (const c of clusters) {
-    if (!c.overview) {
+  for (const cluster of clusters) {
+    if (!cluster.overview) {
       if (!want_missing) continue;
       issues.push({
-        file: c.top,
-        rule: O.OVERVIEW_MISSING,
+        file: cluster.top,
+        rule: error_codes.OVERVIEW_MISSING,
         severity: 'warning',
         message:
-          `Flow${c.shared_tags.length ? `: ${c.shared_tags.join(', ')}` : ''} — ${c.members.length} docs (${c.members.slice(0, 5).join(', ')}${c.members.length > 5 ? ', ...' : ''}) have no overview` +
-          (c.generated_only_hub ? '; only a generated index links them all' : ''),
+          `Flow${cluster.shared_tags.length ? `: ${cluster.shared_tags.join(', ')}` : ''} — ${cluster.members.length} docs (${cluster.members.slice(0, 5).join(', ')}${cluster.members.length > 5 ? ', ...' : ''}) have no overview` +
+          (cluster.generated_only_hub ? '; only a generated index links them all' : ''),
         fixable: false,
         suggestion: `Write a \`kind: overview\` doc linking each member, starting from ${TEMPLATE}`,
       });
-    } else if (out && c.kind_overview) {
-      const linked = out.get(c.overview) ?? new Set<string>();
-      const missing = c.members.filter((m) => m !== c.overview && !linked.has(m));
+    } else if (found && cluster.kind_overview) {
+      const linked = found.get(cluster.overview) ?? new Set<string>();
+      const missing = cluster.members.filter((member) => member !== cluster.overview && !linked.has(member));
       if (missing.length === 0) continue;
       issues.push({
-        file: c.overview,
-        rule: O.OVERVIEW_STALE_LINKS,
+        file: cluster.overview,
+        rule: error_codes.OVERVIEW_STALE_LINKS,
         severity: 'warning',
         message:
-          `Overview does not link ${missing.length} of ${c.members.length - 1} cluster docs: ` +
+          `Overview does not link ${missing.length} of ${cluster.members.length - 1} cluster docs: ` +
           missing.slice(0, 5).join(', ') + (missing.length > 5 ? ', ...' : ''),
         fixable: false,
         suggestion: 'Add a link to each missing doc in the overview',

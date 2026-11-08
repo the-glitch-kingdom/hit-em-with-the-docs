@@ -18,7 +18,7 @@
  */
 
 import { logger } from '../../utils/logger.js';
-import { loadPluginConfigSync } from '../../utils/config.js';
+import { load_plugin_config_sync } from '../../utils/config.js';
 import {
   DOMAINS,
   DOMAIN_DEFINITIONS,
@@ -38,8 +38,8 @@ let cached: DomainRegistry | null = null;
  * Build a fresh registry from disk config (no caching). Exposed mainly for
  * tests and for callers that need a registry for a specific project root.
  */
-export function buildRegistry(projectRoot?: string): DomainRegistry {
-  const config = loadPluginConfigSync(projectRoot);
+export function build_registry(repo_root?: string): DomainRegistry {
+  const config = load_plugin_config_sync(repo_root);
 
   const definitions = new Map<Domain, DomainDefinition>();
   const ids: Domain[] = [];
@@ -76,17 +76,17 @@ export function buildRegistry(projectRoot?: string): DomainRegistry {
 
 /**
  * The cached active registry. Built lazily on first access from the config at
- * `process.cwd()` (or `projectRoot` if passed on the first call).
+ * `process.cwd()` (or `repo_root` if passed on the first call).
  */
-export function getRegistry(projectRoot?: string): DomainRegistry {
+export function get_registry(repo_root?: string): DomainRegistry {
   if (!cached) {
-    cached = buildRegistry(projectRoot);
+    cached = build_registry(repo_root);
   }
   return cached;
 }
 
 /** Clear the cached registry. Call this in test setup after mutating config. */
-export function resetRegistry(): void {
+export function reset_registry(): void {
   cached = null;
 }
 
@@ -95,37 +95,37 @@ export function resetRegistry(): void {
 // ---------------------------------------------------------------------------
 
 /** All active domain ids (built-in + custom), in registry order. */
-export function getAllDomains(): Domain[] {
-  return [...getRegistry().ids];
+export function get_all_domains(): Domain[] {
+  return [...get_registry().ids];
 }
 
 /**
  * Definition for an active domain. Throws on an unknown id — callers iterate
  * `getAllDomains()` or guard with `isValidDomain()` first, so a miss is a bug.
  */
-export function getDomainDefinition(domain: Domain): DomainDefinition {
-  const def = getRegistry().definitions.get(domain);
-  if (!def) {
+export function get_domain_definition(domain: Domain): DomainDefinition {
+  const definition = get_registry().definitions.get(domain);
+  if (!definition) {
     throw new Error(`Unknown domain: ${domain}`);
   }
-  return def;
+  return definition;
 }
 
 /** True if `value` is a valid domain in the active set (built-in OR custom). */
-export function isValidDomain(value: string): value is Domain {
-  return getRegistry().definitions.has(value);
+export function is_valid_domain(value: string): value is Domain {
+  return get_registry().definitions.has(value);
 }
 
 /** Active domains in a given category. */
-export function getDomainsByCategory(category: DomainCategoryArg): Domain[] {
-  const reg = getRegistry();
-  return reg.ids.filter((d) => reg.definitions.get(d)!.category === category);
+export function get_domains_by_category(category: DomainCategoryArg): Domain[] {
+  const reg = get_registry();
+  return reg.ids.filter((doc) => reg.definitions.get(doc)!.category === category);
 }
 type DomainCategoryArg = DomainDefinition['category'];
 
 /** Active domains sorted by load priority (highest first). */
-export function getDomainsByPriority(): Domain[] {
-  const reg = getRegistry();
+export function get_domains_by_priority(): Domain[] {
+  const reg = get_registry();
   return [...reg.ids].sort(
     (a, b) =>
       reg.definitions.get(b)!.loadPriority - reg.definitions.get(a)!.loadPriority
@@ -133,18 +133,18 @@ export function getDomainsByPriority(): Domain[] {
 }
 
 /** Map of keyword → domains that declare it, across the active set. */
-export function getAllKeywords(): Map<string, Domain[]> {
-  const reg = getRegistry();
-  const keywordMap = new Map<string, Domain[]>();
+export function get_all_keywords(): Map<string, Domain[]> {
+  const reg = get_registry();
+  const keyword_map = new Map<string, Domain[]>();
 
   for (const id of reg.ids) {
-    const def = reg.definitions.get(id)!;
-    for (const keyword of def.keywords) {
-      const existing = keywordMap.get(keyword) ?? [];
+    const definition = reg.definitions.get(id)!;
+    for (const keyword of definition.keywords) {
+      const existing = keyword_map.get(keyword) ?? [];
       existing.push(id);
-      keywordMap.set(keyword, existing);
+      keyword_map.set(keyword, existing);
     }
   }
 
-  return keywordMap;
+  return keyword_map;
 }

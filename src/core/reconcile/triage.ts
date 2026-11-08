@@ -7,16 +7,16 @@ import { execFileSync } from 'child_process';
 import { existsSync, readFileSync, statSync } from 'fs';
 import { readdir } from 'fs/promises';
 import { join, relative, resolve } from 'path';
-import { parseFrontmatter } from '../../utils/frontmatter.js';
+import { parse_frontmatter } from '../../utils/frontmatter.js';
 import type { PluginConfig } from '../../utils/config.js';
-import { checkRetrieval } from '../audit/retrieval.js';
-import { findClusters } from '../links/clusters.js';
-import { buildRepoIndex, extractReferences, primeSymbols, relatedIndex, resolveReferences, type RelatedRepo, type ResolvedReference } from './references.js';
-import { bodyChange, siblingCommits, stalenessSignal } from './staleness.js';
-import { hashContent, isReviewed, recordEntry, type Ledger } from './ledger.js';
-import { sectionOf } from '../links/anchors.js';
-import { findDuplicates, type Duplicate } from './duplicates.js';
-import { findSecrets, scanFile, type SecretFinding } from './secrets.js';
+import { check_retrieval } from '../audit/retrieval.js';
+import { find_clusters } from '../links/clusters.js';
+import { build_repo_index, extract_references, add_known_symbols, load_sibling_index, resolve_references, type RelatedRepo, type ResolvedReference } from './references.js';
+import { find_body_change, count_sibling_commits, find_staleness_signal } from './staleness.js';
+import { compute_content_hash, is_reviewed, build_ledger_entry, type Ledger } from './ledger.js';
+import { find_section } from '../links/anchors.js';
+import { find_duplicates, type Duplicate } from './duplicates.js';
+import { find_secrets, scan_file, type SecretFinding } from './secrets.js';
 
 export type Lane = 'clean' | 'fields-only' | 'check' | 'archive-candidate' | 'secret';
 
@@ -33,6 +33,7 @@ export interface TriageDoc {
   reasons: string[];
   missing: string[];
   /** every reference the resolver found in the body (additive; `missing` also holds gone `sources`) */
+  // eslint-disable-next-line id-denylist -- serialized key (triage/graph JSON)
   refs: Pick<ResolvedReference, 'kind' | 'ref' | 'status' | 'where' | 'whereKind'>[];
   /** Doc bytes + bytes of the cited files the judgment pass must read. */
   bytes: number;
@@ -68,71 +69,72 @@ export interface TriageResult {
 const MAX_SCAN_BYTES = 2 * 1024 * 1024;
 // Free-text rules: in a cited code file they are too noisy to put the doc in the secret lane.
 const WEAK_RULES = new Set(['generic-secret', 'url-password']);
-const fmtFinding = (f: SecretFinding): string => `${f.rule} ${f.file}:${f.line} ${f.masked}`;
+const format_finding = (finding: SecretFinding): string => `${finding.rule} ${finding.file}:${finding.line} ${finding.masked}`;
 
-async function walkFiles(dir: string, keep: (name: string) => boolean): Promise<string[]> {
-  const out: string[] = [];
-  const walk = async (d: string): Promise<void> => {
-    let ents;
-    try { ents = await readdir(d, { withFileTypes: true }); } catch { return; }
-    for (const e of ents) {
-      if (e.name === '.git' || e.name === 'node_modules') continue;
-      const p = join(d, e.name);
-      if (e.isDirectory()) await walk(p);
-      else if (keep(e.name)) out.push(p);
+async function list_files(dir_path: string, keep: (name: string) => boolean): Promise<string[]> {
+  const found: string[] = [];
+  const list_tree = async (current_dir: string): Promise<void> => {
+    let dirents;
+    try { dirents = await readdir(current_dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of dirents) {
+      if (entry.name === '.git' || entry.name === 'node_modules') continue;
+      const entry_path = join(current_dir, entry.name);
+      if (entry.isDirectory()) await list_tree(entry_path);
+      else if (keep(entry.name)) found.push(entry_path);
     }
   };
-  await walk(dir);
-  return out;
+  await list_tree(dir_path);
+  return found;
 }
 
 /** Findings (kind secret or personal) in archive/, tracked markdown outside the docs root, and .hewtd/. */
-export async function scanPeripheral(root: string, docsPath: string, config: PluginConfig): Promise<SecretFinding[]> {
-  const cfg = config.reconcile.secrets;
-  const top = gitRoot(docsPath) ?? root;
+export async function scan_peripheral(repo_root: string, docs_root: string, config: PluginConfig): Promise<SecretFinding[]> {
+  const secrets_config = config.reconcile.secrets;
+  const git_top = find_git_top(docs_root) ?? repo_root;
   const files = new Map<string, string>(); // abs -> label
-  for (const f of await walkFiles(join(docsPath, 'archive'), (n) => n.endsWith('.md'))) files.set(f, posix(relative(top, f)));
-  for (const f of await walkFiles(join(top, '.hewtd'), () => true)) files.set(f, posix(relative(top, f)));
+  for (const file of await list_files(join(docs_root, 'archive'), (name) => name.endsWith('.md'))) files.set(file, format_posix_path(relative(git_top, file)));
+  for (const file of await list_files(join(git_top, '.hewtd'), () => true)) files.set(file, format_posix_path(relative(git_top, file)));
   try {
-    const docsRel = posix(relative(top, docsPath));
-    const tracked = execFileSync('git', ['ls-files', '*.md'], { cwd: top, encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }).split('\n');
-    for (const f of tracked) if (f && !(docsRel && (f === docsRel || f.startsWith(`${docsRel}/`)))) files.set(join(top, f), f);
+    const docs_rel = format_posix_path(relative(git_top, docs_root));
+    // eslint-disable-next-line id-denylist -- child_process option name
+    const tracked = execFileSync('git', ['ls-files', '*.md'], { cwd: git_top, encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }).split('\n');
+    for (const file of tracked) if (file && !(docs_rel && (file === docs_rel || file.startsWith(`${docs_rel}/`)))) files.set(join(git_top, file), file);
   } catch { /* not a git repo: no outside lane */ }
-  const out: SecretFinding[] = [];
-  for (const [abs, label] of [...files].sort((a, b) => a[1].localeCompare(b[1]))) {
-    try { if (statSync(abs).size > MAX_SCAN_BYTES) continue; } catch { continue; }
-    out.push(...(await scanFile(abs, label, cfg)));
+  const found: SecretFinding[] = [];
+  for (const [abs_path, label] of [...files].sort((a, b) => a[1].localeCompare(b[1]))) {
+    try { if (statSync(abs_path).size > MAX_SCAN_BYTES) continue; } catch { continue; }
+    found.push(...(await scan_file(abs_path, label, secrets_config)));
   }
-  return out;
+  return found;
 }
 
 /** Standalone masked scan for `reconcile --secrets`: no scope = the whole docs root (archive included) plus the periphery. */
-export async function scanSecrets(opts: { root: string; docsPath: string; config: PluginConfig; scope?: string[] }): Promise<SecretFinding[]> {
-  const { root, docsPath, config } = opts;
-  const cfg = config.reconcile.secrets;
-  const abs = opts.scope?.length
-    ? (await resolveScope(docsPath, opts.scope)).map((r) => join(docsPath, r))
-    : (await walkFiles(docsPath, (n) => n.endsWith('.md'))).filter((f) => !f.startsWith(join(docsPath, 'archive') + '/')); // archive/ comes with the periphery
-  const out: SecretFinding[] = [];
-  for (const f of abs.sort()) out.push(...(await scanFile(f, posix(relative(docsPath, f)), cfg)));
-  if (!opts.scope?.length) out.push(...(await scanPeripheral(root, docsPath, config)));
-  return out;
+export async function scan_secrets(options: { root: string; docs_root: string; config: PluginConfig; scope?: string[] }): Promise<SecretFinding[]> {
+  const { root: repo_root, docs_root: docs_root, config } = options;
+  const secrets_config = config.reconcile.secrets;
+  const abs_paths = options.scope?.length
+    ? (await resolve_scope(docs_root, options.scope)).map((doc_path) => join(docs_root, doc_path))
+    : (await list_files(docs_root, (name) => name.endsWith('.md'))).filter((file) => !file.startsWith(join(docs_root, 'archive') + '/')); // archive/ comes with the periphery
+  const found: SecretFinding[] = [];
+  for (const file of abs_paths.sort()) found.push(...(await scan_file(file, format_posix_path(relative(docs_root, file)), secrets_config)));
+  if (!options.scope?.length) found.push(...(await scan_peripheral(repo_root, docs_root, config)));
+  return found;
 }
 
-const posix = (p: string): string => p.split('\\').join('/');
+const format_posix_path = (path_text: string): string => path_text.split('\\').join('/');
 
-export async function mdFiles(dir: string): Promise<string[]> {
-  const out: string[] = [];
-  const walk = async (d: string): Promise<void> => {
-    for (const e of await readdir(d, { withFileTypes: true })) {
-      if (e.name === 'archive' || e.name.startsWith('.')) continue;
-      const p = join(d, e.name);
-      if (e.isDirectory()) await walk(p);
-      else if (e.name.endsWith('.md') && e.name !== 'INDEX.md' && e.name !== 'REGISTRY.md') out.push(p);
+export async function list_markdown_files(dir_path: string): Promise<string[]> {
+  const found: string[] = [];
+  const list_tree = async (doc: string): Promise<void> => {
+    for (const entry of await readdir(doc, { withFileTypes: true })) {
+      if (entry.name === 'archive' || entry.name.startsWith('.')) continue;
+      const path_text = join(doc, entry.name);
+      if (entry.isDirectory()) await list_tree(path_text);
+      else if (entry.name.endsWith('.md') && entry.name !== 'INDEX.md' && entry.name !== 'REGISTRY.md') found.push(path_text);
     }
   };
-  await walk(dir);
-  return out;
+  await list_tree(dir_path);
+  return found;
 }
 
 /**
@@ -140,184 +142,186 @@ export async function mdFiles(dir: string): Promise<string[]> {
  * With `next`, only the first N docs the ledger has not reviewed (or that changed since).
  * No args and no `next` is an error: never the whole tree by default.
  */
-export async function resolveScope(
-  docsPath: string,
+export async function resolve_scope(
+  docs_root: string,
   args: string[],
-  opts: { next?: number; ledger?: Ledger } = {}
+  options: { next?: number; ledger?: Ledger } = {}
 ): Promise<string[]> {
-  if (!args.length && !opts.next) throw new Error('Name a scope (domain, folder or files) or pass --next <n>; reconcile never runs on the whole tree by default.');
-  const set = new Set<string>();
-  if (!args.length) for (const f of await mdFiles(docsPath)) set.add(f);
-  for (const a of args) {
-    const cands = [resolve(a), resolve(docsPath, a)];
-    const hit = cands.find((c) => existsSync(c) && (c === docsPath || c.startsWith(docsPath + '/')));
-    if (!hit) throw new Error(`Scope "${a}" is not a file, folder or domain under ${docsPath}`);
-    if (statSync(hit).isDirectory()) for (const f of await mdFiles(hit)) set.add(f);
-    else set.add(hit);
+  if (!args.length && !options.next) throw new Error('Name a scope (domain, folder or files) or pass --next <n>; reconcile never runs on the whole tree by default.');
+  const scope_files = new Set<string>();
+  if (!args.length) for (const file of await list_markdown_files(docs_root)) scope_files.add(file);
+  for (const scope_arg of args) {
+    const candidates = [resolve(scope_arg), resolve(docs_root, scope_arg)];
+    const scope_match = candidates.find((candidate) => existsSync(candidate) && (candidate === docs_root || candidate.startsWith(docs_root + '/')));
+    if (!scope_match) throw new Error(`Scope "${scope_arg}" is not a file, folder or domain under ${docs_root}`);
+    if (statSync(scope_match).isDirectory()) for (const file of await list_markdown_files(scope_match)) scope_files.add(file);
+    else scope_files.add(scope_match);
   }
-  let rels = [...set].map((f) => posix(relative(docsPath, f))).sort();
-  if (opts.next) {
-    rels = rels
-      .filter((r) => !isReviewed(opts.ledger?.entries[r], hashContent(readFileSync(join(docsPath, r), 'utf-8'))))
-      .slice(0, opts.next);
+  let doc_paths = [...scope_files].map((file) => format_posix_path(relative(docs_root, file))).sort();
+  if (options.next) {
+    doc_paths = doc_paths
+      .filter((doc_path) => !is_reviewed(options.ledger?.entries[doc_path], compute_content_hash(readFileSync(join(docs_root, doc_path), 'utf-8'))))
+      .slice(0, options.next);
   }
-  return rels;
+  return doc_paths;
 }
 
-export function gitRoot(dir: string): string | undefined {
+export function find_git_top(dir_path: string): string | undefined {
   try {
-    return execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    // eslint-disable-next-line id-denylist -- child_process option name
+    return execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir_path, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
   } catch {
     return undefined;
   }
 }
 
 /** Scope files with uncommitted changes (tracked or untracked). Empty outside a git repo. */
-export function dirtyInScope(docsPath: string, rels: string[]): string[] {
-  const root = gitRoot(docsPath);
-  if (!root || !rels.length) return [];
-  const out = execFileSync('git', ['status', '--porcelain', '--', ...rels.map((r) => join(docsPath, r))], {
-    cwd: root, encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'],
+export function find_dirty_in_scope(docs_root: string, doc_paths: string[]): string[] {
+  const git_top = find_git_top(docs_root);
+  if (!git_top || !doc_paths.length) return [];
+  const status_output = execFileSync('git', ['status', '--porcelain', '--', ...doc_paths.map((doc_path) => join(docs_root, doc_path))], {
+    // eslint-disable-next-line id-denylist -- child_process option name
+    cwd: git_top, encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'],
   });
-  return out.split('\n').filter(Boolean).map((l) => l.slice(3));
+  return status_output.split('\n').filter(Boolean).map((line) => line.slice(3));
 }
 
-const nonEmpty = (v: unknown): boolean => (Array.isArray(v) ? v.length > 0 : typeof v === 'string' ? v.trim() !== '' : !!v);
+const is_non_empty = (value: unknown): boolean => (Array.isArray(value) ? value.length > 0 : typeof value === 'string' ? value.trim() !== '' : !!value);
 
-function isAttributed(data: Record<string, unknown>): boolean {
-  const sym = Array.isArray(data.symptoms) ? data.symptoms : [];
+function is_attributed(data: Record<string, unknown>): boolean {
+  const symptoms = Array.isArray(data.symptoms) ? data.symptoms : [];
   const cited =
-    nonEmpty(data.sources) || nonEmpty(data.provenance) || nonEmpty(data.cites) ||
-    sym.some((s) => s && typeof s === 'object' && nonEmpty((s as { cites?: unknown }).cites));
-  return cited && nonEmpty(data.last_verified);
+    is_non_empty(data.sources) || is_non_empty(data.provenance) || is_non_empty(data.cites) ||
+    symptoms.some((symptom) => symptom && typeof symptom === 'object' && is_non_empty((symptom as { cites?: unknown }).cites));
+  return cited && is_non_empty(data.last_verified);
 }
 
-export async function triage(opts: {
+export async function triage_docs(options: {
   root: string;
-  docsPath: string;
+  docs_root: string;
   rels: string[];
   config: PluginConfig;
   mode?: 'serial' | 'team';
   ledger?: Ledger;
 }): Promise<TriageResult> {
-  const { docsPath, rels, config } = opts;
-  const repo = gitRoot(docsPath) ?? opts.root;
-  const idx = buildRepoIndex(repo, config.reconcile.schema_sources);
+  const { docs_root: docs_root, rels: doc_paths, config } = options;
+  const git_top = find_git_top(docs_root) ?? options.root;
+  const index = build_repo_index(git_top, config.reconcile.schema_sources);
   const warnings: string[] = [];
-  const related: RelatedRepo[] = config.reconcile.related_repos.map((r) => ({ name: r.name, root: resolve(opts.root, r.path) }));
-  for (const r of related) {
-    if (!existsSync(r.root)) warnings.push(`related repo "${r.name}" is not checked out at ${r.root}: its references stay unknown`);
+  const sibling_repos: RelatedRepo[] = config.reconcile.related_repos.map((related_repo) => ({ name: related_repo.name, root: resolve(options.root, related_repo.path) }));
+  for (const sibling_repo of sibling_repos) {
+    if (!existsSync(sibling_repo.root)) warnings.push(`related repo "${sibling_repo.name}" is not checked out at ${sibling_repo.root}: its references stay unknown`);
   }
-  const relOf = (where: string | undefined): RelatedRepo | undefined => {
+  const find_sibling_repo = (where: string | undefined): RelatedRepo | undefined => {
     const name = where && /^[\w.-]+:/.exec(where)?.[0].slice(0, -1);
-    return name ? related.find((r) => r.name === name) : undefined;
+    return name ? sibling_repos.find((sibling_repo) => sibling_repo.name === name) : undefined;
   };
 
-  const loaded = rels.map((rel) => {
-    const raw = readFileSync(join(docsPath, rel), 'utf-8');
-    const { data, content } = parseFrontmatter<Record<string, unknown>>(raw);
-    return { rel, raw, data, body: content, refs: extractReferences(content) };
+  const loaded = doc_paths.map((doc_path) => {
+    const raw_text = readFileSync(join(docs_root, doc_path), 'utf-8');
+    const { data, content } = parse_frontmatter<Record<string, unknown>>(raw_text);
+    return { doc_path, raw_text, data, body: content, references: extract_references(content) };
   });
-  primeSymbols(idx, loaded.flatMap((d) => d.refs.filter((r) => r.kind === 'symbol' || r.kind === 'env').map((r) => r.ref)));
+  add_known_symbols(index, loaded.flatMap((doc) => doc.references.filter((reference) => reference.kind === 'symbol' || reference.kind === 'env').map((reference) => reference.ref)));
 
-  const retrieval = checkRetrieval(
-    loaded.map((d) => ({ rel: d.rel, data: d.data, body: d.body })),
+  const retrieval = check_retrieval(
+    loaded.map((doc) => ({ doc_path: doc.doc_path, data: doc.data, body: doc.body })),
     config.retrieval
   );
-  const needsFields = new Set(retrieval.filter((i) => /MISSING_PURPOSE|WEAK_PURPOSE|MISSING_SYMPTOMS/.test(i.rule)).map((i) => i.file));
+  const needs_fields = new Set(retrieval.filter((issue) => /MISSING_PURPOSE|WEAK_PURPOSE|MISSING_SYMPTOMS/.test(issue.rule)).map((issue) => issue.file));
 
-  const cfg = config.reconcile.secrets;
+  const config_item = config.reconcile.secrets;
   // A file a judgment agent would read is scanned once; a finding blocks it (masked results only).
-  const fileScans = new Map<string, Promise<SecretFinding[]>>();
-  const scanCited = (abs: string, label: string): Promise<SecretFinding[]> => {
+  const file_scans = new Map<string, Promise<SecretFinding[]>>();
+  const scan_cited = (abs_path: string, label: string): Promise<SecretFinding[]> => {
     if (LOCKFILE.test(label)) return Promise.resolve([]); // never read by the pass
-    let p = fileScans.get(abs);
-    if (!p) {
+    let scan_promise = file_scans.get(abs_path);
+    if (!scan_promise) {
       let big = false;
-      try { big = statSync(abs).size > MAX_SCAN_BYTES; } catch { /* gone: scanFile yields [] */ }
-      fileScans.set(abs, (p = big ? Promise.resolve([]) : scanFile(abs, label, cfg)));
+      try { big = statSync(abs_path).size > MAX_SCAN_BYTES; } catch { /* gone: scanFile yields [] */ }
+      file_scans.set(abs_path, (scan_promise = big ? Promise.resolve([]) : scan_file(abs_path, label, config_item)));
     }
-    return p;
+    return scan_promise;
   };
-  const peripheral = await scanPeripheral(opts.root, docsPath, config);
+  const peripheral = await scan_peripheral(options.root, docs_root, config);
 
-  const dups = await findDuplicates(docsPath, config);
+  const dups = await find_duplicates(docs_root, config);
   const docs: TriageDoc[] = [];
-  let staleWarned = false;
-  for (const d of loaded) {
-    const abs = join(docsPath, d.rel);
-    const resolved: ResolvedReference[] = await resolveReferences(idx, d.refs, { docFile: abs, docsPath, related });
-    const sources = Array.isArray(d.data.sources) ? d.data.sources.filter((s): s is string => typeof s === 'string') : [];
+  let stale_warned = false;
+  for (const doc of loaded) {
+    const abs_path = join(docs_root, doc.doc_path);
+    const resolved: ResolvedReference[] = await resolve_references(index, doc.references, { doc_file: abs_path, docs_root: docs_root, related: sibling_repos });
+    const sources = Array.isArray(doc.data.sources) ? doc.data.sources.filter((source): source is string => typeof source === 'string') : [];
     // Only path-like sources are checkable; URLs and prose citations are not claims about the repo.
     // `<name>:<path>` names a file in a related repo (read-only); checked there, not in this repo.
-    const relSources = sources.filter((s) => !/\s|:\/\//.test(s) && !!relOf(s));
-    const goneRel = relSources.filter((s) => {
-      const sib = relatedIndex(relOf(s)!);
-      return !!sib && !sib.files.has(s.slice(s.indexOf(':') + 1));
+    const rel_sources = sources.filter((source) => !/\s|:\/\//.test(source) && !!find_sibling_repo(source));
+    const gone_rel = rel_sources.filter((rel_source) => {
+      const sibling_repo_item = load_sibling_index(find_sibling_repo(rel_source)!);
+      return !!sibling_repo_item && !sibling_repo_item.files.has(rel_source.slice(rel_source.indexOf(':') + 1));
     });
-    const pathSources = sources.filter((s) => !relOf(s)).filter((s) => !/^[a-z]+:\/\//i.test(s) && !/\s/.test(s) && /\.\w+$/.test(s));
-    const goneSources = pathSources.filter((s) => !idx.files.has(s));
-    const missing = [...new Set([...resolved.filter((r) => r.status === 'missing').map((r) => r.ref), ...goneSources, ...goneRel])];
-    const checkable = resolved.filter((r) => r.status !== 'unknown').length + pathSources.length + relSources.filter((s) => relatedIndex(relOf(s)!)).length;
+    const path_sources = sources.filter((source) => !find_sibling_repo(source)).filter((source) => !/^[a-z]+:\/\//i.test(source) && !/\s/.test(source) && /\.\w+$/.test(source));
+    const gone_sources = path_sources.filter((path_source) => !index.files.has(path_source));
+    const missing = [...new Set([...resolved.filter((result) => result.status === 'missing').map((result) => result.ref), ...gone_sources, ...gone_rel])];
+    const checkable = resolved.filter((result) => result.status !== 'unknown').length + path_sources.length + rel_sources.filter((rel_source) => load_sibling_index(find_sibling_repo(rel_source)!)).length;
 
     // Symbol hits are not cited files: a common name living in a data file must not add bytes or staleness.
-    let cited = [...new Set([...resolved.filter((r) => r.kind === 'path').map((r) => r.where), ...sources].filter((p): p is string => !!p && idx.files.has(p)))].sort();
-    const ownFindings = findSecrets(d.raw, d.rel, cfg).map((r) => r.finding).filter((f) => f.kind === 'secret');
+    let cited = [...new Set([...resolved.filter((result) => result.kind === 'path').map((result) => result.where), ...sources].filter((path_text): path_text is string => !!path_text && index.files.has(path_text)))].sort();
+    const own_findings = find_secrets(doc.raw_text, doc.doc_path, config_item).map((raw_secret) => raw_secret.finding).filter((finding) => finding.kind === 'secret');
     const blocked = new Map<string, SecretFinding[]>();
     const withheld = new Map<string, SecretFinding[]>(); // weak hits in cited code: not read, but the doc keeps its lane
-    const hold = (c: string, fs: SecretFinding[]) => {
+    const add_held_finding = (file_path: string, fs: SecretFinding[]) => {
       if (!fs.length) return;
-      (/\.(md|mdx)$/i.test(c) || fs.some((f) => !WEAK_RULES.has(f.rule)) ? blocked : withheld).set(c, fs);
+      (/\.(md|mdx)$/i.test(file_path) || fs.some((finding) => !WEAK_RULES.has(finding.rule)) ? blocked : withheld).set(file_path, fs);
     };
-    for (const c of cited) hold(c, (await scanCited(join(repo, c), c)).filter((f) => f.kind === 'secret'));
-    cited = cited.filter((c) => !blocked.has(c) && !withheld.has(c));
-    let bytes = Buffer.byteLength(d.raw);
-    for (const c of cited) {
-      if (LOCKFILE.test(c)) continue; // a symbol hit in a lockfile is not something the pass reads
-      try { bytes += statSync(join(repo, c)).size; } catch { /* deleted or unreadable */ }
+    for (const cited_path of cited) add_held_finding(cited_path, (await scan_cited(join(git_top, cited_path), cited_path)).filter((finding) => finding.kind === 'secret'));
+    cited = cited.filter((cited_path) => !blocked.has(cited_path) && !withheld.has(cited_path));
+    let bytes = Buffer.byteLength(doc.raw_text);
+    for (const cited_path of cited) {
+      if (LOCKFILE.test(cited_path)) continue; // a symbol hit in a lockfile is not something the pass reads
+      try { bytes += statSync(join(git_top, cited_path)).size; } catch { /* deleted or unreadable */ }
     }
 
     // Related-repo files the pass reads: bytes count, staleness = sibling commits since the doc's last body change.
-    const relCited = new Map<RelatedRepo, string[]>();
-    for (const w of [...resolved.filter((r) => r.kind === 'path').map((r) => r.where), ...relSources]) {
-      const rel = relOf(w);
-      if (rel && w) {
-        const fs = (await scanCited(join(rel.root, w.slice(w.indexOf(':') + 1)), w)).filter((f) => f.kind === 'secret');
-        if (fs.length) { hold(w, fs); if (blocked.has(w) || withheld.has(w)) continue; }
+    const rel_cited = new Map<RelatedRepo, string[]>();
+    for (const sibling_source of [...resolved.filter((result) => result.kind === 'path').map((result) => result.where), ...rel_sources]) {
+      const sibling_repo = find_sibling_repo(sibling_source);
+      if (sibling_repo && sibling_source) {
+        const findings = (await scan_cited(join(sibling_repo.root, sibling_source.slice(sibling_source.indexOf(':') + 1)), sibling_source)).filter((finding) => finding.kind === 'secret');
+        if (findings.length) { add_held_finding(sibling_source, findings); if (blocked.has(sibling_source) || withheld.has(sibling_source)) continue; }
       }
-      if (rel && w) relCited.set(rel, [...(relCited.get(rel) ?? []), w.slice(w.indexOf(':') + 1)]);
+      if (sibling_repo && sibling_source) rel_cited.set(sibling_repo, [...(rel_cited.get(sibling_repo) ?? []), sibling_source.slice(sibling_source.indexOf(':') + 1)]);
     }
-    for (const [rel, paths] of relCited) {
-      for (const p of paths) { try { bytes += statSync(join(rel.root, p)).size; } catch { /* gone */ } }
+    for (const [sibling_repo, sibling_paths] of rel_cited) {
+      for (const sibling_path of sibling_paths) { try { bytes += statSync(join(sibling_repo.root, sibling_path)).size; } catch { /* gone */ } }
     }
 
-    let staleCommits: number | undefined;
-    const docRel = posix(relative(repo, abs));
-    const sig = cited.length ? stalenessSignal(repo, docRel, cited) : ({ status: 'none' } as const);
-    if (sig.status === 'signal') staleCommits = sig.commits;
-    if (relCited.size) {
-      let since = sig.status === 'signal' ? sig.docDate : undefined;
-      if (!since) { try { since = bodyChange(repo, docRel)?.date; } catch { /* not in git */ } }
-      if (since) staleCommits = (staleCommits ?? 0) + [...relCited].reduce((n, [rel, ps]) => n + siblingCommits(rel.root, since!, [...new Set(ps)]), 0);
+    let stale_commits: number | undefined;
+    const repo_path = format_posix_path(relative(git_top, abs_path));
+    const staleness_signal = cited.length ? find_staleness_signal(git_top, repo_path, cited) : ({ status: 'none' } as const);
+    if (staleness_signal.status === 'signal') stale_commits = staleness_signal.commits;
+    if (rel_cited.size) {
+      let since = staleness_signal.status === 'signal' ? staleness_signal.doc_date : undefined;
+      if (!since) { try { since = find_body_change(git_top, repo_path)?.date; } catch { /* not in git */ } }
+      if (since) stale_commits = (stale_commits ?? 0) + [...rel_cited].reduce((count, [doc_path, ps]) => count + count_sibling_commits(doc_path.root, since!, [...new Set(ps)]), 0);
     }
-    if (sig.status === 'unknown' && !staleWarned) (warnings.push(sig.warning), (staleWarned = true));
+    if (staleness_signal.status === 'unknown' && !stale_warned) (warnings.push(staleness_signal.warning), (stale_warned = true));
 
     const reasons: string[] = [];
     let lane: Lane;
-    const attributed = isAttributed(d.data);
-    if (ownFindings.length || blocked.size) {
+    const attributed = is_attributed(doc.data);
+    if (own_findings.length || blocked.size) {
       lane = 'secret';
-      for (const f of ownFindings) reasons.push(`secret: ${fmtFinding(f)}`);
-      for (const [c, fs] of blocked) reasons.push(`cited file blocked: ${c} (${fs.map(fmtFinding).join('; ')})`);
+      for (const finding of own_findings) reasons.push(`secret: ${format_finding(finding)}`);
+      for (const [file_path, findings] of blocked) reasons.push(`cited file blocked: ${file_path} (${findings.map(format_finding).join('; ')})`);
     } else if (checkable >= ARCHIVE_MIN_CHECKABLE && missing.length / checkable >= ARCHIVE_MISSING_SHARE) {
       lane = 'archive-candidate';
       reasons.push(`${missing.length} of ${checkable} checkable references are missing`);
-    } else if (!attributed || missing.length || (staleCommits ?? 0) >= STALE_COMMITS_BAR) {
+    } else if (!attributed || missing.length || (stale_commits ?? 0) >= STALE_COMMITS_BAR) {
       lane = 'check';
       if (!attributed) reasons.push('no sources/provenance/cites with last_verified');
       if (missing.length) reasons.push(`missing references: ${missing.join(', ')}`);
-      if ((staleCommits ?? 0) >= STALE_COMMITS_BAR) reasons.push(`${staleCommits} commits to cited files since the doc last changed`);
-    } else if (needsFields.has(d.rel)) {
+      if ((stale_commits ?? 0) >= STALE_COMMITS_BAR) reasons.push(`${stale_commits} commits to cited files since the doc last changed`);
+    } else if (needs_fields.has(doc.doc_path)) {
       lane = 'fields-only';
       reasons.push('purpose or symptoms missing or weak');
     } else {
@@ -326,76 +330,77 @@ export async function triage(opts: {
 
     // Details owned by a sibling: most checkable refs resolve there and the doc does not cross-link into its docs.
     let owner: string | undefined;
-    const checked = resolved.filter((r) => r.status !== 'unknown');
-    for (const rel of related) {
-      const hits = checked.filter((r) => r.status === 'ok' && relOf(r.where) === rel);
-      const linked = resolved.some((r) => r.kind === 'doc-link' && r.status === 'ok' && relOf(r.where) === rel);
-      if (hits.length >= 2 && hits.length / checked.length > 0.5 && !linked) owner = rel.name;
+    const checked = resolved.filter((result) => result.status !== 'unknown');
+    for (const sibling_repo of sibling_repos) {
+      const matches = checked.filter((result) => result.status === 'ok' && find_sibling_repo(result.where) === sibling_repo);
+      const linked = resolved.some((result) => result.kind === 'doc-link' && result.status === 'ok' && find_sibling_repo(result.where) === sibling_repo);
+      if (matches.length >= 2 && matches.length / checked.length > 0.5 && !linked) owner = sibling_repo.name;
     }
-    for (const [c, fs] of withheld) reasons.push(`cited file withheld: ${c} (${fs.map((f) => f.masked).join('; ')})`);
+    for (const [file_path, findings] of withheld) reasons.push(`cited file withheld: ${file_path} (${findings.map((file) => file.masked).join('; ')})`);
     if (owner && lane !== 'secret') {
       if (lane === 'clean' || lane === 'fields-only') lane = 'check';
       reasons.push(`details owned by ${owner}: summarize and cross-link`);
     }
-    const copies = lane === 'secret' ? undefined : dups.get(d.rel);
+    const copies = lane === 'secret' ? undefined : dups.get(doc.doc_path);
     if (copies) {
       if (lane === 'clean' || lane === 'fields-only') lane = 'check';
-      for (const c of copies) reasons.push(`copy of ${c.owner}#${c.section}${c.tie ? ` (tie: ${c.tie.join(', ')})` : ''}`);
+      for (const copy of copies) reasons.push(`copy of ${copy.owner}#${copy.section}${copy.tie ? ` (tie: ${copy.tie.join(', ')})` : ''}`);
     }
     // An overview whose members changed since it was written goes back to check; the verdict is dropped so it stays queued.
-    const led = opts.ledger?.entries[d.rel];
-    if (led?.members) {
-      const changed = Object.entries(led.members).filter(([p, h]) => { try { return hashContent(readFileSync(join(docsPath, p), 'utf-8')) !== h; } catch { return true; } }).map(([p]) => p);
+    const ledger_entry = options.ledger?.entries[doc.doc_path];
+    if (ledger_entry?.members) {
+      const changed = Object.entries(ledger_entry.members).filter(([member_path, member_hash]) => { try { return compute_content_hash(readFileSync(join(docs_root, member_path), 'utf-8')) !== member_hash; } catch { return true; } }).map(([member_path]) => member_path);
       if (changed.length && lane !== 'secret') {
         if (lane === 'clean' || lane === 'fields-only') lane = 'check';
         reasons.push(`member changed: ${changed.join(', ')}`);
-        delete led.verdict;
+        delete ledger_entry.verdict;
       }
     }
     // A pointer written by reconcile: re-verify the summary when the owner section changed or vanished.
-    if (led?.pointer && lane !== 'secret') {
-      const [tp, anchor = ''] = led.pointer.target.split('#');
-      let now: string | undefined;
-      try { const sec = sectionOf(parseFrontmatter<Record<string, unknown>>(readFileSync(resolve(docsPath, tp!), 'utf-8')).content, anchor); now = sec === null ? undefined : hashContent(sec); } catch { /* owner gone */ }
-      if (now !== led.pointer.section_hash) {
+    if (ledger_entry?.pointer && lane !== 'secret') {
+      const [owner_doc_path, anchor = ''] = ledger_entry.pointer.target.split('#');
+      let owner_section_hash: string | undefined;
+      try { const owner_section = find_section(parse_frontmatter<Record<string, unknown>>(readFileSync(resolve(docs_root, owner_doc_path!), 'utf-8')).content, anchor); owner_section_hash = owner_section === null ? undefined : compute_content_hash(owner_section); } catch { /* owner gone */ }
+      if (owner_section_hash !== ledger_entry.pointer.section_hash) {
         if (lane === 'clean' || lane === 'fields-only') lane = 'check';
-        reasons.push(now === undefined ? `pointer target changed: ${led.pointer.target} (section missing)` : `pointer target changed: ${led.pointer.target}`);
-        delete led.verdict;
+        reasons.push(owner_section_hash === undefined ? `pointer target changed: ${ledger_entry.pointer.target} (section missing)` : `pointer target changed: ${ledger_entry.pointer.target}`);
+        delete ledger_entry.verdict;
       }
     }
-    docs.push({ path: d.rel, lane, reasons, missing, refs: resolved.map(({ kind, ref, status, where, whereKind }) => ({ kind, ref, status, ...(where !== undefined && { where }), ...(whereKind && { whereKind }) })), bytes, ...(staleCommits !== undefined && { staleCommits }), ...(owner && { owner }), ...(copies && { duplicates: copies }), ...(ownFindings.length && { findings: ownFindings }), ...(blocked.size + withheld.size > 0 && { blocked_files: [...blocked.keys(), ...withheld.keys()].sort() }) });
+    // eslint-disable-next-line id-denylist -- serialized key (triage/graph JSON)
+    docs.push({ path: doc.doc_path, lane, reasons, missing, refs: resolved.map(({ kind, ref: reference, status, where, whereKind: where_kind }) => ({ kind, ref: reference, status, ...(where !== undefined && { where }), ...(where_kind && { whereKind: where_kind }) })), bytes, ...(stale_commits !== undefined && { staleCommits: stale_commits }), ...(owner && { owner }), ...(copies && { duplicates: copies }), ...(own_findings.length && { findings: own_findings }), ...(blocked.size + withheld.size > 0 && { blocked_files: [...blocked.keys(), ...withheld.keys()].sort() }) });
 
-    if (opts.ledger) recordEntry(opts.ledger, { path: d.rel, lane, content_hash: hashContent(d.raw) });
+    if (options.ledger) build_ledger_entry(options.ledger, { path: doc.doc_path, lane, content_hash: compute_content_hash(doc.raw_text) });
   }
   docs.sort((a, b) => a.path.localeCompare(b.path));
 
-  const byLane: Record<Lane, number> = { clean: 0, 'fields-only': 0, check: 0, 'archive-candidate': 0, secret: 0 };
-  for (const d of docs) byLane[d.lane]++;
-  const judged = docs.filter((d) => d.lane === 'fields-only' || d.lane === 'check');
-  const judgmentBytes = judged.reduce((s, d) => s + d.bytes, 0);
-  const t = config.reconcile.team;
-  const auto = judged.length >= t.min_docs || judgmentBytes >= t.min_bytes ? 'team' : 'serial';
-  let mode = opts.mode ?? auto;
-  let shards = mode === 'team' ? await planShards(docsPath, judged, config) : [];
+  const by_lane: Record<Lane, number> = { clean: 0, 'fields-only': 0, check: 0, 'archive-candidate': 0, secret: 0 };
+  for (const doc of docs) by_lane[doc.lane]++;
+  const judged = docs.filter((doc) => doc.lane === 'fields-only' || doc.lane === 'check');
+  const judgment_bytes = judged.reduce((total, doc) => total + doc.bytes, 0);
+  const team_config = config.reconcile.team;
+  const auto = judged.length >= team_config.min_docs || judgment_bytes >= team_config.min_bytes ? 'team' : 'serial';
+  let mode = options.mode ?? auto;
+  let shards = mode === 'team' ? await build_shards(docs_root, judged, config) : [];
   // One shard is just a serial run with agent overhead.
-  if (mode === 'team' && !opts.mode && shards.length < 2) (mode = 'serial'), (shards = []);
+  if (mode === 'team' && !options.mode && shards.length < 2) (mode = 'serial'), (shards = []);
 
   return {
     docs,
-    totals: { docs: docs.length, bytes: docs.reduce((s, d) => s + d.bytes, 0), byLane, judgmentDocs: judged.length, judgmentBytes },
+    totals: { docs: docs.length, bytes: docs.reduce((total, doc) => total + doc.bytes, 0), byLane: by_lane, judgmentDocs: judged.length, judgmentBytes: judgment_bytes },
     mode,
     shards,
     warnings,
-    schemaFiles: idx.schemaFiles,
+    schemaFiles: index.schema_files,
     peripheral,
   };
 }
 
 /** Read-only resolution of some docs for the graph export: no ledger, no dirty-tree check (that lives in the CLI). */
-export async function resolveDocs(opts: { root: string; docsPath: string; rels: string[]; config: PluginConfig; ledger?: Ledger }): Promise<TriageDoc[]> {
+export async function resolve_docs(options: { root: string; docs_root: string; rels: string[]; config: PluginConfig; ledger?: Ledger }): Promise<TriageDoc[]> {
   // A copy, so the ledger-driven reasons (pointer target / member changed) fire without recording anything.
-  const { ledger, ...rest } = opts;
-  return (await triage({ ...rest, ...(ledger && { ledger: structuredClone(ledger) }) })).docs;
+  const { ledger, ...rest } = options;
+  return (await triage_docs({ ...rest, ...(ledger && { ledger: structuredClone(ledger) }) })).docs;
 }
 
 /**
@@ -403,51 +408,51 @@ export async function resolveDocs(opts: { root: string; docsPath: string; rels: 
  * the rest chunked per domain), split any group larger than a fair share, then bin-pack by
  * bytes into at most `max_agents` shards.
  */
-export async function planShards(docsPath: string, judged: Pick<TriageDoc, 'path' | 'bytes'>[], config: PluginConfig): Promise<Shard[]> {
+export async function build_shards(docs_root: string, judged: Pick<TriageDoc, 'path' | 'bytes'>[], config: PluginConfig): Promise<Shard[]> {
   if (!judged.length) return [];
   const { max_agents, docs_per_agent, min_bytes } = config.reconcile.team;
-  const bytes = new Map(judged.map((d) => [d.path, d.bytes]));
+  const bytes = new Map(judged.map((doc) => [doc.path, doc.bytes]));
 
   // union-find over cluster members
   const parent = new Map<string, string>();
-  const find = (x: string): string => {
-    let r = x;
-    while (parent.get(r) !== r) r = parent.get(r)!;
-    parent.set(x, r);
-    return r;
+  const find_root = (item: string): string => {
+    let root = item;
+    while (parent.get(root) !== root) root = parent.get(root)!;
+    parent.set(item, root);
+    return root;
   };
-  for (const p of bytes.keys()) parent.set(p, p);
+  for (const doc_path of bytes.keys()) parent.set(doc_path, doc_path);
   try {
-    for (const c of await findClusters(docsPath, config.overview)) {
-      const inScope = c.members.filter((m) => bytes.has(m));
-      for (const m of inScope.slice(1)) parent.set(find(m), find(inScope[0]!));
+    for (const cluster of await find_clusters(docs_root, config.overview)) {
+      const in_scope = cluster.members.filter((member) => bytes.has(member));
+      for (const member of in_scope.slice(1)) parent.set(find_root(member), find_root(in_scope[0]!));
     }
   } catch { /* no link graph: domain chunks only */ }
 
   const groups = new Map<string, string[]>();
-  for (const p of [...bytes.keys()].sort()) (groups.get(find(p)) ?? groups.set(find(p), []).get(find(p))!).push(p);
+  for (const doc_path of [...bytes.keys()].sort()) (groups.get(find_root(doc_path)) ?? groups.set(find_root(doc_path), []).get(find_root(doc_path))!).push(doc_path);
 
   // singletons (not in a cluster) are chunked per domain, so a big domain still splits
   const units: string[][] = [];
   const loose = new Map<string, string[]>();
-  for (const g of groups.values()) {
-    if (g.length > 1) units.push(g);
-    else (loose.get(g[0]!.split('/')[0]!) ?? loose.set(g[0]!.split('/')[0]!, []).get(g[0]!.split('/')[0]!)!).push(g[0]!);
+  for (const group of groups.values()) {
+    if (group.length > 1) units.push(group);
+    else (loose.get(group[0]!.split('/')[0]!) ?? loose.set(group[0]!.split('/')[0]!, []).get(group[0]!.split('/')[0]!)!).push(group[0]!);
   }
-  for (const list of loose.values()) for (let i = 0; i < list.length; i += docs_per_agent) units.push(list.slice(i, i + docs_per_agent));
+  for (const loose_group of loose.values()) for (let i = 0; i < loose_group.length; i += docs_per_agent) units.push(loose_group.slice(i, i + docs_per_agent));
 
-  const n = Math.max(1, Math.min(max_agents, judged.length, Math.max(Math.ceil(judged.length / docs_per_agent), Math.ceil(judged.reduce((x, d) => x + d.bytes, 0) / min_bytes))));
-  const shards: Shard[] = Array.from({ length: n }, (_, id) => ({ id: id + 1, docs: [], bytes: 0 }));
-  const size = (u: string[]): number => u.reduce((s, p) => s + bytes.get(p)!, 0);
+  const shard_count = Math.max(1, Math.min(max_agents, judged.length, Math.max(Math.ceil(judged.length / docs_per_agent), Math.ceil(judged.reduce((total, doc) => total + doc.bytes, 0) / min_bytes))));
+  const shards: Shard[] = Array.from({ length: shard_count }, (_, id) => ({ id: id + 1, docs: [], bytes: 0 }));
+  const compute_size = (unit: string[]): number => unit.reduce((total, doc_path) => total + bytes.get(doc_path)!, 0);
   // A cluster bigger than a fair share is split in path order (same-folder docs stay together),
   // or one agent would carry most of a big job. Safe: apply is serial and hash-checked.
-  const fair = Math.ceil(judged.length / n);
-  const fitted = units.flatMap((u) => (u.length <= fair ? [u] : Array.from({ length: Math.ceil(u.length / fair) }, (_, i) => u.slice(i * fair, (i + 1) * fair))));
-  for (const u of fitted.sort((a, b) => size(b) - size(a) || a[0]!.localeCompare(b[0]!))) {
-    const s = shards.reduce((m, x) => (x.bytes < m.bytes ? x : m));
-    s.docs.push(...u);
-    s.bytes += size(u);
+  const fair = Math.ceil(judged.length / shard_count);
+  const fitted = units.flatMap((unit) => (unit.length <= fair ? [unit] : Array.from({ length: Math.ceil(unit.length / fair) }, (_, i) => unit.slice(i * fair, (i + 1) * fair))));
+  for (const unit of fitted.sort((a, b) => compute_size(b) - compute_size(a) || a[0]!.localeCompare(b[0]!))) {
+    const target_shard = shards.reduce((smallest, shard) => (shard.bytes < smallest.bytes ? shard : smallest));
+    target_shard.docs.push(...unit);
+    target_shard.bytes += compute_size(unit);
   }
-  for (const s of shards) s.docs.sort();
-  return shards.filter((s) => s.docs.length);
+  for (const shard of shards) shard.docs.sort();
+  return shards.filter((shard) => shard.docs.length);
 }

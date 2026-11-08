@@ -1,0 +1,80 @@
+=== review-1-gaps.md
+---
+batch: '1'
+shard: 1
+scope: gaps
+---
+
+# Reconcile review, batch 1 shard 1
+
+Set "verdict" (verify | rewrite | archive | unverifiable | fields | integrate | delete | secret | merge | point | overview | phrases), fill the fields, tick "accept" on entries to apply.
+
+## backend/deploy.md
+
+- [ ] accept
+
+```json
+{
+  "path": "backend/deploy.md",
+  "content_hash": "ebc739be9c3f67fef27eac64928c60f80a300f002e62ead75d7a389e2862038d",
+  "verdict": "phrases",
+  "phrases": [
+    "how do I roll back a bad deploy"
+  ]
+}
+```
+
+=== review-2-1.md
+---
+batch: '2'
+shard: 1
+scope: next 2
+---
+
+# Reconcile review, batch 2 shard 1
+
+Set "verdict" (verify | rewrite | archive | unverifiable | fields | integrate | delete | secret | merge | point | overview | phrases), fill the fields, tick "accept" on entries to apply.
+
+## backend/auth.md
+
+- [ ] accept
+
+```json
+{
+  "path": "backend/auth.md",
+  "content_hash": "7adadaa040201c1051a1ed20572faf03a61d636487fe83ce004e6d770a681128",
+  "verdict": null,
+  "lane": "check",
+  "reasons": [
+    "no sources/provenance/cites with last_verified",
+    "missing references: missing.md"
+  ]
+}
+```
+
+=== review-2-secrets.md
+---
+batch: '2'
+shard: 0
+scope: next 2
+---
+
+# Reconcile review, batch 2 shard 0
+
+Set "verdict" (verify | rewrite | archive | unverifiable | fields | integrate | delete | secret | merge | point | overview | phrases), fill the fields, tick "accept" on entries to apply.
+
+## backend/creds.md
+
+- [ ] accept
+
+```json
+{
+  "path": "backend/creds.md",
+  "content_hash": "89b6bf128d4ee8494faa555e5445ca09d4d158a7c4fe906a1cd05ee39016697f",
+  "verdict": null,
+  "lane": "secret",
+  "reasons": [
+    "cited file blocked: src/creds.ts (aws-access-key-id src/creds.ts:1 AKIA…20)"
+  ]
+}
+```

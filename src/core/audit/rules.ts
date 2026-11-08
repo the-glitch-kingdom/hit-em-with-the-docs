@@ -1,6 +1,6 @@
 import { basename, relative } from 'path';
-import { detectDomainFromPath } from '../domains/detector.js';
-import { isValidDomain } from '../domains/registry.js';
+import { detect_domain_from_path } from '../domains/detector.js';
+import { is_valid_domain } from '../domains/registry.js';
 import { ARCHIVE_DIR } from '../../utils/glob.js';
 
 export interface AuditRule {
@@ -8,7 +8,7 @@ export interface AuditRule {
   name: string;
   description: string;
   severity: 'error' | 'warning' | 'info';
-  check: (filePath: string, docsPath: string) => RuleCheckResult;
+  check: (file_path: string, docs_root: string) => RuleCheckResult;
 }
 
 export interface RuleCheckResult {
@@ -20,38 +20,38 @@ export interface RuleCheckResult {
 /**
  * Check if file name follows naming convention (kebab-case)
  */
-export function checkNamingConvention(filePath: string): RuleCheckResult {
-  const fileName = basename(filePath, '.md');
+export function check_naming_convention(file_path: string): RuleCheckResult {
+  const file_name = basename(file_path, '.md');
 
   // Allow special files
-  if (['INDEX', 'REGISTRY', 'README', 'CHANGELOG', 'CONTRIBUTING'].includes(fileName)) {
+  if (['INDEX', 'REGISTRY', 'README', 'CHANGELOG', 'CONTRIBUTING'].includes(file_name)) {
     return { valid: true };
   }
 
   // Check for kebab-case
-  const kebabCaseRegex = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
+  const kebab_case_regex = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
-  if (!kebabCaseRegex.test(fileName)) {
+  if (!kebab_case_regex.test(file_name)) {
     // Determine what's wrong
     const issues: string[] = [];
 
-    if (/[A-Z]/.test(fileName)) {
+    if (/[A-Z]/.test(file_name)) {
       issues.push('contains uppercase letters');
     }
-    if (/_/.test(fileName)) {
+    if (/_/.test(file_name)) {
       issues.push('contains underscores');
     }
-    if (/\s/.test(fileName)) {
+    if (/\s/.test(file_name)) {
       issues.push('contains spaces');
     }
-    if (/^[0-9]/.test(fileName)) {
+    if (/^[0-9]/.test(file_name)) {
       issues.push('starts with a number');
     }
-    if (/--/.test(fileName)) {
+    if (/--/.test(file_name)) {
       issues.push('contains consecutive hyphens');
     }
 
-    const suggestion = fileName
+    const suggestion = file_name
       .toLowerCase()
       .replace(/[_\s]+/g, '-')
       .replace(/([a-z])([A-Z])/g, '$1-$2')
@@ -72,16 +72,16 @@ export function checkNamingConvention(filePath: string): RuleCheckResult {
 /**
  * Check if file is in the correct domain folder
  */
-export function checkFilePlacement(
-  filePath: string,
-  docsPath: string,
-  declaredDomain?: string
+export function check_file_placement(
+  file_path: string,
+  docs_root: string,
+  declared_domain?: string
 ): RuleCheckResult {
-  const detectedResult = detectDomainFromPath(filePath, docsPath);
-  const detectedDomain = detectedResult.domain;
+  const detected_result = detect_domain_from_path(file_path, docs_root);
+  const detected_domain = detected_result.domain;
 
   // If no domain detected from path, and no domain declared, it's an issue
-  if (!detectedDomain && !declaredDomain) {
+  if (!detected_domain && !declared_domain) {
     return {
       valid: false,
       message: 'File is not in a domain folder',
@@ -90,33 +90,33 @@ export function checkFilePlacement(
   }
 
   // If domain is declared but file is in different folder
-  if (declaredDomain && detectedDomain && declaredDomain !== detectedDomain) {
+  if (declared_domain && detected_domain && declared_domain !== detected_domain) {
     return {
       valid: false,
-      message: `File declares domain '${declaredDomain}' but is in '${detectedDomain}/' folder`,
-      suggestion: `Move to ${declaredDomain}/ or update domains in frontmatter`,
+      message: `File declares domain '${declared_domain}' but is in '${detected_domain}/' folder`,
+      suggestion: `Move to ${declared_domain}/ or update domains in frontmatter`,
     };
   }
 
   // If file is in root (not in any domain folder)
-  if (!detectedDomain) {
-    const rel = relative(docsPath, filePath);
-    const pathParts = rel.split(/[/\\]/);
+  if (!detected_domain) {
+    const doc_path = relative(docs_root, file_path);
+    const path_parts = doc_path.split(/[/\\]/);
 
     // Check if it's in root
-    if (pathParts.length === 1) {
+    if (path_parts.length === 1) {
       return {
         valid: false,
         message: 'File is in documentation root, not in a domain folder',
-        suggestion: declaredDomain
-          ? `Move to ${declaredDomain}/`
+        suggestion: declared_domain
+          ? `Move to ${declared_domain}/`
           : 'Move file to appropriate domain folder',
       };
     }
 
     // Check if it's in an unknown folder
-    const folder = pathParts[0];
-    if (folder && !isValidDomain(folder) && !['drafts', 'reports', ARCHIVE_DIR].includes(folder)) {
+    const folder = path_parts[0];
+    if (folder && !is_valid_domain(folder) && !['drafts', 'reports', ARCHIVE_DIR].includes(folder)) {
       return {
         valid: false,
         message: `File is in unknown folder '${folder}'`,
@@ -131,12 +131,12 @@ export function checkFilePlacement(
 /**
  * Check file size is within acceptable range
  */
-export function checkFileSize(
-  _filePath: string,
-  fileSize: number,
+export function check_file_size(
+  _file_path: string,
+  file_size: number,
   tier?: string
 ): RuleCheckResult {
-  const sizeKB = fileSize / 1024;
+  const size_kb = file_size / 1024;
 
   // Size limits by tier
   const limits: Record<string, { min: number; max: number }> = {
@@ -149,18 +149,18 @@ export function checkFileSize(
 
   const limit = tier && limits[tier] ? limits[tier] : { min: 0.5, max: 100 };
 
-  if (sizeKB < limit.min) {
+  if (size_kb < limit.min) {
     return {
       valid: false,
-      message: `File is very small (${sizeKB.toFixed(1)} KB)`,
+      message: `File is very small (${size_kb.toFixed(1)} KB)`,
       suggestion: 'Consider adding more content or merging with related document',
     };
   }
 
-  if (sizeKB > limit.max) {
+  if (size_kb > limit.max) {
     return {
       valid: false,
-      message: `File is very large (${sizeKB.toFixed(1)} KB)`,
+      message: `File is very large (${size_kb.toFixed(1)} KB)`,
       suggestion: 'Consider splitting into multiple documents',
     };
   }
@@ -171,11 +171,11 @@ export function checkFileSize(
 /**
  * Check for required sections based on tier
  */
-export function checkRequiredSections(
+export function check_required_sections(
   content: string,
   tier?: string
 ): RuleCheckResult {
-  const requiredSections: Record<string, string[]> = {
+  const required_sections: Record<string, string[]> = {
     guide: ['overview', 'prerequisites', 'steps'],
     standard: ['rules', 'examples'],
     example: ['code', 'explanation'],
@@ -183,13 +183,13 @@ export function checkRequiredSections(
     admin: ['configuration', 'procedures'],
   };
 
-  if (!tier || !requiredSections[tier]) {
+  if (!tier || !required_sections[tier]) {
     return { valid: true };
   }
 
-  const lowerContent = content.toLowerCase();
-  const sections = requiredSections[tier]!;
-  const missingSections: string[] = [];
+  const lower_content = content.toLowerCase();
+  const sections = required_sections[tier]!;
+  const missing_sections: string[] = [];
 
   for (const section of sections) {
     // Check for heading containing the section name
@@ -198,17 +198,17 @@ export function checkRequiredSections(
       new RegExp(`^#+\\s*.*${section}`, 'mi'),
     ];
 
-    const found = patterns.some((p) => p.test(lowerContent));
+    const found = patterns.some((pattern) => pattern.test(lower_content));
     if (!found) {
-      missingSections.push(section);
+      missing_sections.push(section);
     }
   }
 
-  if (missingSections.length > 0) {
+  if (missing_sections.length > 0) {
     return {
       valid: false,
-      message: `Missing recommended sections for ${tier}: ${missingSections.join(', ')}`,
-      suggestion: `Consider adding sections: ${missingSections.map((s) => `## ${capitalize(s)}`).join(', ')}`,
+      message: `Missing recommended sections for ${tier}: ${missing_sections.join(', ')}`,
+      suggestion: `Consider adding sections: ${missing_sections.map((missing_section) => `## ${format_capitalized(missing_section)}`).join(', ')}`,
     };
   }
 
@@ -218,41 +218,41 @@ export function checkRequiredSections(
 /**
  * Check for broken relative links within content
  */
-export function checkRelativeLinks(
+export function check_relative_links(
   content: string,
-  _filePath: string
+  _file_path: string
 ): RuleCheckResult {
   // Extract markdown links
-  const linkRegex = /\[([^\]]*)\]\(([^)]+)\)/g;
-  const suspiciousLinks: string[] = [];
+  const link_regex = /\[([^\]]*)\]\(([^)]+)\)/g;
+  const suspicious_links: string[] = [];
 
   let match;
-  while ((match = linkRegex.exec(content)) !== null) {
+  while ((match = link_regex.exec(content)) !== null) {
     const url = match[2] ?? '';
 
     // Check for common issues in relative links
     if (url.startsWith('/') && !url.startsWith('/http')) {
       // Absolute path from docs root - might be wrong
       if (url.includes('..')) {
-        suspiciousLinks.push(url);
+        suspicious_links.push(url);
       }
     }
 
     // Check for Windows-style paths
     if (url.includes('\\')) {
-      suspiciousLinks.push(url);
+      suspicious_links.push(url);
     }
 
     // Check for links with spaces not encoded
     if (url.includes(' ') && !url.includes('%20')) {
-      suspiciousLinks.push(url);
+      suspicious_links.push(url);
     }
   }
 
-  if (suspiciousLinks.length > 0) {
+  if (suspicious_links.length > 0) {
     return {
       valid: false,
-      message: `Found ${suspiciousLinks.length} suspicious links`,
+      message: `Found ${suspicious_links.length} suspicious links`,
       suggestion: 'Review and fix link paths',
     };
   }
@@ -263,8 +263,8 @@ export function checkRelativeLinks(
 /**
  * Capitalize first letter
  */
-function capitalize(str: string): string {
-  return str.charAt(0).toUpperCase() + str.slice(1);
+function format_capitalized(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 /**
@@ -276,13 +276,13 @@ export const AUDIT_RULES: AuditRule[] = [
     name: 'Naming Convention',
     description: 'Check if file names follow kebab-case convention',
     severity: 'warning',
-    check: (filePath) => checkNamingConvention(filePath),
+    check: (file_path) => check_naming_convention(file_path),
   },
   {
     id: 'placement',
     name: 'File Placement',
     description: 'Check if files are in the correct domain folders',
     severity: 'warning',
-    check: (filePath, docsPath) => checkFilePlacement(filePath, docsPath),
+    check: (file_path, docs_root) => check_file_placement(file_path, docs_root),
   },
 ];

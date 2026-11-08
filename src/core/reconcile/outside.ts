@@ -8,14 +8,14 @@ import { execFileSync } from 'child_process';
 import { existsSync } from 'fs';
 import { mkdir, readFile, unlink, writeFile } from 'fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'path';
-import { findMarkdownFiles } from '../../utils/glob.js';
-import { parseFrontmatter, setFrontmatter } from '../../utils/frontmatter.js';
-import { integrateDocument } from '../integrate/integrator.js';
-import { loadPluginConfig } from '../../utils/config.js';
-import { globToRe } from './references.js';
-import { gitRoot } from './triage.js';
-import { hashContent } from './ledger.js';
-import { nextBatch, renderReview, reviewDir, type ReviewEntry } from './review.js';
+import { find_markdown_files } from '../../utils/glob.js';
+import { parse_frontmatter, with_frontmatter } from '../../utils/frontmatter.js';
+import { integrate_document } from '../integrate/integrator.js';
+import { load_plugin_config } from '../../utils/config.js';
+import { build_glob_regex } from './references.js';
+import { find_git_top } from './triage.js';
+import { compute_content_hash } from './ledger.js';
+import { find_next_batch, render_review, resolve_review_dir, type ReviewEntry } from './review.js';
 
 export type OutsideClass = 'tool-read' | 'junk' | 'not-a-doc' | 'misplaced';
 export interface OutsideDoc { path: string; cls: OutsideClass; reason: string; }
@@ -26,52 +26,53 @@ const GENERATED_MARK = /^(?:<!--\s*)?(?:this (?:file|document) is )?(?:auto-?gen
 const OUTPUT_VERB = /writeFile|write_text|\bopen\(.*['"]w|fs\.write|outputFile|tee\b|>\s*\S*\.md|-o\s+\S*\.md|--out/;
 
 /** The config text names exactly this path (optionally `./`-prefixed), not a longer name that ends with it. */
-const namesPath = (text: string, path: string, afterSlash = false): boolean => {
+const is_path_named = (text: string, path: string, after_slash = false): boolean => {
   for (let i = text.indexOf(path); i >= 0; i = text.indexOf(path, i + 1)) {
     const prev = text.slice(Math.max(0, i - 2), i), after = text[i + path.length] ?? '';
-    const startOk = prev === '' || /([\s"'`=:,([{>]|\.\/)$/.test(prev) || (afterSlash && prev.endsWith('/'));
-    if (startOk && !/[\w./-]/.test(after)) return true;
+    const start_ok = prev === '' || /([\s"'`=:,([{>]|\.\/)$/.test(prev) || (after_slash && prev.endsWith('/'));
+    if (start_ok && !/[\w./-]/.test(after)) return true;
   }
   return false;
 };
 const ARCHIVE_DIR = /(^|\/)(archive|_archive|archived)\//i;
 const CONFIG_FILES = ['*.json', '*.yaml', '*.yml', '*.toml'];
 
-const git = (cwd: string, args: string[], input?: string): string =>
-  execFileSync('git', args, { cwd, encoding: 'utf-8', maxBuffer: 256 * 1024 * 1024, stdio: ['pipe', 'pipe', 'ignore'], ...(input !== undefined && { input }) }).trim();
+const run_git = (working_dir: string, args: string[], input?: string): string =>
+  // eslint-disable-next-line id-denylist -- child_process option name
+  execFileSync('git', args, { cwd: working_dir, encoding: 'utf-8', maxBuffer: 256 * 1024 * 1024, stdio: ['pipe', 'pipe', 'ignore'], ...(input !== undefined && { input }) }).trim();
 
 /** Project root = the git root holding the docs tree, never the caller's cwd. */
-export const projectRootOf = (docsPath: string): string => gitRoot(docsPath) ?? dirname(docsPath);
+export const resolve_git_top = (docs_root: string): string => find_git_top(docs_root) ?? dirname(docs_root);
 
-export const isKeepInPlace = (rel: string, globs: string[]): boolean =>
-  globs.some((g) => {
-    const dir = /^(.*)\/(?:\*\*)?$/.exec(g)?.[1]; // `dir/` and `dir/**` mean everything below dir (globToRe does not)
-    if (dir !== undefined) return rel.startsWith(`${dir}/`);
-    const re = globToRe(g);
-    return re.test(rel) || (!g.includes('/') && re.test(basename(rel)));
+export const is_keep_in_place = (doc_path: string, globs: string[]): boolean =>
+  globs.some((glob) => {
+    const dir_path = /^(.*)\/(?:\*\*)?$/.exec(glob)?.[1]; // `dir/` and `dir/**` mean everything below dir (globToRe does not)
+    if (dir_path !== undefined) return doc_path.startsWith(`${dir_path}/`);
+    const regex = build_glob_regex(glob);
+    return regex.test(doc_path) || (!glob.includes('/') && regex.test(basename(doc_path)));
   });
 
 /** Words in a doc body, ignoring frontmatter and heading marks. */
-const wordCount = (raw: string): number => (parseFrontmatter(raw).content.replace(/^#+\s*/gm, '').match(/\S+/g) ?? []).length;
+const count_words = (raw_text: string): number => (parse_frontmatter(raw_text).content.replace(/^#+\s*/gm, '').match(/\S+/g) ?? []).length;
 
-export async function discoverOutside(docsPath: string, keepInPlace: string[]): Promise<OutsideDoc[]> {
-  const top = projectRootOf(docsPath);
-  const docsRel = relative(top, docsPath).split('\\').join('/');
-  const files = git(top, ['ls-files', '*.md']).split('\n').filter((f) => f && !(docsRel && (f === docsRel || f.startsWith(`${docsRel}/`))));
-  const inTree = new Set<string>();
-  for (const f of await findMarkdownFiles(docsPath)) inTree.add(hashContent(await readFile(f, 'utf-8')));
+export async function discover_outside(docs_root: string, keep_in_place: string[]): Promise<OutsideDoc[]> {
+  const git_top = resolve_git_top(docs_root);
+  const docs_rel = relative(git_top, docs_root).split('\\').join('/');
+  const files = run_git(git_top, ['ls-files', '*.md']).split('\n').filter((file) => file && !(docs_rel && (file === docs_rel || file.startsWith(`${docs_rel}/`))));
+  const in_tree = new Set<string>();
+  for (const file of await find_markdown_files(docs_root)) in_tree.add(compute_content_hash(await readFile(file, 'utf-8')));
 
-  const out: OutsideDoc[] = [];
-  const rest: { path: string; raw: string }[] = [];
+  const found: OutsideDoc[] = [];
+  const rest: { path: string; raw_text: string }[] = [];
   for (const path of files.sort()) {
-    if (isKeepInPlace(path, keepInPlace)) { out.push({ path, cls: 'tool-read', reason: 'matches keep_in_place' }); continue; }
-    if (!existsSync(join(top, path))) continue;
-    if (ARCHIVE_DIR.test(path)) { out.push({ path, cls: 'junk', reason: 'archived copy' }); continue; }
-    const raw = await readFile(join(top, path), 'utf-8');
-    if (inTree.has(hashContent(raw))) out.push({ path, cls: 'junk', reason: 'byte-identical copy of a doc in the tree' });
-    else if (wordCount(raw) < STUB_WORDS) out.push({ path, cls: 'not-a-doc', reason: `stub (< ${STUB_WORDS} words)` });
-    else if (REPORT_NAME.test(path) || GENERATED_MARK.test(raw.slice(0, 400))) out.push({ path, cls: 'junk', reason: 'generated report' });
-    else rest.push({ path, raw });
+    if (is_keep_in_place(path, keep_in_place)) { found.push({ path, cls: 'tool-read', reason: 'matches keep_in_place' }); continue; }
+    if (!existsSync(join(git_top, path))) continue;
+    if (ARCHIVE_DIR.test(path)) { found.push({ path, cls: 'junk', reason: 'archived copy' }); continue; }
+    const raw_text = await readFile(join(git_top, path), 'utf-8');
+    if (in_tree.has(compute_content_hash(raw_text))) found.push({ path, cls: 'junk', reason: 'byte-identical copy of a doc in the tree' });
+    else if (count_words(raw_text) < STUB_WORDS) found.push({ path, cls: 'not-a-doc', reason: `stub (< ${STUB_WORDS} words)` });
+    else if (REPORT_NAME.test(path) || GENERATED_MARK.test(raw_text.slice(0, 400))) found.push({ path, cls: 'junk', reason: 'generated report' });
+    else rest.push({ path, raw_text });
   }
 
   // One git grep over non-markdown files: a line naming the path next to a write verb marks a script output.
@@ -80,65 +81,65 @@ export async function discoverOutside(docsPath: string, keepInPlace: string[]): 
   const referenced = new Map<string, string>();
   if (rest.length) {
     try {
-      const pats = rest.map((r) => r.path).join('\n'); // `./path` contains `path`
-      for (const line of git(top, ['grep', '-IF', '-f', '-', '--', ...CONFIG_FILES], pats).split('\n')) {
+      const patterns = rest.map((outside_doc) => outside_doc.path).join('\n'); // `./path` contains `path`
+      for (const line of run_git(git_top, ['grep', '-IF', '-f', '-', '--', ...CONFIG_FILES], patterns).split('\n')) {
         const i = line.indexOf(':');
         const file = line.slice(0, i), text = line.slice(i + 1);
-        for (const r of rest) if (!referenced.has(r.path) && namesPath(text, r.path)) referenced.set(r.path, file);
+        for (const outside_doc of rest) if (!referenced.has(outside_doc.path) && is_path_named(text, outside_doc.path)) referenced.set(outside_doc.path, file);
       }
     } catch { /* git grep exits 1 when nothing matches */ }
     try {
-      const pats = rest.flatMap((r) => [r.path, basename(r.path)]).join('\n');
-      for (const line of git(top, ['grep', '-nF', '-f', '-', '--', '.', ':!*.md'], pats).split('\n')) {
+      const patterns = rest.flatMap((outside_doc) => [outside_doc.path, basename(outside_doc.path)]).join('\n');
+      for (const line of run_git(git_top, ['grep', '-nF', '-f', '-', '--', '.', ':!*.md'], patterns).split('\n')) {
         if (!OUTPUT_VERB.test(line)) continue;
-        for (const r of rest) if (namesPath(line, r.path) || namesPath(line, basename(r.path), true)) written.add(r.path);
+        for (const outside_doc of rest) if (is_path_named(line, outside_doc.path) || is_path_named(line, basename(outside_doc.path), true)) written.add(outside_doc.path);
       }
     } catch { /* git grep exits 1 when nothing matches */ }
   }
   for (const { path } of rest) {
-    const ref = referenced.get(path);
-    if (ref) { out.push({ path, cls: 'not-a-doc', reason: `referenced by ${ref}` }); continue; }
-    out.push(written.has(path) ? { path, cls: 'junk', reason: 'written by a script in this repo' } : { path, cls: 'misplaced', reason: 'doc-like markdown outside the docs tree' });
+    const reference = referenced.get(path);
+    if (reference) { found.push({ path, cls: 'not-a-doc', reason: `referenced by ${reference}` }); continue; }
+    found.push(written.has(path) ? { path, cls: 'junk', reason: 'written by a script in this repo' } : { path, cls: 'misplaced', reason: 'doc-like markdown outside the docs tree' });
   }
-  return out.sort((a, b) => a.path.localeCompare(b.path));
+  return found.sort((a, b) => a.path.localeCompare(b.path));
 }
 
 /** Skeleton review file: deterministic junk/stubs pre-set to `delete`, misplaced left for the judgment pass. */
-export async function writeOutsideReview(opts: { docsPath: string; root: string; docs: OutsideDoc[]; batch?: string }): Promise<string> {
-  const top = projectRootOf(opts.docsPath);
-  const dir = reviewDir(opts.root);
-  const batch = opts.batch ?? (await nextBatch(dir));
+export async function write_outside_review(options: { docs_root: string; root: string; docs: OutsideDoc[]; batch?: string }): Promise<string> {
+  const git_top = resolve_git_top(options.docs_root);
+  const dir_path = resolve_review_dir(options.root);
+  const batch = options.batch ?? (await find_next_batch(dir_path));
   const entries: ReviewEntry[] = [];
-  for (const d of opts.docs.filter((x) => x.cls !== 'tool-read')) {
+  for (const doc of options.docs.filter((outside_doc) => outside_doc.cls !== 'tool-read')) {
     entries.push({
-      path: d.path, outside: true, lane: d.cls, reasons: [d.reason],
-      content_hash: hashContent(await readFile(join(top, d.path), 'utf-8')),
-      verdict: d.cls === 'misplaced' ? null : 'delete',
+      path: doc.path, outside: true, lane: doc.cls, reasons: [doc.reason],
+      content_hash: compute_content_hash(await readFile(join(git_top, doc.path), 'utf-8')),
+      verdict: doc.cls === 'misplaced' ? null : 'delete',
     });
   }
-  const file = join(dir, `review-${batch}-outside.md`);
-  await mkdir(dir, { recursive: true });
-  await writeFile(file, renderReview({ batch, shard: 1, scope: 'outside' }, entries), { encoding: 'utf-8', flag: 'wx' });
+  const file = join(dir_path, `review-${batch}-outside.md`);
+  await mkdir(dir_path, { recursive: true });
+  await writeFile(file, render_review({ batch, shard: 1, scope: 'outside' }, entries), { encoding: 'utf-8', flag: 'wx' });
   return file;
 }
 
-const rmFile = async (top: string, rel: string): Promise<void> => {
-  try { git(top, ['rm', '-qf', '--', rel]); } catch { /* untracked */ }
-  if (existsSync(join(top, rel))) await unlink(join(top, rel));
+const remove_file = async (git_top: string, doc_path: string): Promise<void> => {
+  try { run_git(git_top, ['rm', '-qf', '--', doc_path]); } catch { /* untracked */ }
+  if (existsSync(join(git_top, doc_path))) await unlink(join(git_top, doc_path));
 };
 
 /** Rewrite relative markdown link targets in `text` through `map` (returns undefined to keep). */
-const rewriteLinks = (text: string, map: (target: string) => string | undefined): string =>
-  text.replace(/(\]\()([^)\s#]+)((?:#[^)\s]*)?\))/g, (m, a: string, t: string, c: string) =>
-    /^[a-z][a-z0-9+.-]*:|^\//i.test(t) ? m : `${a}${map(t) ?? t}${c}`);
+const with_rewritten_links = (text: string, map: (target: string) => string | undefined): string =>
+  text.replace(/(\]\()([^)\s#]+)((?:#[^)\s]*)?\))/g, (match, a: string, link_target: string, suffix: string) =>
+    /^[a-z][a-z0-9+.-]*:|^\//i.test(link_target) ? match : `${a}${map(link_target) ?? link_target}${suffix}`);
 
-const posixRel = (from: string, to: string): string => { const r = relative(from, to).split('\\').join('/'); return r.startsWith('.') ? r : `./${r}`; };
+const format_posix_relative_path = (from: string, to: string): string => { const result = relative(from, to).split('\\').join('/'); return result.startsWith('.') ? result : `./${result}`; };
 
-async function gitHistory(top: string, rel: string): Promise<string> {
+async function load_git_history(git_top: string, doc_path: string): Promise<string> {
   try {
-    const rows = git(top, ['log', '--follow', '--format=%aI\t%an', '--', rel]).split('\n').filter(Boolean).map((l) => l.split('\t'));
+    const rows = run_git(git_top, ['log', '--follow', '--format=%aI\t%an', '--', doc_path]).split('\n').filter(Boolean).map((line) => line.split('\t'));
     if (!rows.length) return '';
-    const authors = [...new Set(rows.map((r) => r[1]))].join(', ');
+    const authors = [...new Set(rows.map((row) => row[1]))].join(', ');
     return `first commit ${rows[rows.length - 1]![0]!.slice(0, 10)}, last change ${rows[0]![0]!.slice(0, 10)}, authors: ${authors}`;
   } catch { return ''; }
 }
@@ -146,67 +147,67 @@ async function gitHistory(top: string, rel: string): Promise<string> {
 export interface OutsideApplyResult { status: 'applied' | 'stale' | 'error'; detail?: string; touched: string[]; domain?: string; }
 
 /** Apply one accepted outside entry. Edits files and stages them; the caller commits. */
-export async function applyOutsideEntry(opts: { docsPath: string; entry: ReviewEntry }): Promise<OutsideApplyResult> {
-  const { docsPath, entry: e } = opts;
-  const top = projectRootOf(docsPath);
-  const abs = resolve(top, e.path);
-  const rel = relative(top, abs).split('\\').join('/');
-  const fail = (detail: string, status: 'error' | 'stale' = 'error'): OutsideApplyResult => ({ status, detail, touched: [] });
-  if (isAbsolute(e.path) || rel.startsWith('..')) return fail('path escapes the project');
-  const { reconcile } = await loadPluginConfig(top);
-  if (isKeepInPlace(rel, reconcile.keep_in_place)) return fail('keep_in_place: never moved or deleted');
-  if (!existsSync(abs)) return fail('file not found');
-  const raw = await readFile(abs, 'utf-8');
-  if (hashContent(raw) !== e.content_hash) return fail('file changed since the review was written', 'stale');
+export async function apply_outside_entry(options: { docs_root: string; entry: ReviewEntry }): Promise<OutsideApplyResult> {
+  const { docs_root: docs_root, entry } = options;
+  const git_top = resolve_git_top(docs_root);
+  const abs_path = resolve(git_top, entry.path);
+  const repo_path = relative(git_top, abs_path).split('\\').join('/');
+  const build_failure = (detail: string, status: 'error' | 'stale' = 'error'): OutsideApplyResult => ({ status, detail, touched: [] });
+  if (isAbsolute(entry.path) || repo_path.startsWith('..')) return build_failure('path escapes the project');
+  const { reconcile } = await load_plugin_config(git_top);
+  if (is_keep_in_place(repo_path, reconcile.keep_in_place)) return build_failure('keep_in_place: never moved or deleted');
+  if (!existsSync(abs_path)) return build_failure('file not found');
+  const raw_text = await readFile(abs_path, 'utf-8');
+  if (compute_content_hash(raw_text) !== entry.content_hash) return build_failure('file changed since the review was written', 'stale');
 
-  if (e.verdict === 'delete') {
-    await rmFile(top, rel);
-    return { status: 'applied', touched: [abs] };
+  if (entry.verdict === 'delete') {
+    await remove_file(git_top, repo_path);
+    return { status: 'applied', touched: [abs_path] };
   }
-  if (e.verdict !== 'integrate') return fail(`verdict "${e.verdict}" is not valid for an outside entry`);
+  if (entry.verdict !== 'integrate') return build_failure(`verdict "${entry.verdict}" is not valid for an outside entry`);
 
-  const integrateOpts = { filePath: abs, docsPath, force: true, silent: true, ...(e.domain && { domain: e.domain }) };
-  const plan = await integrateDocument({ ...integrateOpts, dryRun: true });
-  if (!plan.success || !plan.targetPath) return fail(plan.error ?? 'integrate failed');
-  const target = plan.targetPath;
+  const integrate_options = { file_path: abs_path, docs_root, force: true, silent: true, ...(entry.domain && { domain: entry.domain }) };
+  const plan = await integrate_document({ ...integrate_options, dry_run: true });
+  if (!plan.success || !plan.target_path) return build_failure(plan.error ?? 'integrate failed');
+  const target = plan.target_path;
   // force only skips the similarity prompt; it must never overwrite a doc nobody accepted a change to.
-  if (existsSync(target)) return fail(`target ${relative(top, target).split('\\').join('/')} already exists`);
+  if (existsSync(target)) return build_failure(`target ${relative(git_top, target).split('\\').join('/')} already exists`);
 
   // Plan every inbound-link rewrite before touching anything, and refuse if one would sweep in uncommitted edits.
-  const rewrites: { f: string; next: string }[] = [];
-  for (const f of await findMarkdownFiles(docsPath)) {
-    const text = await readFile(f, 'utf-8');
-    const next = rewriteLinks(text, (t) => (resolve(dirname(f), t.split('#')[0]!) === abs ? posixRel(dirname(f), target) : undefined));
-    if (next !== text) rewrites.push({ f, next });
+  const rewrites: { file: string; next: string }[] = [];
+  for (const file of await find_markdown_files(docs_root)) {
+    const text = await readFile(file, 'utf-8');
+    const next = with_rewritten_links(text, (link_target) => (resolve(dirname(file), link_target.split('#')[0]!) === abs_path ? format_posix_relative_path(dirname(file), target) : undefined));
+    if (next !== text) rewrites.push({ file, next });
   }
   if (rewrites.length) {
-    const dirty = git(top, ['status', '--porcelain', '--untracked-files=no', '--', ...rewrites.map((r) => relative(top, r.f))]);
-    if (dirty) return fail(`uncommitted changes in docs that link here; commit them first:\n${dirty}`);
+    const dirty = run_git(git_top, ['status', '--porcelain', '--untracked-files=no', '--', ...rewrites.map((rewrite) => relative(git_top, rewrite.file))]);
+    if (dirty) return build_failure(`uncommitted changes in docs that link here; commit them first:\n${dirty}`);
   }
 
-  const history = await gitHistory(top, rel);
-  const res = await integrateDocument(integrateOpts);
-  if (!res.success || res.targetPath !== target) return fail(res.error ?? 'integrate failed');
-  const targetRel = relative(docsPath, target).split('\\').join('/');
+  const history = await load_git_history(git_top, repo_path);
+  const integration = await integrate_document(integrate_options);
+  if (!integration.success || integration.target_path !== target) return build_failure(integration.error ?? 'integrate failed');
+  const target_rel = relative(docs_root, target).split('\\').join('/');
 
   // Provenance + moved_from; a moved doc was never reconciled or validated.
   const written = await readFile(target, 'utf-8');
-  const { data, content } = parseFrontmatter<Record<string, unknown>>(written);
-  const { last_verified: _lv, last_validated: _lval, ...fm } = data;
+  const { data, content } = parse_frontmatter<Record<string, unknown>>(written);
+  const { last_verified: _lv, last_validated: _lval, ...frontmatter } = data;
   // Real last content change from git (still tracked at this point); today only when untracked.
-  fm.last_updated = git(top, ['log', '-1', '--format=%as', '--', rel]) || new Date().toISOString().slice(0, 10);
-  const prov = Array.isArray(fm.provenance) ? (fm.provenance as string[]) : [];
+  frontmatter.last_updated = run_git(git_top, ['log', '-1', '--format=%as', '--', repo_path]) || new Date().toISOString().slice(0, 10);
+  const provenance = Array.isArray(frontmatter.provenance) ? (frontmatter.provenance as string[]) : [];
   // Links inside the moved doc keep pointing at the same files from the new location.
-  const rebased = rewriteLinks(content, (t) => posixRel(dirname(target), resolve(dirname(abs), t)));
-  await writeFile(target, setFrontmatter(rebased, { ...fm, moved_from: rel, provenance: [...prov, `moved from ${rel}${history ? `; ${history}` : ''}`] }), 'utf-8');
+  const rebased = with_rewritten_links(content, (link_target) => format_posix_relative_path(dirname(target), resolve(dirname(abs_path), link_target)));
+  await writeFile(target, with_frontmatter(rebased, { ...frontmatter, moved_from: repo_path, provenance: [...provenance, `moved from ${repo_path}${history ? `; ${history}` : ''}`] }), 'utf-8');
 
-  const touched = [abs, target];
-  for (const { f, next } of rewrites) {
-    await writeFile(f, next, 'utf-8');
-    touched.push(f);
+  const touched = [abs_path, target];
+  for (const { file, next } of rewrites) {
+    await writeFile(file, next, 'utf-8');
+    touched.push(file);
   }
-  await rmFile(top, rel);
-  return { status: 'applied', touched, domain: targetRel.split('/')[0]! };
+  await remove_file(git_top, repo_path);
+  return { status: 'applied', touched, domain: target_rel.split('/')[0]! };
 }
 
-export const outsideKey = (path: string): string => `outside:${path}`;
+export const build_outside_key = (path: string): string => `outside:${path}`;

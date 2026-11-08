@@ -24,8 +24,8 @@ describe('maintain step order', () => {
   );
 
   it('generates knowledge-base indexes before the link check', () => {
-    const generate = src.indexOf('maybeGenerateKbIndexes(');
-    const check = src.indexOf('await checkLinks(');
+    const generate = src.indexOf('ensure_knowledge_base_indexes(');
+    const check = src.indexOf('await check_links(');
 
     expect(generate).toBeGreaterThan(-1);
     expect(check).toBeGreaterThan(-1);
@@ -34,8 +34,8 @@ describe('maintain step order', () => {
 
   it('regenerates domain indexes before the link check too', () => {
     // Same property, one layer up: INDEX.md/REGISTRY.md are also derived artifacts.
-    const regenerate = src.indexOf('regenerateIndexes(');
-    const check = src.indexOf('await checkLinks(');
+    const regenerate = src.indexOf('regenerate_indexes(');
+    const check = src.indexOf('await check_links(');
 
     expect(regenerate).toBeGreaterThan(-1);
     expect(regenerate).toBeLessThan(check);

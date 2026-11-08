@@ -20,13 +20,13 @@ const NAMES = ['a', 'b', 'c', 'd', 'e'];
 const put = (rel: string, text: string) => writeFile(join(docs, rel), text);
 
 /** "RULE|file" for every OVERVIEW_* issue, via the built auditor (the CLI does not print issues). */
-const overviewIssues = (): string[] =>
+const overview_issues = (): string[] =>
   JSON.parse(
     execFileSync(
       'node',
       [
         '-e',
-        `import('${join(REPO, 'dist/core/audit/auditor.js')}').then(async m=>{const r=await m.auditDocumentation({docsPath:process.argv[1],silent:true});console.log(JSON.stringify(r.issues.filter(i=>i.rule&&i.rule.startsWith('OVERVIEW_')).map(i=>i.rule+'|'+i.file+'|'+i.message)))})`,
+        `import('${join(REPO, 'dist/core/audit/auditor.js')}').then(async m=>{const r=await m.check_documentation({docs_root:process.argv[1],silent:true});console.log(JSON.stringify(r.issues.filter(i=>i.rule&&i.rule.startsWith('OVERVIEW_')).map(i=>i.rule+'|'+i.file+'|'+i.message)))})`,
         docs,
       ],
       { encoding: 'utf8', cwd: root }
@@ -48,10 +48,10 @@ const snapshot = async (dir = docs): Promise<Record<string, string>> => {
   return out;
 };
 
-const writeMembers = async () => {
+const write_members = async () => {
   for (const [i, n] of NAMES.entries()) await put(`api/${n}.md`, `${FM(`Doc ${n}`)}\n# Doc ${n}\n\n[x](${NAMES[(i + 1) % 5]}.md) [y](${NAMES[(i + 2) % 5]}.md)\n`);
 };
-const writeOverview = (linked = NAMES) =>
+const write_overview = (linked = NAMES) =>
   put(
     'api/ov.md',
     `${FM('The Overview', 'kind: overview\n')}\n# The Overview\n\n${linked.map((n) => `[${n}](${n}.md)`).join('\n')}\n`
@@ -70,25 +70,25 @@ afterEach(() => rm(root, { recursive: true, force: true }));
 
 describe('overview docs end to end (built CLI)', () => {
   it('OVERVIEW_MISSING with only a generated INDEX hub; gone once a kind: overview doc links the members', async () => {
-    await writeMembers();
+    await write_members();
     expect(hewtd('maintain', '--quick', '-p', docs).status).toBe(0);
     expect(existsSync(join(docs, 'api/INDEX.md'))).toBe(true);
-    const before = overviewIssues();
+    const before = overview_issues();
     expect(before).toHaveLength(1);
     expect(before[0]).toMatch(/^OVERVIEW_MISSING\|api\/a\.md\|Flow — 5 docs \(api\/a\.md, api\/b\.md, api\/c\.md, api\/d\.md, api\/e\.md\) have no overview; only a generated index links them all$/);
 
-    await writeOverview();
-    expect(overviewIssues()).toEqual([]);
+    await write_overview();
+    expect(overview_issues()).toEqual([]);
 
     // Partial coverage of the cluster (1 of 5 others) is not an overview.
-    await writeOverview(['a']);
-    expect(overviewIssues()[0]).toMatch(/^OVERVIEW_MISSING\|api\//);
+    await write_overview(['a']);
+    expect(overview_issues()[0]).toMatch(/^OVERVIEW_MISSING\|api\//);
   });
 
   it('OVERVIEW_STALE_LINKS names the members an overview misses', async () => {
-    await writeMembers();
-    await writeOverview(['a', 'b', 'c', 'd']);
-    const issues = overviewIssues();
+    await write_members();
+    await write_overview(['a', 'b', 'c', 'd']);
+    const issues = overview_issues();
     expect(issues).toHaveLength(1);
     expect(issues[0]).toMatch(/^OVERVIEW_STALE_LINKS\|api\/ov\.md\|Overview does not link 1 of 5 cluster docs: api\/e\.md$/);
   });
@@ -105,17 +105,17 @@ describe('overview docs end to end (built CLI)', () => {
   });
 
   it('OVERVIEW_* warnings never change audit exit codes, even with --strict', async () => {
-    await writeMembers();
+    await write_members();
     hewtd('maintain', '--quick', '-p', docs);
-    expect(overviewIssues().length).toBeGreaterThan(0);
+    expect(overview_issues().length).toBeGreaterThan(0);
     expect(hewtd('audit', '-p', docs).status).toBe(0);
     expect(hewtd('audit', '--strict', '-p', docs).status).toBe(0);
-    const { countActionableIssues } = await import('../../src/core/audit/auditor.js');
-    expect(countActionableIssues([{ rule: 'OVERVIEW_MISSING' }, { rule: 'OVERVIEW_STALE_LINKS' }])).toBe(0);
+    const { count_actionable_issues } = await import('../../src/core/audit/auditor.js');
+    expect(count_actionable_issues([{ rule: 'OVERVIEW_MISSING' }, { rule: 'OVERVIEW_STALE_LINKS' }])).toBe(0);
   });
 
   it('maintain --fix adds back-links once; a second run changes no file, and kind survives', async () => {
-    await writeMembers();
+    await write_members();
     // Incomplete frontmatter forces the metadata-fix path that used to strip `kind`.
     await put('api/ov.md', `---\ntitle: The Overview\ntier: guide\ndomains: [api]\nstatus: active\nkind: overview\ngenerated_by: me\n---\n\n# The Overview\n\n${NAMES.map((n) => `[${n}](${n}.md)`).join('\n')}\n`);
 
@@ -135,18 +135,18 @@ describe('overview docs end to end (built CLI)', () => {
     const first = await snapshot();
     expect(hewtd('maintain', '--quick', '--fix', '-p', docs).status).toBe(0);
     expect(await snapshot()).toEqual(first);
-    expect(overviewIssues()).toEqual([]);
+    expect(overview_issues()).toEqual([]);
   });
 
   it('health report (markdown and json) shows exact cluster counts', async () => {
-    await writeMembers();
+    await write_members();
     expect(hewtd('report', 'health', '-p', docs).status).toBe(0);
     let files = await readdir(join(docs, 'reports'));
     let md = await readFile(join(docs, 'reports', files.find((f) => f.startsWith('health'))!), 'utf8');
     expect(md).toContain('0 cluster(s) with an overview, 1 without.');
     expect(md).toMatch(/\| api \| 5 \| yes \|/);
 
-    await writeOverview();
+    await write_overview();
     await rm(join(docs, 'reports'), { recursive: true });
     expect(hewtd('report', 'health', '-p', docs, '-f', 'json').status).toBe(0);
     files = await readdir(join(docs, 'reports'));

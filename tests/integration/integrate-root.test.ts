@@ -4,8 +4,8 @@ import { existsSync } from 'fs';
 import { spawnSync } from 'child_process';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
-import { integrateDocument } from '../../src/core/integrate/integrator.js';
-import { resolveDocsPath } from '../../src/utils/docs-root.js';
+import { integrate_document } from '../../src/core/integrate/integrator.js';
+import { resolve_docs_path } from '../../src/utils/docs-root.js';
 
 const CLI = join(resolve(__dirname, '../..'), 'dist/cli/index.js');
 const BODY = '---\ntitle: Deploy Guide\ntier: guide\ndomains: [devops]\nstatus: active\n---\n\n# Deploy Guide\n\nHow to deploy.\n';
@@ -29,9 +29,9 @@ afterEach(() => rm(root, { recursive: true, force: true }));
 describe('resolveDocsPath', () => {
   it('walks up from a subdirectory, honors explicit -p, stops at the git root', () => {
     const sub = join(root, 'src/deep');
-    expect(resolveDocsPath(sub, '.documentation', false)).toBe(docs);
-    expect(resolveDocsPath(sub, '.documentation', true)).toBe(join(sub, '.documentation'));
-    expect(resolveDocsPath(root, 'nope', false)).toBe(join(root, 'nope'));
+    expect(resolve_docs_path(sub, '.documentation', false)).toBe(docs);
+    expect(resolve_docs_path(sub, '.documentation', true)).toBe(join(sub, '.documentation'));
+    expect(resolve_docs_path(root, 'nope', false)).toBe(join(root, 'nope'));
   });
 });
 
@@ -47,7 +47,7 @@ describe('integrate from a subdirectory', () => {
 });
 
 describe('integrate of an in-tree file', () => {
-  const run = (file: string) => integrateDocument({ filePath: file, docsPath: docs, auto: true, silent: true });
+  const run = (file: string) => integrate_document({ file_path: file, docs_root: docs, auto: true, silent: true });
 
   it('refuses a file at a different path and writes nothing', async () => {
     await mkdir(join(docs, 'api/sub'), { recursive: true });

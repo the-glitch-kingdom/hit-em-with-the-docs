@@ -2,26 +2,26 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, mkdir, writeFile, readFile, rm, stat } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { migrateIncident } from '../../../src/core/knowledge-base/migrate.js';
+import { migrate_incident } from '../../../src/core/knowledge-base/migrate.js';
 
 describe('migrateIncident (2.3.0 / 2.4.0 target-path fix)', () => {
-  let tmpDir: string;
-  let vaultRoot: string;
-  let flatFilePath: string;
+  let tmp_dir: string;
+  let vault_root: string;
+  let flat_file_path: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'hewtd-migrate-'));
-    vaultRoot = tmpDir;
-    flatFilePath = join(tmpDir, '2026-05-14-vault-test.md');
+    tmp_dir = await mkdtemp(join(tmpdir(), 'hewtd-migrate-'));
+    vault_root = tmp_dir;
+    flat_file_path = join(tmp_dir, '2026-05-14-vault-test.md');
   });
 
   afterEach(async () => {
-    await rm(tmpDir, { recursive: true, force: true });
+    await rm(tmp_dir, { recursive: true, force: true });
   });
 
   it('migrates a flat-file incident into <vault>/incidents/<slug>/ (canonical target — fixed in 2.4.0)', async () => {
     await writeFile(
-      flatFilePath,
+      flat_file_path,
       `---
 title: Vault Test Incident
 domains: [incidents]
@@ -44,35 +44,35 @@ Test.
       'utf-8'
     );
 
-    const result = await migrateIncident({ flatFilePath, vaultRoot });
+    const result = await migrate_incident({ flat_file_path, vault_root });
 
     expect(result.action).toBe('migrated');
     // KEY FIX: target is under incidents/, not a sibling of the flat file.
-    expect(result.targetFolder).toBe(
-      join(vaultRoot, 'incidents', '2026-05-14-vault-test')
+    expect(result.target_folder).toBe(
+      join(vault_root, 'incidents', '2026-05-14-vault-test')
     );
 
-    const narrative = await readFile(result.narrativePath, 'utf-8');
+    const narrative = await readFile(result.narrative_path, 'utf-8');
     expect(narrative).toContain('tier: incident-narrative');
     expect(narrative).toContain('id: 2026-05-14-vault-test');
     expect(narrative).toContain('## Timeline');
 
-    const facts = await readFile(result.factsPath, 'utf-8');
+    const facts = await readFile(result.facts_path, 'utf-8');
     expect(facts).toContain('tier: incident-facts');
     expect(facts).toContain('incident_id: 2026-05-14-vault-test');
     expect(facts).toContain('produced: []');
 
-    const evidenceStat = await stat(result.evidencePath);
-    expect(evidenceStat.isDirectory()).toBe(true);
+    const evidence_stat = await stat(result.evidence_path);
+    expect(evidence_stat.isDirectory()).toBe(true);
 
-    const renamed = `${flatFilePath}.migrated`;
-    const renamedStat = await stat(renamed);
-    expect(renamedStat.isFile()).toBe(true);
+    const renamed = `${flat_file_path}.migrated`;
+    const renamed_stat = await stat(renamed);
+    expect(renamed_stat.isFile()).toBe(true);
   });
 
   it('creates <vault>/incidents/ parent dir if it doesn\'t exist yet', async () => {
     await writeFile(
-      flatFilePath,
+      flat_file_path,
       `---
 title: T
 domains: [incidents]
@@ -88,16 +88,16 @@ components: [vault]
       'utf-8'
     );
     // No incidents/ subdir yet — migration must create it.
-    const result = await migrateIncident({ flatFilePath, vaultRoot });
+    const result = await migrate_incident({ flat_file_path, vault_root });
     expect(result.action).toBe('migrated');
-    const incidentsParent = join(vaultRoot, 'incidents');
-    const s = await stat(incidentsParent);
+    const incidents_parent = join(vault_root, 'incidents');
+    const s = await stat(incidents_parent);
     expect(s.isDirectory()).toBe(true);
   });
 
   it('is idempotent at the canonical location — second run reports already_migrated (new)', async () => {
     await writeFile(
-      flatFilePath,
+      flat_file_path,
       `---
 title: Test
 domains: [incidents]
@@ -113,23 +113,23 @@ components: [vault]
       'utf-8'
     );
 
-    await migrateIncident({ flatFilePath, vaultRoot });
+    await migrate_incident({ flat_file_path, vault_root });
 
     // Plant a fresh flat file (simulate user re-running)
-    await writeFile(flatFilePath, '---\ntitle: Stale\n---\n# Stale\n', 'utf-8');
+    await writeFile(flat_file_path, '---\ntitle: Stale\n---\n# Stale\n', 'utf-8');
 
-    const result2 = await migrateIncident({ flatFilePath, vaultRoot });
+    const result2 = await migrate_incident({ flat_file_path, vault_root });
     expect(result2.action).toBe('already_migrated');
-    expect(result2.existingLocation).toBe('new');
+    expect(result2.existing_location).toBe('new');
   });
 
   it('detects pre-existing 2.3.0-style folders at the legacy location and reports already_migrated (legacy)', async () => {
     // Simulate the 2.3.0 bug aftermath: a folder at the legacy location
     // (<vault>/<slug>/) with a valid narrative.md.
-    const legacyFolder = join(vaultRoot, '2026-05-14-vault-test');
-    await mkdir(legacyFolder, { recursive: true });
+    const legacy_folder = join(vault_root, '2026-05-14-vault-test');
+    await mkdir(legacy_folder, { recursive: true });
     await writeFile(
-      join(legacyFolder, 'narrative.md'),
+      join(legacy_folder, 'narrative.md'),
       `---
 title: Legacy
 tier: incident-narrative
@@ -150,7 +150,7 @@ components: [vault]
 
     // Now create a fresh flat file with the same slug and try to migrate.
     await writeFile(
-      flatFilePath,
+      flat_file_path,
       `---
 title: New
 domains: [incidents]
@@ -166,17 +166,17 @@ components: [vault]
       'utf-8'
     );
 
-    const result = await migrateIncident({ flatFilePath, vaultRoot });
+    const result = await migrate_incident({ flat_file_path, vault_root });
     expect(result.action).toBe('already_migrated');
-    expect(result.existingLocation).toBe('legacy');
+    expect(result.existing_location).toBe('legacy');
     // The result's narrativePath points at the legacy folder so the CLI
     // can tell the user where the existing migration lives.
-    expect(result.narrativePath).toBe(join(legacyFolder, 'narrative.md'));
+    expect(result.narrative_path).toBe(join(legacy_folder, 'narrative.md'));
   });
 
   it('--force re-migrates even when canonical folder exists', async () => {
     await writeFile(
-      flatFilePath,
+      flat_file_path,
       `---
 title: Original
 domains: [incidents]
@@ -193,11 +193,11 @@ components: [vault]
     );
 
     // First migration
-    await migrateIncident({ flatFilePath, vaultRoot });
+    await migrate_incident({ flat_file_path, vault_root });
 
     // Re-create flat file with new content
     await writeFile(
-      flatFilePath,
+      flat_file_path,
       `---
 title: Replaced
 domains: [incidents]
@@ -213,21 +213,21 @@ components: [vault, alloy]
       'utf-8'
     );
 
-    const result = await migrateIncident({
-      flatFilePath,
-      vaultRoot,
+    const result = await migrate_incident({
+      flat_file_path,
+      vault_root,
       force: true,
     });
     expect(result.action).toBe('migrated');
 
-    const narrative = await readFile(result.narrativePath, 'utf-8');
+    const narrative = await readFile(result.narrative_path, 'utf-8');
     expect(narrative).toContain('title: Replaced');
     expect(narrative).toContain('severity: critical');
   });
 
   it('dry-run produces the canonical plan without writing files', async () => {
     await writeFile(
-      flatFilePath,
+      flat_file_path,
       `---
 title: Dry Test
 domains: [incidents]
@@ -243,34 +243,34 @@ components: [vault]
       'utf-8'
     );
 
-    const result = await migrateIncident({
-      flatFilePath,
-      vaultRoot,
-      dryRun: true,
+    const result = await migrate_incident({
+      flat_file_path,
+      vault_root,
+      dry_run: true,
     });
 
     expect(result.action).toBe('dry_run');
-    expect(result.targetFolder).toBe(
-      join(vaultRoot, 'incidents', '2026-05-14-vault-test')
+    expect(result.target_folder).toBe(
+      join(vault_root, 'incidents', '2026-05-14-vault-test')
     );
-    expect(result.narrativeContent).toContain('tier: incident-narrative');
-    expect(result.factsContent).toContain('tier: incident-facts');
+    expect(result.narrative_content).toContain('tier: incident-narrative');
+    expect(result.facts_content).toContain('tier: incident-facts');
 
-    let folderExists = true;
+    let folder_exists = true;
     try {
-      await stat(result.targetFolder);
+      await stat(result.target_folder);
     } catch {
-      folderExists = false;
+      folder_exists = false;
     }
-    expect(folderExists).toBe(false);
+    expect(folder_exists).toBe(false);
 
-    const original = await stat(flatFilePath);
+    const original = await stat(flat_file_path);
     expect(original.isFile()).toBe(true);
   });
 
   it('falls back to defaults when the source frontmatter is sparse', async () => {
     await writeFile(
-      flatFilePath,
+      flat_file_path,
       `---
 title: Bare
 ---
@@ -280,8 +280,8 @@ title: Bare
       'utf-8'
     );
 
-    const result = await migrateIncident({ flatFilePath, vaultRoot });
-    const narrative = await readFile(result.narrativePath, 'utf-8');
+    const result = await migrate_incident({ flat_file_path, vault_root });
+    const narrative = await readFile(result.narrative_path, 'utf-8');
     expect(narrative).toContain('severity: medium');
     expect(narrative).toContain('resolution_status: resolved');
     expect(narrative).toContain('- unknown');
@@ -289,12 +289,12 @@ title: Bare
 
   describe('dates and folder names (#39)', () => {
     const plan = async (name: string, frontmatter = 'title: X') => {
-      const path = join(tmpDir, name);
+      const path = join(tmp_dir, name);
       await writeFile(path, `---\n${frontmatter}\n---\n\n# X\n`, 'utf-8');
-      const result = await migrateIncident({ flatFilePath: path, vaultRoot, dryRun: true });
+      const result = await migrate_incident({ flat_file_path: path, vault_root, dry_run: true });
       return {
-        folder: result.targetFolder.slice(join(vaultRoot, 'incidents').length + 1),
-        date: /^date: '?([^'\n]*)'?$/m.exec(result.narrativeContent)?.[1],
+        folder: result.target_folder.slice(join(vault_root, 'incidents').length + 1),
+        date: /^date: '?([^'\n]*)'?$/m.exec(result.narrative_content)?.[1],
       };
     };
 

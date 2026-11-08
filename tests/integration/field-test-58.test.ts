@@ -27,7 +27,7 @@ const doc = (domain: string, title: string, body: string, extra = '') =>
 type D = { path: string; lane: string; owner?: string; staleCommits?: number; bytes: number; missing: string[] };
 const triage = (...a: string[]) => JSON.parse(hewtd(['reconcile', ...DOMAINS, ...a, '--json']).stdout) as { docs: D[]; mode: string; totals: { bytes: number } };
 const lanes = (t = triage()) => Object.fromEntries(t.docs.map((d) => [d.path, d]));
-const reviewFiles = () => readdirSync(join(root, '.hewtd/reconcile')).filter((f) => /^review-.*\.md$/.test(f)).sort().map((f) => join(root, '.hewtd/reconcile', f));
+const review_files = () => readdirSync(join(root, '.hewtd/reconcile')).filter((f) => /^review-.*\.md$/.test(f)).sort().map((f) => join(root, '.hewtd/reconcile', f));
 function fill(file: string, fn: (path: string) => Record<string, unknown> | null): void {
   const out = readFileSync(file, 'utf-8').split(/^(?=## )/m).map((sec) => {
     const m = /```json\n([\s\S]*?)\n```/.exec(sec);
@@ -38,8 +38,8 @@ function fill(file: string, fn: (path: string) => Record<string, unknown> | null
   });
   writeFileSync(file, out.join(''));
 }
-const review = (...a: string[]) => { rmSync(join(root, '.hewtd/reconcile'), { recursive: true, force: true }); hewtd(['reconcile', ...a, '--write-review']); return reviewFiles(); };
-const sibTreeHash = () => git(sib, 'status', '--porcelain') + '|' + git(sib, 'rev-parse', 'HEAD') + '|' + git(sib, 'ls-files', '-s');
+const review = (...a: string[]) => { rmSync(join(root, '.hewtd/reconcile'), { recursive: true, force: true }); hewtd(['reconcile', ...a, '--write-review']); return review_files(); };
+const sib_tree_hash = () => git(sib, 'status', '--porcelain') + '|' + git(sib, 'rev-parse', 'HEAD') + '|' + git(sib, 'ls-files', '-s');
 
 beforeAll(() => {
   if (!existsSync(CLI)) throw new Error('run `npm run build` before the integration tests');
@@ -121,18 +121,18 @@ describe('field test #58 fixture (built CLI)', () => {
   it('#6 index from a subdirectory is byte-identical to the root run', () => {
     expect(hewtd(['index']).status).toBe(0);
     const at = () => ['INDEX.md', 'REGISTRY.md'].map((f) => readFileSync(join(docs, f), 'utf-8'));
-    const fromRoot = at();
-    expect(fromRoot[0]).toContain('gamma-ops');
+    const from_root = at();
+    expect(from_root[0]).toContain('gamma-ops');
     rmSync(join(docs, 'INDEX.md'));
     rmSync(join(docs, 'REGISTRY.md'));
     expect(hewtd(['index'], join(root, 'src')).status).toBe(0);
-    expect(at()).toEqual(fromRoot);
+    expect(at()).toEqual(from_root);
     commit(root, 'indexes');
   });
 
   it('overview: root README is not a flow member and the ring is one flow of 5', () => {
     const issues: string[] = JSON.parse(execFileSync('node', ['-e',
-      `import('${join(resolve(__dirname, '../..'), 'dist/core/audit/auditor.js')}').then(async m=>{const r=await m.auditDocumentation({docsPath:process.argv[1],silent:true});console.log(JSON.stringify(r.issues.filter(i=>i.rule==='OVERVIEW_MISSING').map(i=>i.message)))})`, docs],
+      `import('${join(resolve(__dirname, '../..'), 'dist/core/audit/auditor.js')}').then(async m=>{const r=await m.check_documentation({docs_root:process.argv[1],silent:true});console.log(JSON.stringify(r.issues.filter(i=>i.rule==='OVERVIEW_MISSING').map(i=>i.message)))})`, docs],
       { encoding: 'utf8', cwd: root }).trim().split('\n').pop()!);
     expect(issues).toHaveLength(1);
     expect(issues[0]).toMatch(/^Flow — 5 docs /);
@@ -140,7 +140,7 @@ describe('field test #58 fixture (built CLI)', () => {
   });
 
   it('#3 related repos: sibling refs ok, ownership hint fires, clears after summary + cross-link; sibling untouched', () => {
-    const before = sibTreeHash();
+    const before = sib_tree_hash();
     const dup = lanes()['alpha-ops/dup.md']!;
     expect(dup.missing).toEqual([]);
     expect(dup.owner).toBe('api');
@@ -156,7 +156,7 @@ describe('field test #58 fixture (built CLI)', () => {
     const after = lanes()['alpha-ops/dup.md']!;
     expect(after.owner).toBeUndefined();
     expect(after.missing).toEqual([]);
-    expect(sibTreeHash()).toBe(before);
+    expect(sib_tree_hash()).toBe(before);
   });
 
   it('#8 outside lane: config-referenced and archived files are classed; integrated doc gets git dates', () => {
@@ -169,7 +169,7 @@ describe('field test #58 fixture (built CLI)', () => {
     expect(cls['README.md']).toBe('tool-read');
 
     hewtd(['reconcile', '--outside', '--write-review']);
-    const f = reviewFiles().find((x) => x.includes('outside'))!;
+    const f = review_files().find((x) => x.includes('outside'))!;
     fill(f, (p) => (p === 'notes/design.md' ? { verdict: 'integrate', domain: 'alpha-ops' } : null));
     expect(hewtd(['reconcile', '--apply', f]).status).toBe(0);
     const moved = readdirSync(join(docs, 'alpha-ops')).find((n) => /design/.test(n))!;
@@ -180,16 +180,16 @@ describe('field test #58 fixture (built CLI)', () => {
   });
 
   it('#8 apply: a rewrite stays queued, an error exits 1 with a summary, YAML diff is limited to the changed field', () => {
-    const yamlBefore = readFileSync(join(docs, 'alpha-ops/yaml.md'), 'utf-8');
+    const yaml_before = readFileSync(join(docs, 'alpha-ops/yaml.md'), 'utf-8');
     const f = review('alpha-ops', 'beta-ops', 'gamma-ops', '--serial')[0]!;
     fill(f, (p) => (p === 'beta-ops/ext.md' ? { verdict: 'rewrite', draft: 'x' } : p === 'alpha-ops/yaml.md' ? { verdict: 'fields', frontmatter: { purpose: 'Explains how the yaml fixture keeps its list indentation intact' } } : p === 'gamma-ops/f1.md' ? { verdict: 'integrate' } : null));
     const r = hewtd(['reconcile', '--apply', f]);
     expect(r.status).toBe(1);
     expect(r.stdout).toMatch(/error 1/);
     expect(JSON.parse(hewtd(['reconcile', '--next', '10', '--json']).stdout).docs.map((d: D) => d.path)).toContain('beta-ops/ext.md');
-    const yamlAfter = readFileSync(join(docs, 'alpha-ops/yaml.md'), 'utf-8');
-    expect(yamlAfter).toContain('tags:\n- one\n- two\n'); // unindented list kept
-    const changed = yamlAfter.split('\n').filter((l) => !yamlBefore.split('\n').includes(l));
+    const yaml_after = readFileSync(join(docs, 'alpha-ops/yaml.md'), 'utf-8');
+    expect(yaml_after).toContain('tags:\n- one\n- two\n'); // unindented list kept
+    const changed = yaml_after.split('\n').filter((l) => !yaml_before.split('\n').includes(l));
     expect(changed.every((l) => /^(purpose|last_updated|last_verified):/.test(l))).toBe(true);
   });
 

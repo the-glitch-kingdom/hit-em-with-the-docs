@@ -1,0 +1,11 @@
+exit 1
+
+━━━ Documentation Audit ━━━
+
+ℹ Auditing 6 files...
+
+✓ Audit complete!
+ℹ Passed: 0/6
+ℹ Health Score: 40.0/100
+⚠ Issues: 6 errors, 18 warnings
+✓ Report saved: <ROOT>/.documentation/reports/audit-<TS>.md

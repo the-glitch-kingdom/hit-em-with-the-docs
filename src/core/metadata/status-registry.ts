@@ -19,7 +19,7 @@
  * between cases that change config.
  */
 
-import { loadPluginConfigSync } from '../../utils/config.js';
+import { load_plugin_config_sync } from '../../utils/config.js';
 
 /**
  * The four statuses hewtd itself reads and writes. Always valid, in every
@@ -40,8 +40,8 @@ let cached: string[] | null = null;
  * Build the active vocabulary from disk config (no caching). Built-ins first
  * in declared order, then config extras in config order, de-duplicated.
  */
-export function buildStatusVocabulary(projectRoot?: string): string[] {
-  const config = loadPluginConfigSync(projectRoot);
+export function build_status_vocabulary(repo_root?: string): string[] {
+  const config = load_plugin_config_sync(repo_root);
   const seen = new Set<string>(DOC_STATUS_VALUES);
   const values: string[] = [...DOC_STATUS_VALUES];
 
@@ -56,24 +56,24 @@ export function buildStatusVocabulary(projectRoot?: string): string[] {
 
 /**
  * The cached active vocabulary. Built lazily on first access from the config
- * at `process.cwd()` (or `projectRoot` if passed on the first call).
+ * at `process.cwd()` (or `repo_root` if passed on the first call).
  */
-export function getStatusValues(projectRoot?: string): string[] {
+export function get_status_values(repo_root?: string): string[] {
   if (!cached) {
-    cached = buildStatusVocabulary(projectRoot);
+    cached = build_status_vocabulary(repo_root);
   }
   return [...cached];
 }
 
 /** Clear the cached vocabulary. Call this in test setup after mutating config. */
-export function resetStatusRegistry(): void {
+export function reset_status_registry(): void {
   cached = null;
 }
 
 /** True if `value` is a recognized status (built-in OR project-declared). */
-export function isValidStatus(value: string): value is DocStatus {
+export function is_valid_status(value: string): value is DocStatus {
   if (!cached) {
-    cached = buildStatusVocabulary();
+    cached = build_status_vocabulary();
   }
   return cached.includes(value);
 }

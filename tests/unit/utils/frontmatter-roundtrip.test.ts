@@ -13,11 +13,11 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  parseFrontmatter,
-  stringifyFrontmatter,
-  setFrontmatter,
+  parse_frontmatter,
+  render_frontmatter,
+  with_frontmatter,
 } from '../../../src/utils/frontmatter.js';
-import { MetadataSchema } from '../../../src/core/metadata/schema.js';
+import { metadata_schema } from '../../../src/core/metadata/schema.js';
 
 const doc = (fm: string) => `---\n${fm}\n---\n\nBody text.\n`;
 
@@ -25,10 +25,10 @@ describe('frontmatter round-trip (#28)', () => {
   it('keeps a quoted date a string through parse -> stringify -> parse', () => {
     const src = doc("title: T\nlast_updated: '2026-08-22'\nlast_validated: '2026-08-22'");
 
-    const first = parseFrontmatter(src);
+    const first = parse_frontmatter(src);
     expect(typeof first.data.last_updated).toBe('string');
 
-    const second = parseFrontmatter(setFrontmatter(src, first.data));
+    const second = parse_frontmatter(with_frontmatter(src, first.data));
     expect(second.data.last_updated).not.toBeInstanceOf(Date);
     expect(second.data.last_updated).toBe('2026-08-22');
   });
@@ -47,24 +47,24 @@ describe('frontmatter round-trip (#28)', () => {
       ].join('\n')
     );
 
-    const once = parseFrontmatter(src).data;
-    const twice = parseFrontmatter(setFrontmatter(src, once)).data;
+    const once = parse_frontmatter(src).data;
+    const twice = parse_frontmatter(with_frontmatter(src, once)).data;
     expect(twice).toEqual(once);
 
     // and again, so a repeated `maintain --fix` cannot drift
-    const thrice = parseFrontmatter(setFrontmatter(src, twice)).data;
+    const thrice = parse_frontmatter(with_frontmatter(src, twice)).data;
     expect(thrice).toEqual(twice);
   });
 
   it('writes date-shaped values quoted, so other YAML readers agree', () => {
     // Most YAML readers still default to 1.1, where a bare 2026-08-22 is a
     // timestamp. Frontmatter is a shared contract with editors and sister tools.
-    const out = stringifyFrontmatter({ last_updated: '2026-08-22', version: '1.0.0' });
+    const out = render_frontmatter({ last_updated: '2026-08-22', version: '1.0.0' });
     expect(out).toContain("last_updated: '2026-08-22'");
   });
 
   it('quotes date-shaped values nested in objects and arrays', () => {
-    const out = stringifyFrontmatter({
+    const out = render_frontmatter({
       provenance: [{ date: '2026-08-22' }],
       nested: { archived_on: '2026-01-05' },
     });
@@ -73,22 +73,22 @@ describe('frontmatter round-trip (#28)', () => {
   });
 
   it('does not quote values that merely contain digits', () => {
-    const out = stringifyFrontmatter({ version: '1.0.0', title: 'Release 2026 notes' });
+    const out = render_frontmatter({ version: '1.0.0', title: 'Release 2026 notes' });
     expect(out).toContain('version: 1.0.0');
     expect(out).not.toContain("version: '1.0.0'");
   });
 
   it('reads an already-damaged bare date back as a string, not a Date', () => {
     // Docsets damaged by the old write path self-heal on the next read/write.
-    const { data } = parseFrontmatter(doc('last_updated: 2026-08-22'));
+    const { data } = parse_frontmatter(doc('last_updated: 2026-08-22'));
     expect(data.last_updated).not.toBeInstanceOf(Date);
     expect(data.last_updated).toBe('2026-08-22');
-    expect(stringifyFrontmatter(data)).toContain("last_updated: '2026-08-22'");
+    expect(render_frontmatter(data)).toContain("last_updated: '2026-08-22'");
   });
 
   it('does not mutate the object it is given', () => {
     const data = { last_updated: '2026-08-22' };
-    stringifyFrontmatter(data);
+    render_frontmatter(data);
     expect(data.last_updated).toBe('2026-08-22');
     expect(typeof data.last_updated).toBe('string');
   });
@@ -105,14 +105,14 @@ describe('frontmatter round-trip (#28)', () => {
         "version: '1.0.0'",
       ].join('\n')
     );
-    const roundTripped = parseFrontmatter(setFrontmatter(src, parseFrontmatter(src).data)).data;
-    expect(MetadataSchema.safeParse(roundTripped).success).toBe(true);
+    const round_tripped = parse_frontmatter(with_frontmatter(src, parse_frontmatter(src).data)).data;
+    expect(metadata_schema.safeParse(round_tripped).success).toBe(true);
   });
 });
 
 describe('ISO timestamps in date fields (#28)', () => {
   it('accepts a full ISO timestamp, normalizing it to YYYY-MM-DD', () => {
-    const result = MetadataSchema.safeParse({
+    const result = metadata_schema.safeParse({
       title: 'T',
       tier: 'guide',
       domains: ['procedures'],
@@ -125,7 +125,7 @@ describe('ISO timestamps in date fields (#28)', () => {
   });
 
   it('still rejects a value that is not a date at all', () => {
-    const result = MetadataSchema.safeParse({
+    const result = metadata_schema.safeParse({
       title: 'T',
       tier: 'guide',
       domains: ['procedures'],

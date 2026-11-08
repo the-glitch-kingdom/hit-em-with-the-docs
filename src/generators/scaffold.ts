@@ -1,17 +1,17 @@
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { type Domain } from '../core/domains/constants.js';
-import { getAllDomains, getDomainDefinition } from '../core/domains/registry.js';
-import { getStatusValues } from '../core/metadata/status-registry.js';
-import { generateRootIndex } from './index-generator.js';
-import { generateRootRegistry } from './registry-generator.js';
-import { generateDomainIndex } from './templates/domain-index.js';
-import { generateDomainRegistry } from './templates/domain-registry.js';
+import { get_all_domains, get_domain_definition } from '../core/domains/registry.js';
+import { get_status_values } from '../core/metadata/status-registry.js';
+import { generate_root_index } from './index-generator.js';
+import { generate_root_registry } from './registry-generator.js';
+import { generate_domain_index } from './templates/domain-index.js';
+import { generate_domain_registry } from './templates/domain-registry.js';
 import { logger } from '../utils/logger.js';
-import { pathExists, ARCHIVE_DIR } from '../utils/glob.js';
+import { is_path_present, ARCHIVE_DIR } from '../utils/glob.js';
 
 export interface ScaffoldOptions {
-  rootPath: string;
+  root_path: string;
   overwrite?: boolean;
   domains?: Domain[];
   silent?: boolean;
@@ -27,11 +27,11 @@ export interface ScaffoldResult {
 /**
  * Create the complete documentation scaffold
  */
-export async function createScaffold(options: ScaffoldOptions): Promise<ScaffoldResult> {
+export async function create_scaffold(options: ScaffoldOptions): Promise<ScaffoldResult> {
   const {
-    rootPath,
+    root_path,
     overwrite = false,
-    domains = getAllDomains(),
+    domains = get_all_domains(),
     silent = false,
   } = options;
 
@@ -44,24 +44,24 @@ export async function createScaffold(options: ScaffoldOptions): Promise<Scaffold
 
   if (!silent) {
     logger.header('Creating Documentation Scaffold');
-    logger.info(`Root path: ${rootPath}`);
+    logger.info(`Root path: ${root_path}`);
     logger.info(`Domains: ${domains.length}`);
   }
 
   try {
     // Create root directory
-    await createDirectory(rootPath, result, overwrite);
+    await create_directory(root_path, result, overwrite);
 
     // Create root files
-    await createRootFiles(rootPath, domains, result, overwrite);
+    await create_root_files(root_path, domains, result, overwrite);
 
     // Create domain directories and files
     for (const domain of domains) {
-      await createDomainStructure(rootPath, domain, result, overwrite);
+      await create_domain_structure(root_path, domain, result, overwrite);
     }
 
     // Create special directories
-    await createSpecialDirectories(rootPath, result, overwrite);
+    await create_special_directories(root_path, result, overwrite);
 
     if (!silent) {
       logger.newline();
@@ -86,12 +86,12 @@ export async function createScaffold(options: ScaffoldOptions): Promise<Scaffold
 /**
  * Create a directory if it doesn't exist
  */
-async function createDirectory(
+async function create_directory(
   path: string,
   result: ScaffoldResult,
   overwrite: boolean
 ): Promise<void> {
-  const exists = await pathExists(path);
+  const exists = await is_path_present(path);
 
   if (exists && !overwrite) {
     result.skipped.push(path);
@@ -105,13 +105,13 @@ async function createDirectory(
 /**
  * Create a file if it doesn't exist
  */
-async function createFile(
+async function create_file(
   path: string,
   content: string,
   result: ScaffoldResult,
   overwrite: boolean
 ): Promise<void> {
-  const exists = await pathExists(path);
+  const exists = await is_path_present(path);
 
   if (exists && !overwrite) {
     result.skipped.push(path);
@@ -125,85 +125,85 @@ async function createFile(
 /**
  * Create root-level files
  */
-async function createRootFiles(
-  rootPath: string,
+async function create_root_files(
+  root_path: string,
   domains: Domain[],
   result: ScaffoldResult,
   overwrite: boolean
 ): Promise<void> {
   // INDEX.md
-  const indexContent = generateRootIndex();
-  await createFile(join(rootPath, 'INDEX.md'), indexContent, result, overwrite);
+  const index_content = generate_root_index();
+  await create_file(join(root_path, 'INDEX.md'), index_content, result, overwrite);
 
   // REGISTRY.md
-  const registryContent = generateRootRegistry(domains);
-  await createFile(join(rootPath, 'REGISTRY.md'), registryContent, result, overwrite);
+  const registry_content = generate_root_registry(domains);
+  await create_file(join(root_path, 'REGISTRY.md'), registry_content, result, overwrite);
 
   // README.md
-  const readmeContent = generateRootReadme(domains);
-  await createFile(join(rootPath, 'README.md'), readmeContent, result, overwrite);
+  const readme_content = generate_root_readme(domains);
+  await create_file(join(root_path, 'README.md'), readme_content, result, overwrite);
 }
 
 /**
  * Create domain directory structure
  */
-async function createDomainStructure(
-  rootPath: string,
+async function create_domain_structure(
+  root_path: string,
   domain: Domain,
   result: ScaffoldResult,
   overwrite: boolean
 ): Promise<void> {
-  const domainPath = join(rootPath, domain);
-  const def = getDomainDefinition(domain);
+  const domain_path = join(root_path, domain);
+  const definition = get_domain_definition(domain);
 
   // Create domain directory
-  await createDirectory(domainPath, result, overwrite);
+  await create_directory(domain_path, result, overwrite);
 
   // Create INDEX.md
-  const indexContent = generateDomainIndex(domain, def);
-  await createFile(join(domainPath, 'INDEX.md'), indexContent, result, overwrite);
+  const index_content = generate_domain_index(domain, definition);
+  await create_file(join(domain_path, 'INDEX.md'), index_content, result, overwrite);
 
   // Create REGISTRY.md
-  const registryContent = generateDomainRegistry(domain, def);
-  await createFile(join(domainPath, 'REGISTRY.md'), registryContent, result, overwrite);
+  const registry_content = generate_domain_registry(domain, definition);
+  await create_file(join(domain_path, 'REGISTRY.md'), registry_content, result, overwrite);
 }
 
 /**
  * Create special directories (drafts, reports, archive)
  */
-async function createSpecialDirectories(
-  rootPath: string,
+async function create_special_directories(
+  root_path: string,
   result: ScaffoldResult,
   overwrite: boolean
 ): Promise<void> {
   // Drafts directory
-  await createDirectory(join(rootPath, 'drafts'), result, overwrite);
+  await create_directory(join(root_path, 'drafts'), result, overwrite);
 
   // Reports directory
-  await createDirectory(join(rootPath, 'reports'), result, overwrite);
+  await create_directory(join(root_path, 'reports'), result, overwrite);
 
   // Archive directory — deprecated docs live here and are NOT scanned.
-  await createDirectory(join(rootPath, ARCHIVE_DIR), result, overwrite);
+  await create_directory(join(root_path, ARCHIVE_DIR), result, overwrite);
 
   // Create .gitkeep files to preserve empty directories
-  await createFile(
-    join(rootPath, 'drafts', '.gitkeep'),
+  await create_file(
+    join(root_path, 'drafts', '.gitkeep'),
     '# This file ensures the drafts directory is tracked by git\n',
     result,
     overwrite
   );
 
-  await createFile(
-    join(rootPath, 'reports', '.gitkeep'),
+  await create_file(
+    join(root_path, 'reports', '.gitkeep'),
     '# This file ensures the reports directory is tracked by git\n',
     result,
     overwrite
   );
 
   // Archive README documents the convention (and keeps the dir tracked).
-  await createFile(
-    join(rootPath, ARCHIVE_DIR, 'README.md'),
-    generateArchiveReadme(),
+  await create_file(
+    join(root_path, ARCHIVE_DIR, 'README.md'),
+    generate_archive_readme(),
     result,
     overwrite
   );
@@ -213,7 +213,7 @@ async function createSpecialDirectories(
  * Generate the archive/ README — the user-facing instruction for the
  * deprecated-docs convention.
  */
-function generateArchiveReadme(): string {
+function generate_archive_readme(): string {
   return `# Archive
 
 This folder holds **deprecated documentation** — docs that are retired but
@@ -266,7 +266,7 @@ INDEX.md / REGISTRY.md, and can't break audit/link-check with stale frontmatter.
 /**
  * Generate root README content
  */
-function generateRootReadme(domains: Domain[]): string {
+function generate_root_readme(domains: Domain[]): string {
   return `# Documentation
 
 This documentation system uses a hierarchical, domain-based structure for optimal organization and discoverability.
@@ -280,7 +280,7 @@ This documentation system uses a hierarchical, domain-based structure for optima
 
 | Domain | Description |
 |--------|-------------|
-${domains.map((d) => `| [${d}](${d}/) | ${getDomainDefinition(d).description} |`).join('\n')}
+${domains.map((domain) => `| [${domain}](${domain}/) | ${get_domain_definition(domain).description} |`).join('\n')}
 
 ## Adding New Documentation
 
@@ -298,7 +298,7 @@ Every document should include:
 title: "Document Title"
 tier: guide|standard|example|reference|admin
 domains: [primary-domain]
-status: ${getStatusValues().join('|')}
+status: ${get_status_values().join('|')}
 last_updated: 'YYYY-MM-DD'
 version: '1.0.0'
 ---
@@ -323,44 +323,44 @@ This will:
 /**
  * Check if scaffold already exists
  */
-export async function scaffoldExists(rootPath: string): Promise<boolean> {
-  const indexPath = join(rootPath, 'INDEX.md');
-  return pathExists(indexPath);
+export async function is_scaffold_present(root_path: string): Promise<boolean> {
+  const index_path = join(root_path, 'INDEX.md');
+  return is_path_present(index_path);
 }
 
 /**
  * Get scaffold status
  */
-export async function getScaffoldStatus(rootPath: string): Promise<{
+export async function load_scaffold_status(root_path: string): Promise<{
   exists: boolean;
   domains: Domain[];
-  missingDomains: Domain[];
+  missing_domains: Domain[];
 }> {
-  const exists = await scaffoldExists(rootPath);
+  const exists = await is_scaffold_present(root_path);
 
   if (!exists) {
     return {
       exists: false,
       domains: [],
-      missingDomains: getAllDomains(),
+      missing_domains: get_all_domains(),
     };
   }
 
-  const presentDomains: Domain[] = [];
-  const missingDomains: Domain[] = [];
+  const present_domains: Domain[] = [];
+  const missing_domains: Domain[] = [];
 
-  for (const domain of getAllDomains()) {
-    const domainPath = join(rootPath, domain);
-    if (await pathExists(domainPath)) {
-      presentDomains.push(domain);
+  for (const domain of get_all_domains()) {
+    const domain_path = join(root_path, domain);
+    if (await is_path_present(domain_path)) {
+      present_domains.push(domain);
     } else {
-      missingDomains.push(domain);
+      missing_domains.push(domain);
     }
   }
 
   return {
     exists: true,
-    domains: presentDomains,
-    missingDomains,
+    domains: present_domains,
+    missing_domains,
   };
 }

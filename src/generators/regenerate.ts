@@ -1,29 +1,29 @@
 import { readdir, readFile, writeFile } from 'fs/promises';
 import { basename, dirname, join, relative, resolve, sep } from 'path';
 import { type Domain } from '../core/domains/constants.js';
-import { getAllDomains } from '../core/domains/registry.js';
-import { parseFrontmatter } from '../utils/frontmatter.js';
-import { formatDate } from '../core/metadata/generator.js';
-import { pathExists } from '../utils/glob.js';
+import { get_all_domains } from '../core/domains/registry.js';
+import { parse_frontmatter } from '../utils/frontmatter.js';
+import { format_date } from '../core/metadata/generator.js';
+import { is_path_present } from '../utils/glob.js';
 import {
-  loadPluginConfig,
-  loadPluginConfigSync,
-  resolveVaultRoot,
-  resolvePlaybookGlobs,
+  load_plugin_config,
+  load_plugin_config_sync,
+  resolve_vault_root,
+  resolve_playbook_globs,
 } from '../utils/config.js';
-import { buildCiterIndex } from '../core/knowledge-base/citers.js';
-import { generateFactsIndex } from './facts-index.js';
-import { generateIncidentsIndex } from './incidents-index.js';
-import { generateSymptomsIndex } from './symptoms-index.js';
+import { build_citer_index } from '../core/knowledge-base/citers.js';
+import { write_facts_index } from './facts-index.js';
+import { write_incidents_index } from './incidents-index.js';
+import { write_symptoms_index } from './symptoms-index.js';
 import { logger } from '../utils/logger.js';
 import {
-  generateRootIndex,
-  generateDomainIndexContent,
+  generate_root_index,
+  generate_domain_index_content,
   type IndexEntry,
 } from './index-generator.js';
 import {
-  generateRootRegistry,
-  generateDomainRegistryContent,
+  generate_root_registry,
+  generate_domain_registry_content,
 } from './registry-generator.js';
 
 /** Generated files that are never themselves treated as documents. */
@@ -64,19 +64,19 @@ const VAULT_GENERATED_SUBDIRS = ['facts', 'incidents', 'symptoms'];
  * e.g. `['knowledge-base/facts', 'knowledge-base/incidents', ...]`. Empty when
  * the configured vault lives outside the docs tree entirely.
  */
-function vaultOwnedPrefixes(docsPath: string): string[] {
-  const docsAbs = resolve(docsPath);
-  const projectRoot = dirname(docsAbs);
-  const vaultAbs = resolveVaultRoot(projectRoot, loadPluginConfigSync(projectRoot));
-  const rel = relative(docsAbs, vaultAbs);
-  if (!rel || rel.startsWith('..')) return [];
-  const vaultPath = rel.split(sep).join('/');
-  return VAULT_GENERATED_SUBDIRS.map((sub) => `${vaultPath}/${sub}`);
+function get_vault_owned_prefixes(docs_root: string): string[] {
+  const docs_abs = resolve(docs_root);
+  const repo_root = dirname(docs_abs);
+  const vault_abs = resolve_vault_root(repo_root, load_plugin_config_sync(repo_root));
+  const doc_path = relative(docs_abs, vault_abs);
+  if (!doc_path || doc_path.startsWith('..')) return [];
+  const vault_path = doc_path.split(sep).join('/');
+  return VAULT_GENERATED_SUBDIRS.map((sub) => `${vault_path}/${sub}`);
 }
 
 export interface RegenerateOptions {
   /** Path to the documentation root (e.g. `.documentation`). */
-  docsPath: string;
+  docs_root: string;
   /**
    * Restrict domain INDEX.md/REGISTRY.md writes to these domains. The root
    * INDEX.md/REGISTRY.md are always refreshed regardless. Defaults to all
@@ -89,16 +89,16 @@ export interface RegenerateOptions {
    * that WOULD be written. Exists so users can preview the (large, one-time)
    * diff the 2.7.1 recursive walk produces before committing to it.
    */
-  dryRun?: boolean;
+  dry_run?: boolean;
 }
 
 export interface RegenerateResult {
   /** Per-domain document counts — all domains, regardless of the filter. */
-  documentCounts: Record<string, number>;
+  document_counts: Record<string, number>;
   /** Absolute paths of every INDEX.md / REGISTRY.md written. */
-  filesWritten: string[];
+  files_written: string[];
   /** Total documents across all domains. */
-  totalDocuments: number;
+  total_documents: number;
 }
 
 /**
@@ -111,24 +111,24 @@ export interface RegenerateResult {
  * excludes, the whole system excludes: the generated INDEX/REGISTRY at any
  * depth, `EXCLUDED_DIRS`, and the vault's generator-owned subtrees (issue #12).
  */
-export async function listDomainDocFiles(
-  docsPath: string,
+export async function list_domain_doc_files(
+  docs_root: string,
   domain: string
 ): Promise<string[]> {
-  const vaultPrefixes = vaultOwnedPrefixes(docsPath);
-  const inVault = (docRelPath: string): boolean => {
-    const fromDocsRoot = `${domain}/${docRelPath}`;
-    return vaultPrefixes.some((prefix) => fromDocsRoot.startsWith(`${prefix}/`));
+  const vault_prefixes = get_vault_owned_prefixes(docs_root);
+  const is_in_vault = (doc_rel_path: string): boolean => {
+    const from_docs_root = `${domain}/${doc_rel_path}`;
+    return vault_prefixes.some((prefix) => from_docs_root.startsWith(`${prefix}/`));
   };
 
   try {
-    const names = await readdir(join(docsPath, domain), { recursive: true });
+    const names = await readdir(join(docs_root, domain), { recursive: true });
     return names
-      .map((n) => n.split(sep).join('/'))
-      .filter((n) => n.endsWith('.md'))
-      .filter((n) => !SYSTEM_FILES.has(basename(n)))
-      .filter((n) => !n.split('/').some((seg) => EXCLUDED_DIRS.has(seg)))
-      .filter((n) => !inVault(n))
+      .map((name) => name.split(sep).join('/'))
+      .filter((file_name) => file_name.endsWith('.md'))
+      .filter((file_name) => !SYSTEM_FILES.has(basename(file_name)))
+      .filter((file_name) => !file_name.split('/').some((seg) => EXCLUDED_DIRS.has(seg)))
+      .filter((file_name) => !is_in_vault(file_name))
       .sort();
   } catch {
     return [];
@@ -136,17 +136,17 @@ export async function listDomainDocFiles(
 }
 
 /** Normalise a frontmatter date (Date | ISO string | plain date) to YYYY-MM-DD. */
-function normalizeDate(value: unknown): string {
-  if (value instanceof Date) return formatDate(value);
+function normalize_date(value: unknown): string {
+  if (value instanceof Date) return format_date(value);
   if (typeof value === 'string') {
     const match = value.match(/\d{4}-\d{2}-\d{2}/);
     return match ? match[0] : value;
   }
-  return formatDate(new Date());
+  return format_date(new Date());
 }
 
 /** Count words in a markdown body (frontmatter already stripped). */
-function countWords(body: string): number {
+function count_words(body: string): number {
   return body.split(/\s+/).filter(Boolean).length;
 }
 
@@ -156,11 +156,11 @@ function countWords(body: string): number {
  * whole thing would render `backend/entity-schema-contract.md` as
  * "Backend/entity Schema Contract".
  */
-function titleFromFileName(fileName: string): string {
-  return basename(fileName)
+function format_title_from_file_name(file_name: string): string {
+  return basename(file_name)
     .replace(/\.md$/, '')
     .replace(/[-_]/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+    .replace(/\b\w/g, (first_letter) => first_letter.toUpperCase());
 }
 
 /**
@@ -168,18 +168,18 @@ function titleFromFileName(fileName: string): string {
  * `pathPrefix` is prepended to each entry's `path` — `''` for domain-relative
  * paths (domain INDEX/REGISTRY) or `'<domain>/'` for root-relative paths.
  */
-async function buildDomainEntries(
-  docsPath: string,
+async function build_domain_entries(
+  docs_root: string,
   domain: string,
-  pathPrefix: string
+  path_prefix: string
 ): Promise<IndexEntry[]> {
-  const files = await listDomainDocFiles(docsPath, domain);
+  const files = await list_domain_doc_files(docs_root, domain);
   const entries: IndexEntry[] = [];
 
-  for (const fileName of files) {
-    let raw: string;
+  for (const file_name of files) {
+    let raw_text: string;
     try {
-      raw = await readFile(join(docsPath, domain, fileName), 'utf-8');
+      raw_text = await readFile(join(docs_root, domain, file_name), 'utf-8');
     } catch {
       continue;
     }
@@ -193,29 +193,29 @@ async function buildDomainEntries(
     let data: Record<string, unknown> = {};
     let content = '';
     try {
-      ({ data, content } = parseFrontmatter<Record<string, unknown>>(raw));
+      ({ data, content } = parse_frontmatter<Record<string, unknown>>(raw_text));
     } catch (error) {
       logger.warn(
-        `Unparseable frontmatter in ${domain}/${fileName} — indexing it with ` +
+        `Unparseable frontmatter in ${domain}/${file_name} — indexing it with ` +
           `defaults. Fix the YAML to control how it appears: ` +
           `${error instanceof Error ? error.message.split('\n')[0] : String(error)}`
       );
     }
 
     entries.push({
-      path: pathPrefix + fileName,
+      path: path_prefix + file_name,
       title:
         typeof data.title === 'string' && data.title.trim()
           ? data.title
-          : titleFromFileName(fileName),
+          : format_title_from_file_name(file_name),
       tier: typeof data.tier === 'string' ? data.tier : 'guide',
       status: typeof data.status === 'string' ? data.status : 'active',
-      lastUpdated: normalizeDate(data.last_updated),
+      last_updated: normalize_date(data.last_updated),
       ...(typeof data.purpose === 'string' && { purpose: data.purpose }),
-      wordCount:
+      word_count:
         typeof data.word_count === 'number'
           ? data.word_count
-          : countWords(content),
+          : count_words(content),
     });
   }
 
@@ -232,79 +232,79 @@ async function buildDomainEntries(
  * INDEX.md, so the first document into any domain was never registered
  * (see https://github.com/TheGlitchKing/hit-em-with-the-docs/issues/7).
  */
-export async function regenerateIndexes(
+export async function regenerate_indexes(
   options: RegenerateOptions
 ): Promise<RegenerateResult> {
-  const { docsPath, silent = false, dryRun = false } = options;
-  const allDomains = getAllDomains();
-  const targetDomains = options.domains ?? allDomains;
+  const { docs_root: docs_root, silent = false, dry_run = false } = options;
+  const all_domains = get_all_domains();
+  const target_domains = options.domains ?? all_domains;
 
   const result: RegenerateResult = {
-    documentCounts: {},
-    filesWritten: [],
-    totalDocuments: 0,
+    document_counts: {},
+    files_written: [],
+    total_documents: 0,
   };
 
   // Scan every domain — the root INDEX needs counts for all of them even
   // when only a subset of domain files is being rewritten.
-  const rootEntriesByDomain: Record<string, IndexEntry[]> = {};
+  const root_entries_by_domain: Record<string, IndexEntry[]> = {};
   // Generated files link only to domains with a folder on disk (#45).
   const present: Domain[] = [];
-  for (const domain of allDomains) {
-    if (await pathExists(join(docsPath, domain))) present.push(domain);
+  for (const domain of all_domains) {
+    if (await is_path_present(join(docs_root, domain))) present.push(domain);
   }
 
-  for (const domain of allDomains) {
-    const domainEntries = await buildDomainEntries(docsPath, domain, '');
-    result.documentCounts[domain] = domainEntries.length;
-    result.totalDocuments += domainEntries.length;
-    rootEntriesByDomain[domain] = domainEntries.map((e) => ({
-      ...e,
-      path: `${domain}/${e.path}`,
+  for (const domain of all_domains) {
+    const domain_entries = await build_domain_entries(docs_root, domain, '');
+    result.document_counts[domain] = domain_entries.length;
+    result.total_documents += domain_entries.length;
+    root_entries_by_domain[domain] = domain_entries.map((domain_entry) => ({
+      ...domain_entry,
+      path: `${domain}/${domain_entry.path}`,
     }));
 
     // Only (re)write a domain's own files when it is in the target set and
     // its directory actually exists on disk.
-    if (!targetDomains.includes(domain) || !present.includes(domain)) continue;
-    const domainDir = join(docsPath, domain);
+    if (!target_domains.includes(domain) || !present.includes(domain)) continue;
+    const domain_dir = join(docs_root, domain);
 
-    const indexPath = join(domainDir, 'INDEX.md');
-    const registryPath = join(domainDir, 'REGISTRY.md');
-    if (!dryRun) {
+    const index_path = join(domain_dir, 'INDEX.md');
+    const registry_path = join(domain_dir, 'REGISTRY.md');
+    if (!dry_run) {
       await writeFile(
-        indexPath,
-        generateDomainIndexContent(domain, domainEntries, present),
+        index_path,
+        generate_domain_index_content(domain, domain_entries, present),
         'utf-8'
       );
       await writeFile(
-        registryPath,
-        generateDomainRegistryContent(domain, domainEntries),
+        registry_path,
+        generate_domain_registry_content(domain, domain_entries),
         'utf-8'
       );
     }
-    result.filesWritten.push(indexPath, registryPath);
+    result.files_written.push(index_path, registry_path);
   }
 
   // Root INDEX.md / REGISTRY.md — always refreshed.
-  if (await pathExists(docsPath)) {
-    const rootIndexPath = join(docsPath, 'INDEX.md');
-    const rootRegistryPath = join(docsPath, 'REGISTRY.md');
-    if (!dryRun) {
+  if (await is_path_present(docs_root)) {
+    const root_index_path = join(docs_root, 'INDEX.md');
+    const root_registry_path = join(docs_root, 'REGISTRY.md');
+    if (!dry_run) {
       await writeFile(
-        rootIndexPath,
-        generateRootIndex(rootEntriesByDomain as Record<Domain, IndexEntry[]>),
+        root_index_path,
+        generate_root_index(root_entries_by_domain as Record<Domain, IndexEntry[]>),
         'utf-8'
       );
-      await writeFile(rootRegistryPath, generateRootRegistry(present), 'utf-8');
+      await writeFile(root_registry_path, generate_root_registry(present), 'utf-8');
     }
-    result.filesWritten.push(rootIndexPath, rootRegistryPath);
+    result.files_written.push(root_index_path, root_registry_path);
   }
 
   if (!silent) {
     logger.success(
-      `${dryRun ? 'Would regenerate' : 'Regenerated'} ${result.filesWritten.length} ` +
-        `index file(s) — ${result.totalDocuments} document(s) across ` +
-        `${allDomains.length} domains`
+      `${dry_run ? 'Would regenerate' : 'Regenerated'} ${result.files_written.length} ` +
+        `index file(s) — ${result.total_documents} document(s) across ` +
+        `${all_domains.length} domains`
     );
   }
 
@@ -314,9 +314,9 @@ export async function regenerateIndexes(
 export interface KbIndexResult {
   facts: number;
   incidents: number;
-  factsPath: string;
-  incidentsPath: string;
-  symptomsPath: string;
+  facts_path: string;
+  incidents_path: string;
+  symptoms_path: string;
 }
 
 /**
@@ -324,27 +324,27 @@ export interface KbIndexResult {
  * (and no writes) when it doesn't. With `dryRun` only counts the facts and
  * incidents; nothing is written.
  */
-export async function generateKbIndexes(
-  docsPath: string,
-  dryRun = false
+export async function generate_knowledge_base_indexes(
+  docs_root: string,
+  dry_run = false
 ): Promise<KbIndexResult | null> {
-  // Config and playbook globs resolve relative to the project root (parent of docsPath).
-  const projectRoot = dirname(docsPath);
-  const config = await loadPluginConfig(projectRoot);
-  const vaultRoot = resolveVaultRoot(projectRoot, config);
-  if (!(await pathExists(vaultRoot))) return null;
+  // Config and playbook globs resolve relative to the project root (parent of docs_root).
+  const repo_root = dirname(docs_root);
+  const config = await load_plugin_config(repo_root);
+  const vault_root = resolve_vault_root(repo_root, config);
+  if (!(await is_path_present(vault_root))) return null;
 
-  const playbookGlobs = resolvePlaybookGlobs(projectRoot, config);
-  const index = await buildCiterIndex({ projectRoot, vaultRoot, playbookGlobs });
-  const factsPath = join(vaultRoot, 'facts', 'INDEX.md');
+  const playbook_globs = resolve_playbook_globs(repo_root, config);
+  const index = await build_citer_index({ repo_root: repo_root, vault_root, playbook_globs });
+  const facts_path = join(vault_root, 'facts', 'INDEX.md');
   const base = { facts: index.facts.size, incidents: index.incidents.size };
-  if (dryRun) {
-    return { ...base, factsPath, incidentsPath: '', symptomsPath: '' };
+  if (dry_run) {
+    return { ...base, facts_path, incidents_path: '', symptoms_path: '' };
   }
   return {
     ...base,
-    factsPath: await generateFactsIndex({ vaultRoot, index }),
-    incidentsPath: await generateIncidentsIndex({ vaultRoot, index }),
-    symptomsPath: await generateSymptomsIndex({ vaultRoot, index }),
+    facts_path: await write_facts_index({ vault_root, index }),
+    incidents_path: await write_incidents_index({ vault_root, index }),
+    symptoms_path: await write_symptoms_index({ vault_root, index }),
   };
 }

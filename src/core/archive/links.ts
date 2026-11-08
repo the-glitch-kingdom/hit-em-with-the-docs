@@ -8,39 +8,39 @@
  */
 
 import { relative, resolve, sep } from 'path';
-import { buildLinkGraph } from '../links/tracker.js';
-import { isGeneratedIndexRel } from '../enforce/guard.js';
+import { build_link_graph } from '../links/tracker.js';
+import { is_generated_index_relative } from '../enforce/guard.js';
 
 export interface InboundLink {
   /** docs-relative path of the doc that links to the target. */
   source: string;
-  lineNumber: number;
-  linkText: string;
+  line_number: number;
+  link_text: string;
 }
 
 /**
  * Find all active (non-archived) docs that link to `targetRelPath`
- * (a path relative to `docsPath`). Returns one entry per inbound link.
+ * (a path relative to `docs_root`). Returns one entry per inbound link.
  *
  * Links from generated root/domain `INDEX.md` / `REGISTRY.md` are not counted:
  * the archive's own reindex removes those rows, and counting them forced
  * `--force`, which also switched the check off for real inbound links (#39).
  */
-export async function findInboundLinks(
-  docsPath: string,
-  targetRelPath: string
+export async function find_inbound_links(
+  docs_root: string,
+  target_rel_path: string
 ): Promise<InboundLink[]> {
-  const normalizedTarget = targetRelPath.replace(/\\/g, '/');
-  const graph = await buildLinkGraph(docsPath);
+  const normalized_target = target_rel_path.replace(/\\/g, '/');
+  const graph = await build_link_graph(docs_root);
   return graph.edges
-    .filter((e) => e.target.replace(/\\/g, '/') === normalizedTarget)
+    .filter((edge) => edge.target.replace(/\\/g, '/') === normalized_target)
     // ponytail: built-in domain shapes only; a custom domain id containing a
     // slash is treated as hand-written, which blocks (the safe direction).
-    .filter((e) => !isGeneratedIndexRel(e.source))
-    .map((e) => ({
-      source: e.source.replace(/\\/g, '/'),
-      lineNumber: e.lineNumber,
-      linkText: e.linkText,
+    .filter((edge) => !is_generated_index_relative(edge.source))
+    .map((edge) => ({
+      source: edge.source.replace(/\\/g, '/'),
+      line_number: edge.line_number,
+      link_text: edge.link_text,
     }));
 }
 
@@ -51,8 +51,8 @@ export async function findInboundLinks(
  * docs-relative worked: a project-relative path became
  * `<docs>/.documentation/...` and was reported as not found.
  */
-export function toDocsRelative(docsPath: string, file: string, base = process.cwd()): string {
-  const abs = resolve(base, file);
-  const rel = abs.startsWith(docsPath + sep) ? relative(docsPath, abs) : file;
-  return rel.replace(/\\/g, '/').replace(/^\.\//, '');
+export function resolve_doc_path(docs_root: string, file: string, base = process.cwd()): string {
+  const abs_path = resolve(base, file);
+  const doc_path = abs_path.startsWith(docs_root + sep) ? relative(docs_root, abs_path) : file;
+  return doc_path.replace(/\\/g, '/').replace(/^\.\//, '');
 }

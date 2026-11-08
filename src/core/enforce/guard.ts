@@ -28,12 +28,14 @@ export type GuardDecision =
 export interface GuardInput {
   toolName: string;
   /** `file_path` for Write/Edit. */
+  // eslint-disable-next-line id-denylist -- GuardInput key, passed by hooks/pre-tool-use.js
   filePath?: string;
   /** `command` for Bash. */
   command?: string;
   /** `content` (Write) or `new_string` (Edit) — used to spot lifecycle changes. */
   text?: string;
   /** Docs root relative to the project, e.g. `.documentation`. */
+  // eslint-disable-next-line id-denylist -- GuardInput key, passed by hooks/pre-tool-use.js
   docsDir: string;
   /**
    * Active domain ids (`getAllDomains()`), supplied by the hook because reading
@@ -59,8 +61,8 @@ export const DEFAULT_ENFORCEMENT: EnforcementPolicy = {
 };
 
 /** Posix-normalized, leading-`./`-stripped path for matching. */
-function normalize(p: string): string {
-  return p.replace(/\\/g, '/').replace(/^\.\//, '');
+function normalize_path(path_text: string): string {
+  return path_text.replace(/\\/g, '/').replace(/^\.\//, '');
 }
 
 /**
@@ -70,17 +72,17 @@ function normalize(p: string): string {
  * never evidence of what is true now. Nothing under an `archive/` folder is
  * indexed, audited, link-checked, or validated.
  */
-export function isArchived(path: string): boolean {
-  return normalize(path)
+export function is_archived(path: string): boolean {
+  return normalize_path(path)
     .split('/')
     .some((segment) => segment === 'archive');
 }
 
 /** Is this path inside the documentation tree? */
-function inDocsTree(path: string, docsDir: string): boolean {
-  const p = normalize(path);
-  const d = normalize(docsDir);
-  return p === d || p.includes(`/${d}/`) || p.startsWith(`${d}/`);
+function is_in_docs_tree(path: string, docs_dir: string): boolean {
+  const path_text = normalize_path(path);
+  const doc = normalize_path(docs_dir);
+  return path_text === doc || path_text.includes(`/${doc}/`) || path_text.startsWith(`${doc}/`);
 }
 
 /**
@@ -101,18 +103,18 @@ const DESTRUCTIVE_WORDS = new Set(['rm', 'unlink', 'shred']);
 const UNPUBLISHED_DIRS = new Set(['drafts', 'reports']);
 
 /** Markdown paths under the docs tree that a string names. */
-function markdownTargets(text: string, docsDir: string): string[] {
-  const d = normalize(docsDir);
-  const re = new RegExp(`[^\\s'"\`;&|]*${d}/[^\\s'"\`;&|]*\\.md`, 'g');
+function extract_markdown_targets(text: string, docs_dir: string): string[] {
+  const doc = normalize_path(docs_dir);
+  const re = new RegExp(`[^\\s'"\`;&|]*${doc}/[^\\s'"\`;&|]*\\.md`, 'g');
   return text.match(re) ?? [];
 }
 
 /** Is this docs path published documentation, rather than scratch or generated output? */
-function isPublishedDoc(path: string, docsDir: string): boolean {
-  const rel = relativeToDocs(path, docsDir);
-  if (rel === null) return false;
-  const top = rel.split('/')[0] ?? '';
-  return !UNPUBLISHED_DIRS.has(top);
+function is_published_doc(path: string, docs_dir: string): boolean {
+  const doc_path = resolve_doc_path(path, docs_dir);
+  if (doc_path === null) return false;
+  const top_folder = doc_path.split('/')[0] ?? '';
+  return !UNPUBLISHED_DIRS.has(top_folder);
 }
 
 /**
@@ -126,7 +128,7 @@ function isPublishedDoc(path: string, docsDir: string): boolean {
  * Only the body is dropped; the command line that opens it is kept, so
  * `git commit -F - <<'MSG'` still reads as `git commit -F -`.
  */
-function stripHeredocBodies(command: string): string {
+function strip_heredoc_bodies(command: string): string {
   const lines = command.split('\n');
   const kept: string[] = [];
 
@@ -148,7 +150,7 @@ function stripHeredocBodies(command: string): string {
 }
 
 /** Split a command line into segments the shell would run independently. */
-function shellSegments(command: string): string[] {
+function parse_shell_segments(command: string): string[] {
   return command.split(/[;&|\n()]+/);
 }
 
@@ -167,7 +169,7 @@ function shellSegments(command: string): string[] {
  * miss, per this module's header: a guard that fires on correct operations is
  * one people learn to route around, and a routed-around guard protects nothing.
  */
-function fileDeletionOperands(segment: string): string | null {
+function parse_file_deletion_operands(segment: string): string | null {
   const tokens = segment.trim().split(/\s+/).filter(Boolean);
 
   let i = 0;
@@ -181,7 +183,7 @@ function fileDeletionOperands(segment: string): string | null {
 
   if (word === 'git') {
     const rest = tokens.slice(i + 1);
-    const sub = rest.find((t) => !t.startsWith('-'));
+    const sub = rest.find((token) => !token.startsWith('-'));
     if (sub !== 'rm') return null;
 
     // `git rm --cached` unstages and leaves every file on disk. It is the
@@ -201,14 +203,14 @@ function fileDeletionOperands(segment: string): string | null {
  * Structural, not textual: the path must be an operand of a deletion at command
  * position, outside any heredoc body.
  */
-function deletionTargets(command: string, docsDir: string): string[] {
+function extract_deletion_targets(command: string, docs_dir: string): string[] {
   const targets: string[] = [];
 
-  for (const segment of shellSegments(stripHeredocBodies(command))) {
-    const operands = fileDeletionOperands(segment);
+  for (const segment of parse_shell_segments(strip_heredoc_bodies(command))) {
+    const operands = parse_file_deletion_operands(segment);
     if (operands === null) continue;
-    for (const path of markdownTargets(operands, docsDir)) {
-      if (isPublishedDoc(path, docsDir)) targets.push(path);
+    for (const path of extract_markdown_targets(operands, docs_dir)) {
+      if (is_published_doc(path, docs_dir)) targets.push(path);
     }
   }
 
@@ -220,14 +222,14 @@ function deletionTargets(command: string, docsDir: string): string[] {
  * Matched at command position outside heredoc bodies, like deletions, so a PR
  * body or commit message that mentions these commands does not count.
  */
-function opensOrMergesPr(command: string): boolean {
-  return shellSegments(stripHeredocBodies(command)).some((segment) =>
+function is_pr_command(command: string): boolean {
+  return parse_shell_segments(strip_heredoc_bodies(command)).some((segment) =>
     /^\s*(?:sudo\s+)?(?:\w+=\S*\s+)*gh\s+pr\s+(?:create|merge)\b/.test(segment)
   );
 }
 
 /** Does this text set `status: deprecated` in frontmatter? */
-function setsDeprecated(text: string): boolean {
+function is_setting_deprecated(text: string): boolean {
   return /^\s*status:\s*['"]?deprecated['"]?\s*$/m.test(text);
 }
 
@@ -235,12 +237,12 @@ function setsDeprecated(text: string): boolean {
  * The path of `filePath` relative to the docs root, or null if it is outside.
  * Mirrors `inDocsTree`, which accepts a repo-relative or an absolute path.
  */
-function relativeToDocs(path: string, docsDir: string): string | null {
-  const p = normalize(path);
-  const d = normalize(docsDir);
-  if (p.startsWith(`${d}/`)) return p.slice(d.length + 1);
-  const marker = p.indexOf(`/${d}/`);
-  if (marker !== -1) return p.slice(marker + d.length + 2);
+function resolve_doc_path(path: string, docs_dir: string): string | null {
+  const path_text = normalize_path(path);
+  const doc = normalize_path(docs_dir);
+  if (path_text.startsWith(`${doc}/`)) return path_text.slice(doc.length + 1);
+  const marker = path_text.indexOf(`/${doc}/`);
+  if (marker !== -1) return path_text.slice(marker + doc.length + 2);
   return null;
 }
 
@@ -254,7 +256,7 @@ function relativeToDocs(path: string, docsDir: string): string | null {
  * "run `hewtd index`" advice it offered did nothing to them.
  *
  * hewtd writes exactly two shapes (`core/maintain/orchestrator.ts` builds every
- * path as `join(docsPath, domain)`):
+ * path as `join(docs_root, domain)`):
  *
  *     <docs>/INDEX.md            <docs>/REGISTRY.md
  *     <docs>/<domain>/INDEX.md   <docs>/<domain>/REGISTRY.md
@@ -262,50 +264,50 @@ function relativeToDocs(path: string, docsDir: string): string | null {
  * Anything deeper — `<docs>/features/tiers/INDEX.md` — is prose that merely shares
  * the name, and is the author's to edit.
  */
-function isGeneratedIndex(
-  filePath: string,
-  docsDir: string,
+function is_generated_index(
+  file_path: string,
+  docs_dir: string,
   domains?: readonly string[]
 ): boolean {
-  const rel = relativeToDocs(filePath, docsDir);
-  return rel !== null && isGeneratedIndexRel(rel, domains);
+  const doc_path = resolve_doc_path(file_path, docs_dir);
+  return doc_path !== null && is_generated_index_relative(doc_path, domains);
 }
 
 /**
  * `isGeneratedIndex` for a path already relative to the docs root. Exported for
  * the archive link guard, whose link graph is docs-relative (#39).
  */
-export function isGeneratedIndexRel(docsRelPath: string, domains?: readonly string[]): boolean {
-  const rel = normalize(docsRelPath);
-  if (!GENERATED_FILES.has(basename(rel))) return false;
+export function is_generated_index_relative(docs_rel_path: string, domains?: readonly string[]): boolean {
+  const doc_path = normalize_path(docs_rel_path);
+  if (!GENERATED_FILES.has(basename(doc_path))) return false;
 
-  const dir = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '';
-  if (dir === '') return true; // <docs>/INDEX.md — the root index
-  return domains ? domains.includes(dir) : !dir.includes('/');
+  const dir_path = doc_path.includes('/') ? doc_path.slice(0, doc_path.lastIndexOf('/')) : '';
+  if (dir_path === '') return true; // <docs>/INDEX.md — the root index
+  return domains ? domains.includes(dir_path) : !dir_path.includes('/');
 }
 
 /**
  * Decide what to do about one tool call. Pure — all I/O lives in the hook.
  */
-export function evaluate(
+export function check_guard(
   input: GuardInput,
   policy: EnforcementPolicy = DEFAULT_ENFORCEMENT
 ): GuardDecision {
-  const { toolName, filePath, command, text, docsDir, domains } = input;
+  const { toolName: tool_name, filePath: file_path, command, text, docsDir: docs_dir, domains } = input;
 
   // ---- Write / Edit -------------------------------------------------------
-  if ((toolName === 'Write' || toolName === 'Edit') && filePath) {
-    const inTree = inDocsTree(filePath, docsDir);
+  if ((tool_name === 'Write' || tool_name === 'Edit') && file_path) {
+    const in_tree = is_in_docs_tree(file_path, docs_dir);
 
     // DENY: a generated index is not a document. Editing it by hand is either
     // pointless (the next `hewtd index` overwrites it) or actively harmful
     // (it is how people ended up hand-curating rows the indexer then deleted
     // — see issue #12).
-    if (policy.blockIndexEdits && inTree && isGeneratedIndex(filePath, docsDir, domains)) {
+    if (policy.blockIndexEdits && in_tree && is_generated_index(file_path, docs_dir, domains)) {
       return {
         action: 'deny',
         reason:
-          `${basename(filePath)} is a generated artifact, rebuilt from the documents ` +
+          `${basename(file_path)} is a generated artifact, rebuilt from the documents ` +
           `on disk. Hand-edits are overwritten by the next \`hewtd index\` or ` +
           `\`hewtd maintain\`. To change what it lists, change the documents — then ` +
           `run \`hewtd index\`.`,
@@ -317,12 +319,12 @@ export function evaluate(
     // loose doc at the repo root. Warning on every .md anywhere (a fixture, a
     // subpackage README, a website's own docs) would be noise, and a noisy
     // guard is one people switch off.
-    if (!inTree && looksLikeStrayDoc(filePath)) {
+    if (!in_tree && is_stray_doc(file_path)) {
       return {
         action: 'warn',
         context:
           `This project manages its documentation with hit-em-with-the-docs, under ` +
-          `\`${docsDir}/\`. A markdown file outside that tree is not indexed, ` +
+          `\`${docs_dir}/\`. A markdown file outside that tree is not indexed, ` +
           `link-checked, or metadata-validated. \`hewtd integrate <file>\` classifies ` +
           `a doc into a domain and registers it.`,
       };
@@ -332,7 +334,7 @@ export function evaluate(
     // hence a warn, not a denial — but it is almost always a mistake: the edit
     // lands in a subtree that no scan reads and no index lists, so it changes
     // nothing anyone will see.
-    if (inTree && isArchived(filePath)) {
+    if (in_tree && is_archived(file_path)) {
       return {
         action: 'warn',
         context:
@@ -347,7 +349,7 @@ export function evaluate(
 
     // WARN: `status: deprecated` flags intent but leaves the doc live and
     // indexed. Archiving is the separate step that actually retires it.
-    if (inTree && text && setsDeprecated(text)) {
+    if (in_tree && text && is_setting_deprecated(text)) {
       return {
         action: 'warn',
         context:
@@ -362,8 +364,8 @@ export function evaluate(
   }
 
   // ---- Bash ---------------------------------------------------------------
-  if (toolName === 'Bash' && command) {
-    const targets = deletionTargets(command, docsDir);
+  if (tool_name === 'Bash' && command) {
+    const targets = extract_deletion_targets(command, docs_dir);
 
     // DENY: deleting a doc is the one truly irreversible act, and hewtd has a
     // purpose-built, reversible, link-safe alternative. This is the whole
@@ -382,7 +384,7 @@ export function evaluate(
 
     // WARN: a hand-rolled move into archive/ skips the frontmatter stamping,
     // so `unarchive` has no `archived_from` to restore from.
-    const executable = stripHeredocBodies(command);
+    const executable = strip_heredoc_bodies(command);
     if (/(^|[\s;&|(])(mv|git\s+mv)\s/.test(executable) && /archive\//.test(executable)) {
       return {
         action: 'warn',
@@ -397,13 +399,13 @@ export function evaluate(
     // WARN: the session brief says gotchas found during the work are recorded as
     // knowledge-base facts before merge. Read at session start, that is weakest at
     // the end of a long session — so it is repeated at the moment it applies.
-    if (opensOrMergesPr(command)) {
+    if (is_pr_command(command)) {
       return {
         action: 'warn',
         context:
           `Before a PR merges, gotchas found during the work belong in the knowledge ` +
           `base: a non-obvious failure with an observed fix is a fact under the vault's ` +
-          `\`facts/\` folder (default \`${docsDir}/knowledge-base/facts/\`, template ` +
+          `\`facts/\` folder (default \`${docs_dir}/knowledge-base/facts/\`, template ` +
           `\`fact.template.md\`), tagged \`gotcha\`, with an \`## Instead\` section. ` +
           `Typos and simple wrong paths are not gotchas.`,
       };
@@ -441,20 +443,20 @@ const RIVAL_DOC_DIRS = new Set(['docs', 'doc', 'documentation', 'wiki', 'guides'
  * agent scaffolding. Anything it misses is merely un-nagged; anything it
  * over-claims is a papercut on every unrelated file the user writes.
  */
-function looksLikeStrayDoc(filePath: string): boolean {
-  const p = normalize(filePath);
-  if (!p.endsWith('.md')) return false;
+function is_stray_doc(file_path: string): boolean {
+  const path_text = normalize_path(file_path);
+  if (!path_text.endsWith('.md')) return false;
 
-  const segments = p.split('/');
-  const name = basename(p).toUpperCase();
+  const segments = path_text.split('/');
+  const name = basename(path_text).toUpperCase();
 
   // Agent/tooling scaffolding and dependencies are never docs.
-  if (segments.some((s) => s === 'node_modules' || s === '.planning' || s === '.claude')) {
+  if (segments.some((segment) => segment === 'node_modules' || segment === '.planning' || segment === '.claude')) {
     return false;
   }
 
   // A rival docs folder anywhere in the path.
-  if (segments.slice(0, -1).some((s) => RIVAL_DOC_DIRS.has(s.toLowerCase()))) {
+  if (segments.slice(0, -1).some((segment) => RIVAL_DOC_DIRS.has(segment.toLowerCase()))) {
     return true;
   }
 

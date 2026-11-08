@@ -110,7 +110,7 @@ Edit `src/core/domains/classifier.ts` line 6 — add `'plan'` to the TIERS const
 ## Expected outputs
 - TIERS array now contains 6 values: guide, standard, example, reference, admin, plan
 - TIER_DEFINITIONS gains a `plan` entry
-- scores Record in classifyTier() gains `plan: 0`
+- scores Record in classify_tier() gains `plan: 0`
 
 ## Acceptance criteria
 - `npm test tests/unit/domains/classifier.test.ts` passes
@@ -139,10 +139,10 @@ scope: foundation
 ## Validation behavior
 
 ```typescript
-import { validateMetadata, getMissingRequiredFields } from '@theglitchking/hit-em-with-the-docs';
+import { validate_metadata, get_missing_required_fields } from '@theglitchking/hit-em-with-the-docs';
 
 // Plan tier without version: VALID
-validateMetadata({
+validate_metadata({
   title: 'Foundation',
   tier: 'plan',
   domains: ['planning'],
@@ -152,7 +152,7 @@ validateMetadata({
 // → { valid: true, errors: [], data: {...} }
 
 // Plan tier WITH version: also VALID (version is optional, not forbidden)
-validateMetadata({
+validate_metadata({
   title: 'Release 3.0',
   tier: 'plan',
   domains: ['planning'],
@@ -163,7 +163,7 @@ validateMetadata({
 // → { valid: true, errors: [], data: {...} }
 
 // Guide tier WITHOUT version: still INVALID (regression preservation)
-validateMetadata({
+validate_metadata({
   title: 'Setup',
   tier: 'guide',
   domains: ['onboarding'],
@@ -173,8 +173,8 @@ validateMetadata({
 });
 // → { valid: false, errors: ['version: ...'] }
 
-// getMissingRequiredFields is tier-aware
-getMissingRequiredFields({
+// get_missing_required_fields is tier-aware
+get_missing_required_fields({
   title: 'Foundation',
   tier: 'plan',
   domains: ['planning'],
@@ -183,7 +183,7 @@ getMissingRequiredFields({
 });
 // → []  (does NOT include 'version' for plan tier)
 
-getMissingRequiredFields({
+get_missing_required_fields({
   title: 'Setup',
   tier: 'guide',
   domains: ['onboarding'],
@@ -195,7 +195,7 @@ getMissingRequiredFields({
 
 ## Auto-classification
 
-The `plan` tier is included in `classifyTier()`'s scoring, with indicators (`phase`, `task`, `atom`, `milestone`, `deliverable`, `plan`, `roadmap`) and heading patterns (`## Phases`, `## Tasks`, `## Atoms`, `## Decisions Made`, etc.) that match plan-shaped content.
+The `plan` tier is included in `classify_tier()`'s scoring, with indicators (`phase`, `task`, `atom`, `milestone`, `deliverable`, `plan`, `roadmap`) and heading patterns (`## Phases`, `## Tasks`, `## Atoms`, `## Decisions Made`, etc.) that match plan-shaped content.
 
 In practice plan-tier docs should always carry explicit `tier: plan` frontmatter (since they're authored by persistent-planning's templates), so auto-classification is a fallback for edge cases.
 

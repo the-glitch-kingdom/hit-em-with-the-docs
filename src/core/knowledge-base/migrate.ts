@@ -33,15 +33,15 @@ import matter from 'gray-matter';
 
 export interface MigrateIncidentOptions {
   /** Absolute path to the flat-file incident markdown. */
-  flatFilePath: string;
+  flat_file_path: string;
   /**
    * Absolute path to the vault root. The migrated folder lands at
    * `<vaultRoot>/incidents/<slug>/`. Required since 2.4.0 — the 2.3.0
    * "sibling of the flat file" behavior was the source of the path bug.
    */
-  vaultRoot: string;
+  vault_root: string;
   /** If true, returns the migration plan without writing. */
-  dryRun?: boolean;
+  dry_run?: boolean;
   /**
    * If true, proceed with migration even if a folder already exists at
    * the canonical or legacy location. Used to recover from a partial
@@ -51,9 +51,9 @@ export interface MigrateIncidentOptions {
 }
 
 export interface MigrateIncidentResult {
-  flatFilePath: string;
+  flat_file_path: string;
   /** The canonical target — always under `<vaultRoot>/incidents/`. */
-  targetFolder: string;
+  target_folder: string;
   action: 'migrated' | 'already_migrated' | 'dry_run';
   /**
    * Populated when `action === 'already_migrated'` to indicate WHERE the
@@ -61,162 +61,162 @@ export interface MigrateIncidentResult {
    * `'legacy'` = 2.3.0-style sibling-of-flat-file location. Helps consumers
    * decide whether to run `fix-legacy-layout`.
    */
-  existingLocation?: 'new' | 'legacy';
-  narrativePath: string;
-  factsPath: string;
-  evidencePath: string;
+  existing_location?: 'new' | 'legacy';
+  narrative_path: string;
+  facts_path: string;
+  evidence_path: string;
   /** What the narrative.md content will be. */
-  narrativeContent: string;
+  narrative_content: string;
   /** What the facts.md content will be. */
-  factsContent: string;
+  facts_content: string;
 }
 
-export async function migrateIncident(
+export async function migrate_incident(
   options: MigrateIncidentOptions
 ): Promise<MigrateIncidentResult> {
-  const { flatFilePath, vaultRoot, dryRun = false, force = false } = options;
+  const { flat_file_path, vault_root, dry_run = false, force = false } = options;
 
-  const sourceContent = await readFile(flatFilePath, 'utf-8');
-  const parsed = matter(sourceContent);
-  const fm = (parsed.data ?? {}) as Record<string, unknown>;
+  const source_content = await readFile(flat_file_path, 'utf-8');
+  const parsed = matter(source_content);
+  const frontmatter = (parsed.data ?? {}) as Record<string, unknown>;
 
   // Derive the target folder name. Priority:
   //   1. Frontmatter `id:` (if YYYY-MM-DD-slug shape)
   //   2. The flat file's basename, normalized to YYYY-MM-DD-<slug> (#39):
   //      `incident-2026-09-28-x` becomes `2026-09-28-x`, and an undated name
   //      takes its date from frontmatter `date:` when there is one.
-  const flatBase = basename(flatFilePath, '.md');
-  const idFromFrontmatter = typeof fm.id === 'string' ? fm.id : undefined;
-  const fmDate = normalizeDate(fm.date);
-  const folderSlug =
-    idFromFrontmatter && /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/.test(idFromFrontmatter)
-      ? idFromFrontmatter
-      : datedSlug(flatBase, fmDate);
+  const flat_base = basename(flat_file_path, '.md');
+  const id_from_frontmatter = typeof frontmatter.id === 'string' ? frontmatter.id : undefined;
+  const fm_date = normalize_date(frontmatter.date);
+  const folder_slug =
+    id_from_frontmatter && /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/.test(id_from_frontmatter)
+      ? id_from_frontmatter
+      : build_dated_slug(flat_base, fm_date);
   // 2.3.0 named folders after the raw basename; keep finding those.
-  const legacySlug =
-    idFromFrontmatter && /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/.test(idFromFrontmatter)
-      ? idFromFrontmatter
-      : flatBase;
+  const legacy_slug =
+    id_from_frontmatter && /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/.test(id_from_frontmatter)
+      ? id_from_frontmatter
+      : flat_base;
 
   // Canonical target: <vault-root>/incidents/<slug>/
-  const targetFolder = join(vaultRoot, 'incidents', folderSlug);
-  const narrativePath = join(targetFolder, 'narrative.md');
-  const factsPath = join(targetFolder, 'facts.md');
-  const evidencePath = join(targetFolder, 'evidence');
+  const target_folder = join(vault_root, 'incidents', folder_slug);
+  const narrative_path = join(target_folder, 'narrative.md');
+  const facts_path = join(target_folder, 'facts.md');
+  const evidence_path = join(target_folder, 'evidence');
 
   // Legacy 2.3.0 location: <source-parent>/<slug>/
-  const legacyTargetFolder = join(dirname(flatFilePath), legacySlug);
-  const legacyNarrativePath = join(legacyTargetFolder, 'narrative.md');
+  const legacy_target_folder = join(dirname(flat_file_path), legacy_slug);
+  const legacy_narrative_path = join(legacy_target_folder, 'narrative.md');
 
   // Build narrative.md frontmatter — promote/normalize fields, set tier.
-  const narrativeFrontmatter: Record<string, unknown> = {
-    title: fm.title ?? flatBase,
+  const narrative_frontmatter: Record<string, unknown> = {
+    title: frontmatter.title ?? flat_base,
     tier: 'incident-narrative',
-    domains: Array.isArray(fm.domains) ? fm.domains : ['incidents'],
-    status: typeof fm.status === 'string' ? fm.status : 'active',
+    domains: Array.isArray(frontmatter.domains) ? frontmatter.domains : ['incidents'],
+    status: typeof frontmatter.status === 'string' ? frontmatter.status : 'active',
     last_updated:
-      typeof fm.last_updated === 'string'
-        ? fm.last_updated
+      typeof frontmatter.last_updated === 'string'
+        ? frontmatter.last_updated
         : new Date().toISOString().slice(0, 10),
-    id: folderSlug,
+    id: folder_slug,
     // Never a slice of the slug: that wrote `date: incident-2` (#39).
     date:
-      deriveDateFromSlug(folderSlug) ??
-      fmDate ??
-      normalizeDate(fm.last_updated) ??
+      parse_date_from_slug(folder_slug) ??
+      fm_date ??
+      normalize_date(frontmatter.last_updated) ??
       new Date().toISOString().slice(0, 10),
-    severity: typeof fm.severity === 'string' ? fm.severity : 'medium',
+    severity: typeof frontmatter.severity === 'string' ? frontmatter.severity : 'medium',
     resolution_status:
-      typeof fm.resolution_status === 'string' ? fm.resolution_status : 'resolved',
-    components: Array.isArray(fm.components) ? fm.components : ['unknown'],
+      typeof frontmatter.resolution_status === 'string' ? frontmatter.resolution_status : 'resolved',
+    components: Array.isArray(frontmatter.components) ? frontmatter.components : ['unknown'],
   };
-  if (Array.isArray(fm.tags)) narrativeFrontmatter.tags = fm.tags;
+  if (Array.isArray(frontmatter.tags)) narrative_frontmatter.tags = frontmatter.tags;
 
-  const narrativeContent = matter.stringify(parsed.content, narrativeFrontmatter);
+  const narrative_content = matter.stringify(parsed.content, narrative_frontmatter);
 
   // Build facts.md skeleton.
-  const factsFrontmatter: Record<string, unknown> = {
-    title: `Facts from ${folderSlug}`,
+  const facts_frontmatter: Record<string, unknown> = {
+    title: `Facts from ${folder_slug}`,
     tier: 'incident-facts',
     domains: ['incidents'],
     status: 'active',
     last_updated: new Date().toISOString().slice(0, 10),
-    incident_id: folderSlug,
+    incident_id: folder_slug,
     produced: [],
   };
-  const factsContent = matter.stringify(
-    `\n# Facts from ${folderSlug}\n\n## Produced\n_(No facts extracted yet. Use \`hewtd extract-facts ${folderSlug}/\` to propose facts from the narrative.)_\n`,
-    factsFrontmatter
+  const facts_content = matter.stringify(
+    `\n# Facts from ${folder_slug}\n\n## Produced\n_(No facts extracted yet. Use \`hewtd extract-facts ${folder_slug}/\` to propose facts from the narrative.)_\n`,
+    facts_frontmatter
   );
 
   // Idempotency check (unless --force): check BOTH new and legacy locations
   // for an existing valid migration.
   if (!force) {
-    if (existsSync(narrativePath)) {
+    if (existsSync(narrative_path)) {
       return {
-        flatFilePath,
-        targetFolder,
+        flat_file_path,
+        target_folder,
         action: 'already_migrated',
-        existingLocation: 'new',
-        narrativePath,
-        factsPath,
-        evidencePath,
-        narrativeContent,
-        factsContent,
+        existing_location: 'new',
+        narrative_path,
+        facts_path,
+        evidence_path,
+        narrative_content,
+        facts_content,
       };
     }
-    if (existsSync(legacyNarrativePath)) {
+    if (existsSync(legacy_narrative_path)) {
       return {
-        flatFilePath,
-        targetFolder,
+        flat_file_path,
+        target_folder,
         action: 'already_migrated',
-        existingLocation: 'legacy',
-        narrativePath: legacyNarrativePath,
-        factsPath: join(legacyTargetFolder, 'facts.md'),
-        evidencePath: join(legacyTargetFolder, 'evidence'),
-        narrativeContent,
-        factsContent,
+        existing_location: 'legacy',
+        narrative_path: legacy_narrative_path,
+        facts_path: join(legacy_target_folder, 'facts.md'),
+        evidence_path: join(legacy_target_folder, 'evidence'),
+        narrative_content,
+        facts_content,
       };
     }
   }
 
-  if (dryRun) {
+  if (dry_run) {
     return {
-      flatFilePath,
-      targetFolder,
+      flat_file_path,
+      target_folder,
       action: 'dry_run',
-      narrativePath,
-      factsPath,
-      evidencePath,
-      narrativeContent,
-      factsContent,
+      narrative_path,
+      facts_path,
+      evidence_path,
+      narrative_content,
+      facts_content,
     };
   }
 
   // Ensure the canonical parent (<vault>/incidents/) exists. Generator
   // already handles a missing dir; we should too.
-  await mkdir(evidencePath, { recursive: true }); // also creates targetFolder
-  await writeFile(narrativePath, narrativeContent, 'utf-8');
-  await writeFile(factsPath, factsContent, 'utf-8');
+  await mkdir(evidence_path, { recursive: true }); // also creates targetFolder
+  await writeFile(narrative_path, narrative_content, 'utf-8');
+  await writeFile(facts_path, facts_content, 'utf-8');
   // Move the flat file to a `.migrated` extension so consumers don't read it
   // accidentally. Preserves the original for rollback.
-  await rename(flatFilePath, `${flatFilePath}.migrated`);
+  await rename(flat_file_path, `${flat_file_path}.migrated`);
 
   return {
-    flatFilePath,
-    targetFolder,
+    flat_file_path,
+    target_folder,
     action: 'migrated',
-    narrativePath,
-    factsPath,
-    evidencePath,
-    narrativeContent,
-    factsContent,
+    narrative_path,
+    facts_path,
+    evidence_path,
+    narrative_content,
+    facts_content,
   };
 }
 
-function deriveDateFromSlug(slug: string): string | undefined {
-  const m = slug.match(/^(\d{4}-\d{2}-\d{2})/);
-  return m ? m[1] : undefined;
+function parse_date_from_slug(slug: string): string | undefined {
+  const match = slug.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : undefined;
 }
 
 /**
@@ -224,18 +224,18 @@ function deriveDateFromSlug(slug: string): string | undefined {
  * or kept as the slug when nothing follows the date). An undated name gets
  * `fallbackDate` prepended when one is known, else stays as-is.
  */
-function datedSlug(name: string, fallbackDate: string | undefined): string {
-  const m = name.match(/^(.*?)-?(\d{4}-\d{2}-\d{2})-?(.*)$/);
-  if (m) {
-    const [, prefix, date, rest] = m;
+function build_dated_slug(name: string, fallback_date: string | undefined): string {
+  const match = name.match(/^(.*?)-?(\d{4}-\d{2}-\d{2})-?(.*)$/);
+  if (match) {
+    const [, prefix, date, rest] = match;
     const slug = rest || prefix;
     return slug ? `${date}-${slug}` : date!;
   }
-  return fallbackDate ? `${fallbackDate}-${name}` : name;
+  return fallback_date ? `${fallback_date}-${name}` : name;
 }
 
 /** YYYY-MM-DD from a string or a js-yaml Date, else undefined. */
-function normalizeDate(value: unknown): string | undefined {
+function normalize_date(value: unknown): string | undefined {
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return value.toISOString().slice(0, 10);

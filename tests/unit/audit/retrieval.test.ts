@@ -2,25 +2,25 @@ import { describe, it, expect } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { checkRetrieval, retrievalCoverage, type RetrievalDoc } from '../../../src/core/audit/retrieval.js';
-import { auditDocumentation } from '../../../src/core/audit/auditor.js';
-import { loadPluginConfig } from '../../../src/utils/config.js';
+import { check_retrieval, compute_retrieval_coverage, type RetrievalDoc } from '../../../src/core/audit/retrieval.js';
+import { check_documentation } from '../../../src/core/audit/auditor.js';
+import { load_plugin_config } from '../../../src/utils/config.js';
 
-const cfg = (await loadPluginConfig('/nonexistent')).retrieval;
+const cfg = (await load_plugin_config('/nonexistent')).retrieval;
 const GOOD = 'Explains how the deploy pipeline promotes builds to production safely';
 const doc = (rel: string, data: Record<string, unknown>, body = 'x'): RetrievalDoc => ({
-  rel,
+  doc_path: rel,
   data: { title: `Title of ${rel}`, purpose: GOOD, ...data },
   body,
 });
-const codes = (docs: RetrievalDoc[], c = cfg) => checkRetrieval(docs, c).map((i) => `${i.rule}:${i.file}`);
+const codes = (docs: RetrievalDoc[], c = cfg) => check_retrieval(docs, c).map((i) => `${i.rule}:${i.file}`);
 
 describe('retrieval rules', () => {
   it('flags missing purpose, pointing at the migration when summary exists', () => {
-    const [i] = checkRetrieval([doc('a/x.md', { purpose: undefined, summary: 'old' })], cfg);
+    const [i] = check_retrieval([doc('a/x.md', { purpose: undefined, summary: 'old' })], cfg);
     expect(i?.rule).toBe('RETRIEVAL_MISSING_PURPOSE');
     expect(i?.suggestion).toContain('hewtd fix-retrieval-fields');
-    const [j] = checkRetrieval([doc('a/x.md', { purpose: undefined })], cfg);
+    const [j] = check_retrieval([doc('a/x.md', { purpose: undefined })], cfg);
     expect(j?.suggestion).not.toContain('fix-retrieval-fields');
   });
 
@@ -64,7 +64,7 @@ describe('retrieval rules', () => {
       doc('a/p.md', { ...bad, tier: 'plan' }),
     ];
     expect(codes(docs)).toEqual([]);
-    expect(retrievalCoverage(docs, cfg).total).toBe(0);
+    expect(compute_retrieval_coverage(docs, cfg).total).toBe(0);
   });
 
   it('honors config overrides and falls back on invalid values', () => {
@@ -75,7 +75,7 @@ describe('retrieval rules', () => {
   });
 
   it('computes coverage', () => {
-    const c = retrievalCoverage(
+    const c = compute_retrieval_coverage(
       [doc('a/x.md', { symptoms: ['s'] }), doc('a/y.md', { purpose: undefined })],
       cfg
     );
@@ -93,7 +93,7 @@ describe('audit integration', () => {
       await writeFile(join(dir, 'guides', 'a.md'), fm(''));
       await writeFile(join(dir, 'guides', 'INDEX.md'), fm('generated: true\n'));
       await writeFile(join(dir, 'guides', 'plain.md'), fm('generated: true\n'));
-      const r = await auditDocumentation({ docsPath: dir, silent: true, projectRoot: dir });
+      const r = await check_documentation({ docs_root: dir, silent: true, repo_root: dir });
       const ret = r.issues.filter((i) => i.rule.startsWith('RETRIEVAL_'));
       expect(ret.length).toBeGreaterThan(0);
       expect(ret.every((i) => i.severity === 'warning' && i.code === undefined)).toBe(true);
@@ -106,7 +106,7 @@ describe('audit integration', () => {
   describe('near duplicates', () => {
     const para = 'The deploy pipeline promotes a build through staging before production. '.repeat(6);
     const dup = (docs: RetrievalDoc[], c = cfg) =>
-      checkRetrieval(docs, c).filter((i) => i.rule === 'RETRIEVAL_NEAR_DUPLICATE');
+      check_retrieval(docs, c).filter((i) => i.rule === 'RETRIEVAL_NEAR_DUPLICATE');
 
     it('one warning per pair, whitespace-insensitive, one per pair for many shared passages', () => {
       const a = doc('a/x.md', {}, `intro one\n\n${para}\n\n${para}x`);
@@ -137,9 +137,9 @@ describe('audit integration', () => {
 
 describe('countActionableIssues (Action fail-on-error, review fix)', () => {
   it('ignores advisory RETRIEVAL_* warnings', async () => {
-    const { countActionableIssues } = await import('../../../src/core/audit/auditor.js');
+    const { count_actionable_issues } = await import('../../../src/core/audit/auditor.js');
     expect(
-      countActionableIssues([
+      count_actionable_issues([
         { rule: 'RETRIEVAL_MISSING_PURPOSE' },
         { rule: 'RETRIEVAL_OVERSIZED' },
         { rule: 'metadata-validation' },

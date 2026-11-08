@@ -7,12 +7,12 @@ import { execFileSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { readdir } from 'fs/promises';
 import { basename, join, relative } from 'path';
-import { normalizeBlock } from '../audit/retrieval.js';
-import { flatSections } from '../links/anchors.js';
+import { normalize_block } from '../audit/retrieval.js';
+import { build_flat_sections } from '../links/anchors.js';
 import type { PluginConfig } from '../../utils/config.js';
-import { parseFrontmatter } from '../../utils/frontmatter.js';
-import { tokenize } from './search.js';
-import { findSecrets } from './secrets.js';
+import { parse_frontmatter } from '../../utils/frontmatter.js';
+import { extract_tokens } from './search.js';
+import { find_secrets } from './secrets.js';
 
 export interface Duplicate {
   /** docs-relative path of the doc that should own the text */
@@ -29,30 +29,31 @@ const SHINGLE = 5;
 const BAR = 0.5;
 const SKIP_DIRS = new Set(['archive', 'drafts']);
 
-interface Sec { doc: string; anchor: string; label: Set<string>; words: Set<string>; shingles: Set<string>; docSize: number }
+interface Sec { doc: string; anchor: string; label: Set<string>; words: Set<string>; shingles: Set<string>; doc_size: number }
 
-async function walk(dir: string, out: string[] = []): Promise<string[]> {
-  for (const e of (await readdir(dir, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
-    if (e.name.startsWith('.') || SKIP_DIRS.has(e.name)) continue;
-    const p = join(dir, e.name);
-    if (e.isDirectory()) await walk(p, out);
-    else if (e.name.endsWith('.md') && e.name !== 'INDEX.md' && e.name !== 'REGISTRY.md') out.push(p);
+async function list_markdown_files(dir_path: string, found: string[] = []): Promise<string[]> {
+  for (const entry of (await readdir(dir_path, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
+    if (entry.name.startsWith('.') || SKIP_DIRS.has(entry.name)) continue;
+    const entry_path = join(dir_path, entry.name);
+    if (entry.isDirectory()) await list_markdown_files(entry_path, found);
+    else if (entry.name.endsWith('.md') && entry.name !== 'INDEX.md' && entry.name !== 'REGISTRY.md') found.push(entry_path);
   }
-  return out;
+  return found;
 }
 
-function firstCommit(docsPath: string, rel: string): number | undefined {
+function find_first_commit(docs_root: string, doc_path: string): number | undefined {
   try {
-    const out = execFileSync('git', ['log', '--follow', '--diff-filter=A', '--format=%ct', '--', rel], { cwd: docsPath, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
-    const t = out.trim().split('\n').pop();
-    return t ? Number(t) : undefined;
+    // eslint-disable-next-line id-denylist -- child_process option name
+    const log_output = execFileSync('git', ['log', '--follow', '--diff-filter=A', '--format=%ct', '--', doc_path], { cwd: docs_root, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const timestamp = log_output.trim().split('\n').pop();
+    return timestamp ? Number(timestamp) : undefined;
   } catch { return undefined; }
 }
 
-const jaccard = (a: Set<string>, b: Set<string>): number => {
-  let n = 0;
-  for (const x of a) if (b.has(x)) n++;
-  return n / (a.size + b.size - n);
+const compute_jaccard = (a: Set<string>, b: Set<string>): number => {
+  let shared_count = 0;
+  for (const token of a) if (b.has(token)) shared_count++;
+  return shared_count / (a.size + b.size - shared_count);
 };
 
 /**
@@ -62,73 +63,73 @@ const jaccard = (a: Set<string>, b: Set<string>): number => {
  */
 const MAX_POSTING = 20;
 
-export async function findDuplicates(docsPath: string, config: PluginConfig): Promise<Map<string, Duplicate[]>> {
+export async function find_duplicates(docs_root: string, config: PluginConfig): Promise<Map<string, Duplicate[]>> {
   const floor = config.retrieval.near_duplicate_min_chars;
-  const secs: Sec[] = [];
-  for (const abs of await walk(docsPath)) {
-    const raw = readFileSync(abs, 'utf-8');
-    const rel = relative(docsPath, abs).split('\\').join('/');
-    const { data, content } = parseFrontmatter<Record<string, unknown>>(raw);
+  const sections: Sec[] = [];
+  for (const abs_path of await list_markdown_files(docs_root)) {
+    const raw_text = readFileSync(abs_path, 'utf-8');
+    const doc_path = relative(docs_root, abs_path).split('\\').join('/');
+    const { data, content } = parse_frontmatter<Record<string, unknown>>(raw_text);
     if (data.generated === true || data.tier === 'plan') continue;
-    if (findSecrets(raw, rel, config.reconcile.secrets).some((r) => r.finding.kind === 'secret')) continue;
-    const docLabel = `${typeof data.title === 'string' ? data.title : ''} ${typeof data.purpose === 'string' ? data.purpose : ''} ${basename(rel, '.md')}`;
-    const docSize = tokenize(content).length || 1;
-    for (const s of flatSections(content)) {
-      if (normalizeBlock(s.text).length < floor) continue;
-      const w = tokenize(normalizeBlock(s.text));
+    if (find_secrets(raw_text, doc_path, config.reconcile.secrets).some((raw_secret) => raw_secret.finding.kind === 'secret')) continue;
+    const doc_label = `${typeof data.title === 'string' ? data.title : ''} ${typeof data.purpose === 'string' ? data.purpose : ''} ${basename(doc_path, '.md')}`;
+    const doc_size = extract_tokens(content).length || 1;
+    for (const section of build_flat_sections(content)) {
+      if (normalize_block(section.text).length < floor) continue;
+      const tokens = extract_tokens(normalize_block(section.text));
       const shingles = new Set<string>();
-      for (let i = 0; i + SHINGLE <= w.length; i++) shingles.add(w.slice(i, i + SHINGLE).join(' '));
-      if (shingles.size) secs.push({ doc: rel, anchor: s.anchor, label: new Set(tokenize(`${s.heading} ${docLabel}`)), words: new Set(w), shingles, docSize });
+      for (let i = 0; i + SHINGLE <= tokens.length; i++) shingles.add(tokens.slice(i, i + SHINGLE).join(' '));
+      if (shingles.size) sections.push({ doc: doc_path, anchor: section.anchor, label: new Set(extract_tokens(`${section.heading} ${doc_label}`)), words: new Set(tokens), shingles, doc_size });
     }
   }
 
   const index = new Map<string, number[]>();
-  secs.forEach((s, i) => { for (const sh of s.shingles) (index.get(sh) ?? index.set(sh, []).get(sh)!).push(i); });
-  const parent = secs.map((_, i) => i);
-  const find = (x: number): number => (parent[x] === x ? x : (parent[x] = find(parent[x]!)));
-  for (let i = 0; i < secs.length; i++) {
-    const shared = new Map<number, number>();
-    for (const sh of secs[i]!.shingles) {
-      const post = index.get(sh)!;
-      if (post.length > MAX_POSTING) continue; // boilerplate shared by many sections is not a copied procedure
-      for (const j of post) if (j > i && secs[j]!.doc !== secs[i]!.doc) shared.set(j, (shared.get(j) ?? 0) + 1);
+  sections.forEach((section, i) => { for (const shingle of section.shingles) (index.get(shingle) ?? index.set(shingle, []).get(shingle)!).push(i); });
+  const parent = sections.map((_, i) => i);
+  const find_root = (item: number): number => (parent[item] === item ? item : (parent[item] = find_root(parent[item]!)));
+  for (let i = 0; i < sections.length; i++) {
+    const shared_counts = new Map<number, number>();
+    for (const shingle of sections[i]!.shingles) {
+      const posting = index.get(shingle)!;
+      if (posting.length > MAX_POSTING) continue; // boilerplate shared by many sections is not a copied procedure
+      for (const j of posting) if (j > i && sections[j]!.doc !== sections[i]!.doc) shared_counts.set(j, (shared_counts.get(j) ?? 0) + 1);
     }
-    for (const [j, n] of shared) {
-      if (n / (secs[i]!.shingles.size + secs[j]!.shingles.size - n) >= BAR) parent[find(j)] = find(i);
+    for (const [j, shared_count] of shared_counts) {
+      if (shared_count / (sections[i]!.shingles.size + sections[j]!.shingles.size - shared_count) >= BAR) parent[find_root(j)] = find_root(i);
     }
   }
 
   const clusters = new Map<number, Sec[]>();
-  secs.forEach((s, i) => (clusters.get(find(i)) ?? clusters.set(find(i), []).get(find(i))!).push(s));
-  const born = new Map<string, number | undefined>();
-  const age = (d: string): number | undefined => (born.has(d) ? born.get(d) : (born.set(d, firstCommit(docsPath, d)), born.get(d)));
+  sections.forEach((section, i) => (clusters.get(find_root(i)) ?? clusters.set(find_root(i), []).get(find_root(i))!).push(section));
+  const first_commit_dates = new Map<string, number | undefined>();
+  const find_age = (doc: string): number | undefined => (first_commit_dates.has(doc) ? first_commit_dates.get(doc) : (first_commit_dates.set(doc, find_first_commit(docs_root, doc)), first_commit_dates.get(doc)));
 
-  const out = new Map<string, Duplicate[]>();
+  const duplicates_by_doc = new Map<string, Duplicate[]>();
   for (const members of clusters.values()) {
-    if (new Set(members.map((m) => m.doc)).size < 2) continue;
+    if (new Set(members.map((member) => member.doc)).size < 2) continue;
     // Owner: the section whose heading/title/purpose best names the shared text, plus how much of its doc the text is
     // (a procedure doc is mostly its procedure; a big guide embedding it is not), then the older doc.
-    const shared = members.map((m) => m.words).reduce((a, b) => new Set([...a].filter((w) => b.has(w))));
-    const score = (m: Sec): number => (m.label.size ? [...m.label].filter((w) => shared.has(w)).length / m.label.size : 0) + m.words.size / m.docSize;
-    const best = Math.max(...members.map(score));
-    let top = members.filter((m) => Math.abs(score(m) - best) < 1e-9);
-    if (new Set(top.map((m) => m.doc)).size > 1) {
-      const ages = top.map((m) => age(m.doc));
+    const shared_words = members.map((member) => member.words).reduce((a, b) => new Set([...a].filter((word) => b.has(word))));
+    const compute_score = (member: Sec): number => (member.label.size ? [...member.label].filter((word) => shared_words.has(word)).length / member.label.size : 0) + member.words.size / member.doc_size;
+    const best = Math.max(...members.map(compute_score));
+    let top_members = members.filter((member) => Math.abs(compute_score(member) - best) < 1e-9);
+    if (new Set(top_members.map((member) => member.doc)).size > 1) {
+      const ages = top_members.map((member) => find_age(member.doc));
       if (ages.every((a) => a !== undefined)) {
         const oldest = Math.min(...(ages as number[]));
-        const older = top.filter((m) => age(m.doc) === oldest);
-        if (new Set(older.map((m) => m.doc)).size === 1) top = older;
+        const older = top_members.filter((member) => find_age(member.doc) === oldest);
+        if (new Set(older.map((member) => member.doc)).size === 1) top_members = older;
       }
     }
-    top.sort((a, b) => a.doc.localeCompare(b.doc) || a.anchor.localeCompare(b.anchor));
-    const owner = top[0]!;
-    const tie = [...new Set(top.map((m) => m.doc))].filter((d) => d !== owner.doc);
-    for (const m of members) {
-      if (m.doc === owner.doc) continue;
-      const overlap = jaccard(m.shingles, owner.shingles);
+    top_members.sort((a, b) => a.doc.localeCompare(b.doc) || a.anchor.localeCompare(b.anchor));
+    const owner = top_members[0]!;
+    const tie = [...new Set(top_members.map((member) => member.doc))].filter((doc) => doc !== owner.doc);
+    for (const member of members) {
+      if (member.doc === owner.doc) continue;
+      const overlap = compute_jaccard(member.shingles, owner.shingles);
       if (overlap < BAR) continue;
-      (out.get(m.doc) ?? out.set(m.doc, []).get(m.doc)!).push({ owner: owner.doc, section: owner.anchor, overlap: Math.round(overlap * 100) / 100, ...(tie.length && { tie }) });
+      (duplicates_by_doc.get(member.doc) ?? duplicates_by_doc.set(member.doc, []).get(member.doc)!).push({ owner: owner.doc, section: owner.anchor, overlap: Math.round(overlap * 100) / 100, ...(tie.length && { tie }) });
     }
   }
-  return out;
+  return duplicates_by_doc;
 }

@@ -3,16 +3,16 @@ import { execFileSync } from 'child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { applyReviews } from '../../../src/core/reconcile/apply';
-import { renderReview, type ReviewEntry } from '../../../src/core/reconcile/review';
-import { hashContent, loadLedger, saveLedger } from '../../../src/core/reconcile/ledger';
-import { assertNoSecrets } from '../../../src/core/reconcile/secrets';
+import { apply_reviews } from '../../../src/core/reconcile/apply';
+import { render_review, type ReviewEntry } from '../../../src/core/reconcile/review';
+import { compute_content_hash, load_ledger, write_ledger } from '../../../src/core/reconcile/ledger';
+import { validate_no_secrets } from '../../../src/core/reconcile/secrets';
 
 // Secret-shaped strings are built at runtime so the repo holds no scannable literal.
 const rnd = (n: number, seed = 7) => { let x = seed; let s = ''; const a = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'; for (let i = 0; i < n; i++) { x = (x * 1103515245 + 12345) & 0x7fffffff; s += a[x % a.length]; } return s; };
 const tok = 'hv' + 's.' + rnd(24);
 
-let root: string, docs: string, ledgerFile: string;
+let root: string, docs: string, ledger_file: string;
 const g = (...a: string[]) => execFileSync('git', a, { cwd: root, encoding: 'utf-8' }).trim();
 const doc = (body: string) => `---\ntitle: a\ndomains:\n  - backend\n---\n\n# a\n\n${body}\n`;
 const read = (rel: string) => readFileSync(join(docs, rel), 'utf-8');
@@ -21,14 +21,14 @@ const M = '@@T@@';
 const run = async (e: ReviewEntry) => {
   mkdirSync(join(root, '.hewtd/reconcile'), { recursive: true });
   const f = join(root, '.hewtd/reconcile/review-1-1.md');
-  writeFileSync(f, renderReview({ batch: '1', shard: 1, scope: 'backend' }, [e]).replace('- [ ] accept', '- [x] accept').split(M).join(tok));
-  return applyReviews({ root, docsPath: docs, files: [f], ledger: await loadLedger(ledgerFile), ledgerFile, today: '2026-11-07' });
+  writeFileSync(f, render_review({ batch: '1', shard: 1, scope: 'backend' }, [e]).replace('- [ ] accept', '- [x] accept').split(M).join(tok));
+  return apply_reviews({ root, docs_root: docs, files: [f], ledger: await load_ledger(ledger_file), ledger_file, today: '2026-11-07' });
 };
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'novals-'));
   docs = join(root, '.documentation');
-  ledgerFile = join(root, '.hewtd/reconcile.json');
+  ledger_file = join(root, '.hewtd/reconcile.json');
   mkdirSync(join(docs, 'backend'), { recursive: true });
   writeFileSync(join(docs, 'backend/a.md'), doc('Body of a.'));
   writeFileSync(join(root, '.gitignore'), '.hewtd/\n');
@@ -36,22 +36,22 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
-const entry = (over: Partial<ReviewEntry>): ReviewEntry => ({ path: 'backend/a.md', content_hash: hashContent(read('backend/a.md')), verdict: 'verify', ...over });
+const entry = (over: Partial<ReviewEntry>): ReviewEntry => ({ path: 'backend/a.md', content_hash: compute_content_hash(read('backend/a.md')), verdict: 'verify', ...over });
 
 describe('no values anywhere', () => {
   it('assertNoSecrets throws a masked message, never the value', () => {
-    expect(() => assertNoSecrets(`x ${tok}`, 'here')).toThrow(/vault-token line 1 hvs\.…28/);
-    try { assertNoSecrets(`x ${tok}`, 'here'); } catch (e) { expect((e as Error).message).not.toContain(tok); }
-    expect(() => assertNoSecrets('nothing here', 'here')).not.toThrow();
+    expect(() => validate_no_secrets(`x ${tok}`, 'here')).toThrow(/vault-token line 1 hvs\.…28/);
+    try { validate_no_secrets(`x ${tok}`, 'here'); } catch (e) { expect((e as Error).message).not.toContain(tok); }
+    expect(() => validate_no_secrets('nothing here', 'here')).not.toThrow();
   });
 
   it('refuses to render a review that carries a value', () => {
-    expect(() => renderReview({ batch: '1', shard: 1, scope: 's' }, [{ path: 'a.md', content_hash: 'h', verdict: 'verify', patch: [{ old: 'x', new: tok }] }])).toThrow(/would write a secret/);
+    expect(() => render_review({ batch: '1', shard: 1, scope: 's' }, [{ path: 'a.md', content_hash: 'h', verdict: 'verify', patch: [{ old: 'x', new: tok }] }])).toThrow(/would write a secret/);
   });
 
   it('refuses to save a ledger that carries a value', async () => {
-    await expect(saveLedger(ledgerFile, { version: 1, entries: { p: { path: p(tok), lane: 'check', content_hash: 'h' } } })).rejects.toThrow(/would write a secret/);
-    expect(existsSync(ledgerFile)).toBe(false);
+    await expect(write_ledger(ledger_file, { version: 1, entries: { p: { path: p(tok), lane: 'check', content_hash: 'h' } } })).rejects.toThrow(/would write a secret/);
+    expect(existsSync(ledger_file)).toBe(false);
   });
 
   it('a patch with a token is an error outcome and nothing is applied', async () => {

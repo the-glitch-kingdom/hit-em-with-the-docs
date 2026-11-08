@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync, chmodSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { loadPluginConfig } from '../../../src/utils/config';
-import { searchDocs } from '../../../src/core/reconcile/search';
+import { load_plugin_config } from '../../../src/utils/config';
+import { find_docs } from '../../../src/core/reconcile/search';
 
 let dir: string;
 const put = (rel: string, body: string) => {
@@ -26,7 +26,7 @@ afterEach(() => { rmSync(dir, { recursive: true, force: true }); vi.restoreAllMo
 
 describe('searchDocs', () => {
   it('ranks a symptoms match above a body-only mention; skips generated, archive and secret docs', async () => {
-    const hits = await searchDocs(dir, 'release stuck on rollback', { config: await loadPluginConfig(dir) });
+    const hits = await find_docs(dir, 'release stuck on rollback', { config: await load_plugin_config(dir) });
     expect(hits.map((h) => h.path).slice(0, 2)).toEqual(['ops/a.md', 'ops/b.md']);
     expect(hits[0]!.matched).toContain('symptoms');
     expect(hits.map((h) => h.path)).not.toContain('ops/INDEX.md');
@@ -35,24 +35,24 @@ describe('searchDocs', () => {
     expect(hits.map((h) => h.path)).not.toContain('ops/secret.md');
   });
   it('does not index sources', async () => {
-    expect(await searchDocs(dir, 'zzqx hidden')).toEqual([]);
+    expect(await find_docs(dir, 'zzqx hidden')).toEqual([]);
   });
   it('breaks ties by path', async () => {
-    const hits = await searchDocs(dir, 'tiebreak');
+    const hits = await find_docs(dir, 'tiebreak');
     expect(hits.map((h) => h.path)).toEqual(['ops/tie1.md', 'ops/tie2.md']);
   });
   it('puts search_command results first and falls back with a warning on failure', async () => {
-    const cfg = await loadPluginConfig(dir);
+    const cfg = await load_plugin_config(dir);
     put('fixed.sh', '#!/bin/sh\necho ops/c.md\necho nope.md\n');
     chmodSync(join(dir, 'fixed.sh'), 0o755);
     cfg.reconcile.search_command = `${join(dir, 'fixed.sh')} {query}`;
-    const hits = await searchDocs(dir, 'release stuck on rollback', { config: cfg });
+    const hits = await find_docs(dir, 'release stuck on rollback', { config: cfg });
     expect(hits[0]).toMatchObject({ path: 'ops/c.md', matched: ['search_command'] });
     expect(hits[1]!.path).toBe('ops/a.md');
 
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     cfg.reconcile.search_command = join(dir, 'missing-binary') + ' {query}';
-    const fb = await searchDocs(dir, 'release stuck on rollback', { config: cfg });
+    const fb = await find_docs(dir, 'release stuck on rollback', { config: cfg });
     expect(fb[0]!.path).toBe('ops/a.md');
     expect(warn).toHaveBeenCalled();
   });

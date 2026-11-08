@@ -3,30 +3,30 @@ import { execFileSync } from 'child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, chmodSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { applyReviews } from '../../../src/core/reconcile/apply';
-import { renderReview, parseReview, writeReviewSkeletons, type ReviewEntry } from '../../../src/core/reconcile/review';
-import { hashContent, loadLedger, isReviewed } from '../../../src/core/reconcile/ledger';
+import { apply_reviews } from '../../../src/core/reconcile/apply';
+import { render_review, load_review, write_review_skeletons, type ReviewEntry } from '../../../src/core/reconcile/review';
+import { compute_content_hash, load_ledger, is_reviewed } from '../../../src/core/reconcile/ledger';
 
-let root: string, docs: string, ledgerFile: string;
+let root: string, docs: string, ledger_file: string;
 const g = (...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: root, encoding: 'utf-8' }).trim();
 const doc = (name: string, extra = '') => `---\ntitle: ${name}\ndomains:\n  - backend\n${extra}---\n\n# ${name}\n\nBody of ${name}.\n`;
 const read = (rel: string) => readFileSync(join(docs, rel), 'utf-8');
 const entry = (rel: string, over: Partial<ReviewEntry>): ReviewEntry =>
-  ({ path: rel, content_hash: hashContent(read(rel)), verdict: 'verify', ...over });
+  ({ path: rel, content_hash: compute_content_hash(read(rel)), verdict: 'verify', ...over });
 const review = (name: string, entries: ReviewEntry[], accept: boolean[] = entries.map(() => true), shard = 1) => {
-  let t = renderReview({ batch: '1', shard, scope: 'backend' }, entries);
+  let t = render_review({ batch: '1', shard, scope: 'backend' }, entries);
   accept.forEach((a) => { if (a) t = t.replace('- [ ] accept', '- [x] accept'); });
   const f = join(root, '.hewtd/reconcile', name);
   mkdirSync(join(root, '.hewtd/reconcile'), { recursive: true });
   writeFileSync(f, t);
   return f;
 };
-const run = async (files: string[]) => applyReviews({ root, docsPath: docs, files, ledger: await loadLedger(ledgerFile), ledgerFile, today: '2026-11-07' });
+const run = async (files: string[]) => apply_reviews({ root, docs_root: docs, files, ledger: await load_ledger(ledger_file), ledger_file, today: '2026-11-07' });
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'apply-'));
   docs = join(root, '.documentation');
-  ledgerFile = join(root, '.hewtd/reconcile.json');
+  ledger_file = join(root, '.hewtd/reconcile.json');
   mkdirSync(join(docs, 'backend'), { recursive: true });
   for (const n of ['a', 'b', 'c']) writeFileSync(join(docs, `backend/${n}.md`), doc(n));
   writeFileSync(join(root, '.gitignore'), '.hewtd/\n');
@@ -52,7 +52,7 @@ describe('applyReviews', () => {
     expect(t).toContain('Fixed.');
     expect(g('rev-list', '--count', 'HEAD')).toBe('2');
     expect(g('log', '-1', '--format=%s')).toBe('docs(reconcile): backend batch 1');
-    const l = (await loadLedger(ledgerFile)).entries['backend/a.md'];
+    const l = (await load_ledger(ledger_file)).entries['backend/a.md'];
     expect(l).toMatchObject({ verdict: 'verify', applied_commit: res.commit, review_file: '.hewtd/reconcile/review-1-1.md' });
   });
 
@@ -112,9 +112,9 @@ describe('applyReviews', () => {
 
   it('skeleton review files parse back, are unjudged, and are never applied', async () => {
     const triage: any = { docs: [{ path: 'backend/a.md', lane: 'check', reasons: ['r'] }, { path: 'backend/b.md', lane: 'clean', reasons: [] }], shards: [], totals: {}, mode: 'serial', warnings: [] };
-    const [f] = await writeReviewSkeletons({ root, docsPath: docs, triage, scope: 'backend' });
+    const [f] = await write_review_skeletons({ root, docs_root: docs, triage, scope: 'backend' });
     expect(f).toMatch(/review-1-1\.md$/);
-    const r = await parseReview(f!);
+    const r = await load_review(f!);
     expect(r.entries.map((e) => [e.entry.path, e.entry.verdict, e.accepted])).toEqual([['backend/a.md', null, false]]);
     expect((await run([f!])).outcomes[0].status).toBe('rejected');
   });
@@ -142,7 +142,7 @@ describe('applyReviews', () => {
     expect(g('status', '--porcelain')).toBe('');
     expect(existsSync(join(docs, 'archive'))).toBe(false);
     expect(read('backend/b.md')).toBe(doc('b'));
-    expect(existsSync(ledgerFile)).toBe(false);
+    expect(existsSync(ledger_file)).toBe(false);
     rmSync(hook);
     expect((await run([f])).outcomes.map((o) => o.status)).toEqual(['applied', 'applied']);
   });
@@ -169,7 +169,7 @@ describe('applyReviews', () => {
       const target = join(outside, 'x.md');
       writeFileSync(target, doc('x'));
       const rel = join('..', '..', outside.split('/').pop()!, 'x.md');
-      const e: ReviewEntry = { path: rel, content_hash: hashContent(doc('x')), verdict: 'verify' };
+      const e: ReviewEntry = { path: rel, content_hash: compute_content_hash(doc('x')), verdict: 'verify' };
       const res = await run([review('review-1-1.md', [e])]);
       expect(res.outcomes[0]).toMatchObject({ status: 'error', detail: expect.stringContaining('outside the project root') });
       expect(readFileSync(target, 'utf-8')).toBe(doc('x'));
@@ -179,8 +179,8 @@ describe('applyReviews', () => {
   it('a rewrite verdict is recorded but the doc stays unreviewed', async () => {
     const res = await run([review('review-1-1.md', [entry('backend/a.md', { verdict: 'rewrite', draft: 'new' })])]);
     expect(res.outcomes[0].status).toBe('applied');
-    const l = (await loadLedger(ledgerFile)).entries['backend/a.md'];
+    const l = (await load_ledger(ledger_file)).entries['backend/a.md'];
     expect(l?.verdict).toBe('rewrite');
-    expect(isReviewed(l, hashContent(read('backend/a.md')))).toBe(false);
+    expect(is_reviewed(l, compute_content_hash(read('backend/a.md')))).toBe(false);
   });
 });

@@ -141,7 +141,7 @@ Write-time secret scan and `sources` recording at integrate: see [`write-time-gu
 
 ## Where this lives in the code
 
-`listDomainDocFiles()` in `src/generators/regenerate.ts` is the single shared
+`list_domain_doc_files()` in `src/generators/regenerate.ts` is the single shared
 spine. It has three consumers, and a change to it changes all three:
 
 | Consumer | Uses it for |

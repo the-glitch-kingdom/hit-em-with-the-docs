@@ -7,13 +7,13 @@ import { readFileSync } from 'fs';
 import { mkdir, readFile, readdir, writeFile } from 'fs/promises';
 import { dirname, join, posix, relative } from 'path';
 import type { PluginConfig } from '../../utils/config.js';
-import { parseFrontmatter } from '../../utils/frontmatter.js';
-import { extractLinks, slugify } from '../../utils/markdown.js';
-import { hashContent, type Ledger } from './ledger.js';
-import { renderReview, reviewDir, nextBatch } from './review.js';
-import { findDuplicates, type Duplicate } from './duplicates.js';
-import { searchDocs } from './search.js';
-import { assertNoSecrets } from './secrets.js';
+import { parse_frontmatter } from '../../utils/frontmatter.js';
+import { extract_links, format_slug } from '../../utils/markdown.js';
+import { compute_content_hash, type Ledger } from './ledger.js';
+import { render_review, resolve_review_dir, find_next_batch } from './review.js';
+import { find_duplicates, type Duplicate } from './duplicates.js';
+import { find_docs } from './search.js';
+import { validate_no_secrets } from './secrets.js';
 
 export type MemberState = 'reconciled' | 'unreviewed' | 'stale' | 'secret';
 /** `duplicates`: sections of this member copied from another member; propose merge-then-point alongside the overview. */
@@ -24,103 +24,103 @@ export interface OverviewSeed {
   existingOverview?: { path: string; coverage: number };
 }
 
-const posixPath = (p: string): string => p.split('\\').join('/');
+const format_posix_path = (path_text: string): string => path_text.split('\\').join('/');
 
 /** Doc-relative internal links of a doc, resolved to docs-relative paths (anchors stripped). */
-function linkTargets(rel: string, content: string): string[] {
-  const out: string[] = [];
-  for (const l of extractLinks(content)) {
-    if (!l.isInternal || /^[a-z][a-z0-9+.-]*:/i.test(l.url)) continue;
-    const u = l.url.split('#')[0]!;
-    if (u.endsWith('.md')) out.push(posix.normalize(posix.join(posix.dirname(rel), u)));
+function extract_link_targets(doc_path: string, content: string): string[] {
+  const found: string[] = [];
+  for (const line of extract_links(content)) {
+    if (!line.is_internal || /^[a-z][a-z0-9+.-]*:/i.test(line.url)) continue;
+    const unit = line.url.split('#')[0]!;
+    if (unit.endsWith('.md')) found.push(posix.normalize(posix.join(posix.dirname(doc_path), unit)));
   }
-  return out;
+  return found;
 }
 
-async function allDocs(dir: string, out: string[] = []): Promise<string[]> {
-  for (const e of await readdir(dir, { withFileTypes: true })) {
-    if (e.name.startsWith('.') || e.name === 'archive') continue;
-    const p = join(dir, e.name);
-    if (e.isDirectory()) await allDocs(p, out);
-    else if (e.name.endsWith('.md')) out.push(p);
+async function list_all_docs(dir_path: string, found: string[] = []): Promise<string[]> {
+  for (const entry of await readdir(dir_path, { withFileTypes: true })) {
+    if (entry.name.startsWith('.') || entry.name === 'archive') continue;
+    const path_text = join(dir_path, entry.name);
+    if (entry.isDirectory()) await list_all_docs(path_text, found);
+    else if (entry.name.endsWith('.md')) found.push(path_text);
   }
-  return out;
+  return found;
 }
 
-export function memberState(ledger: Ledger, rel: string, hash: string): MemberState {
-  const e = ledger.entries[rel];
-  if (e?.lane === 'secret') return 'secret';
-  if (!e) return 'unreviewed';
-  if (e.content_hash !== hash) return 'stale';
-  return e.verdict === 'verify' || e.lane === 'clean' ? 'reconciled' : 'unreviewed';
+export function get_member_state(ledger: Ledger, doc_path: string, hash: string): MemberState {
+  const entry = ledger.entries[doc_path];
+  if (entry?.lane === 'secret') return 'secret';
+  if (!entry) return 'unreviewed';
+  if (entry.content_hash !== hash) return 'stale';
+  return entry.verdict === 'verify' || entry.lane === 'clean' ? 'reconciled' : 'unreviewed';
 }
 
-export async function seedOverview(opts: {
-  docsPath: string; config: PluginConfig; ledger: Ledger; question: string; limit?: number | undefined;
+export async function load_overview_seed(options: {
+  docs_root: string; config: PluginConfig; ledger: Ledger; question: string; limit?: number | undefined;
 }): Promise<OverviewSeed> {
-  const { docsPath, config, ledger, question } = opts;
-  const limit = opts.limit ?? 12;
-  const hits = await searchDocs(docsPath, question, { limit: Number.MAX_SAFE_INTEGER, config });
-  const scored = new Set(hits.map((h) => h.path));
+  const { docs_root: docs_root, config, ledger, question } = options;
+  const limit = options.limit ?? 12;
+  const matches = await find_docs(docs_root, question, { limit: Number.MAX_SAFE_INTEGER, config });
+  const scored = new Set(matches.map((match) => match.path));
   const picked = new Map<string, 'search' | 'link'>();
   // Half the cap comes straight from search; the rest are linked docs that also scored.
-  for (const h of hits.slice(0, Math.ceil(limit / 2))) picked.set(h.path, 'search');
+  for (const match of matches.slice(0, Math.ceil(limit / 2))) picked.set(match.path, 'search');
   for (const seed of [...picked.keys()]) {
-    for (const t of linkTargets(seed, readFileSync(join(docsPath, seed), 'utf-8'))) {
+    for (const link_target of extract_link_targets(seed, readFileSync(join(docs_root, seed), 'utf-8'))) {
       if (picked.size >= limit) break;
-      if (scored.has(t) && !picked.has(t)) picked.set(t, 'link');
+      if (scored.has(link_target) && !picked.has(link_target)) picked.set(link_target, 'link');
     }
   }
-  for (const h of hits) if (picked.size < limit && !picked.has(h.path)) picked.set(h.path, 'search');
+  for (const match of matches) if (picked.size < limit && !picked.has(match.path)) picked.set(match.path, 'search');
 
-  const dups = await findDuplicates(docsPath, config);
+  const dups = await find_duplicates(docs_root, config);
   const members: OverviewMember[] = [...picked].map(([path, via]) => {
-    const copies = (dups.get(path) ?? []).filter((c) => picked.has(c.owner));
-    return { path, via, state: memberState(ledger, path, hashContent(readFileSync(join(docsPath, path), 'utf-8'))), ...(copies.length && { duplicates: copies }) };
+    const copies = (dups.get(path) ?? []).filter((duplicate) => picked.has(duplicate.owner));
+    return { path, via, state: get_member_state(ledger, path, compute_content_hash(readFileSync(join(docs_root, path), 'utf-8'))), ...(copies.length && { duplicates: copies }) };
   });
 
-  let existingOverview: OverviewSeed['existingOverview'];
-  const want = new Set(members.map((m) => m.path));
-  for (const abs of await allDocs(docsPath)) {
-    const raw = readFileSync(abs, 'utf-8');
-    const { data, content } = parseFrontmatter<Record<string, unknown>>(raw);
+  let existing_overview: OverviewSeed['existingOverview'];
+  const want = new Set(members.map((member) => member.path));
+  for (const abs_path of await list_all_docs(docs_root)) {
+    const raw_text = readFileSync(abs_path, 'utf-8');
+    const { data, content } = parse_frontmatter<Record<string, unknown>>(raw_text);
     if (data.kind !== 'overview' || !want.size) continue;
-    const rel = posixPath(relative(docsPath, abs));
-    const covered = new Set(linkTargets(rel, content).filter((t) => want.has(t))).size / want.size;
-    if (covered >= config.overview.min_link_coverage && covered > (existingOverview?.coverage ?? 0)) {
-      existingOverview = { path: rel, coverage: Math.round(covered * 100) / 100 };
+    const doc_path = format_posix_path(relative(docs_root, abs_path));
+    const covered = new Set(extract_link_targets(doc_path, content).filter((link_target) => want.has(link_target))).size / want.size;
+    if (covered >= config.overview.min_link_coverage && covered > (existing_overview?.coverage ?? 0)) {
+      existing_overview = { path: doc_path, coverage: Math.round(covered * 100) / 100 };
     }
   }
-  return { question, members, ...(existingOverview ? { existingOverview } : {}) };
+  return { question, members, ...(existing_overview ? { existingOverview: existing_overview } : {}) };
 }
 
 /** The members file: the user confirms the list from it before anything is drafted. */
-export async function writeMembersFile(root: string, seed: OverviewSeed): Promise<string> {
-  const file = join(reviewDir(root), `overview-${slugify(seed.question).slice(0, 60) || 'overview'}.json`);
-  const text = JSON.stringify(seed, null, 2) + '\n';
-  assertNoSecrets(text, 'the overview members file');
+export async function write_members_file(repo_root: string, seed: OverviewSeed): Promise<string> {
+  const file = join(resolve_review_dir(repo_root), `overview-${format_slug(seed.question).slice(0, 60) || 'overview'}.json`);
+  const json_text = JSON.stringify(seed, null, 2) + '\n';
+  validate_no_secrets(json_text, 'the overview members file');
   await mkdir(dirname(file), { recursive: true });
-  await writeFile(file, text, 'utf-8');
+  await writeFile(file, json_text, 'utf-8');
   return file;
 }
 
 /** `--write-review --overview <members-file>`: a one-entry review skeleton, members hashed now; the draft is filled by the slash command. */
-export async function writeOverviewReview(opts: { root: string; docsPath: string; membersFile: string; batch?: string | undefined }): Promise<string> {
-  const seed = JSON.parse(await readFile(opts.membersFile, 'utf-8')) as OverviewSeed;
-  const members = await Promise.all(seed.members.filter((m) => m.state !== 'secret').map(async (m) => ({
-    path: m.path, content_hash: hashContent(await readFile(join(opts.docsPath, m.path), 'utf-8')),
+export async function write_overview_review(options: { root: string; docs_root: string; members_file: string; batch?: string | undefined }): Promise<string> {
+  const seed = JSON.parse(await readFile(options.members_file, 'utf-8')) as OverviewSeed;
+  const members = await Promise.all(seed.members.filter((member) => member.state !== 'secret').map(async (member) => ({
+    path: member.path, content_hash: compute_content_hash(await readFile(join(options.docs_root, member.path), 'utf-8')),
   })));
   if (!members.length) throw new Error('members file has no usable members');
-  const dir = reviewDir(opts.root);
-  const batch = opts.batch ?? (await nextBatch(dir));
+  const dir_path = resolve_review_dir(options.root);
+  const batch = options.batch ?? (await find_next_batch(dir_path));
   const folder = posix.dirname(members[0]!.path);
-  const slug = slugify(seed.question).slice(0, 60) || 'overview';
+  const slug = format_slug(seed.question).slice(0, 60) || 'overview';
   const entry = {
-    path: posix.join(folder === '.' ? '' : folder, `overview-${slug}.md`), content_hash: hashContent(''), verdict: null,
+    path: posix.join(folder === '.' ? '' : folder, `overview-${slug}.md`), content_hash: compute_content_hash(''), verdict: null,
     members, draft: '', frontmatter: { title: seed.question, purpose: '', symptoms: [seed.question] },
   };
-  const file = join(dir, `review-${batch}-1.md`);
-  await mkdir(dir, { recursive: true });
-  await writeFile(file, renderReview({ batch, shard: 1, scope: 'overview' }, [entry]), { encoding: 'utf-8', flag: 'wx' });
+  const file = join(dir_path, `review-${batch}-1.md`);
+  await mkdir(dir_path, { recursive: true });
+  await writeFile(file, render_review({ batch, shard: 1, scope: 'overview' }, [entry]), { encoding: 'utf-8', flag: 'wx' });
   return file;
 }

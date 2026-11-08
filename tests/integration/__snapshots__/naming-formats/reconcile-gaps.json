@@ -1,0 +1,25 @@
+exit 0
+{
+  "proposals": [
+    {
+      "doc": "backend/deploy.md",
+      "accepted": [
+        {
+          "query": "how do I roll back a bad deploy",
+          "count": 3
+        }
+      ],
+      "existing": []
+    }
+  ],
+  "candidates": [],
+  "questions": [
+    {
+      "query": "where is the zzz",
+      "count": 1
+    }
+  ],
+  "dropped": [],
+  "errors": [],
+  "report": ".hewtd/reconcile/gaps-report-<DATE>.md"
+}

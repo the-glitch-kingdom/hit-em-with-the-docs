@@ -1,0 +1,134 @@
+{
+  "docs": {
+    "backend/auth.md": {
+      "body_changed": "<DATE>",
+      "duplicates": [],
+      "last_verified": "<DATE>",
+      "owner_of": [],
+      "points_to": [],
+      "refs": [
+        {
+          "kind": "doc",
+          "resolved": true,
+          "target": "deploy.md"
+        },
+        {
+          "kind": "doc",
+          "resolved": false,
+          "target": "missing.md"
+        },
+        {
+          "code_changed": "<DATE>",
+          "kind": "file",
+          "resolved": true,
+          "target": "src/auth.ts"
+        },
+        {
+          "code_changed": "<DATE>",
+          "file": "src/auth.ts",
+          "file_kind": "definition",
+          "kind": "symbol",
+          "resolved": true,
+          "target": "requireRole"
+        }
+      ],
+      "verdict": "check"
+    },
+    "backend/creds.md": {
+      "body_changed": "<DATE>",
+      "duplicates": [],
+      "last_verified": "<DATE>",
+      "owner_of": [],
+      "points_to": [],
+      "refs": [
+        {
+          "code_changed": "<DATE>",
+          "kind": "file",
+          "resolved": true,
+          "target": "src/creds.ts"
+        }
+      ],
+      "verdict": "secret"
+    },
+    "backend/deploy.md": {
+      "body_changed": "<DATE>",
+      "duplicates": [],
+      "last_verified": "<DATE>",
+      "owner_of": [],
+      "points_to": [],
+      "refs": [
+        {
+          "code_changed": "<DATE>",
+          "kind": "file",
+          "resolved": true,
+          "target": "src/deployHelper.ts"
+        },
+        {
+          "kind": "file",
+          "resolved": false,
+          "target": "src/gone.ts"
+        }
+      ],
+      "verdict": "check"
+    },
+    "backend/leak.md": {
+      "body_changed": "<DATE>",
+      "duplicates": [],
+      "last_verified": "<DATE>",
+      "owner_of": [],
+      "points_to": [],
+      "refs": [],
+      "verdict": "secret"
+    },
+    "backend/old.md": {
+      "body_changed": "<DATE>",
+      "duplicates": [],
+      "last_verified": "<DATE>",
+      "owner_of": [],
+      "points_to": [],
+      "refs": [],
+      "verdict": "check"
+    },
+    "frontend/ui.md": {
+      "body_changed": "<DATE>",
+      "duplicates": [],
+      "last_verified": null,
+      "owner_of": [],
+      "points_to": [],
+      "refs": [
+        {
+          "kind": "doc",
+          "resolved": true,
+          "target": "../backend/auth.md"
+        }
+      ],
+      "verdict": "check"
+    },
+    "reports/audit-<TS>.md": {
+      "body_changed": null,
+      "duplicates": [],
+      "last_verified": null,
+      "owner_of": [],
+      "points_to": [],
+      "refs": [
+        {
+          "kind": "command",
+          "resolved": null,
+          "target": "npx hit-em-with-the-docs"
+        }
+      ],
+      "verdict": "unreviewed"
+    }
+  },
+  "source_commit": "<SHA>",
+  "symbols": {
+    "requireRole": {
+      "cited_by": [
+        "backend/auth.md"
+      ],
+      "file": "src/auth.ts",
+      "file_kind": "definition"
+    }
+  },
+  "version": 1
+}

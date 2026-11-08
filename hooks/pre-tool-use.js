@@ -71,7 +71,7 @@ async function main() {
 
   // The decision function ships compiled in dist/, so the hook stays a thin
   // I/O shell and the rules themselves are unit-testable.
-  const { evaluate } = await import('../dist/core/enforce/guard.js');
+  const { check_guard } = await import('../dist/core/enforce/guard.js');
 
   // The active domain ids decide which INDEX.md files hewtd actually generates.
   // Reading them is I/O (the registry merges built-ins with this project's config),
@@ -83,16 +83,16 @@ async function main() {
   try {
     const registry = await import('../dist/core/domains/registry.js');
     // Seed the lazy registry with THIS project's root: the hook's cwd comes from the
-    // payload and is not necessarily process.cwd(), which is what getRegistry()
+    // payload and is not necessarily process.cwd(), which is what get_registry()
     // defaults to. Getting that wrong would read another project's custom domains.
-    registry.getRegistry(cwd);
-    domains = registry.getAllDomains();
+    registry.get_registry(cwd);
+    domains = registry.get_all_domains();
   } catch {
     domains = undefined;
   }
 
   const toolInput = payload.tool_input ?? {};
-  const decision = evaluate(
+  const decision = check_guard(
     {
       toolName: payload.tool_name,
       filePath: toolInput.file_path,

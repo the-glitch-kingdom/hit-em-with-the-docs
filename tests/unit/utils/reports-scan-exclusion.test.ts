@@ -19,8 +19,8 @@ import { mkdtemp, mkdir, writeFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join, relative } from 'path';
 
-import { findMarkdownFiles } from '../../../src/utils/glob.js';
-import { auditDocumentation } from '../../../src/core/audit/auditor.js';
+import { find_markdown_files } from '../../../src/utils/glob.js';
+import { check_documentation } from '../../../src/core/audit/auditor.js';
 
 const DOC = (title: string, domain: string) =>
   [
@@ -54,40 +54,40 @@ const GENERATED_REPORT = [
 ].join('\n');
 
 describe('reports/ is excluded from documentation scans', () => {
-  let tmpProject: string;
-  let docsPath: string;
+  let tmp_project: string;
+  let docs_root: string;
 
   beforeEach(async () => {
-    tmpProject = await mkdtemp(join(tmpdir(), 'hewtd-reports-'));
-    docsPath = join(tmpProject, '.documentation');
-    await mkdir(join(docsPath, 'procedures'), { recursive: true });
-    await mkdir(join(docsPath, 'reports'), { recursive: true });
-    await mkdir(join(docsPath, 'features', 'reports'), { recursive: true });
+    tmp_project = await mkdtemp(join(tmpdir(), 'hewtd-reports-'));
+    docs_root = join(tmp_project, '.documentation');
+    await mkdir(join(docs_root, 'procedures'), { recursive: true });
+    await mkdir(join(docs_root, 'reports'), { recursive: true });
+    await mkdir(join(docs_root, 'features', 'reports'), { recursive: true });
 
-    await writeFile(join(docsPath, 'procedures', 'sample.md'), DOC('Sample', 'procedures'), 'utf-8');
+    await writeFile(join(docs_root, 'procedures', 'sample.md'), DOC('Sample', 'procedures'), 'utf-8');
     await writeFile(
-      join(docsPath, 'reports', 'maintenance-2026-08-31T06-26-21.md'),
+      join(docs_root, 'reports', 'maintenance-2026-08-31T06-26-21.md'),
       GENERATED_REPORT,
       'utf-8'
     );
     await writeFile(
-      join(docsPath, 'reports', 'audit-2026-08-31T06-26-22.md'),
+      join(docs_root, 'reports', 'audit-2026-08-31T06-26-22.md'),
       GENERATED_REPORT,
       'utf-8'
     );
     await writeFile(
-      join(docsPath, 'features', 'reports', 'about-reports.md'),
+      join(docs_root, 'features', 'reports', 'about-reports.md'),
       DOC('About Reports', 'features'),
       'utf-8'
     );
   });
 
   afterEach(async () => {
-    await rm(tmpProject, { recursive: true, force: true });
+    await rm(tmp_project, { recursive: true, force: true });
   });
 
   const scanned = async () =>
-    (await findMarkdownFiles(docsPath)).map((f) => relative(docsPath, f).replace(/\\/g, '/'));
+    (await find_markdown_files(docs_root)).map((f) => relative(docs_root, f).replace(/\\/g, '/'));
 
   it('does not scan generated reports at the docs root', async () => {
     const files = await scanned();
@@ -104,28 +104,28 @@ describe('reports/ is excluded from documentation scans', () => {
   });
 
   it('raises no audit issues against generated reports', async () => {
-    const result = await auditDocumentation({ docsPath });
-    const fromReports = result.issues.filter((i) =>
+    const result = await check_documentation({ docs_root: docs_root });
+    const from_reports = result.issues.filter((i) =>
       i.file.replace(/\\/g, '/').startsWith('reports/')
     );
-    expect(fromReports).toEqual([]);
+    expect(from_reports).toEqual([]);
   });
 
   it('does not degrade as more reports accumulate', async () => {
     // The point of the fix: the score must track documentation quality, not how
     // often maintenance has been run.
-    const before = await auditDocumentation({ docsPath });
+    const before = await check_documentation({ docs_root: docs_root });
 
     for (let i = 0; i < 8; i++) {
       await writeFile(
-        join(docsPath, 'reports', `maintenance-2026-09-0${i}T00-00-00.md`),
+        join(docs_root, 'reports', `maintenance-2026-09-0${i}T00-00-00.md`),
         GENERATED_REPORT,
         'utf-8'
       );
     }
 
-    const after = await auditDocumentation({ docsPath });
+    const after = await check_documentation({ docs_root: docs_root });
     expect(after.issues.length).toBe(before.issues.length);
-    expect(after.totalFiles).toBe(before.totalFiles);
+    expect(after.total_files).toBe(before.total_files);
   });
 });

@@ -1,35 +1,35 @@
 import { type Domain } from '../core/domains/constants.js';
-import { getAllDomains, getDomainDefinition } from '../core/domains/registry.js';
-import { formatDate } from '../core/metadata/generator.js';
+import { get_all_domains, get_domain_definition } from '../core/domains/registry.js';
+import { format_date } from '../core/metadata/generator.js';
 
 export interface IndexEntry {
   path: string;
   title: string;
   tier: string;
   status: string;
-  lastUpdated: string;
-  wordCount?: number;
+  last_updated: string;
+  word_count?: number;
   description?: string;
   purpose?: string;
 }
 
 /** One-line, pipe-safe table cell; empty when missing. */
-function purposeCell(purpose?: string): string {
+function format_purpose_cell(purpose?: string): string {
   return (purpose ?? '').replace(/\s+/g, ' ').trim().replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
 }
 
 /**
  * Generate the root INDEX.md content
  */
-export function generateRootIndex(entries?: Record<Domain, IndexEntry[]>): string {
-  const now = formatDate(new Date());
+export function generate_root_index(entries?: Record<Domain, IndexEntry[]>): string {
+  const today = format_date(new Date());
 
   let content = `---
 title: Documentation Index
 tier: reference
 domains: [root]
 status: active
-last_updated: '${now}'
+last_updated: '${today}'
 version: '1.0.0'
 generated: true
 purpose: Navigation hub for all documentation
@@ -46,31 +46,31 @@ purpose: Navigation hub for all documentation
 `;
 
   // Add domain rows
-  for (const domain of getAllDomains()) {
-    const def = getDomainDefinition(domain);
+  for (const domain of get_all_domains()) {
+    const definition = get_domain_definition(domain);
     const count = entries?.[domain]?.length ?? 0;
-    content += `| [${def.name}](#${domain}) | ${count} | ${def.description} |\n`;
+    content += `| [${definition.name}](#${domain}) | ${count} | ${definition.description} |\n`;
   }
 
   content += `\n---\n\n`;
 
   // Add domain sections
-  for (const domain of getAllDomains()) {
-    const def = getDomainDefinition(domain);
-    const domainEntries = entries?.[domain] ?? [];
+  for (const domain of get_all_domains()) {
+    const definition = get_domain_definition(domain);
+    const domain_entries = entries?.[domain] ?? [];
 
-    content += `## ${def.name}\n\n`;
-    content += `> ${def.description}\n\n`;
+    content += `## ${definition.name}\n\n`;
+    content += `> ${definition.description}\n\n`;
     content += `**Path:** \`${domain}/\`\n\n`;
 
-    if (domainEntries.length === 0) {
+    if (domain_entries.length === 0) {
       content += `*No documents yet.*\n\n`;
     } else {
       content += `| Document | Tier | Status | Updated | Purpose |\n`;
       content += `|----------|------|--------|----------|---------|\n`;
 
-      for (const entry of domainEntries) {
-        content += `| [${entry.title}](${entry.path}) | ${entry.tier} | ${entry.status} | ${entry.lastUpdated} | ${purposeCell(entry.purpose)} |\n`;
+      for (const entry of domain_entries) {
+        content += `| [${entry.title}](${entry.path}) | ${entry.tier} | ${entry.status} | ${entry.last_updated} | ${format_purpose_cell(entry.purpose)} |\n`;
       }
       content += `\n`;
     }
@@ -80,7 +80,7 @@ purpose: Navigation hub for all documentation
 
   // Footer
   content += `## Maintenance\n\n`;
-  content += `- **Last generated:** ${now}\n`;
+  content += `- **Last generated:** ${today}\n`;
   content += `- **Run maintenance:** \`npx hit-em-with-the-docs maintain\`\n`;
   content += `- **Regenerate index:** \`npx hit-em-with-the-docs index\`\n`;
 
@@ -90,36 +90,36 @@ purpose: Navigation hub for all documentation
 /**
  * Generate a domain-specific INDEX.md content
  */
-export function generateDomainIndexContent(
+export function generate_domain_index_content(
   domain: Domain,
   entries: IndexEntry[] = [],
   /** Domains whose folder exists — only these are linked as related (#45). */
-  present: Domain[] = getAllDomains()
+  present: Domain[] = get_all_domains()
 ): string {
-  const def = getDomainDefinition(domain);
-  const now = formatDate(new Date());
+  const definition = get_domain_definition(domain);
+  const today = format_date(new Date());
 
   let content = `---
-title: ${def.name} Documentation Index
+title: ${definition.name} Documentation Index
 tier: reference
 domains: [${domain}]
 status: active
-last_updated: '${now}'
+last_updated: '${today}'
 version: '1.0.0'
 generated: true
 purpose: Complete listing of ${domain} documentation
 ---
 
-# ${def.name} Documentation
+# ${definition.name} Documentation
 
-> ${def.description}
+> ${definition.description}
 
 ## Overview
 
 - **Total Documents:** ${entries.length}
 - **Domain:** \`${domain}/\`
-- **Category:** ${def.category}
-- **Load Priority:** ${def.loadPriority}/10
+- **Category:** ${definition.category}
+- **Load Priority:** ${definition.loadPriority}/10
 
 ## Documents
 
@@ -133,18 +133,18 @@ purpose: Complete listing of ${domain} documentation
     content += `3. Run \`npx hit-em-with-the-docs integrate <file>\`\n`;
   } else {
     // Group by tier
-    const byTier = groupByTier(entries);
+    const by_tier = group_by_tier(entries);
 
-    for (const [tier, tierEntries] of Object.entries(byTier)) {
-      if (tierEntries.length === 0) continue;
+    for (const [tier, tier_entries] of Object.entries(by_tier)) {
+      if (tier_entries.length === 0) continue;
 
-      content += `### ${capitalize(tier)}s\n\n`;
+      content += `### ${format_capitalized(tier)}s\n\n`;
       content += `| Document | Status | Updated | Words | Purpose |\n`;
       content += `|----------|--------|---------|-------|---------|\n`;
 
-      for (const entry of tierEntries) {
-        const words = entry.wordCount ? entry.wordCount.toLocaleString() : '-';
-        content += `| [${entry.title}](${entry.path}) | ${entry.status} | ${entry.lastUpdated} | ${words} | ${purposeCell(entry.purpose)} |\n`;
+      for (const entry of tier_entries) {
+        const words = entry.word_count ? entry.word_count.toLocaleString() : '-';
+        content += `| [${entry.title}](${entry.path}) | ${entry.status} | ${entry.last_updated} | ${words} | ${format_purpose_cell(entry.purpose)} |\n`;
       }
       content += `\n`;
     }
@@ -152,22 +152,22 @@ purpose: Complete listing of ${domain} documentation
 
   // Keywords section
   content += `## Keywords\n\n`;
-  content += `This domain covers: ${def.keywords.slice(0, 10).join(', ')}\n\n`;
+  content += `This domain covers: ${definition.keywords.slice(0, 10).join(', ')}\n\n`;
 
   // Related domains
-  const relatedDomains = findRelatedDomains(domain, present);
-  if (relatedDomains.length > 0) {
+  const related_domains = find_related_domains(domain, present);
+  if (related_domains.length > 0) {
     content += `## Related Domains\n\n`;
-    for (const related of relatedDomains) {
-      const relatedDef = getDomainDefinition(related);
-      content += `- [${relatedDef.name}](../${related}/) - ${relatedDef.description}\n`;
+    for (const related_domain of related_domains) {
+      const related_def = get_domain_definition(related_domain);
+      content += `- [${related_def.name}](../${related_domain}/) - ${related_def.description}\n`;
     }
     content += `\n`;
   }
 
   // Footer
   content += `---\n\n`;
-  content += `*Last updated: ${now}*\n`;
+  content += `*Last updated: ${today}*\n`;
 
   return content;
 }
@@ -175,7 +175,7 @@ purpose: Complete listing of ${domain} documentation
 /**
  * Group entries by tier
  */
-function groupByTier(entries: IndexEntry[]): Record<string, IndexEntry[]> {
+function group_by_tier(entries: IndexEntry[]): Record<string, IndexEntry[]> {
   const grouped: Record<string, IndexEntry[]> = {
     guide: [],
     standard: [],
@@ -199,43 +199,43 @@ function groupByTier(entries: IndexEntry[]): Record<string, IndexEntry[]> {
 /**
  * Find related domains based on shared keywords
  */
-function findRelatedDomains(domain: Domain, present: Domain[]): Domain[] {
-  const def = getDomainDefinition(domain);
-  const related: { domain: Domain; score: number }[] = [];
+function find_related_domains(domain: Domain, present: Domain[]): Domain[] {
+  const definition = get_domain_definition(domain);
+  const scored_domains: { domain: Domain; score: number }[] = [];
 
   for (const other of present) {
     if (other === domain) continue;
 
-    const otherDef = getDomainDefinition(other);
+    const other_def = get_domain_definition(other);
     let score = 0;
 
     // Check keyword overlap
-    for (const keyword of def.keywords) {
-      if (otherDef.keywords.includes(keyword)) {
+    for (const keyword of definition.keywords) {
+      if (other_def.keywords.includes(keyword)) {
         score++;
       }
     }
 
     // Check category match
-    if (def.category === otherDef.category) {
+    if (definition.category === other_def.category) {
       score += 2;
     }
 
     if (score > 0) {
-      related.push({ domain: other, score });
+      scored_domains.push({ domain: other, score });
     }
   }
 
   // Sort by score and return top 3
-  return related
+  return scored_domains
     .sort((a, b) => b.score - a.score)
     .slice(0, 3)
-    .map((r) => r.domain);
+    .map((scored) => scored.domain);
 }
 
 /**
  * Capitalize first letter
  */
-function capitalize(str: string): string {
-  return str.charAt(0).toUpperCase() + str.slice(1);
+function format_capitalized(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }

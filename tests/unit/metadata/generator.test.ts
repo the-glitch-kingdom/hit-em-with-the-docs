@@ -1,19 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import {
-  generateMetadata,
-  mergeMetadata,
-  formatDate,
+  generate_metadata,
+  merge_metadata,
+  format_date,
 } from '../../../src/core/metadata/generator.js';
 
 describe('Metadata Generator', () => {
   describe('formatDate', () => {
     it('should format date as YYYY-MM-DD', () => {
       const date = new Date('2025-06-15T12:00:00Z');
-      expect(formatDate(date)).toBe('2025-06-15');
+      expect(format_date(date)).toBe('2025-06-15');
     });
 
     it('should handle current date', () => {
-      const result = formatDate(new Date());
+      const result = format_date(new Date());
       expect(result).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     });
   });
@@ -25,9 +25,9 @@ describe('Metadata Generator', () => {
       ['list', '- first item of a long enough list entry\n- second item'],
       ['long paragraph', 'word '.repeat(60)],
     ])('omits purpose (no title echo) when first paragraph is a %s', (_n, first) => {
-      const result = generateMetadata({
+      const result = generate_metadata({
         content: `# Some Title\n\n${first}\n\n## More\n\nText.\n`,
-        filePath: 'docs/some-title.md',
+        file_path: 'docs/some-title.md',
       });
       expect(result.purpose).toBeUndefined();
     });
@@ -42,8 +42,8 @@ This is a quick start guide for the project.
 
 - Node.js installed
 `;
-      const result = generateMetadata({
-        filePath: '.documentation/quickstart/getting-started.md',
+      const result = generate_metadata({
+        file_path: '.documentation/quickstart/getting-started.md',
         content,
       });
 
@@ -53,8 +53,8 @@ This is a quick start guide for the project.
 
     it('should generate title from filename if no H1', () => {
       const content = `Some content without a heading.`;
-      const result = generateMetadata({
-        filePath: '.documentation/security/auth-setup-guide.md',
+      const result = generate_metadata({
+        file_path: '.documentation/security/auth-setup-guide.md',
         content,
       });
 
@@ -62,16 +62,16 @@ This is a quick start guide for the project.
     });
 
     it('should generate tier from content structure', () => {
-      const guideContent = `
+      const guide_content = `
 # How to Setup Authentication
 
 ## Step 1: Install dependencies
 ## Step 2: Configure settings
 ## Step 3: Test the setup
 `;
-      const result = generateMetadata({
-        filePath: '.documentation/security/auth-setup.md',
-        content: guideContent,
+      const result = generate_metadata({
+        file_path: '.documentation/security/auth-setup.md',
+        content: guide_content,
       });
 
       expect(result.tier).toBeDefined();
@@ -80,8 +80,8 @@ This is a quick start guide for the project.
 
     it('should generate domains from file path', () => {
       const content = '# Test Document\n\nContent here.';
-      const result = generateMetadata({
-        filePath: '.documentation/security/test-doc.md',
+      const result = generate_metadata({
+        file_path: '.documentation/security/test-doc.md',
         content,
       });
 
@@ -89,8 +89,8 @@ This is a quick start guide for the project.
     });
 
     it('should generate status as draft for new documents', () => {
-      const result = generateMetadata({
-        filePath: 'test.md',
+      const result = generate_metadata({
+        file_path: 'test.md',
         content: '# Test\n\nContent',
       });
 
@@ -98,8 +98,8 @@ This is a quick start guide for the project.
     });
 
     it('should generate version as 1.0.0 for new documents', () => {
-      const result = generateMetadata({
-        filePath: 'test.md',
+      const result = generate_metadata({
+        file_path: 'test.md',
         content: '# Test\n\nContent',
       });
 
@@ -107,19 +107,19 @@ This is a quick start guide for the project.
     });
 
     it('should set last_updated to current date', () => {
-      const result = generateMetadata({
-        filePath: 'test.md',
+      const result = generate_metadata({
+        file_path: 'test.md',
         content: '# Test\n\nContent',
       });
 
-      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-      expect(result.last_updated).toMatch(dateRegex);
+      const date_regex = /^\d{4}-\d{2}-\d{2}$/;
+      expect(result.last_updated).toMatch(date_regex);
     });
 
     it('should generate word_count', () => {
       const content = '# Test\n\nThis is a simple test with some words.';
-      const result = generateMetadata({
-        filePath: 'test.md',
+      const result = generate_metadata({
+        file_path: 'test.md',
         content,
       });
 
@@ -127,10 +127,10 @@ This is a quick start guide for the project.
     });
 
     it('should not override existing metadata', () => {
-      const result = generateMetadata({
-        filePath: 'test.md',
+      const result = generate_metadata({
+        file_path: 'test.md',
         content: '# Test\n\nContent',
-        existingMetadata: {
+        existing_metadata: {
           title: 'Existing Title',
           tier: 'reference',
         },
@@ -149,13 +149,13 @@ This is a quick start guide for the project.
         author: 'John Doe',
       };
 
-      const generated = generateMetadata({
-        filePath: '.documentation/security/test.md',
+      const generated = generate_metadata({
+        file_path: '.documentation/security/test.md',
         content: '# Test\n\nContent',
-        existingMetadata: existing,
+        existing_metadata: existing,
       });
 
-      const merged = mergeMetadata(existing, generated);
+      const merged = merge_metadata(existing, generated);
 
       expect(merged.title).toBe('Existing Title');
       expect(merged.author).toBe('John Doe');
@@ -164,10 +164,10 @@ This is a quick start guide for the project.
     });
 
     it('should use generated values for missing fields', () => {
-      const merged = mergeMetadata(
+      const merged = merge_metadata(
         {},
-        generateMetadata({
-          filePath: 'test.md',
+        generate_metadata({
+          file_path: 'test.md',
           content: '# Test\n\nContent',
         })
       );
@@ -178,10 +178,10 @@ This is a quick start guide for the project.
     });
 
     it('should always use generated auto-fields', () => {
-      const merged = mergeMetadata(
+      const merged = merge_metadata(
         { word_count: 999 },
-        generateMetadata({
-          filePath: 'test.md',
+        generate_metadata({
+          file_path: 'test.md',
           content: '# Test\n\nA few words here.',
         })
       );
@@ -195,7 +195,7 @@ This is a quick start guide for the project.
 describe('mergeMetadata keeps unmodelled keys', () => {
   it('preserves kind, generated and other extra frontmatter keys', () => {
     const existing = { title: 'T', kind: 'overview', generated: true, symptoms: ['x'] } as never;
-    const merged = mergeMetadata(existing, { _generated: true } as never) as unknown as Record<string, unknown>;
+    const merged = merge_metadata(existing, { _generated: true } as never) as unknown as Record<string, unknown>;
     expect(merged.kind).toBe('overview');
     expect(merged.generated).toBe(true);
     expect(merged.symptoms).toEqual(['x']);

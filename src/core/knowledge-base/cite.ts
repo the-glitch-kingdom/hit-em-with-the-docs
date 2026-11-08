@@ -15,32 +15,32 @@ import matter from 'gray-matter';
 
 export interface CiteOptions {
   /** Absolute path to the playbook file. */
-  playbookPath: string;
+  playbook_path: string;
   /** Fact id to insert into the symptoms block. */
-  factId: string;
+  fact_id: string;
   /**
    * Optional symptom identifier — if present, adds the citation to the
    * matching entry. If absent, adds to the FIRST object symptoms entry (or creates
    * a single placeholder symptom).
    */
-  symptomMatch?: {
+  symptom_match?: {
     alert_name?: string;
     user_phrase?: string;
     error_pattern?: string;
   };
   /** If true, returns the proposed content without writing the file. */
-  dryRun?: boolean;
+  dry_run?: boolean;
 }
 
 export interface CiteResult {
-  playbookPath: string;
-  factId: string;
+  playbook_path: string;
+  fact_id: string;
   /** What we did: inserted, already_present (no-op), or created_block. */
   action: 'inserted' | 'already_present' | 'created_block';
   /** Index of the symptoms entry the citation was added to. */
-  symptomIndex: number;
+  symptom_index: number;
   /** The full new file content. */
-  newContent: string;
+  new_content: string;
 }
 
 interface SymptomEntry {
@@ -52,10 +52,10 @@ interface SymptomEntry {
   cites?: string[];
 }
 
-export async function cite(options: CiteOptions): Promise<CiteResult> {
-  const { playbookPath, factId, symptomMatch, dryRun = false } = options;
+export async function add_citation(options: CiteOptions): Promise<CiteResult> {
+  const { playbook_path, fact_id, symptom_match, dry_run = false } = options;
 
-  const content = await readFile(playbookPath, 'utf-8');
+  const content = await readFile(playbook_path, 'utf-8');
   const parsed = matter(content);
   const data = (parsed.data ?? {}) as Record<string, unknown>;
 
@@ -63,63 +63,63 @@ export async function cite(options: CiteOptions): Promise<CiteResult> {
   const symptoms = Array.isArray(data.symptoms)
     ? (data.symptoms as (SymptomEntry | string)[])
     : [];
-  const isEntry = (s: SymptomEntry | string): s is SymptomEntry =>
-    typeof s === 'object' && s !== null;
-  const firstEntry = symptoms.findIndex(isEntry);
+  const is_entry = (text: SymptomEntry | string): text is SymptomEntry =>
+    typeof text === 'object' && text !== null;
+  const first_entry = symptoms.findIndex(is_entry);
 
   let action: CiteResult['action'];
-  let symptomIndex: number;
+  let symptom_index: number;
 
-  if (firstEntry < 0) {
+  if (first_entry < 0) {
     // No citable entry — add one placeholder entry.
     symptoms.push({
       alert_name: '<TODO: specify alert_name, user_phrase, or error_pattern>',
       target: '<TODO: anchor>',
-      cites: [factId],
+      cites: [fact_id],
     });
-    symptomIndex = symptoms.length - 1;
+    symptom_index = symptoms.length - 1;
     action = 'created_block';
   } else {
     // Find the target entry. If symptomMatch is provided, look for a match;
     // otherwise default to the first entry.
-    let targetIdx = firstEntry;
-    if (symptomMatch) {
-      const matched = symptoms.findIndex((s) => isEntry(s) && matchesSymptom(s, symptomMatch));
-      if (matched >= 0) targetIdx = matched;
+    let target_idx = first_entry;
+    if (symptom_match) {
+      const matched = symptoms.findIndex((symptom) => is_entry(symptom) && is_symptom_match(symptom, symptom_match));
+      if (matched >= 0) target_idx = matched;
     }
 
-    const entry = symptoms[targetIdx] as SymptomEntry;
+    const entry = symptoms[target_idx] as SymptomEntry;
     const cites = Array.isArray(entry.cites) ? entry.cites : [];
 
-    if (cites.includes(factId)) {
+    if (cites.includes(fact_id)) {
       action = 'already_present';
     } else {
-      cites.push(factId);
+      cites.push(fact_id);
       entry.cites = cites;
       action = 'inserted';
     }
-    symptomIndex = targetIdx;
+    symptom_index = target_idx;
   }
 
   data.symptoms = symptoms;
-  const newContent = matter.stringify(parsed.content, data);
+  const new_content = matter.stringify(parsed.content, data);
 
-  if (!dryRun && action !== 'already_present') {
-    await writeFile(playbookPath, newContent, 'utf-8');
+  if (!dry_run && action !== 'already_present') {
+    await writeFile(playbook_path, new_content, 'utf-8');
   }
 
   return {
-    playbookPath,
-    factId,
+    playbook_path,
+    fact_id,
     action,
-    symptomIndex,
-    newContent,
+    symptom_index,
+    new_content,
   };
 }
 
-function matchesSymptom(
+function is_symptom_match(
   entry: SymptomEntry,
-  match: NonNullable<CiteOptions['symptomMatch']>
+  match: NonNullable<CiteOptions['symptom_match']>
 ): boolean {
   if (match.alert_name && entry.alert_name === match.alert_name) return true;
   if (match.error_pattern && entry.error_pattern === match.error_pattern) return true;

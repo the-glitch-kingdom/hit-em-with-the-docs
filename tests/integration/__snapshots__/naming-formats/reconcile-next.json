@@ -1,0 +1,155 @@
+exit 0
+{
+  "docs": [
+    {
+      "path": "backend/auth.md",
+      "lane": "check",
+      "reasons": [
+        "no sources/provenance/cites with last_verified",
+        "missing references: missing.md"
+      ],
+      "missing": [
+        "missing.md"
+      ],
+      "refs": [
+        {
+          "kind": "symbol",
+          "ref": "requireRole",
+          "status": "ok",
+          "where": "src/auth.ts",
+          "whereKind": "definition"
+        },
+        {
+          "kind": "path",
+          "ref": "src/auth.ts",
+          "status": "ok",
+          "where": "src/auth.ts"
+        },
+        {
+          "kind": "doc-link",
+          "ref": "deploy.md",
+          "status": "ok"
+        },
+        {
+          "kind": "doc-link",
+          "ref": "missing.md",
+          "status": "missing"
+        }
+      ],
+      "bytes": 239,
+      "staleCommits": 0
+    },
+    {
+      "path": "backend/creds.md",
+      "lane": "secret",
+      "reasons": [
+        "cited file blocked: src/creds.ts (aws-access-key-id src/creds.ts:1 AKIA…20)"
+      ],
+      "missing": [],
+      "refs": [
+        {
+          "kind": "path",
+          "ref": "src/creds.ts",
+          "status": "ok",
+          "where": "src/creds.ts"
+        }
+      ],
+      "bytes": 112,
+      "blocked_files": [
+        "src/creds.ts"
+      ]
+    },
+    {
+      "path": "backend/deploy.md",
+      "lane": "check",
+      "reasons": [
+        "no sources/provenance/cites with last_verified",
+        "missing references: src/gone.ts"
+      ],
+      "missing": [
+        "src/gone.ts"
+      ],
+      "refs": [
+        {
+          "kind": "path",
+          "ref": "src/deployHelper.ts",
+          "status": "ok",
+          "where": "src/deployHelper.ts"
+        },
+        {
+          "kind": "path",
+          "ref": "src/gone.ts",
+          "status": "missing"
+        }
+      ],
+      "bytes": 184,
+      "staleCommits": 0
+    },
+    {
+      "path": "backend/leak.md",
+      "lane": "secret",
+      "reasons": [
+        "secret: vault-token backend/leak.md:11 hvs.…24"
+      ],
+      "missing": [],
+      "refs": [],
+      "bytes": 121,
+      "findings": [
+        {
+          "rule": "vault-token",
+          "file": "backend/leak.md",
+          "line": 11,
+          "col": 7,
+          "masked": "hvs.…24",
+          "length": 24,
+          "fingerprint": "5419785567679e244f0600449ee9f9be405f402cb135bd8c67863dea87758e7c",
+          "kind": "secret"
+        }
+      ]
+    },
+    {
+      "path": "backend/old.md",
+      "lane": "check",
+      "reasons": [
+        "no sources/provenance/cites with last_verified"
+      ],
+      "missing": [],
+      "refs": [],
+      "bytes": 128
+    },
+    {
+      "path": "frontend/ui.md",
+      "lane": "check",
+      "reasons": [
+        "no sources/provenance/cites with last_verified"
+      ],
+      "missing": [],
+      "refs": [
+        {
+          "kind": "doc-link",
+          "ref": "../backend/auth.md",
+          "status": "ok"
+        }
+      ],
+      "bytes": 84
+    }
+  ],
+  "totals": {
+    "docs": 6,
+    "bytes": 868,
+    "byLane": {
+      "clean": 0,
+      "fields-only": 0,
+      "check": 4,
+      "archive-candidate": 0,
+      "secret": 2
+    },
+    "judgmentDocs": 4,
+    "judgmentBytes": 635
+  },
+  "mode": "serial",
+  "shards": [],
+  "warnings": [],
+  "schemaFiles": [],
+  "peripheral": []
+}

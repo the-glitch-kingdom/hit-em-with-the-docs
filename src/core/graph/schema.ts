@@ -38,6 +38,7 @@ export interface GraphDoc {
   body_changed: string | null;
   verdict: GraphVerdict;
   last_verified: string | null;
+  // eslint-disable-next-line id-denylist -- serialized key (triage/graph JSON)
   refs: GraphRef[];
   owner_of: string[];
   points_to: Array<{ from: string | null; to: string }>;

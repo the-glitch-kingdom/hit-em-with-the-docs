@@ -32,7 +32,7 @@ export interface AuditFactsOptions {
   /** Reference date for "now". Defaults to today. Tests inject a fixed date. */
   now?: Date;
   /** Stale threshold in days. Defaults to 90. */
-  auditWindowDays?: number;
+  audit_window_days?: number;
 }
 
 export interface AuditFactsResult {
@@ -41,9 +41,9 @@ export interface AuditFactsResult {
   unverifiable: FactRef[];
 }
 
-export function auditFacts(options: AuditFactsOptions): AuditFactsResult {
-  const { index, now = new Date(), auditWindowDays = 90 } = options;
-  const cutoffMs = now.getTime() - auditWindowDays * 24 * 60 * 60 * 1000;
+export function check_facts(options: AuditFactsOptions): AuditFactsResult {
+  const { index, now = new Date(), audit_window_days = 90 } = options;
+  const cutoff_ms = now.getTime() - audit_window_days * 24 * 60 * 60 * 1000;
 
   const stale: StaleFact[] = [];
   const unverifiable: FactRef[] = [];
@@ -53,14 +53,14 @@ export function auditFacts(options: AuditFactsOptions): AuditFactsResult {
       unverifiable.push(fact);
       continue;
     }
-    const verifiedMs = new Date(`${fact.lastVerified}T00:00:00Z`).getTime();
-    if (Number.isNaN(verifiedMs)) {
+    const verified_ms = new Date(`${fact.lastVerified}T00:00:00Z`).getTime();
+    if (Number.isNaN(verified_ms)) {
       unverifiable.push(fact);
       continue;
     }
-    if (verifiedMs < cutoffMs) {
-      const daysSinceVerified = Math.floor(
-        (now.getTime() - verifiedMs) / (24 * 60 * 60 * 1000)
+    if (verified_ms < cutoff_ms) {
+      const days_since_verified = Math.floor(
+        (now.getTime() - verified_ms) / (24 * 60 * 60 * 1000)
       );
       stale.push({
         id: fact.id,
@@ -69,7 +69,7 @@ export function auditFacts(options: AuditFactsOptions): AuditFactsResult {
         title: fact.title,
         confidence: fact.confidence,
         lastVerified: fact.lastVerified,
-        daysSinceVerified,
+        daysSinceVerified: days_since_verified,
       });
     }
   }
@@ -89,13 +89,13 @@ export function auditFacts(options: AuditFactsOptions): AuditFactsResult {
 export interface RunVerifyOptions {
   fact: FactRef;
   /** Absolute vault root (used to compute default CWD). */
-  vaultRoot: string;
+  vault_root: string;
   /** Override CWD (test seam). */
-  cwdOverride?: string;
+  cwd_override?: string;
   /** Inject a fake date for the `last_verified` rewrite. */
   now?: Date;
   /** Skip the actual shell-out (test seam). Returns success without running. */
-  skipExec?: boolean;
+  skip_exec?: boolean;
 }
 
 export interface RunVerifyResult {
@@ -119,19 +119,19 @@ export interface RunVerifyResult {
  *   2. Fact's frontmatter `working_dir:` field, resolved relative to vaultRoot
  *   3. `<vaultRoot>/facts/` default
  */
-export async function runFactVerify(
+export async function run_fact_verify(
   options: RunVerifyOptions
 ): Promise<RunVerifyResult> {
-  const { fact, vaultRoot, cwdOverride, now = new Date(), skipExec = false } = options;
+  const { fact, vault_root, cwd_override, now = new Date(), skip_exec = false } = options;
 
   // Read the fact file fresh — we need the full frontmatter (verify_command,
   // working_dir) which isn't in the lightweight CiterIndex FactRef.
-  const factContent = await readFile(fact.path, 'utf-8');
-  const parsed = matter(factContent);
-  const verifyCommand = parsed.data.verify_command;
-  const workingDir = parsed.data.working_dir;
+  const fact_content = await readFile(fact.path, 'utf-8');
+  const parsed = matter(fact_content);
+  const verify_command = parsed.data.verify_command;
+  const working_dir = parsed.data.working_dir;
 
-  if (typeof verifyCommand !== 'string' || verifyCommand.trim().length === 0) {
+  if (typeof verify_command !== 'string' || verify_command.trim().length === 0) {
     return {
       factId: fact.id,
       executed: false,
@@ -143,95 +143,96 @@ export async function runFactVerify(
     };
   }
 
-  const cwd =
-    cwdOverride ??
-    (typeof workingDir === 'string'
-      ? resolve(vaultRoot, workingDir)
-      : resolve(vaultRoot, 'facts'));
+  const resolved_working_dir =
+    cwd_override ??
+    (typeof working_dir === 'string'
+      ? resolve(vault_root, working_dir)
+      : resolve(vault_root, 'facts'));
 
-  if (skipExec) {
-    return finalize({
+  if (skip_exec) {
+    return write_run_verify_result({
       success: true,
-      exitCode: 0,
+      exit_code: 0,
       stdout: '[skipExec=true]',
       stderr: '',
     });
   }
 
-  const result = await execShell(verifyCommand, cwd);
-  return finalize(result);
+  const result = await run_shell(verify_command, resolved_working_dir);
+  return write_run_verify_result(result);
 
-  async function finalize(r: {
+  async function write_run_verify_result(shell_result: {
     success: boolean;
-    exitCode: number;
+    exit_code: number;
     stdout: string;
     stderr: string;
   }): Promise<RunVerifyResult> {
-    if (!r.success) {
+    if (!shell_result.success) {
       return {
         factId: fact.id,
         executed: true,
-        exitCode: r.exitCode,
-        stdout: r.stdout,
-        stderr: r.stderr,
+        exitCode: shell_result.exit_code,
+        stdout: shell_result.stdout,
+        stderr: shell_result.stderr,
         updated: false,
         newLastVerified: undefined,
       };
     }
-    const newDate = now.toISOString().slice(0, 10);
-    parsed.data.last_verified = newDate;
+    const new_date = now.toISOString().slice(0, 10);
+    parsed.data.last_verified = new_date;
     const rewritten = matter.stringify(parsed.content, parsed.data);
     await writeFile(fact.path, rewritten, 'utf-8');
     return {
       factId: fact.id,
       executed: true,
-      exitCode: r.exitCode,
-      stdout: r.stdout,
-      stderr: r.stderr,
+      exitCode: shell_result.exit_code,
+      stdout: shell_result.stdout,
+      stderr: shell_result.stderr,
       updated: true,
-      newLastVerified: newDate,
+      newLastVerified: new_date,
     };
   }
 }
 
 interface ShellResult {
   success: boolean;
-  exitCode: number;
+  exit_code: number;
   stdout: string;
   stderr: string;
 }
 
-function execShell(command: string, cwd: string): Promise<ShellResult> {
-  return new Promise((resolvePromise) => {
-    if (!existsSync(cwd)) {
-      resolvePromise({
+function run_shell(command: string, working_dir: string): Promise<ShellResult> {
+  return new Promise((resolve_promise) => {
+    if (!existsSync(working_dir)) {
+      resolve_promise({
         success: false,
-        exitCode: -1,
+        exit_code: -1,
         stdout: '',
-        stderr: `working dir does not exist: ${cwd}`,
+        stderr: `working dir does not exist: ${working_dir}`,
       });
       return;
     }
 
-    const child = spawn('bash', ['-c', command], { cwd });
+    // eslint-disable-next-line id-denylist -- child_process/glob option name
+    const child = spawn('bash', ['-c', command], { cwd: working_dir });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (chunk) => (stdout += chunk.toString()));
     child.stderr.on('data', (chunk) => (stderr += chunk.toString()));
     child.on('close', (code) => {
-      resolvePromise({
+      resolve_promise({
         success: code === 0,
-        exitCode: code ?? -1,
+        exit_code: code ?? -1,
         stdout,
         stderr,
       });
     });
-    child.on('error', (err) => {
-      resolvePromise({
+    child.on('error', (error) => {
+      resolve_promise({
         success: false,
-        exitCode: -1,
+        exit_code: -1,
         stdout: '',
-        stderr: err.message,
+        stderr: error.message,
       });
     });
   });

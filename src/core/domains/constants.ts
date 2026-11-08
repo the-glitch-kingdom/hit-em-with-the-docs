@@ -251,6 +251,6 @@ export const DOMAIN_DEFINITIONS: Record<BuiltinDomain, DomainDefinition> = {
  * valid domain in the active set (built-in OR custom)", use `isValidDomain()`
  * from `./registry.ts`.
  */
-export function isBuiltinDomain(value: string): value is BuiltinDomain {
+export function is_builtin_domain(value: string): value is BuiltinDomain {
   return (DOMAINS as readonly string[]).includes(value);
 }

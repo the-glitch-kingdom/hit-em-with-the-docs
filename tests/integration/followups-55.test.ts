@@ -24,7 +24,7 @@ const issues = (prefix: string): string[] =>
       'node',
       [
         '-e',
-        `import('${join(REPO, 'dist/core/audit/auditor.js')}').then(async m=>{const r=await m.auditDocumentation({docsPath:process.argv[1],silent:true});console.log(JSON.stringify(r.issues.filter(i=>i.rule&&i.rule.startsWith('${prefix}')).map(i=>i.rule+'|'+i.file+'|'+i.message)))})`,
+        `import('${join(REPO, 'dist/core/audit/auditor.js')}').then(async m=>{const r=await m.check_documentation({docs_root:process.argv[1],silent:true});console.log(JSON.stringify(r.issues.filter(i=>i.rule&&i.rule.startsWith('${prefix}')).map(i=>i.rule+'|'+i.file+'|'+i.message)))})`,
         docs,
       ],
       { encoding: 'utf8', cwd: root }
@@ -58,8 +58,8 @@ describe('#55.1 fix-retrieval-fields does not turn filler into weak purposes', (
     for (const n of [1, 2]) await put(`api/real${n}.md`, `${FM(`Real ${n}`, `summary: ${GOOD} number ${n}\n`)}\n# R\n`);
     await put('api/migrated.md', `${FM('Migrated', 'purpose: Documentation for Migrated\n')}\n# M\n`);
 
-    const weakBefore = issues('RETRIEVAL_WEAK_PURPOSE').length;
-    expect(weakBefore).toBe(1); // only the already-migrated fallback purpose
+    const weak_before = issues('RETRIEVAL_WEAK_PURPOSE').length;
+    expect(weak_before).toBe(1); // only the already-migrated fallback purpose
     const dry = hewtd(root, 'fix-retrieval-fields');
     expect(dry.status).toBe(0);
     expect(await readFile(join(docs, 'api/filler1.md'), 'utf8')).toContain('summary: Documentation for Filler 1');

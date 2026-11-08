@@ -7,9 +7,9 @@ import { execFileSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { readdir } from 'fs/promises';
 import { basename, isAbsolute, join, relative } from 'path';
-import { parseFrontmatter } from '../../utils/frontmatter.js';
+import { parse_frontmatter } from '../../utils/frontmatter.js';
 import type { PluginConfig } from '../../utils/config.js';
-import { findSecrets } from './secrets.js';
+import { find_secrets } from './secrets.js';
 
 export interface SearchHit { path: string; score: number; matched: string[] }
 
@@ -18,99 +18,99 @@ const SKIP_DIRS = new Set(['archive', 'drafts']);
 const WEIGHTS = { title: 3, purpose: 3, symptoms: 3, headings: 2, body: 1 } as const;
 type Field = keyof typeof WEIGHTS;
 const K1 = 1.2;
-const B = 0.75;
+const BM25_B = 0.75;
 
-export const tokenize = (s: string): string[] =>
-  s.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t && !STOP.has(t));
+export const extract_tokens = (text: string): string[] =>
+  text.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token && !STOP.has(token));
 
-const strings = (v: unknown): string[] =>
-  typeof v === 'string' ? [v] : Array.isArray(v) ? v.flatMap(strings) : v && typeof v === 'object' ? Object.values(v).flatMap(strings) : [];
+const normalize_strings = (value: unknown): string[] =>
+  typeof value === 'string' ? [value] : Array.isArray(value) ? value.flatMap(normalize_strings) : value && typeof value === 'object' ? Object.values(value).flatMap(normalize_strings) : [];
 
-async function walk(dir: string, out: string[] = []): Promise<string[]> {
-  for (const e of (await readdir(dir, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
-    if (e.name.startsWith('.') || SKIP_DIRS.has(e.name)) continue;
-    const p = join(dir, e.name);
-    if (e.isDirectory()) await walk(p, out);
-    else if (e.name.endsWith('.md') && e.name !== 'INDEX.md' && e.name !== 'REGISTRY.md') out.push(p);
+async function list_markdown_files(dir_path: string, found: string[] = []): Promise<string[]> {
+  for (const entry of (await readdir(dir_path, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
+    if (entry.name.startsWith('.') || SKIP_DIRS.has(entry.name)) continue;
+    const path_text = join(dir_path, entry.name);
+    if (entry.isDirectory()) await list_markdown_files(path_text, found);
+    else if (entry.name.endsWith('.md') && entry.name !== 'INDEX.md' && entry.name !== 'REGISTRY.md') found.push(path_text);
   }
-  return out;
+  return found;
 }
 
 interface Indexed { path: string; fields: Record<Field, string[]> }
 
-async function indexDocs(docsPath: string, config?: PluginConfig): Promise<Indexed[]> {
-  const out: Indexed[] = [];
-  for (const abs of await walk(docsPath)) {
-    const raw = readFileSync(abs, 'utf-8');
-    const rel = relative(docsPath, abs).split('\\').join('/');
-    const { data, content } = parseFrontmatter<Record<string, unknown>>(raw);
-    if (data.generated === true || data.tier === 'plan' || basename(rel) === 'INDEX.md') continue;
-    if (config && findSecrets(raw, rel, config.reconcile.secrets).some((r) => r.finding.kind === 'secret')) continue;
+async function load_search_index(docs_root: string, config?: PluginConfig): Promise<Indexed[]> {
+  const found: Indexed[] = [];
+  for (const abs_path of await list_markdown_files(docs_root)) {
+    const raw_text = readFileSync(abs_path, 'utf-8');
+    const doc_path = relative(docs_root, abs_path).split('\\').join('/');
+    const { data, content } = parse_frontmatter<Record<string, unknown>>(raw_text);
+    if (data.generated === true || data.tier === 'plan' || basename(doc_path) === 'INDEX.md') continue;
+    if (config && find_secrets(raw_text, doc_path, config.reconcile.secrets).some((result) => result.finding.kind === 'secret')) continue;
     const lines = content.split('\n');
-    out.push({
-      path: rel,
+    found.push({
+      path: doc_path,
       fields: {
-        title: tokenize(strings(data.title).join(' ')),
-        purpose: tokenize(strings(data.purpose).join(' ')),
-        symptoms: tokenize(strings(data.symptoms).join(' ')),
-        headings: tokenize(lines.filter((l) => /^#{1,6}\s/.test(l)).join(' ')),
-        body: tokenize(content),
+        title: extract_tokens(normalize_strings(data.title).join(' ')),
+        purpose: extract_tokens(normalize_strings(data.purpose).join(' ')),
+        symptoms: extract_tokens(normalize_strings(data.symptoms).join(' ')),
+        headings: extract_tokens(lines.filter((line) => /^#{1,6}\s/.test(line)).join(' ')),
+        body: extract_tokens(content),
       },
     });
   }
-  return out;
+  return found;
 }
 
-function runCommand(template: string, query: string): string[] {
+function run_command(template: string, query: string): string[] {
   const [bin, ...args] = template.trim().split(/\s+/).map((a) => a.split('{query}').join(query));
-  const out = execFileSync(bin!, args, { encoding: 'utf-8', timeout: 30000, maxBuffer: 8 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] });
-  return out.split('\n').map((l) => l.trim()).filter(Boolean);
+  const found = execFileSync(bin!, args, { encoding: 'utf-8', timeout: 30000, maxBuffer: 8 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] });
+  return found.split('\n').map((line) => line.trim()).filter(Boolean);
 }
 
 /** BM25F-style ranking; ties break on path so the order is deterministic. */
-export async function searchDocs(
-  docsPath: string,
+export async function find_docs(
+  docs_root: string,
   query: string,
-  opts: { limit?: number; config?: PluginConfig } = {}
+  options: { limit?: number; config?: PluginConfig } = {}
 ): Promise<SearchHit[]> {
-  const limit = opts.limit ?? 10;
-  const docs = await indexDocs(docsPath, opts.config);
-  const q = [...new Set(tokenize(query))];
-  const eff = (d: Indexed): number => (Object.keys(WEIGHTS) as Field[]).reduce((n, f) => n + WEIGHTS[f] * d.fields[f].length, 0);
-  const avg = docs.reduce((n, d) => n + eff(d), 0) / (docs.length || 1) || 1;
-  const df = new Map(q.map((t) => [t, docs.filter((d) => (Object.keys(WEIGHTS) as Field[]).some((f) => d.fields[f].includes(t))).length]));
+  const limit = options.limit ?? 10;
+  const docs = await load_search_index(docs_root, options.config);
+  const query_tokens = [...new Set(extract_tokens(query))];
+  const compute_effective_weight = (doc: Indexed): number => (Object.keys(WEIGHTS) as Field[]).reduce((total, key) => total + WEIGHTS[key] * doc.fields[key].length, 0);
+  const average_weight = docs.reduce((total, doc) => total + compute_effective_weight(doc), 0) / (docs.length || 1) || 1;
+  const document_frequency = new Map(query_tokens.map((token) => [token, docs.filter((doc) => (Object.keys(WEIGHTS) as Field[]).some((key) => doc.fields[key].includes(token))).length]));
 
-  const bm: SearchHit[] = [];
-  for (const d of docs) {
+  const ranked: SearchHit[] = [];
+  for (const doc of docs) {
     let score = 0;
     const matched = new Set<string>();
-    for (const t of q) {
-      let tf = 0;
-      for (const f of Object.keys(WEIGHTS) as Field[]) {
-        const c = d.fields[f].filter((x) => x === t).length;
-        if (c) { tf += WEIGHTS[f] * c; matched.add(f); }
+    for (const token of query_tokens) {
+      let term_frequency = 0;
+      for (const field_token of Object.keys(WEIGHTS) as Field[]) {
+        const field_count = doc.fields[field_token].filter((field) => field === token).length;
+        if (field_count) { term_frequency += WEIGHTS[field_token] * field_count; matched.add(field_token); }
       }
-      if (!tf) continue;
-      const n = df.get(t)!;
-      const idf = Math.log(1 + (docs.length - n + 0.5) / (n + 0.5));
-      score += idf * ((tf * (K1 + 1)) / (tf + K1 * (1 - B + (B * eff(d)) / avg)));
+      if (!term_frequency) continue;
+      const document_count = document_frequency.get(token)!;
+      const inverse_frequency = Math.log(1 + (docs.length - document_count + 0.5) / (document_count + 0.5));
+      score += inverse_frequency * ((term_frequency * (K1 + 1)) / (term_frequency + K1 * (1 - BM25_B + (BM25_B * compute_effective_weight(doc)) / average_weight)));
     }
-    if (score > 0) bm.push({ path: d.path, score, matched: [...matched].sort() });
+    if (score > 0) ranked.push({ path: doc.path, score, matched: [...matched].sort() });
   }
-  bm.sort((a, b) => b.score - a.score || a.path.localeCompare(b.path));
+  ranked.sort((a, b) => b.score - a.score || a.path.localeCompare(b.path));
 
-  const cmd = opts.config?.reconcile.search_command;
-  const first: SearchHit[] = [];
-  if (cmd) {
+  const search_command = options.config?.reconcile.search_command;
+  const command_hits: SearchHit[] = [];
+  if (search_command) {
     try {
-      const known = new Set(docs.map((d) => d.path));
-      for (const line of runCommand(cmd, query)) {
-        const rel = (isAbsolute(line) ? relative(docsPath, line) : line).split('\\').join('/').replace(/^\.\//, '');
-        if (known.has(rel) && !first.some((h) => h.path === rel)) first.push({ path: rel, score: Infinity, matched: ['search_command'] });
+      const known = new Set(docs.map((doc) => doc.path));
+      for (const line of run_command(search_command, query)) {
+        const doc_path = (isAbsolute(line) ? relative(docs_root, line) : line).split('\\').join('/').replace(/^\.\//, '');
+        if (known.has(doc_path) && !command_hits.some((command_hit) => command_hit.path === doc_path)) command_hits.push({ path: doc_path, score: Infinity, matched: ['search_command'] });
       }
-    } catch (e) {
-      console.warn(`hewtd: reconcile.search_command failed (${(e as Error).message.split('\n')[0]}); using the built-in ranking`);
+    } catch (error) {
+      console.warn(`hewtd: reconcile.search_command failed (${(error as Error).message.split('\n')[0]}); using the built-in ranking`);
     }
   }
-  return [...first, ...bm.filter((h) => !first.some((f) => f.path === h.path))].slice(0, limit);
+  return [...command_hits, ...ranked.filter((ranked_hit) => !command_hits.some((command_hit) => command_hit.path === ranked_hit.path))].slice(0, limit);
 }

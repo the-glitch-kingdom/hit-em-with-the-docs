@@ -1,53 +1,53 @@
 import { describe, it, expect } from 'vitest';
 import {
-  checkNamingConvention,
-  checkFilePlacement,
-  checkFileSize,
-  checkRequiredSections,
+  check_naming_convention,
+  check_file_placement,
+  check_file_size,
+  check_required_sections,
   AUDIT_RULES,
 } from '../../../src/core/audit/rules.js';
 
 describe('Audit Rules', () => {
   describe('checkNamingConvention', () => {
     it('should accept valid kebab-case filenames', () => {
-      const result = checkNamingConvention('my-file-name.md');
+      const result = check_naming_convention('my-file-name.md');
       expect(result.valid).toBe(true);
     });
 
     it('should accept single word filenames', () => {
-      const result = checkNamingConvention('readme.md');
+      const result = check_naming_convention('readme.md');
       expect(result.valid).toBe(true);
     });
 
     it('should accept special files', () => {
-      expect(checkNamingConvention('INDEX.md').valid).toBe(true);
-      expect(checkNamingConvention('REGISTRY.md').valid).toBe(true);
-      expect(checkNamingConvention('README.md').valid).toBe(true);
+      expect(check_naming_convention('INDEX.md').valid).toBe(true);
+      expect(check_naming_convention('REGISTRY.md').valid).toBe(true);
+      expect(check_naming_convention('README.md').valid).toBe(true);
     });
 
     it('should reject camelCase filenames', () => {
-      const result = checkNamingConvention('myFileName.md');
+      const result = check_naming_convention('myFileName.md');
       expect(result.valid).toBe(false);
       expect(result.suggestion).toBeDefined();
     });
 
     it('should reject snake_case filenames', () => {
-      const result = checkNamingConvention('my_file_name.md');
+      const result = check_naming_convention('my_file_name.md');
       expect(result.valid).toBe(false);
     });
 
     it('should reject PascalCase filenames', () => {
-      const result = checkNamingConvention('MyFileName.md');
+      const result = check_naming_convention('MyFileName.md');
       expect(result.valid).toBe(false);
     });
 
     it('should reject filenames with spaces', () => {
-      const result = checkNamingConvention('my file name.md');
+      const result = check_naming_convention('my file name.md');
       expect(result.valid).toBe(false);
     });
 
     it('should suggest kebab-case alternative', () => {
-      const result = checkNamingConvention('MyDocumentFile.md');
+      const result = check_naming_convention('MyDocumentFile.md');
       expect(result.valid).toBe(false);
       expect(result.suggestion).toBeDefined();
       expect(result.suggestion).toContain('mydocumentfile.md');
@@ -56,7 +56,7 @@ describe('Audit Rules', () => {
 
   describe('checkFilePlacement', () => {
     it('should validate correct domain placement', () => {
-      const result = checkFilePlacement(
+      const result = check_file_placement(
         '.documentation/security/auth-guide.md',
         '.documentation',
         'security'
@@ -65,7 +65,7 @@ describe('Audit Rules', () => {
     });
 
     it('should detect misplaced documents', () => {
-      const result = checkFilePlacement(
+      const result = check_file_placement(
         '.documentation/devops/auth-guide.md',
         '.documentation',
         'security' // metadata says security but file is in devops
@@ -75,7 +75,7 @@ describe('Audit Rules', () => {
     });
 
     it('should handle files in root directory', () => {
-      const result = checkFilePlacement(
+      const result = check_file_placement(
         '.documentation/standalone.md',
         '.documentation',
         undefined
@@ -85,7 +85,7 @@ describe('Audit Rules', () => {
     });
 
     it('should accept files when no domain is declared and matches path', () => {
-      const result = checkFilePlacement(
+      const result = check_file_placement(
         '.documentation/api/endpoints.md',
         '.documentation',
         undefined // no declared domain - will detect from path
@@ -97,25 +97,25 @@ describe('Audit Rules', () => {
 
   describe('checkFileSize', () => {
     it('should accept files within size limits', () => {
-      const result = checkFileSize('test.md', 5 * 1024, 'guide'); // 5KB
+      const result = check_file_size('test.md', 5 * 1024, 'guide'); // 5KB
       expect(result.valid).toBe(true);
     });
 
     it('should reject very small files', () => {
-      const result = checkFileSize('test.md', 100, 'guide'); // 0.1KB
+      const result = check_file_size('test.md', 100, 'guide'); // 0.1KB
       expect(result.valid).toBe(false);
       expect(result.message).toContain('small');
     });
 
     it('should reject very large files', () => {
-      const result = checkFileSize('test.md', 100 * 1024, 'guide'); // 100KB
+      const result = check_file_size('test.md', 100 * 1024, 'guide'); // 100KB
       expect(result.valid).toBe(false);
       expect(result.message).toContain('large');
     });
 
     it('should use tier-specific limits', () => {
       // Reference docs can be larger
-      const result = checkFileSize('test.md', 80 * 1024, 'reference'); // 80KB
+      const result = check_file_size('test.md', 80 * 1024, 'reference'); // 80KB
       expect(result.valid).toBe(true);
     });
   });
@@ -134,7 +134,7 @@ Requirements
 ## Steps
 Step by step guide
 `;
-      const result = checkRequiredSections(content, 'guide');
+      const result = check_required_sections(content, 'guide');
       expect(result.valid).toBe(true);
     });
 
@@ -144,14 +144,14 @@ Step by step guide
 
 Just some content without proper sections.
 `;
-      const result = checkRequiredSections(content, 'guide');
+      const result = check_required_sections(content, 'guide');
       expect(result.valid).toBe(false);
       expect(result.message).toContain('Missing');
     });
 
     it('should pass for content without tier', () => {
       const content = 'Any content';
-      const result = checkRequiredSections(content, undefined);
+      const result = check_required_sections(content, undefined);
       expect(result.valid).toBe(true);
     });
   });
@@ -173,13 +173,13 @@ Just some content without proper sections.
     });
 
     it('should include naming convention rule', () => {
-      const namingRule = AUDIT_RULES.find(r => r.id === 'naming-convention');
-      expect(namingRule).toBeDefined();
+      const naming_rule = AUDIT_RULES.find(r => r.id === 'naming-convention');
+      expect(naming_rule).toBeDefined();
     });
 
     it('should include placement rule', () => {
-      const placementRule = AUDIT_RULES.find(r => r.id === 'placement');
-      expect(placementRule).toBeDefined();
+      const placement_rule = AUDIT_RULES.find(r => r.id === 'placement');
+      expect(placement_rule).toBeDefined();
     });
   });
 });

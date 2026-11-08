@@ -18,36 +18,36 @@
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import type { CiterIndex, FactRef } from '../core/knowledge-base/citers.js';
-import { citerCount } from '../core/knowledge-base/citers.js';
-import { formatMarkdownTable } from './table.js';
+import { count_citers } from '../core/knowledge-base/citers.js';
+import { render_markdown_table } from './table.js';
 
 const CONFIDENCE_ORDER = ['high', 'medium', 'low', 'hypothesis'] as const;
 const UNTAGGED_BUCKET = '(untagged)';
 
 export interface GenerateFactsIndexOptions {
-  vaultRoot: string;
+  vault_root: string;
   index: CiterIndex;
 }
 
-export async function generateFactsIndex(
+export async function write_facts_index(
   options: GenerateFactsIndexOptions
 ): Promise<string> {
-  const { vaultRoot, index } = options;
+  const { vault_root, index } = options;
 
-  const factsDir = join(vaultRoot, 'facts');
-  await mkdir(factsDir, { recursive: true });
-  const indexPath = join(factsDir, 'INDEX.md');
+  const facts_dir = join(vault_root, 'facts');
+  await mkdir(facts_dir, { recursive: true });
+  const index_path = join(facts_dir, 'INDEX.md');
 
-  const content = renderFactsIndex(index);
-  await writeFile(indexPath, content, 'utf-8');
-  return indexPath;
+  const content = render_facts_index(index);
+  await writeFile(index_path, content, 'utf-8');
+  return index_path;
 }
 
 /**
  * Pure rendering function — exposed for snapshot tests.
  */
-export function renderFactsIndex(index: CiterIndex): string {
-  const buckets = bucketFacts(index);
+export function render_facts_index(index: CiterIndex): string {
+  const buckets = group_facts_by_confidence(index);
 
   const lines: string[] = [];
   lines.push('---');
@@ -72,71 +72,71 @@ export function renderFactsIndex(index: CiterIndex): string {
   if (index.facts.size === 0) {
     lines.push('_No facts yet. Create one with the `templates/knowledge-base/fact.template.md` template._');
     lines.push('');
-    return ensureTrailingNewline(lines.join('\n'));
+    return ensure_trailing_newline(lines.join('\n'));
   }
 
   lines.push(`**Total facts:** ${index.facts.size}`);
   lines.push('');
 
-  const tagNames = Object.keys(buckets).sort((a, b) => {
+  const tag_names = Object.keys(buckets).sort((a, b) => {
     if (a === UNTAGGED_BUCKET) return 1;
     if (b === UNTAGGED_BUCKET) return -1;
     return a.localeCompare(b);
   });
 
-  for (const tag of tagNames) {
+  for (const tag of tag_names) {
     lines.push(`## ${tag}`);
     lines.push('');
 
-    const confidenceBuckets = buckets[tag] ?? {};
-    const presentConfidences = CONFIDENCE_ORDER.filter(
-      (c) => confidenceBuckets[c] !== undefined && confidenceBuckets[c]!.length > 0
+    const confidence_buckets = buckets[tag] ?? {};
+    const present_confidences = CONFIDENCE_ORDER.filter(
+      (confidence) => confidence_buckets[confidence] !== undefined && confidence_buckets[confidence]!.length > 0
     );
 
-    for (const confidence of presentConfidences) {
+    for (const confidence of present_confidences) {
       lines.push(`### confidence: ${confidence}`);
       lines.push('');
 
-      const rows = confidenceBuckets[confidence]!
+      const rows = confidence_buckets[confidence]!
         .slice()
         .sort((a, b) => a.id.localeCompare(b.id))
-        .map((f) => [
-          `\`${f.id}\``,
-          escapeMd(f.title),
-          f.lastVerified ?? '—',
-          String(citerCount(index, f.id)),
+        .map((fact) => [
+          `\`${fact.id}\``,
+          escape_markdown(fact.title),
+          fact.lastVerified ?? '—',
+          String(count_citers(index, fact.id)),
         ]);
 
       lines.push(
-        formatMarkdownTable(['ID', 'Title', 'Last verified', 'Citers'], rows)
+        render_markdown_table(['ID', 'Title', 'Last verified', 'Citers'], rows)
       );
       lines.push('');
     }
   }
 
-  return ensureTrailingNewline(lines.join('\n'));
+  return ensure_trailing_newline(lines.join('\n'));
 }
 
 type ConfidenceBuckets = Partial<Record<string, FactRef[]>>;
 
-function bucketFacts(index: CiterIndex): Record<string, ConfidenceBuckets> {
-  const out: Record<string, ConfidenceBuckets> = {};
+function group_facts_by_confidence(index: CiterIndex): Record<string, ConfidenceBuckets> {
+  const found: Record<string, ConfidenceBuckets> = {};
   for (const fact of index.facts.values()) {
     const tags = fact.tags.length > 0 ? fact.tags : [UNTAGGED_BUCKET];
     const confidence = fact.confidence ?? 'unknown';
     for (const tag of tags) {
-      if (!out[tag]) out[tag] = {};
-      if (!out[tag][confidence]) out[tag][confidence] = [];
-      out[tag][confidence]!.push(fact);
+      if (!found[tag]) found[tag] = {};
+      if (!found[tag][confidence]) found[tag][confidence] = [];
+      found[tag][confidence]!.push(fact);
     }
   }
-  return out;
+  return found;
 }
 
-function escapeMd(s: string): string {
-  return s.replace(/\|/g, '\\|');
+function escape_markdown(text: string): string {
+  return text.replace(/\|/g, '\\|');
 }
 
-function ensureTrailingNewline(s: string): string {
-  return s.endsWith('\n') ? s : s + '\n';
+function ensure_trailing_newline(text: string): string {
+  return text.endsWith('\n') ? text : text + '\n';
 }

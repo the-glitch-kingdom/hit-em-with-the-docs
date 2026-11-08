@@ -1,6 +1,6 @@
 import type { Domain } from '../../core/domains/constants.js';
 import type { Tier } from '../../core/domains/classifier.js';
-import { formatDate } from '../../core/metadata/generator.js';
+import { format_date } from '../../core/metadata/generator.js';
 
 export interface DocumentTemplateOptions {
   title: string;
@@ -15,7 +15,7 @@ export interface DocumentTemplateOptions {
 /**
  * Generate a new document template with frontmatter
  */
-export function generateDocumentTemplate(options: DocumentTemplateOptions): string {
+export function generate_document_template(options: DocumentTemplateOptions): string {
   const {
     title,
     tier = 'guide',
@@ -25,7 +25,7 @@ export function generateDocumentTemplate(options: DocumentTemplateOptions): stri
     purpose,
   } = options;
 
-  const now = formatDate(new Date());
+  const today = format_date(new Date());
 
   let frontmatter = `---
 title: "${title}"
@@ -35,9 +35,9 @@ domains:
 audience:
   - all
 tags:
-${tags.length > 0 ? tags.map((t) => `  - ${t}`).join('\n') : '  []'}
+${tags.length > 0 ? tags.map((tag) => `  - ${tag}`).join('\n') : '  []'}
 status: draft
-last_updated: '${now}'
+last_updated: '${today}'
 version: '1.0.0'
 ${
   purpose
@@ -53,7 +53,7 @@ ${
 
   frontmatter += `---`;
 
-  const body = getTemplateBody(tier, title);
+  const body = get_template_body(tier, title);
 
   return `${frontmatter}\n\n${body}`;
 }
@@ -61,24 +61,24 @@ ${
 /**
  * Get tier-specific template body
  */
-function getTemplateBody(tier: Tier, title: string): string {
+function get_template_body(tier: Tier, title: string): string {
   switch (tier) {
     case 'guide':
-      return getGuideTemplate(title);
+      return get_guide_template(title);
     case 'standard':
-      return getStandardTemplate(title);
+      return get_standard_template(title);
     case 'example':
-      return getExampleTemplate(title);
+      return get_example_template(title);
     case 'reference':
-      return getReferenceTemplate(title);
+      return get_reference_template(title);
     case 'admin':
-      return getAdminTemplate(title);
+      return get_admin_template(title);
     default:
-      return getGuideTemplate(title);
+      return get_guide_template(title);
   }
 }
 
-function getGuideTemplate(title: string): string {
+function get_guide_template(title: string): string {
   return `# ${title}
 
 ## Overview
@@ -136,7 +136,7 @@ To verify the setup is correct:
 `;
 }
 
-function getStandardTemplate(title: string): string {
+function get_standard_template(title: string): string {
   return `# ${title}
 
 ## Overview
@@ -184,7 +184,7 @@ const example = 'incorrect';
 `;
 }
 
-function getExampleTemplate(title: string): string {
+function get_example_template(title: string): string {
   return `# ${title}
 
 ## Overview
@@ -224,7 +224,7 @@ function example() {
 `;
 }
 
-function getReferenceTemplate(title: string): string {
+function get_reference_template(title: string): string {
   return `# ${title}
 
 ## Overview
@@ -279,7 +279,7 @@ interface TypeName {
 `;
 }
 
-function getAdminTemplate(title: string): string {
+function get_admin_template(title: string): string {
   return `# ${title}
 
 ## Overview

@@ -1,15 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import {
-  MetadataSchema,
-  validateMetadata,
-  validatePartialMetadata,
-  validateKnowledgeBaseFields,
-  getMissingRequiredFields,
-  getMissingFields,
-  calculateMetadataCompleteness,
+  metadata_schema,
+  validate_metadata,
+  validate_partial_metadata,
+  validate_knowledge_base_fields,
+  get_missing_required_fields,
+  get_missing_fields,
+  compute_metadata_completeness,
   REQUIRED_FIELDS,
   ALL_METADATA_FIELDS,
-  getFieldCategory,
+  get_field_category,
 } from '../../../src/core/metadata/schema.js';
 import { KB_ERROR_CODES } from '../../../src/core/metadata/errors.js';
 
@@ -37,7 +37,7 @@ describe('Metadata Schema', () => {
 
   describe('validateMetadata', () => {
     it('should validate correct metadata', () => {
-      const validMetadata = {
+      const valid_metadata = {
         title: 'Test Document',
         tier: 'guide',
         domains: ['security'],
@@ -48,13 +48,13 @@ describe('Metadata Schema', () => {
         version: '1.0.0',
       };
 
-      const result = validateMetadata(validMetadata);
+      const result = validate_metadata(valid_metadata);
       expect(result.valid).toBe(true);
       expect(result.errors).toHaveLength(0);
     });
 
     it('should reject invalid tier', () => {
-      const invalidMetadata = {
+      const invalid_metadata = {
         title: 'Test',
         tier: 'invalid-tier',
         domains: ['security'],
@@ -63,13 +63,13 @@ describe('Metadata Schema', () => {
         version: '1.0.0',
       };
 
-      const result = validateMetadata(invalidMetadata);
+      const result = validate_metadata(invalid_metadata);
       expect(result.valid).toBe(false);
       expect(result.errors.length).toBeGreaterThan(0);
     });
 
     it('should reject invalid date format', () => {
-      const invalidMetadata = {
+      const invalid_metadata = {
         title: 'Test',
         tier: 'guide',
         domains: ['security'],
@@ -78,12 +78,12 @@ describe('Metadata Schema', () => {
         version: '1.0.0',
       };
 
-      const result = validateMetadata(invalidMetadata);
+      const result = validate_metadata(invalid_metadata);
       expect(result.valid).toBe(false);
     });
 
     it('should reject invalid version format', () => {
-      const invalidMetadata = {
+      const invalid_metadata = {
         title: 'Test',
         tier: 'guide',
         domains: ['security'],
@@ -92,28 +92,28 @@ describe('Metadata Schema', () => {
         version: '1.0', // Missing patch version
       };
 
-      const result = validateMetadata(invalidMetadata);
+      const result = validate_metadata(invalid_metadata);
       expect(result.valid).toBe(false);
     });
   });
 
   describe('validatePartialMetadata', () => {
     it('should validate partial metadata', () => {
-      const partialMetadata = {
+      const partial_metadata = {
         title: 'Test Document',
         tier: 'guide',
       };
 
-      const result = validatePartialMetadata(partialMetadata);
+      const result = validate_partial_metadata(partial_metadata);
       expect(result.valid).toBe(true);
     });
 
     it('should still reject invalid values', () => {
-      const partialMetadata = {
+      const partial_metadata = {
         tier: 'invalid-tier',
       };
 
-      const result = validatePartialMetadata(partialMetadata);
+      const result = validate_partial_metadata(partial_metadata);
       expect(result.valid).toBe(false);
     });
   });
@@ -125,7 +125,7 @@ describe('Metadata Schema', () => {
         tier: 'guide',
       };
 
-      const missing = getMissingRequiredFields(data);
+      const missing = get_missing_required_fields(data);
       expect(missing).toContain('domains');
       expect(missing).toContain('status');
       expect(missing).toContain('last_updated');
@@ -144,7 +144,7 @@ describe('Metadata Schema', () => {
         version: '1.0.0',
       };
 
-      const missing = getMissingRequiredFields(data);
+      const missing = get_missing_required_fields(data);
       expect(missing).toHaveLength(0);
     });
   });
@@ -155,7 +155,7 @@ describe('Metadata Schema', () => {
         title: 'Test',
       };
 
-      const { required, optional } = getMissingFields(data);
+      const { required, optional } = get_missing_fields(data);
 
       expect(required).toContain('tier');
       expect(required).toContain('domains');
@@ -171,7 +171,7 @@ describe('Metadata Schema', () => {
         data[field] = 'value';
       }
 
-      const completeness = calculateMetadataCompleteness(data);
+      const completeness = compute_metadata_completeness(data);
       expect(completeness).toBe(100);
     });
 
@@ -185,34 +185,34 @@ describe('Metadata Schema', () => {
         version: '1.0.0',
       };
 
-      const completeness = calculateMetadataCompleteness(data);
+      const completeness = compute_metadata_completeness(data);
       // 6 out of 21 fields = ~28.57%
       expect(completeness).toBeCloseTo(28.57, 1);
     });
 
     it('should return 0 for empty metadata', () => {
-      const completeness = calculateMetadataCompleteness({});
+      const completeness = compute_metadata_completeness({});
       expect(completeness).toBe(0);
     });
   });
 
   describe('getFieldCategory', () => {
     it('should categorize core fields', () => {
-      expect(getFieldCategory('title')).toBe('core');
-      expect(getFieldCategory('tier')).toBe('core');
-      expect(getFieldCategory('domains')).toBe('core');
+      expect(get_field_category('title')).toBe('core');
+      expect(get_field_category('tier')).toBe('core');
+      expect(get_field_category('domains')).toBe('core');
     });
 
     it('should categorize status fields', () => {
-      expect(getFieldCategory('status')).toBe('status');
-      expect(getFieldCategory('last_updated')).toBe('status');
-      expect(getFieldCategory('version')).toBe('status');
+      expect(get_field_category('status')).toBe('status');
+      expect(get_field_category('last_updated')).toBe('status');
+      expect(get_field_category('version')).toBe('status');
     });
 
     it('should categorize auto-generated fields', () => {
-      expect(getFieldCategory('word_count')).toBe('auto');
-      expect(getFieldCategory('estimated_read_time')).toBe('auto');
-      expect(getFieldCategory('backlinks')).toBe('auto');
+      expect(get_field_category('word_count')).toBe('auto');
+      expect(get_field_category('estimated_read_time')).toBe('auto');
+      expect(get_field_category('backlinks')).toBe('auto');
     });
   });
 
@@ -220,7 +220,7 @@ describe('Metadata Schema', () => {
   describe('plan tier (2.2.0)', () => {
     describe('validateMetadata', () => {
       it('accepts plan tier without version', () => {
-        const planMetadata = {
+        const plan_metadata = {
           title: 'My Phase Plan',
           tier: 'plan',
           domains: ['planning'],
@@ -229,13 +229,13 @@ describe('Metadata Schema', () => {
           // version intentionally omitted
         };
 
-        const result = validateMetadata(planMetadata);
+        const result = validate_metadata(plan_metadata);
         expect(result.valid).toBe(true);
         expect(result.errors).toHaveLength(0);
       });
 
       it('accepts plan tier WITH version (version is allowed, just not required)', () => {
-        const planMetadata = {
+        const plan_metadata = {
           title: 'My Phase Plan',
           tier: 'plan',
           domains: ['planning'],
@@ -244,13 +244,13 @@ describe('Metadata Schema', () => {
           version: '1.0.0',
         };
 
-        const result = validateMetadata(planMetadata);
+        const result = validate_metadata(plan_metadata);
         expect(result.valid).toBe(true);
         expect(result.errors).toHaveLength(0);
       });
 
       it('still rejects plan tier with INVALID version format', () => {
-        const planMetadata = {
+        const plan_metadata = {
           title: 'My Phase Plan',
           tier: 'plan',
           domains: ['planning'],
@@ -259,12 +259,12 @@ describe('Metadata Schema', () => {
           version: 'not-semver',
         };
 
-        const result = validateMetadata(planMetadata);
+        const result = validate_metadata(plan_metadata);
         expect(result.valid).toBe(false);
       });
 
       it('still requires version for non-plan tiers (regression on existing behavior)', () => {
-        const guideWithoutVersion = {
+        const guide_without_version = {
           title: 'Guide',
           tier: 'guide',
           domains: ['planning'],
@@ -273,13 +273,13 @@ describe('Metadata Schema', () => {
           // version intentionally omitted — should fail
         };
 
-        const result = validateMetadata(guideWithoutVersion);
+        const result = validate_metadata(guide_without_version);
         expect(result.valid).toBe(false);
         expect(result.errors.some((e) => e.includes('version'))).toBe(true);
       });
 
       it('still rejects plan tier with bad date format', () => {
-        const planMetadata = {
+        const plan_metadata = {
           title: 'My Plan',
           tier: 'plan',
           domains: ['planning'],
@@ -287,7 +287,7 @@ describe('Metadata Schema', () => {
           last_updated: '05/07/2026', // wrong format
         };
 
-        const result = validateMetadata(planMetadata);
+        const result = validate_metadata(plan_metadata);
         expect(result.valid).toBe(false);
       });
     });
@@ -303,7 +303,7 @@ describe('Metadata Schema', () => {
           // no version
         };
 
-        const missing = getMissingRequiredFields(data);
+        const missing = get_missing_required_fields(data);
         expect(missing).not.toContain('version');
         expect(missing).toHaveLength(0);
       });
@@ -318,7 +318,7 @@ describe('Metadata Schema', () => {
           // no version
         };
 
-        const missing = getMissingRequiredFields(data);
+        const missing = get_missing_required_fields(data);
         expect(missing).toContain('version');
         expect(missing).toHaveLength(1);
       });
@@ -330,7 +330,7 @@ describe('Metadata Schema', () => {
           // missing domains, status, last_updated
         };
 
-        const missing = getMissingRequiredFields(data);
+        const missing = get_missing_required_fields(data);
         expect(missing).toContain('domains');
         expect(missing).toContain('status');
         expect(missing).toContain('last_updated');
@@ -342,7 +342,7 @@ describe('Metadata Schema', () => {
 
     describe('PartialMetadataSchema', () => {
       it('still allows partial plan metadata (tier alone)', () => {
-        const result = validatePartialMetadata({ tier: 'plan' });
+        const result = validate_partial_metadata({ tier: 'plan' });
         expect(result.valid).toBe(true);
       });
     });
@@ -356,7 +356,7 @@ describe('Metadata Schema', () => {
     describe('status field — conditional enum (added in 2.2.0 alongside plan tier)', () => {
       it('accepts plan-specific status values for plan tier (e.g. "paused", "done")', () => {
         for (const status of ['draft', 'active', 'paused', 'done', 'archived']) {
-          const result = validateMetadata({
+          const result = validate_metadata({
             title: 'My Phase',
             tier: 'plan',
             domains: ['planning'],
@@ -369,7 +369,7 @@ describe('Metadata Schema', () => {
 
       it('accepts atom-specific status values for plan tier (e.g. "ready", "in_progress", "blocked")', () => {
         for (const status of ['ready', 'in_progress', 'done', 'blocked']) {
-          const result = validateMetadata({
+          const result = validate_metadata({
             title: 'My Atom',
             tier: 'plan',
             domains: ['planning'],
@@ -381,7 +381,7 @@ describe('Metadata Schema', () => {
       });
 
       it('rejects "ready" status for non-plan tiers (regression preservation)', () => {
-        const result = validateMetadata({
+        const result = validate_metadata({
           title: 'Guide',
           tier: 'guide',
           domains: ['security'],
@@ -394,7 +394,7 @@ describe('Metadata Schema', () => {
       });
 
       it('rejects "paused" status for non-plan tiers (regression preservation)', () => {
-        const result = validateMetadata({
+        const result = validate_metadata({
           title: 'Guide',
           tier: 'guide',
           domains: ['security'],
@@ -407,7 +407,7 @@ describe('Metadata Schema', () => {
 
       it('still accepts the historical doc-tier enum values for non-plan tiers', () => {
         for (const status of ['draft', 'active', 'deprecated', 'archived']) {
-          const result = validateMetadata({
+          const result = validate_metadata({
             title: 'Guide',
             tier: 'guide',
             domains: ['security'],
@@ -420,7 +420,7 @@ describe('Metadata Schema', () => {
       });
 
       it('rejects empty status string for plan tier (status is still required, just not enum-restricted)', () => {
-        const result = validateMetadata({
+        const result = validate_metadata({
           title: 'My Plan',
           tier: 'plan',
           domains: ['planning'],
@@ -435,7 +435,7 @@ describe('Metadata Schema', () => {
   // --- 2.3.0: knowledge-base primitives (fact / incident-narrative / incident-facts / symptoms) ---
 
   describe('fact tier (2.3.0)', () => {
-    const validFact = {
+    const valid_fact = {
       title: 'Alloy reads env only at entrypoint',
       tier: 'fact',
       domains: ['observability'],
@@ -448,36 +448,36 @@ describe('Metadata Schema', () => {
     };
 
     it('accepts a valid fact (no version required)', () => {
-      const result = validateMetadata(validFact);
+      const result = validate_metadata(valid_fact);
       expect(result.valid).toBe(true);
       expect(result.errors).toEqual([]);
     });
 
     it('accepts a fact WITH version (optional, not forbidden)', () => {
-      const result = validateMetadata({ ...validFact, version: '1.0.0' });
+      const result = validate_metadata({ ...valid_fact, version: '1.0.0' });
       expect(result.valid).toBe(true);
     });
 
     it('accepts plan-style status values for fact tier (lifecycle-tracked)', () => {
       for (const status of ['draft', 'active', 'deprecated', 'archived', 'weakened']) {
-        const result = validateMetadata({ ...validFact, status });
+        const result = validate_metadata({ ...valid_fact, status });
         expect(result.valid, `fact status "${status}" should be valid`).toBe(true);
       }
     });
 
     it('validateKnowledgeBaseFields flags FACT_MISSING_ID when id absent', () => {
-      const errs = validateKnowledgeBaseFields({ ...validFact, id: undefined });
+      const errs = validate_knowledge_base_fields({ ...valid_fact, id: undefined });
       expect(errs.some((e) => e.code === KB_ERROR_CODES.FACT_MISSING_ID)).toBe(true);
     });
 
     it('flags FACT_MISSING_ID when id is not kebab-case', () => {
-      const errs = validateKnowledgeBaseFields({ ...validFact, id: 'NotKebabCase' });
+      const errs = validate_knowledge_base_fields({ ...valid_fact, id: 'NotKebabCase' });
       expect(errs.some((e) => e.code === KB_ERROR_CODES.FACT_MISSING_ID)).toBe(true);
     });
 
     it('flags FACT_INVALID_CONFIDENCE when confidence is out of enum', () => {
-      const errs = validateKnowledgeBaseFields({
-        ...validFact,
+      const errs = validate_knowledge_base_fields({
+        ...valid_fact,
         confidence: 'definitely',
       });
       expect(errs.some((e) => e.code === KB_ERROR_CODES.FACT_INVALID_CONFIDENCE)).toBe(
@@ -486,44 +486,44 @@ describe('Metadata Schema', () => {
     });
 
     it('flags FACT_MISSING_LAST_VERIFIED when missing or wrong format', () => {
-      const errsMissing = validateKnowledgeBaseFields({
-        ...validFact,
+      const errs_missing = validate_knowledge_base_fields({
+        ...valid_fact,
         last_verified: undefined,
       });
       expect(
-        errsMissing.some((e) => e.code === KB_ERROR_CODES.FACT_MISSING_LAST_VERIFIED)
+        errs_missing.some((e) => e.code === KB_ERROR_CODES.FACT_MISSING_LAST_VERIFIED)
       ).toBe(true);
 
-      const errsBadFormat = validateKnowledgeBaseFields({
-        ...validFact,
+      const errs_bad_format = validate_knowledge_base_fields({
+        ...valid_fact,
         last_verified: '05/14/2026',
       });
       expect(
-        errsBadFormat.some((e) => e.code === KB_ERROR_CODES.FACT_MISSING_LAST_VERIFIED)
+        errs_bad_format.some((e) => e.code === KB_ERROR_CODES.FACT_MISSING_LAST_VERIFIED)
       ).toBe(true);
     });
 
     it('flags FACT_MISSING_PROVENANCE when provenance is empty or absent', () => {
-      const errsEmpty = validateKnowledgeBaseFields({
-        ...validFact,
+      const errs_empty = validate_knowledge_base_fields({
+        ...valid_fact,
         provenance: [],
       });
       expect(
-        errsEmpty.some((e) => e.code === KB_ERROR_CODES.FACT_MISSING_PROVENANCE)
+        errs_empty.some((e) => e.code === KB_ERROR_CODES.FACT_MISSING_PROVENANCE)
       ).toBe(true);
 
-      const errsMissing = validateKnowledgeBaseFields({
-        ...validFact,
+      const errs_missing = validate_knowledge_base_fields({
+        ...valid_fact,
         provenance: undefined,
       });
       expect(
-        errsMissing.some((e) => e.code === KB_ERROR_CODES.FACT_MISSING_PROVENANCE)
+        errs_missing.some((e) => e.code === KB_ERROR_CODES.FACT_MISSING_PROVENANCE)
       ).toBe(true);
     });
 
     it('flags FACT_VERIFY_COMMAND_MULTILINE_SHEBANG for multi-line verify_command without shebang', () => {
-      const errs = validateKnowledgeBaseFields({
-        ...validFact,
+      const errs = validate_knowledge_base_fields({
+        ...valid_fact,
         verify_command: 'echo hello\necho world',
       });
       expect(
@@ -532,8 +532,8 @@ describe('Metadata Schema', () => {
     });
 
     it('does NOT flag multi-line verify_command WITH shebang', () => {
-      const errs = validateKnowledgeBaseFields({
-        ...validFact,
+      const errs = validate_knowledge_base_fields({
+        ...valid_fact,
         verify_command: '#!/usr/bin/env bash\necho hello\necho world',
       });
       expect(
@@ -542,7 +542,7 @@ describe('Metadata Schema', () => {
     });
 
     it('getMissingRequiredFields reports fact extensions but not version', () => {
-      const missing = getMissingRequiredFields({
+      const missing = get_missing_required_fields({
         title: 'My Fact',
         tier: 'fact',
         domains: ['observability'],
@@ -559,7 +559,7 @@ describe('Metadata Schema', () => {
   });
 
   describe('incident-narrative tier (2.3.0)', () => {
-    const validIncident = {
+    const valid_incident = {
       title: 'Vault Down on Auth-Staging',
       tier: 'incident-narrative',
       domains: ['incidents', 'observability'],
@@ -573,27 +573,27 @@ describe('Metadata Schema', () => {
     };
 
     it('accepts a valid incident-narrative (no version required)', () => {
-      const result = validateMetadata(validIncident);
+      const result = validate_metadata(valid_incident);
       expect(result.valid).toBe(true);
     });
 
     it('flags missing date', () => {
-      const errs = validateKnowledgeBaseFields({ ...validIncident, date: undefined });
+      const errs = validate_knowledge_base_fields({ ...valid_incident, date: undefined });
       expect(
         errs.some((e) => e.code === KB_ERROR_CODES.INCIDENT_NARRATIVE_MISSING_DATE)
       ).toBe(true);
     });
 
     it('flags invalid severity', () => {
-      const errs = validateKnowledgeBaseFields({ ...validIncident, severity: 'sev0' });
+      const errs = validate_knowledge_base_fields({ ...valid_incident, severity: 'sev0' });
       expect(
         errs.some((e) => e.code === KB_ERROR_CODES.INCIDENT_NARRATIVE_INVALID_SEVERITY)
       ).toBe(true);
     });
 
     it('flags missing resolution_status', () => {
-      const errs = validateKnowledgeBaseFields({
-        ...validIncident,
+      const errs = validate_knowledge_base_fields({
+        ...valid_incident,
         resolution_status: undefined,
       });
       expect(
@@ -604,8 +604,8 @@ describe('Metadata Schema', () => {
     });
 
     it('flags invalid resolution_status enum', () => {
-      const errs = validateKnowledgeBaseFields({
-        ...validIncident,
+      const errs = validate_knowledge_base_fields({
+        ...valid_incident,
         resolution_status: 'pending',
       });
       expect(
@@ -616,7 +616,7 @@ describe('Metadata Schema', () => {
     });
 
     it('flags empty components', () => {
-      const errs = validateKnowledgeBaseFields({ ...validIncident, components: [] });
+      const errs = validate_knowledge_base_fields({ ...valid_incident, components: [] });
       expect(
         errs.some(
           (e) => e.code === KB_ERROR_CODES.INCIDENT_NARRATIVE_MISSING_COMPONENTS
@@ -625,8 +625,8 @@ describe('Metadata Schema', () => {
     });
 
     it('flags id that does not match YYYY-MM-DD-slug pattern', () => {
-      const errs = validateKnowledgeBaseFields({
-        ...validIncident,
+      const errs = validate_knowledge_base_fields({
+        ...valid_incident,
         id: 'not-an-incident-id',
       });
       expect(
@@ -636,7 +636,7 @@ describe('Metadata Schema', () => {
   });
 
   describe('incident-facts tier (2.3.0)', () => {
-    const validBridge = {
+    const valid_bridge = {
       title: 'Facts from 2026-05-14 vault-alloy-stuck',
       tier: 'incident-facts',
       domains: ['incidents'],
@@ -647,18 +647,18 @@ describe('Metadata Schema', () => {
     };
 
     it('accepts a valid incident-facts bridge', () => {
-      const result = validateMetadata(validBridge);
+      const result = validate_metadata(valid_bridge);
       expect(result.valid).toBe(true);
     });
 
     it('accepts empty produced array (incident may have produced no new facts)', () => {
-      const result = validateMetadata({ ...validBridge, produced: [] });
+      const result = validate_metadata({ ...valid_bridge, produced: [] });
       expect(result.valid).toBe(true);
     });
 
     it('flags missing incident_id', () => {
-      const errs = validateKnowledgeBaseFields({
-        ...validBridge,
+      const errs = validate_knowledge_base_fields({
+        ...valid_bridge,
         incident_id: undefined,
       });
       expect(
@@ -667,8 +667,8 @@ describe('Metadata Schema', () => {
     });
 
     it('flags missing produced field (must be an array, even if empty)', () => {
-      const errs = validateKnowledgeBaseFields({
-        ...validBridge,
+      const errs = validate_knowledge_base_fields({
+        ...valid_bridge,
         produced: undefined,
       });
       expect(
@@ -677,8 +677,8 @@ describe('Metadata Schema', () => {
     });
 
     it('getMissingRequiredFields treats empty produced array as PRESENT (allowed)', () => {
-      const missing = getMissingRequiredFields({
-        ...validBridge,
+      const missing = get_missing_required_fields({
+        ...valid_bridge,
         produced: [],
       });
       expect(missing).not.toContain('produced');
@@ -686,7 +686,7 @@ describe('Metadata Schema', () => {
   });
 
   describe('symptoms field (2.3.0) — playbook frontmatter', () => {
-    const playbookBase = {
+    const playbook_base = {
       title: 'Grafana Alerts Runbook',
       tier: 'admin',
       domains: ['observability'],
@@ -696,8 +696,8 @@ describe('Metadata Schema', () => {
     };
 
     it('accepts a playbook with a valid symptoms block (any tier)', () => {
-      const result = validateMetadata({
-        ...playbookBase,
+      const result = validate_metadata({
+        ...playbook_base,
         symptoms: [
           {
             alert_name: 'Vault Down — auth-staging',
@@ -721,8 +721,8 @@ describe('Metadata Schema', () => {
     });
 
     it('flags PLAYBOOK_SYMPTOM_MISSING_KEY when none of alert_name/user_phrase/error_pattern present', () => {
-      const errs = validateKnowledgeBaseFields({
-        ...playbookBase,
+      const errs = validate_knowledge_base_fields({
+        ...playbook_base,
         symptoms: [{ target: '#anchor', cites: ['some-fact'] }],
       });
       expect(
@@ -731,8 +731,8 @@ describe('Metadata Schema', () => {
     });
 
     it('flags PLAYBOOK_SYMPTOM_MISSING_TARGET when target absent', () => {
-      const errs = validateKnowledgeBaseFields({
-        ...playbookBase,
+      const errs = validate_knowledge_base_fields({
+        ...playbook_base,
         symptoms: [{ alert_name: 'Some Alert', cites: ['some-fact'] }],
       });
       expect(
@@ -741,8 +741,8 @@ describe('Metadata Schema', () => {
     });
 
     it('flags PLAYBOOK_SYMPTOM_MISSING_CITES when cites empty or absent', () => {
-      const errs = validateKnowledgeBaseFields({
-        ...playbookBase,
+      const errs = validate_knowledge_base_fields({
+        ...playbook_base,
         symptoms: [
           { alert_name: 'Some Alert', target: '#anchor', cites: [] },
         ],
@@ -753,7 +753,7 @@ describe('Metadata Schema', () => {
     });
 
     it('does not flag anything when symptoms field is absent', () => {
-      const errs = validateKnowledgeBaseFields(playbookBase);
+      const errs = validate_knowledge_base_fields(playbook_base);
       expect(errs).toEqual([]);
     });
 
@@ -775,19 +775,19 @@ describe('Metadata Schema', () => {
           'pkill -f: Exit code 144',
           { error_pattern: '^Exit code 144$', target: '#instead', cites: ['other-fact'] },
         ];
-        expect(validateMetadata({ ...fact, symptoms }).valid).toBe(true);
-        expect(validateKnowledgeBaseFields({ ...fact, symptoms })).toEqual([]);
+        expect(validate_metadata({ ...fact, symptoms }).valid).toBe(true);
+        expect(validate_knowledge_base_fields({ ...fact, symptoms })).toEqual([]);
       });
 
       it('accepts plain strings on other tiers too (#50)', () => {
         const symptoms = ['pkill -f: Exit code 144'];
-        expect(validateMetadata({ ...playbookBase, symptoms }).valid).toBe(true);
-        expect(validateKnowledgeBaseFields({ ...playbookBase, symptoms })).toEqual([]);
+        expect(validate_metadata({ ...playbook_base, symptoms }).valid).toBe(true);
+        expect(validate_knowledge_base_fields({ ...playbook_base, symptoms })).toEqual([]);
       });
 
       it('still flags a bad object entry beside strings on a guide', () => {
-        const errs = validateKnowledgeBaseFields({
-          ...playbookBase,
+        const errs = validate_knowledge_base_fields({
+          ...playbook_base,
           symptoms: ['phrase', { target: '' }],
         });
         expect(errs.map((e) => e.code)).toEqual([
@@ -798,7 +798,7 @@ describe('Metadata Schema', () => {
       });
 
       it('still requires target and cites on object entries of a fact', () => {
-        const errs = validateKnowledgeBaseFields({
+        const errs = validate_knowledge_base_fields({
           ...fact,
           symptoms: [{ error_pattern: 'x' }],
         });
@@ -809,18 +809,18 @@ describe('Metadata Schema', () => {
       });
 
       it('rejects an empty string', () => {
-        expect(validateMetadata({ ...fact, symptoms: [''] }).valid).toBe(false);
+        expect(validate_metadata({ ...fact, symptoms: [''] }).valid).toBe(false);
       });
 
       it('partial schema accepts plain strings', () => {
-        expect(validatePartialMetadata({ symptoms: ['pkill -f: Exit code 144'] }).valid).toBe(true);
+        expect(validate_partial_metadata({ symptoms: ['pkill -f: Exit code 144'] }).valid).toBe(true);
       });
     });
   });
 
   describe('backward compatibility (2.3.0 regression preservation)', () => {
     it('existing guide doc with all 6 required fields still validates clean', () => {
-      const result = validateMetadata({
+      const result = validate_metadata({
         title: 'Setup Guide',
         tier: 'guide',
         domains: ['onboarding'],
@@ -832,7 +832,7 @@ describe('Metadata Schema', () => {
     });
 
     it('existing plan tier (2.2.0) still validates without version', () => {
-      const result = validateMetadata({
+      const result = validate_metadata({
         title: 'Phase Plan',
         tier: 'plan',
         domains: ['planning'],
@@ -852,7 +852,7 @@ describe('Metadata Schema', () => {
 
     it('validateKnowledgeBaseFields is a no-op for non-KB tiers', () => {
       expect(
-        validateKnowledgeBaseFields({
+        validate_knowledge_base_fields({
           title: 'Guide',
           tier: 'guide',
           domains: ['security'],
@@ -865,7 +865,7 @@ describe('Metadata Schema', () => {
 
     it('validateKnowledgeBaseFields is a no-op for plan tier (existing 2.2.0 behavior preserved)', () => {
       expect(
-        validateKnowledgeBaseFields({
+        validate_knowledge_base_fields({
           title: 'My Plan',
           tier: 'plan',
           domains: ['planning'],
@@ -894,17 +894,17 @@ describe('kind: overview', () => {
 
   it.each(['guide', 'reference', 'fact', 'admin'])('passes on %s', (tier) => {
     const extra = tier === 'fact' ? facts : {};
-    expect(validateMetadata({ ...base, ...extra, tier, kind: 'overview' }).valid).toBe(true);
+    expect(validate_metadata({ ...base, ...extra, tier, kind: 'overview' }).valid).toBe(true);
   });
 
   it('rejects a misspelled kind and lists allowed values', () => {
-    const r = validatePartialMetadata({ ...base, tier: 'guide', kind: 'overveiw' });
+    const r = validate_partial_metadata({ ...base, tier: 'guide', kind: 'overveiw' });
     expect(r.valid).toBe(false);
     expect(r.errors.join()).toContain('Allowed values: overview');
     expect(r.errors.join()).toContain('overveiw');
   });
 
   it('leaves docs without kind unaffected', () => {
-    expect(validateMetadata({ ...base, tier: 'guide' }).valid).toBe(true);
+    expect(validate_metadata({ ...base, tier: 'guide' }).valid).toBe(true);
   });
 });

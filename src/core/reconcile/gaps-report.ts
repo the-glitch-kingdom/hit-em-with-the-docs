@@ -3,33 +3,33 @@ import { mkdir, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import type { SecretsConfig } from '../../utils/config.js';
 import type { GapsClassification } from './gaps.js';
-import { assertNoSecrets } from './secrets.js';
+import { validate_no_secrets } from './secrets.js';
 
-export function renderGapsReport(c: GapsClassification, cfg: SecretsConfig, date = new Date().toISOString().slice(0, 10)): string {
-  const L: string[] = [`# Search gaps report ${date}`, '', 'Nothing in the docs tree was changed. Secret-shaped queries are dropped and never shown.', ''];
-  const n = (x: number | undefined): string => (x && x > 1 ? ` (x${x})` : '');
-  L.push(`## user_phrase proposals (${c.proposals.length} docs)`, '');
-  if (!c.proposals.length) L.push('None.', '');
-  for (const p of c.proposals) {
-    L.push(`### ${p.doc}`, '', ...p.accepted.map((a) => `- ${a.query}${n(a.count)}`), '');
-    if (p.existing.length) L.push(`Already has ${p.existing.length} phrase(s) (they count toward the cap).`, '');
+export function render_gaps_report(classification: GapsClassification, config: SecretsConfig, date = new Date().toISOString().slice(0, 10)): string {
+  const lines: string[] = [`# Search gaps report ${date}`, '', 'Nothing in the docs tree was changed. Secret-shaped queries are dropped and never shown.', ''];
+  const format_count_suffix = (count: number | undefined): string => (count && count > 1 ? ` (x${count})` : '');
+  lines.push(`## user_phrase proposals (${classification.proposals.length} docs)`, '');
+  if (!classification.proposals.length) lines.push('None.', '');
+  for (const proposal of classification.proposals) {
+    lines.push(`### ${proposal.doc}`, '', ...proposal.accepted.map((a) => `- ${a.query}${format_count_suffix(a.count)}`), '');
+    if (proposal.existing.length) lines.push(`Already has ${proposal.existing.length} phrase(s) (they count toward the cap).`, '');
   }
-  L.push(`## New-doc candidates (${c.candidates.length})`, '', 'Never created automatically: write the doc, then `hewtd integrate` records its sources.', '');
-  if (!c.candidates.length) L.push('None.', '');
-  for (const x of c.candidates) L.push(`- ${x.query}${n(x.count)}${x.domain ? ` - suggested domain: ${x.domain}` : ''}`, ...x.sources.map((s) => `  - source: ${s}`));
-  L.push('', `## Open questions (${c.questions.length})`, '', 'No doc used and no code identifier found.', '');
-  if (!c.questions.length) L.push('None.');
-  for (const q of c.questions) L.push(`- ${q.query}${n(q.count)}`);
-  L.push('', `## Dropped (${c.dropped.length})`, '');
-  if (!c.dropped.length) L.push('None.');
-  for (const d of c.dropped) L.push(`- ${d.query} - ${d.reason}${d.note ? ` (${d.note})` : ''}`);
-  const text = L.join('\n') + '\n';
-  assertNoSecrets(text, 'the gaps report', cfg);
-  return text;
+  lines.push(`## New-doc candidates (${classification.candidates.length})`, '', 'Never created automatically: write the doc, then `hewtd integrate` records its sources.', '');
+  if (!classification.candidates.length) lines.push('None.', '');
+  for (const candidate of classification.candidates) lines.push(`- ${candidate.query}${format_count_suffix(candidate.count)}${candidate.domain ? ` - suggested domain: ${candidate.domain}` : ''}`, ...candidate.sources.map((source) => `  - source: ${source}`));
+  lines.push('', `## Open questions (${classification.questions.length})`, '', 'No doc used and no code identifier found.', '');
+  if (!classification.questions.length) lines.push('None.');
+  for (const question of classification.questions) lines.push(`- ${question.query}${format_count_suffix(question.count)}`);
+  lines.push('', `## Dropped (${classification.dropped.length})`, '');
+  if (!classification.dropped.length) lines.push('None.');
+  for (const dropped_phrase of classification.dropped) lines.push(`- ${dropped_phrase.query} - ${dropped_phrase.reason}${dropped_phrase.note ? ` (${dropped_phrase.note})` : ''}`);
+  const report_text = lines.join('\n') + '\n';
+  validate_no_secrets(report_text, 'the gaps report', config);
+  return report_text;
 }
 
-export async function writeGapsReport(root: string, text: string, date = new Date().toISOString().slice(0, 10)): Promise<string> {
-  const file = join(root, '.hewtd/reconcile', `gaps-report-${date}.md`);
+export async function write_gaps_report(repo_root: string, text: string, date = new Date().toISOString().slice(0, 10)): Promise<string> {
+  const file = join(repo_root, '.hewtd/reconcile', `gaps-report-${date}.md`);
   await mkdir(dirname(file), { recursive: true });
   await writeFile(file, text);
   return file;

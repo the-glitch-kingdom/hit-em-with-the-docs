@@ -1,38 +1,38 @@
 import { readFile, writeFile } from 'fs/promises';
 import { relative } from 'path';
-import { findMarkdownFiles, pathExists } from '../../utils/glob.js';
+import { find_markdown_files, is_path_present } from '../../utils/glob.js';
 import { join, resolve, sep } from 'path';
-import { loadPluginConfig, resolveDocsRoot } from '../../utils/config.js';
-import { parseFrontmatter, setFrontmatter } from '../../utils/frontmatter.js';
-import { countWords, formatReadTime } from '../../utils/markdown.js';
+import { load_plugin_config, resolve_docs_root } from '../../utils/config.js';
+import { parse_frontmatter, with_frontmatter } from '../../utils/frontmatter.js';
+import { count_words, format_read_time } from '../../utils/markdown.js';
 import { logger } from '../../utils/logger.js';
 import {
-  validatePartialMetadata,
-  getMissingRequiredFields,
-  calculateMetadataCompleteness,
+  validate_partial_metadata,
+  get_missing_required_fields,
+  compute_metadata_completeness,
   type PartialDocumentMetadata,
 } from './schema.js';
-import { generateMetadata, mergeMetadata, formatDate } from './generator.js';
+import { generate_metadata, merge_metadata, format_date } from './generator.js';
 
 export interface SyncOptions {
-  docsPath: string;
+  docs_root: string;
   /**
    * Project root the `docs_root` declaration is resolved against. Defaults to
    * `process.cwd()`, which is what the CLI wants; pass it explicitly when the
    * docs tree is not under the current directory.
    */
-  projectRoot?: string;
-  dryRun?: boolean;
+  repo_root?: string;
+  dry_run?: boolean;
   fix?: boolean;
   domain?: string;
   silent?: boolean;
 }
 
 export interface SyncResult {
-  totalFiles: number;
-  validFiles: number;
-  fixedFiles: number;
-  skippedFiles: number;
+  total_files: number;
+  valid_files: number;
+  fixed_files: number;
+  skipped_files: number;
   errors: SyncError[];
   stats: SyncStats;
 }
@@ -44,44 +44,44 @@ export interface SyncError {
 }
 
 export interface SyncStats {
-  totalWordCount: number;
-  avgCompleteness: number;
-  byDomain: Record<string, number>;
-  byStatus: Record<string, number>;
-  byTier: Record<string, number>;
+  total_word_count: number;
+  avg_completeness: number;
+  by_domain: Record<string, number>;
+  by_status: Record<string, number>;
+  by_tier: Record<string, number>;
 }
 
 /**
  * Sync metadata across all documentation files
  */
-export async function syncMetadata(options: SyncOptions): Promise<SyncResult> {
+export async function sync_metadata(options: SyncOptions): Promise<SyncResult> {
   const {
-    docsPath,
-    projectRoot = process.cwd(),
-    dryRun = false,
+    docs_root: docs_root,
+    repo_root: repo_root = process.cwd(),
+    dry_run = false,
     fix = false,
     domain,
     silent = false,
   } = options;
 
   const result: SyncResult = {
-    totalFiles: 0,
-    validFiles: 0,
-    fixedFiles: 0,
-    skippedFiles: 0,
+    total_files: 0,
+    valid_files: 0,
+    fixed_files: 0,
+    skipped_files: 0,
     errors: [],
     stats: {
-      totalWordCount: 0,
-      avgCompleteness: 0,
-      byDomain: {},
-      byStatus: {},
-      byTier: {},
+      total_word_count: 0,
+      avg_completeness: 0,
+      by_domain: {},
+      by_status: {},
+      by_tier: {},
     },
   };
 
   if (!silent) {
     logger.header('Metadata Sync');
-    if (dryRun) logger.info('Running in dry-run mode (no changes will be made)');
+    if (dry_run) logger.info('Running in dry-run mode (no changes will be made)');
     if (fix) logger.info('Auto-fix mode enabled');
   }
 
@@ -99,9 +99,9 @@ export async function syncMetadata(options: SyncOptions): Promise<SyncResult> {
   // Reads are unaffected: a scan writes nothing, and being able to inspect an
   // unmanaged directory is useful. `--dry-run` is likewise allowed, so the
   // preview of what `--fix` would do still works anywhere.
-  if (fix && !dryRun && !(await isDocumentationRoot(docsPath, projectRoot))) {
+  if (fix && !dry_run && !(await is_documentation_root(docs_root, repo_root))) {
     const message =
-      `${docsPath} is outside this project's documentation root, so --fix refuses ` +
+      `${docs_root} is outside this project's documentation root, so --fix refuses ` +
       `to write there. --fix stamps frontmatter into every markdown file it finds, ` +
       `and pointed at a source tree it rewrites files that are not documentation. ` +
       `The root is \`docs_root\` in .claude/hit-em-with-the-docs.json (default ` +
@@ -109,7 +109,7 @@ export async function syncMetadata(options: SyncOptions): Promise<SyncResult> {
       `it, or drop --fix to scan read-only.`;
     if (!silent) logger.error(message);
     result.errors.push({
-      file: relative(projectRoot, docsPath),
+      file: relative(repo_root, docs_root),
       error: message,
       fixable: false,
     });
@@ -117,72 +117,72 @@ export async function syncMetadata(options: SyncOptions): Promise<SyncResult> {
   }
 
   // Find all markdown files
-  let files = await findMarkdownFiles(docsPath);
+  let files = await find_markdown_files(docs_root);
 
   // Filter by domain if specified
   if (domain) {
-    files = files.filter((f) => {
-      const rel = relative(docsPath, f);
-      return rel.startsWith(domain + '/') || rel.startsWith(domain + '\\');
+    files = files.filter((file) => {
+      const doc_path = relative(docs_root, file);
+      return doc_path.startsWith(domain + '/') || doc_path.startsWith(domain + '\\');
     });
   }
 
   // Exclude INDEX.md and REGISTRY.md files (system files)
-  files = files.filter((f) => {
-    const name = f.split(/[/\\]/).pop() ?? '';
+  files = files.filter((file) => {
+    const name = file.split(/[/\\]/).pop() ?? '';
     return !['INDEX.md', 'REGISTRY.md'].includes(name);
   });
 
-  result.totalFiles = files.length;
+  result.total_files = files.length;
 
   if (!silent) {
     logger.info(`Found ${files.length} documentation files`);
   }
 
-  let completenessSum = 0;
+  let completeness_sum = 0;
 
   for (const file of files) {
     try {
-      const syncResult = await syncFile(file, docsPath, dryRun, fix);
+      const sync_result = await sync_file(file, docs_root, dry_run, fix);
 
-      if (syncResult.valid) {
-        result.validFiles++;
+      if (sync_result.valid) {
+        result.valid_files++;
       }
 
-      if (syncResult.fixed) {
-        result.fixedFiles++;
+      if (sync_result.fixed) {
+        result.fixed_files++;
       }
 
-      if (syncResult.skipped) {
-        result.skippedFiles++;
+      if (sync_result.skipped) {
+        result.skipped_files++;
       }
 
-      if (syncResult.error) {
-        result.errors.push(syncResult.error);
+      if (sync_result.error) {
+        result.errors.push(sync_result.error);
       }
 
       // Update stats
-      if (syncResult.metadata) {
-        const meta = syncResult.metadata;
-        completenessSum += syncResult.completeness;
-        result.stats.totalWordCount += meta.word_count ?? 0;
+      if (sync_result.metadata) {
+        const meta = sync_result.metadata;
+        completeness_sum += sync_result.completeness;
+        result.stats.total_word_count += meta.word_count ?? 0;
 
         // Track by domain
         const domain = meta.domains?.[0] ?? 'unknown';
-        result.stats.byDomain[domain] = (result.stats.byDomain[domain] ?? 0) + 1;
+        result.stats.by_domain[domain] = (result.stats.by_domain[domain] ?? 0) + 1;
 
         // Track by status
         const status = meta.status ?? 'unknown';
-        result.stats.byStatus[status] = (result.stats.byStatus[status] ?? 0) + 1;
+        result.stats.by_status[status] = (result.stats.by_status[status] ?? 0) + 1;
 
         // Track by tier
         const tier = meta.tier ?? 'unknown';
-        result.stats.byTier[tier] = (result.stats.byTier[tier] ?? 0) + 1;
+        result.stats.by_tier[tier] = (result.stats.by_tier[tier] ?? 0) + 1;
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       result.errors.push({
-        file: relative(docsPath, file),
+        file: relative(docs_root, file),
         error: message,
         fixable: false,
       });
@@ -190,20 +190,20 @@ export async function syncMetadata(options: SyncOptions): Promise<SyncResult> {
   }
 
   // Calculate average completeness
-  result.stats.avgCompleteness =
-    files.length > 0 ? completenessSum / files.length : 0;
+  result.stats.avg_completeness =
+    files.length > 0 ? completeness_sum / files.length : 0;
 
   if (!silent) {
     logger.newline();
     logger.success(`Sync complete!`);
-    logger.info(`Valid: ${result.validFiles}/${result.totalFiles}`);
-    if (result.fixedFiles > 0) {
-      logger.info(`Fixed: ${result.fixedFiles}`);
+    logger.info(`Valid: ${result.valid_files}/${result.total_files}`);
+    if (result.fixed_files > 0) {
+      logger.info(`Fixed: ${result.fixed_files}`);
     }
     if (result.errors.length > 0) {
       logger.warn(`Errors: ${result.errors.length}`);
     }
-    logger.info(`Avg completeness: ${result.stats.avgCompleteness.toFixed(1)}%`);
+    logger.info(`Avg completeness: ${result.stats.avg_completeness.toFixed(1)}%`);
   }
 
   return result;
@@ -225,13 +225,13 @@ export async function syncMetadata(options: SyncOptions): Promise<SyncResult> {
  * writes that file, so its presence is a positive marker rather than a guess; a
  * source tree does not have one at its root.
  */
-async function isDocumentationRoot(docsPath: string, projectRoot: string): Promise<boolean> {
-  const declared = resolveDocsRoot(projectRoot, await loadPluginConfig(projectRoot));
+async function is_documentation_root(docs_root: string, repo_root: string): Promise<boolean> {
+  const declared = resolve_docs_root(repo_root, await load_plugin_config(repo_root));
 
-  const target = resolve(docsPath);
+  const target = resolve(docs_root);
   if (target === declared || target.startsWith(declared + sep)) return true;
 
-  return pathExists(join(docsPath, 'INDEX.md'));
+  return is_path_present(join(docs_root, 'INDEX.md'));
 }
 
 interface FileSyncResult {
@@ -246,10 +246,10 @@ interface FileSyncResult {
 /**
  * Sync metadata for a single file
  */
-async function syncFile(
-  filePath: string,
-  docsPath: string,
-  dryRun: boolean,
+async function sync_file(
+  file_path: string,
+  docs_root: string,
+  dry_run: boolean,
   fix: boolean
 ): Promise<FileSyncResult> {
   const result: FileSyncResult = {
@@ -259,26 +259,26 @@ async function syncFile(
     completeness: 0,
   };
 
-  const content = await readFile(filePath, 'utf-8');
-  const { data, content: body } = parseFrontmatter<PartialDocumentMetadata>(content);
+  const content = await readFile(file_path, 'utf-8');
+  const { data, content: body } = parse_frontmatter<PartialDocumentMetadata>(content);
 
   // Validate existing metadata
-  const validation = validatePartialMetadata(data);
-  const missingRequired = getMissingRequiredFields(data as Record<string, unknown>);
-  result.completeness = calculateMetadataCompleteness(data as Record<string, unknown>);
+  const validation = validate_partial_metadata(data);
+  const missing_required = get_missing_required_fields(data as Record<string, unknown>);
+  result.completeness = compute_metadata_completeness(data as Record<string, unknown>);
 
   // Check if file is valid
-  if (validation.valid && missingRequired.length === 0) {
+  if (validation.valid && missing_required.length === 0) {
     result.valid = true;
     result.metadata = data;
 
     // Still update auto-generated fields if fix mode
     if (fix) {
-      const updated = updateAutoFields(data, body);
+      const updated = with_auto_fields(data, body);
       if (JSON.stringify(updated) !== JSON.stringify(data)) {
-        if (!dryRun) {
-          const newContent = setFrontmatter(content, updated as Record<string, unknown>);
-          await writeFile(filePath, newContent, 'utf-8');
+        if (!dry_run) {
+          const new_content = with_frontmatter(content, updated as Record<string, unknown>);
+          await writeFile(file_path, new_content, 'utf-8');
         }
         result.fixed = true;
         result.metadata = updated;
@@ -291,32 +291,32 @@ async function syncFile(
   // File has issues
   if (!fix) {
     result.error = {
-      file: relative(docsPath, filePath),
-      error: `Missing required fields: ${missingRequired.join(', ')}`,
+      file: relative(docs_root, file_path),
+      error: `Missing required fields: ${missing_required.join(', ')}`,
       fixable: true,
     };
     return result;
   }
 
   // Fix mode: generate missing metadata
-  const generated = generateMetadata({
-    filePath,
+  const generated = generate_metadata({
+    file_path,
     content,
-    docsRoot: docsPath,
-    existingMetadata: data,
+    docs_root: docs_root,
+    existing_metadata: data,
   });
 
-  const merged = normalizeDateFields(mergeMetadata(data, generated));
+  const merged = normalize_date_fields(merge_metadata(data, generated));
   result.metadata = merged;
 
-  if (!dryRun) {
-    const newContent = setFrontmatter(content, merged as unknown as Record<string, unknown>);
-    await writeFile(filePath, newContent, 'utf-8');
+  if (!dry_run) {
+    const new_content = with_frontmatter(content, merged as unknown as Record<string, unknown>);
+    await writeFile(file_path, new_content, 'utf-8');
   }
 
   result.fixed = true;
   result.valid = true;
-  result.completeness = calculateMetadataCompleteness(merged as unknown as Record<string, unknown>);
+  result.completeness = compute_metadata_completeness(merged as unknown as Record<string, unknown>);
 
   return result;
 }
@@ -324,15 +324,15 @@ async function syncFile(
 /**
  * Update auto-generated fields
  */
-function updateAutoFields(
+function with_auto_fields(
   metadata: PartialDocumentMetadata,
   content: string
 ): PartialDocumentMetadata {
-  return normalizeDateFields({
+  return normalize_date_fields({
     ...metadata,
-    word_count: countWords(content),
-    estimated_read_time: formatReadTime(content),
-    last_validated: formatDate(new Date()),
+    word_count: count_words(content),
+    estimated_read_time: format_read_time(content),
+    last_validated: format_date(new Date()),
   });
 }
 
@@ -353,24 +353,24 @@ const DATE_FIELDS = [
  * validated only via a preprocess step, and read as a different type to any
  * other tool looking at the same frontmatter.
  */
-function normalizeDateFields<T extends PartialDocumentMetadata>(metadata: T): T {
-  const out = { ...metadata } as Record<string, unknown>;
+function normalize_date_fields<T extends PartialDocumentMetadata>(metadata: T): T {
+  const found = { ...metadata } as Record<string, unknown>;
   for (const field of DATE_FIELDS) {
-    const value = out[field];
+    const value = found[field];
     if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
-      out[field] = value.slice(0, 10);
+      found[field] = value.slice(0, 10);
     }
   }
-  return out as T;
+  return found as T;
 }
 
 /**
  * Get sync statistics for a documentation root
  */
-export async function getSyncStats(docsPath: string): Promise<SyncStats> {
-  const result = await syncMetadata({
-    docsPath,
-    dryRun: true,
+export async function load_sync_stats(docs_root: string): Promise<SyncStats> {
+  const result = await sync_metadata({
+    docs_root: docs_root,
+    dry_run: true,
     fix: false,
     silent: true,
   });

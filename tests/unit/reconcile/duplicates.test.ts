@@ -3,10 +3,10 @@ import { execFileSync } from 'child_process';
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { loadPluginConfig } from '../../../src/utils/config';
-import { findDuplicates } from '../../../src/core/reconcile/duplicates';
-import { seedOverview } from '../../../src/core/reconcile/overview';
-import { triage } from '../../../src/core/reconcile/triage';
+import { load_plugin_config } from '../../../src/utils/config';
+import { find_duplicates } from '../../../src/core/reconcile/duplicates';
+import { load_overview_seed } from '../../../src/core/reconcile/overview';
+import { triage_docs } from '../../../src/core/reconcile/triage';
 
 let root: string;
 let docs: string;
@@ -30,7 +30,7 @@ afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 describe('findDuplicates', () => {
   it('flags a large doc embedding a procedure, naming the procedure doc as owner', async () => {
-    const d = await findDuplicates(docs, await loadPluginConfig(root));
+    const d = await find_duplicates(docs, await load_plugin_config(root));
     const hit = d.get('guides/admin.md')!;
     expect(hit).toHaveLength(1);
     expect(hit[0]).toMatchObject({ owner: 'procedures/release-procedure.md', section: 'release-procedure' });
@@ -39,11 +39,11 @@ describe('findDuplicates', () => {
   });
   it('still flags a lightly edited copy', async () => {
     put('guides/admin.md', `---\ntitle: Admin\n---\n# Admin\n\n${filler}\n\n## Cutting a release\n\n${steps(8).replace('green', 'passing').replace('step number 3', 'step 3')}\n`);
-    const d = await findDuplicates(docs, await loadPluginConfig(root));
+    const d = await find_duplicates(docs, await load_plugin_config(root));
     expect(d.get('guides/admin.md')?.[0]).toMatchObject({ owner: 'procedures/release-procedure.md' });
   });
   it('ignores shared boilerplate below the size floor', async () => {
-    const d = await findDuplicates(docs, await loadPluginConfig(root));
+    const d = await find_duplicates(docs, await load_plugin_config(root));
     expect(d.has('misc/other.md')).toBe(false);
   });
   it('marks a tie when neither doc names the text better', async () => {
@@ -51,7 +51,7 @@ describe('findDuplicates', () => {
     put('b/two.md', `---\ntitle: Two\n---\n# Shared\n\n${steps(8)}\n`);
     rmSync(join(docs, 'procedures'), { recursive: true });
     rmSync(join(docs, 'guides'), { recursive: true });
-    const d = await findDuplicates(docs, await loadPluginConfig(root));
+    const d = await find_duplicates(docs, await load_plugin_config(root));
     expect(d.get('b/two.md')![0]).toMatchObject({ owner: 'a/one.md' });
     expect(d.has('a/one.md')).toBe(false);
   });
@@ -59,19 +59,19 @@ describe('findDuplicates', () => {
 
 describe('triage and overview integration', () => {
   it('raises a clean-looking copy holder to check with a reason and duplicates', async () => {
-    const config = await loadPluginConfig(root);
+    const config = await load_plugin_config(root);
     execFileSync('git', ['init', '-q'], { cwd: root });
     execFileSync('git', ['add', '.'], { cwd: root });
     execFileSync('git', ['commit', '-qm', 'x'], { cwd: root });
-    const t = await triage({ root, docsPath: docs, rels: ['guides/admin.md'], config });
+    const t = await triage_docs({ root, docs_root: docs, rels: ['guides/admin.md'], config });
     const doc = t.docs[0]!;
     expect(doc.lane).toBe('check');
     expect(doc.reasons).toContain('copy of procedures/release-procedure.md#release-procedure');
     expect(doc.duplicates?.[0]?.owner).toBe('procedures/release-procedure.md');
   });
   it('marks overview members that copy another member', async () => {
-    const config = await loadPluginConfig(root);
-    const seed = await seedOverview({ docsPath: docs, config, ledger: { version: 1, entries: {} }, question: 'release procedure cutting a release' });
+    const config = await load_plugin_config(root);
+    const seed = await load_overview_seed({ docs_root: docs, config, ledger: { version: 1, entries: {} }, question: 'release procedure cutting a release' });
     const admin = seed.members.find((m) => m.path === 'guides/admin.md');
     expect(admin?.duplicates?.[0]?.owner).toBe('procedures/release-procedure.md');
   });
@@ -82,7 +82,7 @@ describe('findDuplicates on boilerplate-heavy trees (review fix)', () => {
     const footer = Array.from({ length: 30 }, (_, i) => `Shared footer line ${i}: escalate through the standard on-call channel and file a ticket.`).join('\n');
     for (let i = 0; i < 600; i++) put(`bulk/doc-${i}.md`, `---\ntitle: Doc ${i}\n---\n# Doc ${i}\n\nUnique intro ${i} about subsystem ${i * 13}.\n\n## Footer\n\n${footer}\n`);
     const t0 = performance.now();
-    const d = await findDuplicates(docs, await loadPluginConfig(root));
+    const d = await find_duplicates(docs, await load_plugin_config(root));
     expect(performance.now() - t0).toBeLessThan(15000);
     expect([...d.keys()].filter((k) => k.startsWith('bulk/'))).toEqual([]);
   }, 30000);

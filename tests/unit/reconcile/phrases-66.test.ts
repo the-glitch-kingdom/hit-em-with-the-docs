@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildPhrases, normalizeQuery } from '../../../src/core/reconcile/phrases.js';
+import { build_phrases, normalize_query } from '../../../src/core/reconcile/phrases.js';
 
 const cfg = { allow: [], disabled_rules: [] };
 // Built at runtime: no secret-shaped literal in the repo.
@@ -7,10 +7,10 @@ const token = 'AK' + 'IA' + 'ABCDEFGHIJKLMNOP';
 
 describe('buildPhrases (#66)', () => {
   it('normalizes whitespace and trailing punctuation, keeps casing', () => {
-    expect(normalizeQuery('  How do I  roll back?? ')).toBe('How do I roll back');
+    expect(normalize_query('  How do I  roll back?? ')).toBe('How do I roll back');
   });
   it('merges near-duplicates, keeping the most frequent', () => {
-    const r = buildPhrases([
+    const r = build_phrases([
       { query: 'how do I roll back a bad deploy?', count: 4 },
       { query: 'roll back a bad deploy', count: 1 },
       { query: 'how to roll back bad deploy', count: 2 },
@@ -19,31 +19,31 @@ describe('buildPhrases (#66)', () => {
     expect(r.dropped.filter((d) => d.reason === 'duplicate')).toHaveLength(2);
   });
   it('does not merge distinct questions that share one keyword', () => {
-    const r = buildPhrases([
+    const r = build_phrases([
       { query: 'how do I roll back a bad deploy', count: 3 }, { query: 'how to deploy to staging', count: 2 },
     ], ['how do I deploy'], cfg, 5);
     expect(r.accepted.map((a) => a.query)).toEqual(['how do I roll back a bad deploy', 'how to deploy to staging']);
   });
   it('merges against existing phrases and counts them toward the cap', () => {
-    const r = buildPhrases([
+    const r = build_phrases([
       { query: 'restore the database from backup' }, { query: 'rotate the signing keys safely' }, { query: 'clear the stuck job queue' },
     ], ['restore database from backup', 'a', 'b'], cfg, 4);
     expect(r.accepted).toHaveLength(1);
     expect(r.dropped.map((d) => d.reason).sort()).toEqual(['duplicate', 'over cap']);
   });
   it('drops short and long queries', () => {
-    const r = buildPhrases([{ query: 'deploy broken' }, { query: 'w'.repeat(100) + ' ' + 'x'.repeat(100) + ' end' }], [], cfg, 5);
+    const r = build_phrases([{ query: 'deploy broken' }, { query: 'w'.repeat(100) + ' ' + 'x'.repeat(100) + ' end' }], [], cfg, 5);
     expect(r.dropped.map((d) => d.reason)).toEqual(['too short', 'too long']);
   });
   it('keeps long real questions up to 200 characters', () => {
     const q110 = 'how do I restore the production database from the nightly backup after failover'.padEnd(110, ' ok').slice(0, 110).trim();
     const q150 = 'rotate signing keys across every regional cluster without downtime while the certificate authority rollover finishes overnight'.padEnd(150, ' ok').slice(0, 150).trim();
-    const r = buildPhrases([{ query: q110 }, { query: q150 }, { query: 'a '.repeat(100) + 'b' }], [], cfg, 5);
+    const r = build_phrases([{ query: q110 }, { query: q150 }, { query: 'a '.repeat(100) + 'b' }], [], cfg, 5);
     expect(r.accepted.map((a) => a.query)).toEqual([q110, q150]);
     expect(r.dropped).toEqual([{ query: 'a '.repeat(100) + 'b', reason: 'too long' }]);
   });
   it('drops a secret-shaped query with a masked note, never the text', () => {
-    const r = buildPhrases([{ query: `why does key ${token} fail on login` }], [], cfg, 5);
+    const r = build_phrases([{ query: `why does key ${token} fail on login` }], [], cfg, 5);
     expect(r.accepted).toEqual([]);
     expect(r.dropped[0]!.reason).toBe('secret');
     expect(JSON.stringify(r)).not.toContain(token);

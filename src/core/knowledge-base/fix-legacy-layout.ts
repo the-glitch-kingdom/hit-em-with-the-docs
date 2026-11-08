@@ -27,11 +27,11 @@ import matter from 'gray-matter';
 
 export interface FixLegacyLayoutOptions {
   /** Absolute vault root. */
-  vaultRoot: string;
+  vault_root: string;
   /** Project root — used for relative-path provenance rewrites. */
-  projectRoot: string;
+  repo_root: string;
   /** If true, returns the plan without writing. */
-  dryRun?: boolean;
+  dry_run?: boolean;
 }
 
 export interface MovedFolder {
@@ -45,17 +45,17 @@ export interface MovedFolder {
 
 export interface RewrittenProvenance {
   /** Absolute fact file path. */
-  factPath: string;
+  fact_path: string;
   /** Old provenance string that was replaced. */
-  oldRef: string;
+  old_ref: string;
   /** New provenance string. */
-  newRef: string;
+  new_ref: string;
 }
 
 export interface FixLegacyLayoutResult {
-  vaultRoot: string;
+  vault_root: string;
   moved: MovedFolder[];
-  rewrittenProvenance: RewrittenProvenance[];
+  rewritten_provenance: RewrittenProvenance[];
   /** Paths that LOOKED like incident folders but were ambiguous. Reported but not moved. */
   skipped: { path: string; reason: string }[];
   action: 'fixed' | 'no_op' | 'dry_run';
@@ -64,59 +64,59 @@ export interface FixLegacyLayoutResult {
 /**
  * Discover and (optionally) relocate 2.3.0-layout incident folders.
  */
-export async function fixLegacyLayout(
+export async function fix_legacy_layout(
   options: FixLegacyLayoutOptions
 ): Promise<FixLegacyLayoutResult> {
-  const { vaultRoot, projectRoot, dryRun = false } = options;
+  const { vault_root, repo_root: repo_root, dry_run = false } = options;
 
   const result: FixLegacyLayoutResult = {
-    vaultRoot,
+    vault_root,
     moved: [],
-    rewrittenProvenance: [],
+    rewritten_provenance: [],
     skipped: [],
     action: 'no_op',
   };
 
-  if (!existsSync(vaultRoot)) {
+  if (!existsSync(vault_root)) {
     return result;
   }
 
   // Walk one level deep under vaultRoot, looking for `<slug>/narrative.md`
   // entries that are NOT inside `incidents/`, `facts/`, or `symptoms/`.
   const RESERVED_DIRS = new Set(['incidents', 'facts', 'symptoms']);
-  const topLevel = await readdir(vaultRoot, { withFileTypes: true });
-  const legacyCandidates: MovedFolder[] = [];
+  const top_level = await readdir(vault_root, { withFileTypes: true });
+  const legacy_candidates: MovedFolder[] = [];
 
-  for (const entry of topLevel) {
+  for (const entry of top_level) {
     if (!entry.isDirectory()) continue;
     if (RESERVED_DIRS.has(entry.name)) continue;
 
-    const folderPath = join(vaultRoot, entry.name);
-    const narrativePath = join(folderPath, 'narrative.md');
-    if (!existsSync(narrativePath)) {
+    const folder_path = join(vault_root, entry.name);
+    const narrative_path = join(folder_path, 'narrative.md');
+    if (!existsSync(narrative_path)) {
       continue;
     }
 
     // Confirm this is genuinely an incident folder by reading the narrative
     // frontmatter — protects against false positives (e.g. user-created
     // folders that happen to contain a narrative.md from some other context).
-    const isIncident = await looksLikeIncidentFolder(narrativePath);
-    if (!isIncident) {
+    const is_incident = await is_incident_folder(narrative_path);
+    if (!is_incident) {
       result.skipped.push({
-        path: folderPath,
+        path: folder_path,
         reason: 'narrative.md present but tier is not "incident-narrative"',
       });
       continue;
     }
 
-    legacyCandidates.push({
+    legacy_candidates.push({
       slug: entry.name,
-      from: folderPath,
-      to: join(vaultRoot, 'incidents', entry.name),
+      from: folder_path,
+      to: join(vault_root, 'incidents', entry.name),
     });
   }
 
-  if (legacyCandidates.length === 0) {
+  if (legacy_candidates.length === 0) {
     return result;
   }
 
@@ -125,74 +125,74 @@ export async function fixLegacyLayout(
   //   `<rel-vault>/2026-04-23-foo/` (no `incidents/`)
   // New refs:
   //   `<rel-vault>/incidents/2026-04-23-foo/`
-  const factsDir = join(vaultRoot, 'facts');
-  const provenanceRewrites: RewrittenProvenance[] = [];
+  const facts_dir = join(vault_root, 'facts');
+  const provenance_rewrites: RewrittenProvenance[] = [];
 
-  if (existsSync(factsDir)) {
-    const factFiles = await readdir(factsDir);
-    for (const factFile of factFiles) {
-      if (!factFile.endsWith('.md')) continue;
-      if (factFile === 'INDEX.md') continue;
-      const factPath = join(factsDir, factFile);
-      const factStat = await stat(factPath);
-      if (!factStat.isFile()) continue;
+  if (existsSync(facts_dir)) {
+    const fact_files = await readdir(facts_dir);
+    for (const fact_file of fact_files) {
+      if (!fact_file.endsWith('.md')) continue;
+      if (fact_file === 'INDEX.md') continue;
+      const fact_path = join(facts_dir, fact_file);
+      const fact_stat = await stat(fact_path);
+      if (!fact_stat.isFile()) continue;
 
-      const factRaw = await readFile(factPath, 'utf-8');
-      const factParsed = matter(factRaw);
-      const provenance = factParsed.data.provenance;
+      const fact_raw = await readFile(fact_path, 'utf-8');
+      const fact_parsed = matter(fact_raw);
+      const provenance = fact_parsed.data.provenance;
       if (!Array.isArray(provenance)) continue;
 
-      let didRewrite = false;
-      const newProvenance: string[] = [];
-      for (const ref of provenance) {
-        if (typeof ref !== 'string') {
-          newProvenance.push(ref);
+      let did_rewrite = false;
+      const new_provenance: string[] = [];
+      for (const reference of provenance) {
+        if (typeof reference !== 'string') {
+          new_provenance.push(reference);
           continue;
         }
-        let rewritten = ref;
-        for (const candidate of legacyCandidates) {
+        let rewritten = reference;
+        for (const candidate of legacy_candidates) {
           // Generate possible old-ref shapes and rewrite.
           // - relative from project root: `<rel-vault>/<slug>/`
           // - bare slug + trailing slash: `<slug>/`
           // - bare slug no slash: `<slug>`
-          const relOld = `${relative(projectRoot, candidate.from)}/`;
-          const relNew = `${relative(projectRoot, candidate.to)}/`;
+          const rel_old = `${relative(repo_root, candidate.from)}/`;
+          const rel_new = `${relative(repo_root, candidate.to)}/`;
 
-          if (ref === relOld || ref === relOld.slice(0, -1)) {
-            rewritten = relNew;
+          if (reference === rel_old || reference === rel_old.slice(0, -1)) {
+            rewritten = rel_new;
             break;
           }
-          if (ref === `${candidate.slug}/` || ref === candidate.slug) {
+          if (reference === `${candidate.slug}/` || reference === candidate.slug) {
             // Bare-slug reference; rewrite to the canonical relative path.
-            rewritten = relNew;
+            rewritten = rel_new;
             break;
           }
         }
-        if (rewritten !== ref) {
-          didRewrite = true;
-          provenanceRewrites.push({
-            factPath,
-            oldRef: ref,
-            newRef: rewritten,
+        if (rewritten !== reference) {
+          did_rewrite = true;
+          provenance_rewrites.push({
+            fact_path,
+            old_ref: reference,
+            new_ref: rewritten,
           });
         }
-        newProvenance.push(rewritten);
+        new_provenance.push(rewritten);
       }
 
-      if (didRewrite && !dryRun) {
-        const newData = { ...factParsed.data, provenance: newProvenance };
-        await writeFile(factPath, matter.stringify(factParsed.content, newData), 'utf-8');
+      if (did_rewrite && !dry_run) {
+        const new_data = { ...fact_parsed.data, provenance: new_provenance };
+        await writeFile(fact_path, matter.stringify(fact_parsed.content, new_data), 'utf-8');
       }
     }
   }
 
   // Now do the actual folder moves (if not dry-run). Ensure incidents/
   // parent dir exists first.
-  if (!dryRun) {
-    const incidentsParent = join(vaultRoot, 'incidents');
-    await mkdir(incidentsParent, { recursive: true });
+  if (!dry_run) {
+    const incidents_parent = join(vault_root, 'incidents');
+    await mkdir(incidents_parent, { recursive: true });
 
-    for (const candidate of legacyCandidates) {
+    for (const candidate of legacy_candidates) {
       // Refuse to clobber an existing folder at the destination.
       if (existsSync(candidate.to)) {
         result.skipped.push({
@@ -206,7 +206,7 @@ export async function fixLegacyLayout(
     }
   } else {
     // Dry-run: report what WOULD be moved without doing it.
-    for (const candidate of legacyCandidates) {
+    for (const candidate of legacy_candidates) {
       if (existsSync(candidate.to)) {
         result.skipped.push({
           path: candidate.from,
@@ -218,19 +218,19 @@ export async function fixLegacyLayout(
     }
   }
 
-  result.rewrittenProvenance = provenanceRewrites;
-  result.action = dryRun
+  result.rewritten_provenance = provenance_rewrites;
+  result.action = dry_run
     ? 'dry_run'
-    : result.moved.length > 0 || provenanceRewrites.length > 0
+    : result.moved.length > 0 || provenance_rewrites.length > 0
       ? 'fixed'
       : 'no_op';
 
   return result;
 }
 
-async function looksLikeIncidentFolder(narrativePath: string): Promise<boolean> {
+async function is_incident_folder(narrative_path: string): Promise<boolean> {
   try {
-    const content = await readFile(narrativePath, 'utf-8');
+    const content = await readFile(narrative_path, 'utf-8');
     const { data } = matter(content);
     return data.tier === 'incident-narrative';
   } catch {

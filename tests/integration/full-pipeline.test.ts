@@ -19,34 +19,34 @@ import { existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 
-import { migrateIncident } from '../../src/core/knowledge-base/migrate.js';
-import { extractFacts } from '../../src/core/knowledge-base/extract.js';
-import { cite } from '../../src/core/knowledge-base/cite.js';
-import { auditFacts } from '../../src/core/knowledge-base/audit.js';
+import { migrate_incident } from '../../src/core/knowledge-base/migrate.js';
+import { extract_facts } from '../../src/core/knowledge-base/extract.js';
+import { add_citation } from '../../src/core/knowledge-base/cite.js';
+import { check_facts } from '../../src/core/knowledge-base/audit.js';
 import {
-  buildCiterIndex,
-  findCitersInIndex,
+  build_citer_index,
+  find_citers_in_index,
 } from '../../src/core/knowledge-base/citers.js';
 
 describe('Full KB pipeline integration (2.3.0)', () => {
-  let tmpProject: string;
-  let vaultRoot: string;
-  let legacyIncidentPath: string;
-  let playbookPath: string;
+  let tmp_project: string;
+  let vault_root: string;
+  let legacy_incident_path: string;
+  let playbook_path: string;
 
   beforeEach(async () => {
-    tmpProject = await mkdtemp(join(tmpdir(), 'hewtd-pipeline-'));
-    vaultRoot = join(tmpProject, '.documentation/knowledge-base');
+    tmp_project = await mkdtemp(join(tmpdir(), 'hewtd-pipeline-'));
+    vault_root = join(tmp_project, '.documentation/knowledge-base');
 
     // Set up the vault structure
-    await mkdir(join(vaultRoot, 'facts'), { recursive: true });
-    await mkdir(join(vaultRoot, 'incidents'), { recursive: true });
+    await mkdir(join(vault_root, 'facts'), { recursive: true });
+    await mkdir(join(vault_root, 'incidents'), { recursive: true });
 
     // Legacy flat-file incident already under incidents/ — common shape for
     // users mid-migration to the folder convention.
-    legacyIncidentPath = join(vaultRoot, 'incidents', '2026-05-14-vault-alloy-stuck.md');
+    legacy_incident_path = join(vault_root, 'incidents', '2026-05-14-vault-alloy-stuck.md');
     await writeFile(
-      legacyIncidentPath,
+      legacy_incident_path,
       `---
 title: Vault Down on Auth-Staging
 domains: [incidents, observability]
@@ -78,10 +78,10 @@ Alloy reads env at entrypoint only.
     );
 
     // Set up an existing playbook
-    playbookPath = join(tmpProject, '.documentation/devops/grafana-runbook.md');
-    await mkdir(join(tmpProject, '.documentation/devops'), { recursive: true });
+    playbook_path = join(tmp_project, '.documentation/devops/grafana-runbook.md');
+    await mkdir(join(tmp_project, '.documentation/devops'), { recursive: true });
     await writeFile(
-      playbookPath,
+      playbook_path,
       `---
 title: Grafana Runbook
 tier: admin
@@ -104,28 +104,28 @@ version: '1.0.0'
   });
 
   afterEach(async () => {
-    await rm(tmpProject, { recursive: true, force: true });
+    await rm(tmp_project, { recursive: true, force: true });
   });
 
   it('runs the full pipeline end-to-end', async () => {
     // === Step 1: migrate-incident ===
-    const migration = await migrateIncident({ flatFilePath: legacyIncidentPath, vaultRoot });
+    const migration = await migrate_incident({ flat_file_path: legacy_incident_path, vault_root });
     expect(migration.action).toBe('migrated');
 
-    const incidentFolder = migration.targetFolder;
-    expect(existsSync(join(incidentFolder, 'narrative.md'))).toBe(true);
-    expect(existsSync(join(incidentFolder, 'facts.md'))).toBe(true);
-    expect(existsSync(join(incidentFolder, 'evidence'))).toBe(true);
+    const incident_folder = migration.target_folder;
+    expect(existsSync(join(incident_folder, 'narrative.md'))).toBe(true);
+    expect(existsSync(join(incident_folder, 'facts.md'))).toBe(true);
+    expect(existsSync(join(incident_folder, 'evidence'))).toBe(true);
 
     // Original file renamed for rollback
-    expect(existsSync(`${legacyIncidentPath}.migrated`)).toBe(true);
-    expect(existsSync(legacyIncidentPath)).toBe(false);
+    expect(existsSync(`${legacy_incident_path}.migrated`)).toBe(true);
+    expect(existsSync(legacy_incident_path)).toBe(false);
 
     // === Step 2: extract-facts (writer side) ===
-    const extraction = await extractFacts({
-      incidentFolder,
-      vaultRoot,
-      projectRoot: tmpProject,
+    const extraction = await extract_facts({
+      incident_folder,
+      vault_root,
+      repo_root: tmp_project,
       accept: [
         {
           id: 'alloy-env-set-at-entrypoint-only',
@@ -139,63 +139,63 @@ version: '1.0.0'
       ],
     });
 
-    expect(extraction.extractedFacts).toHaveLength(1);
-    expect(extraction.extractedFacts[0]!.action).toBe('created');
-    expect(extraction.factsMdUpdated).toBe(true);
+    expect(extraction.extracted_facts).toHaveLength(1);
+    expect(extraction.extracted_facts[0]!.action).toBe('created');
+    expect(extraction.facts_md_updated).toBe(true);
 
     // The facts.md `produced:` list now includes the new fact
-    const factsMd = await readFile(join(incidentFolder, 'facts.md'), 'utf-8');
-    expect(factsMd).toContain('alloy-env-set-at-entrypoint-only');
+    const facts_md = await readFile(join(incident_folder, 'facts.md'), 'utf-8');
+    expect(facts_md).toContain('alloy-env-set-at-entrypoint-only');
 
     // === Step 3: cite (enrich the playbook) ===
-    const citation = await cite({
-      playbookPath,
-      factId: 'alloy-env-set-at-entrypoint-only',
+    const citation = await add_citation({
+      playbook_path,
+      fact_id: 'alloy-env-set-at-entrypoint-only',
     });
 
     // The playbook had no symptoms: block, so cite created one
     expect(citation.action).toBe('created_block');
 
-    const playbookAfter = await readFile(playbookPath, 'utf-8');
-    expect(playbookAfter).toContain('symptoms:');
-    expect(playbookAfter).toContain('alloy-env-set-at-entrypoint-only');
+    const playbook_after = await readFile(playbook_path, 'utf-8');
+    expect(playbook_after).toContain('symptoms:');
+    expect(playbook_after).toContain('alloy-env-set-at-entrypoint-only');
 
     // === Step 4: audit-facts (clean — fact was just verified) ===
-    const index = await buildCiterIndex({
-      projectRoot: tmpProject,
-      vaultRoot,
-      playbookGlobs: [resolve(tmpProject, '.documentation/**/*.md')],
+    const index = await build_citer_index({
+      repo_root: tmp_project,
+      vault_root,
+      playbook_globs: [resolve(tmp_project, '.documentation/**/*.md')],
     });
 
     expect(index.facts.size).toBe(1);
     expect(index.incidents.size).toBe(1);
 
-    const audit = auditFacts({
+    const audit = check_facts({
       index,
       now: new Date(), // today
-      auditWindowDays: 90,
+      audit_window_days: 90,
     });
     expect(audit.stale).toEqual([]); // fact just created with today's last_verified
 
     // === Step 5: find-citers ===
-    const citers = findCitersInIndex(index, 'alloy-env-set-at-entrypoint-only');
+    const citers = find_citers_in_index(index, 'alloy-env-set-at-entrypoint-only');
     expect(citers.fact_exists).toBe(true);
     // Note: the playbook's symptoms block was auto-created with TODO placeholders,
     // so it cites the fact and shows up as a citer.
     expect(citers.citers.length).toBeGreaterThan(0);
-    expect(citers.incidents_produced_in).toContain(migration.targetFolder.split('/').pop()!);
+    expect(citers.incidents_produced_in).toContain(migration.target_folder.split('/').pop()!);
   });
 
   it('re-running each step is idempotent', async () => {
     // Migrate twice
-    await migrateIncident({ flatFilePath: legacyIncidentPath, vaultRoot });
+    await migrate_incident({ flat_file_path: legacy_incident_path, vault_root });
     // Plant a stale flat file (simulating user re-running by mistake)
-    await writeFile(legacyIncidentPath, '---\ntitle: Stale\n---\n# Stale\n', 'utf-8');
-    const second = await migrateIncident({ flatFilePath: legacyIncidentPath, vaultRoot });
+    await writeFile(legacy_incident_path, '---\ntitle: Stale\n---\n# Stale\n', 'utf-8');
+    const second = await migrate_incident({ flat_file_path: legacy_incident_path, vault_root });
     expect(second.action).toBe('already_migrated');
 
     // Extract the same fact twice
-    const incidentFolder = second.targetFolder;
+    const incident_folder = second.target_folder;
     const accept = [
       {
         id: 'test-fact',
@@ -204,13 +204,13 @@ version: '1.0.0'
         claim: 'A claim.',
       },
     ];
-    await extractFacts({ incidentFolder, vaultRoot, projectRoot: tmpProject, accept });
-    const secondExtract = await extractFacts({
-      incidentFolder,
-      vaultRoot,
-      projectRoot: tmpProject,
+    await extract_facts({ incident_folder, vault_root, repo_root: tmp_project, accept });
+    const second_extract = await extract_facts({
+      incident_folder,
+      vault_root,
+      repo_root: tmp_project,
       accept,
     });
-    expect(secondExtract.extractedFacts[0]!.action).toBe('already_exists');
+    expect(second_extract.extracted_facts[0]!.action).toBe('already_exists');
   });
 });

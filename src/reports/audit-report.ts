@@ -1,12 +1,12 @@
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
-import { resolveReportsDir } from '../utils/config.js';
-import { pathExists } from '../utils/glob.js';
-import { formatDate } from '../core/metadata/generator.js';
+import { resolve_reports_dir } from '../utils/config.js';
+import { is_path_present } from '../utils/glob.js';
+import { format_date } from '../core/metadata/generator.js';
 import type { AuditResult } from '../core/audit/auditor.js';
 
 export interface AuditReportOptions {
-  docsPath: string;
+  docs_root: string;
   result: AuditResult;
   format?: 'markdown' | 'json';
 }
@@ -14,35 +14,35 @@ export interface AuditReportOptions {
 /**
  * Generate an audit report
  */
-export async function generateAuditReport(
+export async function generate_audit_report(
   options: AuditReportOptions
 ): Promise<string> {
   const { result, format = 'markdown' } = options;
 
   if (format === 'json') {
-    return generateJsonReport(result);
+    return generate_json_report(result);
   }
 
-  return generateMarkdownReport(result);
+  return generate_markdown_report(result);
 }
 
 /**
  * Generate markdown audit report
  */
-function generateMarkdownReport(result: AuditResult): string {
-  const now = formatDate(new Date());
+function generate_markdown_report(result: AuditResult): string {
+  const today = format_date(new Date());
   const timestamp = new Date().toISOString();
 
-  const errorIssues = result.issues.filter((i) => i.severity === 'error');
-  const warningIssues = result.issues.filter((i) => i.severity === 'warning');
-  const infoIssues = result.issues.filter((i) => i.severity === 'info');
+  const error_issues = result.issues.filter((i) => i.severity === 'error');
+  const warning_issues = result.issues.filter((i) => i.severity === 'warning');
+  const info_issues = result.issues.filter((i) => i.severity === 'info');
 
   let content = `---
 title: Documentation Audit Report
 tier: admin
 domains: [root]
 status: active
-last_updated: '${now}'
+last_updated: '${today}'
 version: '1.0.0'
 generated: true
 ---
@@ -50,18 +50,18 @@ generated: true
 # Documentation Audit Report
 
 **Generated:** ${timestamp}
-**Health Score:** ${result.healthScore.toFixed(1)}/100
+**Health Score:** ${result.health_score.toFixed(1)}/100
 
 ## Summary
 
 | Metric | Value |
 |--------|-------|
-| Total Files | ${result.totalFiles} |
-| Passed | ${result.passedFiles} |
-| Failed | ${result.failedFiles} |
-| Errors | ${errorIssues.length} |
-| Warnings | ${warningIssues.length} |
-| Info | ${infoIssues.length} |
+| Total Files | ${result.total_files} |
+| Passed | ${result.passed_files} |
+| Failed | ${result.failed_files} |
+| Errors | ${error_issues.length} |
+| Warnings | ${warning_issues.length} |
+| Info | ${info_issues.length} |
 
 ## Compliance Scores
 
@@ -88,40 +88,40 @@ generated: true
   }
 
   // Critical Issues
-  if (errorIssues.length > 0) {
-    content += `## Critical Issues (${errorIssues.length})
+  if (error_issues.length > 0) {
+    content += `## Critical Issues (${error_issues.length})
 
 | File | Rule | Message |
 |------|------|---------|
 `;
-    for (const issue of errorIssues) {
+    for (const issue of error_issues) {
       content += `| ${issue.file} | ${issue.rule} | ${issue.message} |\n`;
     }
     content += '\n';
   }
 
   // Warnings
-  if (warningIssues.length > 0) {
-    content += `## Warnings (${warningIssues.length})
+  if (warning_issues.length > 0) {
+    content += `## Warnings (${warning_issues.length})
 
 | File | Rule | Message |
 |------|------|---------|
 `;
-    for (const issue of warningIssues.slice(0, 20)) {
+    for (const issue of warning_issues.slice(0, 20)) {
       content += `| ${issue.file} | ${issue.rule} | ${issue.message} |\n`;
     }
-    if (warningIssues.length > 20) {
-      content += `\n*...and ${warningIssues.length - 20} more warnings*\n`;
+    if (warning_issues.length > 20) {
+      content += `\n*...and ${warning_issues.length - 20} more warnings*\n`;
     }
     content += '\n';
   }
 
   // Fixable Issues
-  const fixableIssues = result.issues.filter((i) => i.fixable);
-  if (fixableIssues.length > 0) {
+  const fixable_issues = result.issues.filter((i) => i.fixable);
+  if (fixable_issues.length > 0) {
     content += `## Fixable Issues
 
-${fixableIssues.length} issues can be auto-fixed. Run:
+${fixable_issues.length} issues can be auto-fixed. Run:
 
 \`\`\`bash
 npx hit-em-with-the-docs maintain --fix
@@ -141,14 +141,14 @@ npx hit-em-with-the-docs maintain --fix
 /**
  * Generate JSON audit report
  */
-function generateJsonReport(result: AuditResult): string {
+function generate_json_report(result: AuditResult): string {
   return JSON.stringify({
     timestamp: new Date().toISOString(),
-    healthScore: result.healthScore,
+    healthScore: result.health_score,
     summary: {
-      totalFiles: result.totalFiles,
-      passedFiles: result.passedFiles,
-      failedFiles: result.failedFiles,
+      totalFiles: result.total_files,
+      passedFiles: result.passed_files,
+      failedFiles: result.failed_files,
       totalIssues: result.issues.length,
     },
     stats: result.stats,
@@ -159,24 +159,24 @@ function generateJsonReport(result: AuditResult): string {
 /**
  * Save audit report to file
  */
-export async function saveAuditReport(
-  docsPath: string,
+export async function write_audit_report(
+  docs_root: string,
   result: AuditResult,
   format: 'markdown' | 'json' = 'markdown'
 ): Promise<string> {
-  const reportsDir = await resolveReportsDir(docsPath);
+  const reports_dir = await resolve_reports_dir(docs_root);
 
-  if (!(await pathExists(reportsDir))) {
-    await mkdir(reportsDir, { recursive: true });
+  if (!(await is_path_present(reports_dir))) {
+    await mkdir(reports_dir, { recursive: true });
   }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const ext = format === 'json' ? 'json' : 'md';
-  const fileName = `audit-${timestamp}.${ext}`;
-  const filePath = join(reportsDir, fileName);
+  const extension = format === 'json' ? 'json' : 'md';
+  const file_name = `audit-${timestamp}.${extension}`;
+  const file_path = join(reports_dir, file_name);
 
-  const content = await generateAuditReport({ docsPath, result, format });
-  await writeFile(filePath, content, 'utf-8');
+  const content = await generate_audit_report({ docs_root: docs_root, result, format });
+  await writeFile(file_path, content, 'utf-8');
 
-  return filePath;
+  return file_path;
 }

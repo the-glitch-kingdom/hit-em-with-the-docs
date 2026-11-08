@@ -1,10 +1,10 @@
 import { type Domain } from '../core/domains/constants.js';
 import {
-  getAllDomains,
-  getDomainDefinition,
-  getDomainsByCategory,
+  get_all_domains,
+  get_domain_definition,
+  get_domains_by_category,
 } from '../core/domains/registry.js';
-import { formatDate } from '../core/metadata/generator.js';
+import { format_date } from '../core/metadata/generator.js';
 import type { IndexEntry } from './index-generator.js';
 
 const COMMON_TASKS: [string, Domain][] = [
@@ -20,18 +20,18 @@ const COMMON_TASKS: [string, Domain][] = [
 /**
  * Generate the root REGISTRY.md content (quick reference)
  */
-export function generateRootRegistry(
+export function generate_root_registry(
   /** Domains whose folder exists — only these are linked (#45). */
-  present: Domain[] = getAllDomains()
+  present: Domain[] = get_all_domains()
 ): string {
-  const now = formatDate(new Date());
+  const today = format_date(new Date());
 
   let content = `---
 title: Documentation Registry
 tier: reference
 domains: [root]
 status: active
-last_updated: '${now}'
+last_updated: '${today}'
 version: '1.0.0'
 generated: true
 purpose: Quick reference for all documentation domains
@@ -48,9 +48,9 @@ purpose: Quick reference for all documentation domains
 `;
 
   for (const domain of present) {
-    const def = getDomainDefinition(domain);
-    const keywords = def.keywords.slice(0, 3).join(', ');
-    content += `| [${def.name}](${domain}/) | ${def.category} | ${def.loadPriority}/10 | ${keywords} |\n`;
+    const definition = get_domain_definition(domain);
+    const keywords = definition.keywords.slice(0, 3).join(', ');
+    content += `| [${definition.name}](${domain}/) | ${definition.category} | ${definition.loadPriority}/10 | ${keywords} |\n`;
   }
 
   content += `\n## By Category\n\n`;
@@ -59,14 +59,14 @@ purpose: Quick reference for all documentation domains
   const categories = ['core', 'development', 'features', 'advanced'] as const;
 
   for (const category of categories) {
-    const categoryDomains = getDomainsByCategory(category).filter((d) => present.includes(d));
-    if (categoryDomains.length === 0) continue;
+    const category_domains = get_domains_by_category(category).filter((doc) => present.includes(doc));
+    if (category_domains.length === 0) continue;
 
-    content += `### ${capitalize(category)}\n\n`;
+    content += `### ${format_capitalized(category)}\n\n`;
 
-    for (const domain of categoryDomains) {
-      const def = getDomainDefinition(domain);
-      content += `- **[${def.name}](${domain}/)** - ${def.description}\n`;
+    for (const domain of category_domains) {
+      const definition = get_domain_definition(domain);
+      content += `- **[${definition.name}](${domain}/)** - ${definition.description}\n`;
     }
     content += `\n`;
   }
@@ -82,7 +82,7 @@ purpose: Quick reference for all documentation domains
   }
 
   content += `\n---\n\n`;
-  content += `*Last updated: ${now}*\n`;
+  content += `*Last updated: ${today}*\n`;
 
   return content;
 }
@@ -90,68 +90,68 @@ purpose: Quick reference for all documentation domains
 /**
  * Generate domain-specific REGISTRY.md content
  */
-export function generateDomainRegistryContent(
+export function generate_domain_registry_content(
   domain: Domain,
   entries: IndexEntry[] = []
 ): string {
-  const def = getDomainDefinition(domain);
-  const now = formatDate(new Date());
+  const definition = get_domain_definition(domain);
+  const today = format_date(new Date());
 
   let content = `---
-title: ${def.name} Registry
+title: ${definition.name} Registry
 tier: reference
 domains: [${domain}]
 status: active
-last_updated: '${now}'
+last_updated: '${today}'
 version: '1.0.0'
 generated: true
 purpose: Quick reference for ${domain} documentation
 ---
 
-# ${def.name} Registry
+# ${definition.name} Registry
 
-> Quick reference for ${def.description.toLowerCase()}.
+> Quick reference for ${definition.description.toLowerCase()}.
 
 ## At a Glance
 
 | Metric | Value |
 |--------|-------|
 | Documents | ${entries.length} |
-| Category | ${def.category} |
-| Load Priority | ${def.loadPriority}/10 |
+| Category | ${definition.category} |
+| Load Priority | ${definition.loadPriority}/10 |
 
 `;
 
   if (entries.length > 0) {
     // Quick links to most important docs
-    const activeEntries = entries.filter((e) => e.status === 'active');
-    const recentEntries = [...entries]
-      .sort((a, b) => b.lastUpdated.localeCompare(a.lastUpdated))
+    const active_entries = entries.filter((entry) => entry.status === 'active');
+    const recent_entries = [...entries]
+      .sort((a, b) => b.last_updated.localeCompare(a.last_updated))
       .slice(0, 5);
 
-    if (activeEntries.length > 0) {
+    if (active_entries.length > 0) {
       content += `## Active Documents\n\n`;
-      for (const entry of activeEntries.slice(0, 10)) {
+      for (const entry of active_entries.slice(0, 10)) {
         content += `- [${entry.title}](${entry.path})\n`;
       }
       content += `\n`;
     }
 
-    if (recentEntries.length > 0) {
+    if (recent_entries.length > 0) {
       content += `## Recently Updated\n\n`;
-      for (const entry of recentEntries) {
-        content += `- [${entry.title}](${entry.path}) - ${entry.lastUpdated}\n`;
+      for (const entry of recent_entries) {
+        content += `- [${entry.title}](${entry.path}) - ${entry.last_updated}\n`;
       }
       content += `\n`;
     }
 
     // By status
     content += `## By Status\n\n`;
-    const byStatus = groupByStatus(entries);
+    const by_status = group_by_status(entries);
     content += `| Status | Count |\n`;
     content += `|--------|-------|\n`;
-    for (const [status, statusEntries] of Object.entries(byStatus)) {
-      content += `| ${status} | ${statusEntries.length} |\n`;
+    for (const [status, status_entries] of Object.entries(by_status)) {
+      content += `| ${status} | ${status_entries.length} |\n`;
     }
     content += `\n`;
   } else {
@@ -161,7 +161,7 @@ purpose: Quick reference for ${domain} documentation
 
   // Keywords
   content += `## Keywords\n\n`;
-  content += `\`${def.keywords.join('` `')}\`\n\n`;
+  content += `\`${definition.keywords.join('` `')}\`\n\n`;
 
   // See also
   content += `## See Also\n\n`;
@@ -169,7 +169,7 @@ purpose: Quick reference for ${domain} documentation
   content += `- [Root Index](../INDEX.md) - All domains\n`;
 
   content += `\n---\n\n`;
-  content += `*Last updated: ${now}*\n`;
+  content += `*Last updated: ${today}*\n`;
 
   return content;
 }
@@ -177,7 +177,7 @@ purpose: Quick reference for ${domain} documentation
 /**
  * Group entries by status
  */
-function groupByStatus(entries: IndexEntry[]): Record<string, IndexEntry[]> {
+function group_by_status(entries: IndexEntry[]): Record<string, IndexEntry[]> {
   const grouped: Record<string, IndexEntry[]> = {
     active: [],
     draft: [],
@@ -198,6 +198,6 @@ function groupByStatus(entries: IndexEntry[]): Record<string, IndexEntry[]> {
 /**
  * Capitalize first letter
  */
-function capitalize(str: string): string {
-  return str.charAt(0).toUpperCase() + str.slice(1);
+function format_capitalized(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }

@@ -52,15 +52,18 @@ Limits of the data: `points_to.from` is always `null` (the ledger records only t
 
 | Verdict | Source |
 |---|---|
-| `verified` | Ledger verdict `verify` with a matching content hash, or triage lane `clean`. |
+| `verified` | Triage lane `clean` (attributed and every ref resolves), or ledger verdict `verify` with a matching content hash and no pointer target or overview member changed since. |
 | `fields-only` | Refs resolve and the doc is attributed; only `purpose`/`symptoms` are missing. |
 | `check` | Lane `check`: unattributed, or a reference is missing. |
 | `stale` | Lane `check` whose only reason is code changed since the doc's last body change. |
 | `archive-candidate` | Most checkable refs are missing. |
 | `secret` | Holds a credential; blocked until sanitized. |
-| `unreviewed` | Reserved. Every in-tree doc is triaged, so hewtd never emits it today. |
+| `unreviewed` | The doc has never been through `/reconcile` (no ledger entry) and is not `clean`, `secret` or `archive-candidate`. Its `refs` still show what is missing. |
 
-Every doc gets exactly one verdict. Consumers should still accept `unreviewed`.
+Every doc gets exactly one verdict, checked in this order: `secret`, `archive-candidate`,
+`verified` from lane `clean`, `unreviewed`, then the reconcile state. The export reads
+the reconcile ledger but never writes it, and `--dry-run` writes neither the graph nor
+the body-date cache.
 
 ## Troubleshooting
 

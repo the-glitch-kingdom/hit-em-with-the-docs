@@ -82,3 +82,45 @@ describe('buildGraph', () => {
     expect(a.indexOf('"docs"')).toBeLessThan(a.indexOf('"source_commit"'));
   });
 });
+
+describe('buildGraph review fixes', () => {
+  let d2: string;
+  let docs2: string;
+  const put2 = (rel: string, body: string, base = docs2) => { mkdirSync(join(base, rel, '..'), { recursive: true }); writeFileSync(join(base, rel), body); };
+  const OWNER = '---\ntitle: Deploy\n---\n# Deploy\n\n## Release\n\nRun `deploy.sh --canary` and wait 30 minutes.\n';
+  const POINTING = fm() + 'Release: canary first. Details: [Deploy: Release](../ops/deploy.md#release)\n';
+  beforeAll(() => {
+    d2 = mkdtempSync(join(tmpdir(), 'graph2-'));
+    docs2 = join(d2, '.documentation');
+    execFileSync('git', ['init', '-q'], { cwd: d2 });
+    put2('src/a.ts', 'export function widgetRetry() {}\n', d2);
+    put2('ops/deploy.md', OWNER);
+    put2('guides/pointing.md', POINTING);
+    put2('guides/never.md', '---\ntitle: Never reconciled\n---\nSee `src/a.ts` and `src/gone.ts`.\n');
+    put2('.hewtd/reconcile.json', JSON.stringify({ version: 1, entries: {
+      'guides/pointing.md': { path: 'guides/pointing.md', lane: 'clean', verdict: 'verify', content_hash: hashContent(POINTING), pointer: { target: 'ops/deploy.md#release', section_hash: 'hash-of-an-older-section' } },
+    } }), d2);
+    execFileSync('git', ['add', '-A'], { cwd: d2 });
+    execFileSync('git', ['commit', '-qm', 'init'], { cwd: d2 });
+  });
+  afterAll(() => rmSync(d2, { recursive: true, force: true }));
+
+  it('a verified doc whose pointer target changed is not reported verified', async () => {
+    const g = await buildGraph({ root: d2, docsPath: docs2, config: await loadPluginConfig(d2) });
+    expect(g.docs['guides/pointing.md']!.verdict).toBe('check');
+  });
+
+  it('a doc never through reconcile is unreviewed; the ledger file is not modified', async () => {
+    const before = execFileSync('cat', [join(d2, '.hewtd/reconcile.json')], { encoding: 'utf-8' });
+    const g = await buildGraph({ root: d2, docsPath: docs2, config: await loadPluginConfig(d2) });
+    expect(g.docs['guides/never.md']!.verdict).toBe('unreviewed');
+    expect(g.docs['guides/never.md']!.refs).toContainEqual({ kind: 'file', target: 'src/gone.ts', resolved: false });
+    expect(execFileSync('cat', [join(d2, '.hewtd/reconcile.json')], { encoding: 'utf-8' })).toBe(before);
+  });
+
+  it('dry-run does not write the cache', async () => {
+    rmSync(join(d2, '.hewtd/graph-cache.json'), { force: true });
+    await buildGraph({ root: d2, docsPath: docs2, config: await loadPluginConfig(d2), dryRun: true });
+    expect(execFileSync('ls', ['-a', join(d2, '.hewtd')], { encoding: 'utf-8' })).not.toContain('graph-cache.json');
+  });
+});

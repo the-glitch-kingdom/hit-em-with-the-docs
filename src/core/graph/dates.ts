@@ -44,7 +44,8 @@ interface Cache { head: string; docs: Record<string, { hash: string; body_change
  */
 export function bodyChangedDates(
   repoRoot: string,
-  docs: Array<{ path: string; content: string }>
+  docs: Array<{ path: string; content: string }>,
+  opts: { persist?: boolean } = {}
 ): { dates: Map<string, string | null>; walked: number } {
   const dates = new Map<string, string | null>();
   let head: string;
@@ -73,7 +74,7 @@ export function bodyChangedDates(
     next.docs[d.path] = hit;
     dates.set(d.path, hit.body_changed);
   }
-  try {
+  if (opts.persist !== false) try {
     mkdirSync(dirname(join(repoRoot, CACHE)), { recursive: true });
     writeFileSync(join(repoRoot, CACHE), JSON.stringify(next));
   } catch { /* cache is best effort */ }

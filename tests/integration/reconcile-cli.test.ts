@@ -14,7 +14,8 @@ const g = (...a: string[]) =>
 const hewtd = (args: string[], cwd = root) => spawnSync('node', [CLI, ...args], { cwd, encoding: 'utf8' });
 const put = (rel: string, text: string) => { mkdirSync(join(root, rel, '..'), { recursive: true }); writeFileSync(join(root, rel), text); };
 const fm = (title: string, extra = '') => `---\ntitle: ${title}\ndomains:\n  - backend\n${extra}---\n\n# ${title}\n\nBody of ${title}.\n`;
-const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+// hewtd stamps dates in UTC (formatDate), so the expectation must too, or the test fails in the evening west of UTC.
+const today = () => new Date().toISOString().slice(0, 10);
 const sha = (): string => g('rev-parse', 'HEAD');
 const tree = (): string => g('ls-files', '-s') + readdirSync(docs, { recursive: true } as never).join(',');
 const triageJson = (...a: string[]) => JSON.parse(hewtd(['reconcile', ...a, '--json']).stdout);

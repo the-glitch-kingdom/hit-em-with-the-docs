@@ -17,18 +17,20 @@ const posix = (p: string): string => p.split('\\').join('/');
 const cmp = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 const KIND: Record<string, GraphRefKind> = { path: 'file', 'doc-link': 'doc' };
 
-function verdictOf(d: TriageDoc, ledgerVerified: boolean): GraphVerdict {
+function verdictOf(d: TriageDoc, ledgerVerified: boolean, inLedger: boolean): GraphVerdict {
   if (d.lane === 'secret') return 'secret';
   if (d.lane === 'archive-candidate') return 'archive-candidate';
+  if (d.lane === 'clean') return 'verified'; // attributed (sources + last_verified) and every ref resolves
+  // Never through reconcile: say so instead of guessing check/fields-only (refs still carry resolved:false).
+  if (!inLedger) return 'unreviewed';
   // a pointer or overview member that changed drops the verdict, as in triage
   if (ledgerVerified && !d.reasons.some((r) => /^(member changed|pointer target changed)/.test(r))) return 'verified';
-  if (d.lane === 'clean') return 'verified';
   if (d.lane === 'fields-only') return 'fields-only';
   const onlyStale = d.reasons.length > 0 && d.reasons.every((r) => /commits to cited files/.test(r)) && (d.staleCommits ?? 0) >= STALE_COMMITS_BAR;
   return onlyStale ? 'stale' : 'check';
 }
 
-export async function buildGraph(opts: { root: string; docsPath: string; config: PluginConfig }): Promise<GraphV1> {
+export async function buildGraph(opts: { root: string; docsPath: string; config: PluginConfig; dryRun?: boolean }): Promise<GraphV1> {
   const { root, docsPath, config } = opts;
   const repo = gitRoot(docsPath) ?? root;
   const rels = (await mdFiles(docsPath)).map((f) => posix(relative(docsPath, f))).filter((r) => !r.startsWith('drafts/') && !r.includes('/drafts/')).sort(cmp);
@@ -40,9 +42,9 @@ export async function buildGraph(opts: { root: string; docsPath: string; config:
     raws.set(r, { raw, data });
   }
   const kept = [...raws.keys()];
-  const triaged = new Map((await resolveDocs({ root, docsPath, rels: kept, config })).map((d) => [d.path, d]));
   const ledger = await loadLedger(resolve(root, config.reconcile.ledger_path));
-  const body = bodyChangedDates(repo, kept.map((r) => ({ path: posix(relative(repo, join(docsPath, r))), content: raws.get(r)!.raw })));
+  const triaged = new Map((await resolveDocs({ root, docsPath, rels: kept, config, ledger })).map((d) => [d.path, d]));
+  const body = bodyChangedDates(repo, kept.map((r) => ({ path: posix(relative(repo, join(docsPath, r))), content: raws.get(r)!.raw })), { persist: !opts.dryRun });
 
   const own = lastChanged(repo);
   const sibs = new Map(config.reconcile.related_repos.map((r) => [r.name, lastChanged(resolve(root, r.path))]));
@@ -84,7 +86,7 @@ export async function buildGraph(opts: { root: string; docsPath: string; config:
     const docRepoPath = posix(relative(repo, join(docsPath, rel)));
     docs[rel] = {
       body_changed: body.dates.get(docRepoPath) ?? null,
-      verdict: verdictOf(t, led?.verdict === 'verify' && led.content_hash === hashContent(raws.get(rel)!.raw)),
+      verdict: verdictOf(t, led?.verdict === 'verify' && led.content_hash === hashContent(raws.get(rel)!.raw), !!led),
       last_verified: typeof lv === 'string' ? lv : lv instanceof Date ? lv.toISOString().slice(0, 10) : null,
       refs: [...refs.values()].sort((a, b) => cmp(a.kind, b.kind) || cmp(a.target, b.target)),
       owner_of: [],

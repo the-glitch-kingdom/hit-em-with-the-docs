@@ -387,8 +387,10 @@ export async function triage(opts: {
 }
 
 /** Read-only resolution of some docs for the graph export: no ledger, no dirty-tree check (that lives in the CLI). */
-export async function resolveDocs(opts: { root: string; docsPath: string; rels: string[]; config: PluginConfig }): Promise<TriageDoc[]> {
-  return (await triage(opts)).docs;
+export async function resolveDocs(opts: { root: string; docsPath: string; rels: string[]; config: PluginConfig; ledger?: Ledger }): Promise<TriageDoc[]> {
+  // A copy, so the ledger-driven reasons (pointer target / member changed) fire without recording anything.
+  const { ledger, ...rest } = opts;
+  return (await triage({ ...rest, ...(ledger && { ledger: structuredClone(ledger) }) })).docs;
 }
 
 /**

@@ -1159,6 +1159,7 @@ program
   .option('--overview <question>', 'Propose a cross-domain member list for a flow or question; writes only .hewtd/reconcile/overview-<slug>.json. With --write-review: the members file to turn into an overview review skeleton', undefined)
   .option('--limit <n>', 'With --overview: member cap (default 12)')
   .option('--apply <files...>', 'Apply the accepted entries of review files (serial, one commit per batch)')
+  .option('--gaps <file>', 'Classify missed search queries (gaps.v1 file or one question per line) into user_phrase proposals, new-doc candidates and open questions; writes only .hewtd/reconcile/gaps-report-<date>.md', undefined)
   .action(async (scope: string[], options) => {
     const { loadPluginConfig } = await import('../utils/config.js');
     const { loadLedger, ledgerStatus, hashContent } = await import('../core/reconcile/ledger.js');
@@ -1210,6 +1211,25 @@ program
         for (const f of found) logger.info(`  [${f.kind}] ${f.rule} ${f.file}:${f.line} ${f.masked} (${f.fingerprint.slice(0, 12)})`);
         logger.info(`  ${found.length} finding(s)`);
         logger.info(`  report with next steps: ${reportFile}`);
+      } catch (e) {
+        logger.error((e as Error).message);
+        process.exitCode = 1;
+      }
+      return;
+    }
+    if (options.gaps) {
+      try {
+        const { readFile } = await import('fs/promises');
+        const { parseGaps, classifyGaps } = await import('../core/reconcile/gaps.js');
+        const { renderGapsReport, writeGapsReport } = await import('../core/reconcile/gaps-report.js');
+        const read = parseGaps(await readFile(resolve(process.cwd(), options.gaps), 'utf-8'), { docsRoot: docsPath, repoRoot: root });
+        const res = await classifyGaps(read.gaps, { root, docsRoot: docsPath, config });
+        const reportFile = relative(root, await writeGapsReport(root, renderGapsReport(res, config.reconcile.secrets)));
+        if (options.json) { console.log(JSON.stringify({ ...res, errors: read.errors, report: reportFile }, null, 2)); return; }
+        logger.header('hewtd reconcile --gaps');
+        for (const e of read.errors) logger.warn(`  ${e}`);
+        logger.info(`  ${res.proposals.length} doc(s) with phrase proposals (${res.proposals.reduce((n, p) => n + p.accepted.length, 0)} phrases), ${res.candidates.length} new-doc candidate(s), ${res.questions.length} open question(s), ${res.dropped.length} dropped`);
+        logger.info(`  report: ${reportFile}`);
       } catch (e) {
         logger.error((e as Error).message);
         process.exitCode = 1;

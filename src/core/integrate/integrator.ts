@@ -262,7 +262,7 @@ export async function integrateDocument(
  * mention), appended after any hand-written entries until `integrate.sources_max` is reached.
  * Best effort: outside a git repo there is nothing to resolve, so nothing is added.
  */
-async function citedSources(
+export async function citedSources(
   body: string,
   root: string,
   config: PluginConfig,

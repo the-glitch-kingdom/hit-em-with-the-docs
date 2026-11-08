@@ -1,4 +1,4 @@
-# Reconcile: check existing docs against the code (2.15.0, updated in 2.19.0)
+# Reconcile: check existing docs against the code (2.15.0, updated in 2.21.0)
 
 `hewtd reconcile` and `/hit-em-with-the-docs:reconcile` bring an existing docs
 tree back in line with the code, in bounded, resumable batches.
@@ -255,7 +255,7 @@ a JSON entry: `path`, `content_hash`, `verdict`, and optionally `frontmatter`,
 `draft`, `sources`, `reason`.
 
 Verdicts: `verify`, `rewrite`, `archive`, `unverifiable`, `fields`, `secret`,
-`overview`, `merge`, `point` (2.18.0); outside entries use `integrate` and `delete`.
+`overview`, `merge`, `point` (2.18.0), `phrases` (2.21.0); outside entries use `integrate` and `delete`.
 
 `--apply <files...>`:
 
@@ -286,6 +286,36 @@ Verdicts: `verify`, `rewrite`, `archive`, `unverifiable`, `fields`, `secret`,
   resolving outside the project root), with a summary line; 0 otherwise.
 - `rewrite` is not a review: the doc stays unreviewed and stays in `--next`.
   Its draft is rewritten on a rerun.
+
+## Search gaps (2.21.0)
+
+`hewtd reconcile --gaps <file> [--json] [--write-review] [--batch <id>]` turns missed
+search queries into proposals. The file is [`gaps.v1`](./gaps-format.md), a bare array,
+a JSON array of strings, or one question per line. A wrong or missing `version`, or an
+unreadable file, exits 1.
+
+Each query ends in one of three places:
+
+- **Phrase proposal**: it names a doc that exists (not archived, not secret-lane). The
+  query becomes a candidate `symptoms.user_phrase` for that doc.
+- **New-doc candidate**: no usable doc, but the query holds a code identifier that
+  resolves to a source file. The report lists ranked `sources` and a suggested domain.
+  Never created automatically: a person writes the doc, then `hewtd integrate`.
+- **Open question**: anything else.
+
+Phrase rules: whitespace collapsed, trailing punctuation dropped, 3 to 20 words,
+wording kept. Near-duplicates merge (highest count, then shortest); counts of the same
+query add up. At most `reconcile.gaps.max_phrases_per_doc` (default 5) per doc, counting
+phrases already there. Dropped: `too short`, `too long`, `secret`, `duplicate`, `over cap`.
+A secret-shaped query is shown only as `[redacted]` with a masked note (rule, first 4
+characters, length); it never reaches the report, review file or commit.
+
+`--gaps` writes only `.hewtd/reconcile/gaps-report-<date>.md`. With `--write-review` it
+also writes `review-<batch>-gaps.md`, one entry per doc (verdict `phrases`). Edit the
+phrases, tick `- [x] accept`, then `hewtd reconcile --apply <review>`: the phrases are
+added as `user_phrase` symptoms in one commit. A rerun reports `skipped` ("no new
+phrases to add") and commits nothing. Without `--gaps`, reconcile is unchanged.
+The slash command runs this as step 4b.
 
 ## Ledger
 
@@ -356,6 +386,8 @@ accepted entry. Links from other outside files are not repointed.
   re-judge it; the old proposal is never applied.
 - **Staleness shows `unknown`, shallow clone warning**: run
   `git fetch --unshallow`. Triage still works without the signal.
+- **`--gaps`: "unsupported version" or exit 1**: the file needs `"version": 1` (or be a bare array / one question per line); check the path.
+- **`--gaps`: a query is missing from the proposals**: see `dropped` in the report (`too short`, `duplicate`, `over cap`...) and `errors` for unknown `used_doc` paths.
 - **Rejected, doc in two review files** (or twice in one): remove the duplicate and rerun.
 - **Outside entry: "target ... already exists"**: a doc with that filename is
   already in the chosen domain. Pick another `domain` in the entry, or merge by hand.

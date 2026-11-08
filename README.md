@@ -10,7 +10,9 @@
 > You still need to remember to use this plugin when creating documentation! As projects grow, documentation needs to be created and maintained. You'll need to invoke this plugin or ask an LLM to create documentation for your features, workflows, or infrastructure. This plugin must be invoked to create, update, or maintain your docs.
 
 > [!NOTE]
-> **2.20.0** writes `.hewtd/graph.json` on `hewtd index` and after `reconcile --apply`: per doc its resolved and missing references, body and code change dates, reconcile verdict and duplicate data, plus a symbol index, as a versioned plain file for other tools (hewtd never reads it back). `graph_export: false` turns it off. See [`docs/graph-export.md`](./docs/graph-export.md).
+> **2.21.0** adds `hewtd reconcile --gaps <file>`: missed search queries (semantic-memory `gaps --json`, or a plain list) become reviewed `symptoms.user_phrase` proposals, new-doc candidates or open questions. Secret-shaped queries are dropped and masked. See [`docs/reconcile.md`](./docs/reconcile.md) and [`docs/gaps-format.md`](./docs/gaps-format.md).
+
+> **2.20.0** (ships in 2.21.0) writes `.hewtd/graph.json` on `hewtd index` and after `reconcile --apply`: per doc its resolved and missing references, body and code change dates, reconcile verdict and duplicate data, plus a symbol index, as a versioned plain file for other tools (hewtd never reads it back). `graph_export: false` turns it off. See [`docs/graph-export.md`](./docs/graph-export.md).
 >
 > **2.19.0** adds write-time guards: `integrate` refuses secrets and records a small file-level `sources` list (never `last_verified`), `hewtd secrets --staged` and an opt-in `hewtd hooks install` pre-commit hook check commits, and `.hewtd/secrets-baseline.json` holds accepted findings. 2.17.0 and 2.18.0 ship in 2.19.0. See [`docs/write-time-guards.md`](./docs/write-time-guards.md).
 >

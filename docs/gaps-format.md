@@ -20,7 +20,7 @@ Input to `hewtd reconcile --gaps <file>`: queries a reader searched for and how 
 | `version` | yes | Must be `1`. Any other value is refused with a message naming the supported version. Additive fields keep `1`. |
 | `source` | no | Free text naming the producer. |
 | `gaps[].query` | yes | The reader's words. Whitespace is collapsed and trailing punctuation dropped; the wording is kept. |
-| `gaps[].used_doc` | no | The doc the reader finally used, or `null`. Docs-relative, vault-relative (`.documentation/...`) or absolute; resolved against the docs root. An unknown path is reported and treated as no doc. |
+| `gaps[].used_doc` | no | The doc the reader finally used, or `null`. Docs-relative, vault-relative (`.documentation/...`) or absolute; resolved against the docs root. An unknown, archived or secret-lane doc is treated as no doc (unknown paths are also reported). |
 | `gaps[].suggested` | no | `symptoms.user_phrase` or `new doc`. A hint only; hewtd re-derives the outcome. |
 | `gaps[].count` | no | Integer >= 1. Ranks gaps and picks the winning wording among near-duplicates. |
 | `gaps[].last_seen` | no | `YYYY-MM-DD`. |
@@ -33,7 +33,7 @@ No search tool needed. Any of these work:
 - A JSON array of strings: `["how do I roll back a deploy", "where is the rls check"]`.
 - A plain text file, one question per line (blank lines and lines starting with `#` are skipped).
 
-Questions without `used_doc` have no doc to attach to, so they become new-doc candidates or open questions.
+Questions without a usable `used_doc` have no doc to attach to, so they become new-doc candidates or open questions.
 
 ## Errors
 

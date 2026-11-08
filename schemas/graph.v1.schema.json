@@ -53,6 +53,7 @@
         "kind": { "enum": ["file", "symbol", "env", "command", "table", "column", "doc"] },
         "target": { "type": "string" },
         "file": { "type": "string" },
+        "file_kind": { "enum": ["definition", "reference"] },
         "repo": { "type": "string" },
         "resolved": { "type": ["boolean", "null"] },
         "code_changed": { "$ref": "#/$defs/date" }
@@ -63,6 +64,7 @@
       "required": ["file", "cited_by"],
       "properties": {
         "file": { "type": "string" },
+        "file_kind": { "enum": ["definition", "reference"] },
         "cited_by": { "type": "array", "items": { "type": "string" } }
       }
     }

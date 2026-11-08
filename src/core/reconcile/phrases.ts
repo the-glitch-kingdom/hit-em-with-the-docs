@@ -39,7 +39,7 @@ export function buildPhrases(inputs: PhraseInput[], existing: string[], secrets:
     const query = normalizeQuery(i.query);
     const n = query.split(' ').filter(Boolean).length;
     if (n < 3) { dropped.push({ query, reason: 'too short' }); continue; }
-    if (n > 20) { dropped.push({ query, reason: 'too long' }); continue; }
+    if (query.length > 200) { dropped.push({ query, reason: 'too long' }); continue; }
     ok.push({ query, count: i.count });
   }
   // Most frequent wins, then shortest.

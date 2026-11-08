@@ -103,3 +103,60 @@ describe('review fixes (#59)', () => {
     expect(scan(`t ${hvs}`, { allow: [{ fingerprint: fp.slice(0, 8), reason: 'too short' }], disabled_rules: [] })).toHaveLength(1);
   });
 });
+
+describe('field test 69: false positives and recall', () => {
+  const real = rnd(32, 11);
+  it.each([
+    'self.vault_token_cache = x', 'VAULT_TOKEN = settings.VAULT_TOKEN_PATH', 'password = f"{db_password}"',
+    'secret = os.environ.get("X")', 'TOKEN = process.env.API_TOKEN', 'token = getToken(a)',
+    'secret_id = <VAULT_APPROLE_SECRET_ID from Vault: kv/app>', '<secret: NAME, see .env.hewtd>',
+    'ADMIN_PASSWORD = "admin@company-internal.io"',
+  ])('ignores %s', (t) => expect(scan(t).filter((f) => f.kind === 'secret')).toEqual([]));
+
+  it('still flags a real literal under the same key names; email stays personal', () => {
+    expect(scan(`VAULT_TOKEN = "${real}"`).map((f) => f.rule)).toEqual(['generic-secret']);
+    expect(scan(`ADMIN_PASSWORD = "admin@corp.io"`).map((f) => f.kind)).toEqual(['personal']);
+  });
+
+  it.each([
+    ['short hvs', 'hv' + 's.' + 'q7Zr3LmP9xVb2NcK'],
+    ['role-id flag', `vault write auth/approle/login --role-id ${uuid}`],
+    ['Role ID label', `Role ID: ${uuid}`],
+    ['secret id under plain key', `Secret ID = ${uuid}`],
+    ['kv put value', `vault kv put secret/app value=${real}`],
+  ])('flags %s', (_n, t) => expect(scan(t).length).toBe(1));
+
+  it.each([
+    'vault kv put secret/app value=<VALUE>', 'vault kv put secret/app value=$VALUE_FROM_ENV_VAR_X', '--role-id $ROLE_ID',
+    'vault write auth/x path=/etc/some/long/file/path.pem', 'hv' + 's.' + 'a'.repeat(16),
+  ])('ignores %s', (t) => expect(scan(t)).toEqual([]));
+
+  it('new rules stay linear on long lines', () => {
+    for (const text of ['vault kv put ' + 'a=b '.repeat(20000), 'vault write ' + 'k='.repeat(30000), '--role-id '.repeat(20000), 'hvs.' + 'a'.repeat(60000)]) {
+      const t0 = performance.now();
+      scan(text);
+      expect(performance.now() - t0).toBeLessThan(1500);
+    }
+  });
+});
+
+describe('review fixes (#69): exemptions never hide a credential', () => {
+  const r = rnd(20, 11), s = rnd(17, 13);
+  const kinds = (t: string) => scan(t).map((f) => `${f.rule}/${f.kind}`);
+  it('a random value is still a secret when it contains a dot, a call paren, a {slot} or starts with <', () => {
+    for (const line of [
+      `api_key = "${r}.${s}"`, `SECRET_KEY=${r.slice(0, 10)}.${s}`, `DB_PASSWORD=${r.slice(0, 8)}(${s}`,
+      `client_secret: ${r.slice(0, 10)}{x}${s}`, `password = "<${r}"`, `token: "{${r}}"`,
+    ]) expect(kinds(line), line).toContain('generic-secret/secret');
+  });
+  it('an email-shaped value with a random part is still a secret', () => {
+    for (const line of [`password=${r}@${s.slice(0, 5)}.com`, `password=admin@${r}.com`]) expect(kinds(line), line).toContain('generic-secret/secret');
+  });
+  it('word-made code, pointer records and plain emails stay exempt', () => {
+    for (const line of [
+      'token = self.vault_token_for_service_accounts', 'VAULT_TOKEN = settings.VAULT_TOKEN_FROM_ENVIRONMENT',
+      'secret = get_client_secret_value(', 'password_template: {db_password_value}{suffix_value}',
+      'VAULT_SECRET_ID=<VAULT_APPROLE_SECRET_ID from Vault: secret/app/prod>', 'ADMIN_PASSWORD = "admin@company-internal.io"',
+    ]) expect(kinds(line).filter((k) => k.endsWith('/secret')), line).toEqual([]);
+  });
+});

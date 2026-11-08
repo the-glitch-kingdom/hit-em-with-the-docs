@@ -7,7 +7,7 @@ import { execFileSync } from 'child_process';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, statSync, writeFileSync } from 'fs';
 import { mkdir, readFile, stat, writeFile } from 'fs/promises';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
-import { parseFrontmatter, setFrontmatter } from '../../utils/frontmatter.js';
+import { parseFrontmatter, setFrontmatter, setFrontmatterKeys } from '../../utils/frontmatter.js';
 import { formatDate } from '../metadata/generator.js';
 import { archiveDoc } from '../archive/manage.js';
 import { regenerateIndexes } from '../../generators/regenerate.js';
@@ -179,23 +179,25 @@ function rollback(top: string, abs: string[], snap: Map<string, Buffer>): void {
 
 /** Build the new file content for a verify/fields/unverifiable entry. */
 function editDoc(raw: string, e: ReviewEntry, today: string): string {
-  const { data, content } = parseFrontmatter<Record<string, unknown>>(raw);
-  let body = content;
-  for (const p of e.patch ?? []) {
+  const { last_verified: _ignored, ...fm } = e.frontmatter ?? {};
+  const changes: Record<string, unknown> = { ...fm };
+  if (e.sources) changes.sources = e.sources;
+  if (e.verdict === 'verify') changes.last_verified = today;
+  if (e.verdict === 'unverifiable') changes.confidence = 'low';
+  const next = setFrontmatterKeys(raw, changes);
+  if (!e.patch?.length) return next;
+  const cut = next.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/)?.[0].length ?? 0;
+  let body = next.slice(cut);
+  for (const p of e.patch) {
     if (body.split(p.old).length !== 2) throw new Error(`patch text not found exactly once: ${JSON.stringify(p.old.slice(0, 40))}`);
     body = body.replace(p.old, () => p.new);
   }
-  const { last_verified: _ignored, ...fm } = e.frontmatter ?? {};
-  const next: Record<string, unknown> = { ...data, ...fm };
-  if (e.sources) next.sources = e.sources;
-  if (e.verdict === 'verify') next.last_verified = today;
-  if (e.verdict === 'unverifiable') next.confidence = 'low';
-  return setFrontmatter(body, next, raw);
+  return next.slice(0, cut) + body;
 }
 
 /** phrases: add new user_phrase entries to symptoms (cap and duplicates re-checked); returns null when nothing is left to add. */
 function phrasesDoc(raw: string, e: ReviewEntry, cfg: Awaited<ReturnType<typeof loadPluginConfig>>): string | null {
-  const { data, content } = parseFrontmatter<Record<string, unknown>>(raw);
+  const { data } = parseFrontmatter<Record<string, unknown>>(raw);
   const symptoms: unknown[] = Array.isArray(data.symptoms) ? [...data.symptoms] : [];
   const add = buildPhrases((e.phrases ?? []).map((query) => ({ query })), symptomText(data), cfg.reconcile.secrets, cfg.reconcile.gaps.max_phrases_per_doc).accepted.map((a) => a.query);
   if (!add.length) return null;
@@ -204,7 +206,7 @@ function phrasesDoc(raw: string, e: ReviewEntry, cfg: Awaited<ReturnType<typeof 
     const s = symptoms[i] as Record<string, unknown>;
     symptoms[i] = { ...s, user_phrase: [...(Array.isArray(s.user_phrase) ? s.user_phrase : s.user_phrase ? [s.user_phrase] : []), ...add] };
   } else symptoms.push(...add);
-  return setFrontmatter(content, { ...data, symptoms }, raw);
+  return setFrontmatterKeys(raw, { symptoms });
 }
 
 /** point: check the owner section and the no-loss rule, then write the one-line pointer into the copy. */

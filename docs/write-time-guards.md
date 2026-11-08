@@ -16,6 +16,8 @@ vault-token notes.md:12 hvs....28
 
 - `--force` does not bypass it, and `--dry-run` also fails.
 - Emails are `personal` kind and never block.
+- 2.22.0: the detector ignores word-made code references, placeholders, pointer records and email values (random-character values are still secrets), and adds the `approle-id` and `vault-kv-value` rules and shorter `hvs.` tokens; details in
+  [`reconcile.md`](./reconcile.md#secrets-first-2170).
 - The detector, allowlist and `disabled_rules` are the ones in
   [`reconcile.md`](./reconcile.md#secrets-first-2170).
 

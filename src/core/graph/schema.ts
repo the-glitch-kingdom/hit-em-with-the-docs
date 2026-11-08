@@ -26,6 +26,8 @@ export interface GraphRef {
   file?: string;
   /** A `related_repos` sibling, when the file lives there. */
   repo?: string;
+  /** Symbol refs: `file` defines the symbol, or only mentions it. */
+  file_kind?: 'definition' | 'reference';
   /** true found, false missing, null could not be checked. */
   resolved: boolean | null;
   /** YYYY-MM-DD of the last commit touching a resolved file. */
@@ -44,6 +46,7 @@ export interface GraphDoc {
 
 export interface GraphSymbol {
   file: string;
+  file_kind?: 'definition' | 'reference';
   cited_by: string[];
 }
 

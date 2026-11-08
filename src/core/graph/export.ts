@@ -33,13 +33,12 @@ function verdictOf(d: TriageDoc, ledgerVerified: boolean, inLedger: boolean): Gr
 export async function buildGraph(opts: { root: string; docsPath: string; config: PluginConfig; dryRun?: boolean }): Promise<GraphV1> {
   const { root, docsPath, config } = opts;
   const repo = gitRoot(docsPath) ?? root;
-  const rels = (await mdFiles(docsPath)).map((f) => posix(relative(docsPath, f))).filter((r) => !r.startsWith('drafts/') && !r.includes('/drafts/')).sort(cmp);
+  // exactly the set triage judges: the export and triage cannot diverge
+  const rels = (await mdFiles(docsPath)).map((f) => posix(relative(docsPath, f))).sort(cmp);
   const raws = new Map<string, { raw: string; data: Record<string, unknown> }>();
   for (const r of rels) {
     const raw = readFileSync(join(docsPath, r), 'utf-8');
-    const { data } = parseFrontmatter<Record<string, unknown>>(raw);
-    if (data.generated === true || data.tier === 'plan') continue;
-    raws.set(r, { raw, data });
+    raws.set(r, { raw, data: parseFrontmatter<Record<string, unknown>>(raw).data });
   }
   const kept = [...raws.keys()];
   const ledger = await loadLedger(resolve(root, config.reconcile.ledger_path));
@@ -70,10 +69,11 @@ export async function buildGraph(opts: { root: string; docsPath: string; config:
       if (r.status === 'ok' && r.where && (r.kind === 'path' || r.kind === 'symbol' || r.kind === 'env')) {
         const w = dateOf(r.where);
         if (r.kind !== 'path') ref.file = w.file;
+        if (r.kind === 'symbol' && r.whereKind) ref.file_kind = r.whereKind;
         if (w.repo) ref.repo = w.repo;
         if (w.date) ref.code_changed = w.date;
         if (r.kind === 'symbol') {
-          const s = (symbols[r.ref] ??= { file: w.file, cited_by: [] });
+          const s = (symbols[r.ref] ??= { file: w.file, ...(r.whereKind && { file_kind: r.whereKind }), cited_by: [] });
           if (!s.cited_by.includes(rel)) s.cited_by.push(rel);
         }
       }

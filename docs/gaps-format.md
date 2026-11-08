@@ -19,7 +19,7 @@ Input to `hewtd reconcile --gaps <file>`: queries a reader searched for and how 
 |---|---|---|
 | `version` | yes | Must be `1`. Any other value is refused with a message naming the supported version. Additive fields keep `1`. |
 | `source` | no | Free text naming the producer. |
-| `gaps[].query` | yes | The reader's words. Whitespace is collapsed and trailing punctuation dropped; the wording is kept. |
+| `gaps[].query` | yes | The reader's words. Whitespace is collapsed and trailing punctuation dropped; the wording is kept. Queries run from 3 words up to 200 characters (2.22.0); longer ones are dropped as `too long`. |
 | `gaps[].used_doc` | no | The doc the reader finally used, or `null`. Docs-relative, vault-relative (`.documentation/...`) or absolute; resolved against the docs root. An unknown, archived, secret-lane, non-markdown or generated (`generated: true`, such as `INDEX.md`) doc is treated as no doc (unknown paths are also reported). |
 | `gaps[].suggested` | no | `symptoms.user_phrase` or `new doc`. A hint only; hewtd re-derives the outcome. |
 | `gaps[].count` | no | Integer >= 1. Ranks gaps and picks the winning wording among near-duplicates. |

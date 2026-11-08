@@ -32,8 +32,15 @@ describe('buildPhrases (#66)', () => {
     expect(r.dropped.map((d) => d.reason).sort()).toEqual(['duplicate', 'over cap']);
   });
   it('drops short and long queries', () => {
-    const r = buildPhrases([{ query: 'deploy broken' }, { query: Array(21).fill('word').map((w, i) => w + i).join(' ') }], [], cfg, 5);
+    const r = buildPhrases([{ query: 'deploy broken' }, { query: 'w'.repeat(100) + ' ' + 'x'.repeat(100) + ' end' }], [], cfg, 5);
     expect(r.dropped.map((d) => d.reason)).toEqual(['too short', 'too long']);
+  });
+  it('keeps long real questions up to 200 characters', () => {
+    const q110 = 'how do I restore the production database from the nightly backup after failover'.padEnd(110, ' ok').slice(0, 110).trim();
+    const q150 = 'rotate signing keys across every regional cluster without downtime while the certificate authority rollover finishes overnight'.padEnd(150, ' ok').slice(0, 150).trim();
+    const r = buildPhrases([{ query: q110 }, { query: q150 }, { query: 'a '.repeat(100) + 'b' }], [], cfg, 5);
+    expect(r.accepted.map((a) => a.query)).toEqual([q110, q150]);
+    expect(r.dropped).toEqual([{ query: 'a '.repeat(100) + 'b', reason: 'too long' }]);
   });
   it('drops a secret-shaped query with a masked note, never the text', () => {
     const r = buildPhrases([{ query: `why does key ${token} fail on login` }], [], cfg, 5);

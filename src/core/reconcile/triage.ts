@@ -33,7 +33,7 @@ export interface TriageDoc {
   reasons: string[];
   missing: string[];
   /** every reference the resolver found in the body (additive; `missing` also holds gone `sources`) */
-  refs: Pick<ResolvedReference, 'kind' | 'ref' | 'status' | 'where'>[];
+  refs: Pick<ResolvedReference, 'kind' | 'ref' | 'status' | 'where' | 'whereKind'>[];
   /** Doc bytes + bytes of the cited files the judgment pass must read. */
   bytes: number;
   staleCommits?: number;
@@ -66,6 +66,8 @@ export interface TriageResult {
 }
 
 const MAX_SCAN_BYTES = 2 * 1024 * 1024;
+// Free-text rules: in a cited code file they are too noisy to put the doc in the secret lane.
+const WEAK_RULES = new Set(['generic-secret', 'url-password']);
 const fmtFinding = (f: SecretFinding): string => `${f.rule} ${f.file}:${f.line} ${f.masked}`;
 
 async function walkFiles(dir: string, keep: (name: string) => boolean): Promise<string[]> {
@@ -262,11 +264,13 @@ export async function triage(opts: {
     let cited = [...new Set([...resolved.filter((r) => r.kind === 'path').map((r) => r.where), ...sources].filter((p): p is string => !!p && idx.files.has(p)))].sort();
     const ownFindings = findSecrets(d.raw, d.rel, cfg).map((r) => r.finding).filter((f) => f.kind === 'secret');
     const blocked = new Map<string, SecretFinding[]>();
-    for (const c of cited) {
-      const fs = (await scanCited(join(repo, c), c)).filter((f) => f.kind === 'secret');
-      if (fs.length) blocked.set(c, fs);
-    }
-    cited = cited.filter((c) => !blocked.has(c));
+    const withheld = new Map<string, SecretFinding[]>(); // weak hits in cited code: not read, but the doc keeps its lane
+    const hold = (c: string, fs: SecretFinding[]) => {
+      if (!fs.length) return;
+      (/\.(md|mdx)$/i.test(c) || fs.some((f) => !WEAK_RULES.has(f.rule)) ? blocked : withheld).set(c, fs);
+    };
+    for (const c of cited) hold(c, (await scanCited(join(repo, c), c)).filter((f) => f.kind === 'secret'));
+    cited = cited.filter((c) => !blocked.has(c) && !withheld.has(c));
     let bytes = Buffer.byteLength(d.raw);
     for (const c of cited) {
       if (LOCKFILE.test(c)) continue; // a symbol hit in a lockfile is not something the pass reads
@@ -279,7 +283,7 @@ export async function triage(opts: {
       const rel = relOf(w);
       if (rel && w) {
         const fs = (await scanCited(join(rel.root, w.slice(w.indexOf(':') + 1)), w)).filter((f) => f.kind === 'secret');
-        if (fs.length) { blocked.set(w, fs); continue; }
+        if (fs.length) { hold(w, fs); if (blocked.has(w) || withheld.has(w)) continue; }
       }
       if (rel && w) relCited.set(rel, [...(relCited.get(rel) ?? []), w.slice(w.indexOf(':') + 1)]);
     }
@@ -328,6 +332,7 @@ export async function triage(opts: {
       const linked = resolved.some((r) => r.kind === 'doc-link' && r.status === 'ok' && relOf(r.where) === rel);
       if (hits.length >= 2 && hits.length / checked.length > 0.5 && !linked) owner = rel.name;
     }
+    for (const [c, fs] of withheld) reasons.push(`cited file withheld: ${c} (${fs.map((f) => f.masked).join('; ')})`);
     if (owner && lane !== 'secret') {
       if (lane === 'clean' || lane === 'fields-only') lane = 'check';
       reasons.push(`details owned by ${owner}: summarize and cross-link`);
@@ -358,7 +363,7 @@ export async function triage(opts: {
         delete led.verdict;
       }
     }
-    docs.push({ path: d.rel, lane, reasons, missing, refs: resolved.map(({ kind, ref, status, where }) => ({ kind, ref, status, ...(where !== undefined && { where }) })), bytes, ...(staleCommits !== undefined && { staleCommits }), ...(owner && { owner }), ...(copies && { duplicates: copies }), ...(ownFindings.length && { findings: ownFindings }), ...(blocked.size && { blocked_files: [...blocked.keys()].sort() }) });
+    docs.push({ path: d.rel, lane, reasons, missing, refs: resolved.map(({ kind, ref, status, where, whereKind }) => ({ kind, ref, status, ...(where !== undefined && { where }), ...(whereKind && { whereKind }) })), bytes, ...(staleCommits !== undefined && { staleCommits }), ...(owner && { owner }), ...(copies && { duplicates: copies }), ...(ownFindings.length && { findings: ownFindings }), ...(blocked.size + withheld.size > 0 && { blocked_files: [...blocked.keys(), ...withheld.keys()].sort() }) });
 
     if (opts.ledger) recordEntry(opts.ledger, { path: d.rel, lane, content_hash: hashContent(d.raw) });
   }

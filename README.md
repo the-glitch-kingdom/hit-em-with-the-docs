@@ -10,6 +10,8 @@
 > You still need to remember to use this plugin when creating documentation! As projects grow, documentation needs to be created and maintained. You'll need to invoke this plugin or ask an LLM to create documentation for your features, workflows, or infrastructure. This plugin must be invoked to create, update, or maintain your docs.
 
 > [!NOTE]
+> **2.22.0** fixes from the 2.21.0 field test (#69): graph symbols point at the file that defines them (`file_kind`), the graph export covers every doc triage judges, `hewtd index --no-graph` skips the export, code references, placeholders and emails no longer put docs in the secret lane (while short `hvs.` tokens, AppRole ids and `vault kv put` values are caught), gap queries may be up to 200 characters, and `reconcile --apply` rewrites only the frontmatter keys it changes. See [CHANGELOG](./CHANGELOG.md).
+>
 > **2.21.0** adds `hewtd reconcile --gaps <file>`: missed search queries (semantic-memory `gaps --json`, or a plain list) become reviewed `symptoms.user_phrase` proposals, new-doc candidates or open questions. Secret-shaped queries are dropped and masked. See [`docs/reconcile.md`](./docs/reconcile.md) and [`docs/gaps-format.md`](./docs/gaps-format.md).
 
 > **2.20.0** (ships in 2.21.0) writes `.hewtd/graph.json` on `hewtd index` and after `reconcile --apply`: per doc its resolved and missing references, body and code change dates, reconcile verdict and duplicate data, plus a symbol index, as a versioned plain file for other tools (hewtd never reads it back). `graph_export: false` turns it off. See [`docs/graph-export.md`](./docs/graph-export.md).

@@ -226,6 +226,24 @@ describe('secret lane (#59)', () => {
     expect(d.bytes).toBeLessThan(400);
   });
 
+  it('weak findings in cited code withhold the file; known shapes and own findings still block (#69)', async () => {
+    put('src/settings.py', 'VAULT_TOKEN = settings.VAULT_TOKEN_PATH\nDB_PASSWORD = "' + 'q7Zr3LmP9xVb2NcK5tYw8HdJ' + '"\n');
+    put('src/known.py', `X = "${key()}"\n`);
+    put('ops/mail.md', fm() + 'See `src/a.ts`. ADMIN_PASSWORD = "admin@corp.io"\n');
+    g('add', '-A');
+    g('commit', '-m', 'env');
+    put('ops/weak.md', fm().replace('[src/a.ts]', '[src/a.ts, src/settings.py]') + 'See `src/a.ts`.\n');
+    put('ops/strong.md', fm().replace('[src/a.ts]', '[src/a.ts, src/known.py]') + 'See `src/a.ts`.\n');
+    const r = await lanes(['ops/weak.md', 'ops/strong.md', 'ops/mail.md']);
+    const by = (p: string) => r.docs.find((x) => x.path === p)!;
+    expect(by('ops/weak.md').lane).not.toBe('secret');
+    expect(by('ops/weak.md').blocked_files).toEqual(['src/settings.py']);
+    expect(by('ops/weak.md').reasons.join()).toContain('cited file withheld: src/settings.py');
+    expect(by('ops/strong.md').lane).toBe('secret');
+    expect(by('ops/mail.md').lane).not.toBe('secret');
+    expect(JSON.stringify(r)).not.toContain('q7Zr3LmP9xVb2NcK5tYw8HdJ');
+  });
+
   it('archive/, outside markdown and .hewtd/ are scanned and reported', async () => {
     put('archive/old.md', `token ${tok()}\n`);
     writeFileSync(join(dir, 'notes.md'), `key ${key()}\n`);

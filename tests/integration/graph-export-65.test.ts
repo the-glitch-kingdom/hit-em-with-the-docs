@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import { execFileSync, spawnSync } from 'child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs';
@@ -79,5 +80,82 @@ describe('graph export on index and apply', () => {
     fill(f, () => ({ verdict: 'verify', sources: ['src/real.ts'] }));
     expect(hewtd(['reconcile', '--apply', f]).status).toBe(0);
     expect(verdict('backend/a.md')).toBe('verified');
+  });
+});
+
+// Tiny checker for the keyword subset the shipped schema uses (no new dependency).
+const schema = JSON.parse(readFileSync(join(resolve(__dirname, '../..'), 'schemas/graph.v1.schema.json'), 'utf-8'));
+function check(s: any, v: any, path = '$'): string[] {
+  if (s.$ref) return check(s.$ref.split('/').reduce((n: any, k: string) => (k === '#' ? schema : n[k]), schema), v, path);
+  if (s.oneOf) return s.oneOf.some((o: any) => check(o, v, path).length === 0) ? [] : [`${path}: no oneOf match`];
+  if ('const' in s) return v === s.const ? [] : [`${path}: expected ${s.const}`];
+  if (s.enum) return s.enum.includes(v) ? [] : [`${path}: not in enum`];
+  const t = v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v;
+  if (s.type && !([] as string[]).concat(s.type).includes(t)) return [`${path}: expected ${s.type}, got ${t}`];
+  if (s.pattern && typeof v === 'string' && !new RegExp(s.pattern).test(v)) return [`${path}: pattern`];
+  const errs: string[] = [];
+  if (t === 'object') {
+    for (const r of s.required ?? []) if (!(r in v)) errs.push(`${path}.${r}: missing`);
+    for (const [k, x] of Object.entries(v)) {
+      const sub = s.properties?.[k] ?? (typeof s.additionalProperties === 'object' ? s.additionalProperties : null);
+      if (sub) errs.push(...check(sub, x, `${path}.${k}`));
+    }
+  }
+  if (t === 'array' && s.items) v.forEach((x: any, i: number) => errs.push(...check(s.items, x, `${path}[${i}]`)));
+  return errs;
+}
+
+describe('graph content through the CLI', () => {
+  const steps = Array.from({ length: 8 }, (_, i) => `${i + 1}. Run the release step number ${i + 1} and confirm the pipeline reports green before tagging version ${i}.`).join('\n');
+  const filler = Array.from({ length: 400 }, (_, i) => `Admin note ${i}: rotate unrelated knob ${i * 7} weekly.`).join('\n');
+  const gitAt = (date: string, msg: string) => { g('add', '-A'); execFileSync('git', ['-c', 'user.name=Ann', '-c', 'user.email=t@t', 'commit', '-qm', msg], { cwd: root, env: { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } }); };
+  const graph = () => JSON.parse(readFileSync(GRAPH(), 'utf-8'));
+
+  beforeEach(() => {
+    put('.documentation/procedures/release.md', `---\ntitle: Release procedure\npurpose: How to cut and tag a release\n---\n# Release procedure\n\n${steps}\n`);
+    put('.documentation/guides/admin.md', `---\ntitle: Admin\n---\n# Admin\n\n${filler}\n\n## Cutting a release\n\n${steps}\n`);
+    const raw = readFileSync(join(root, '.documentation/backend/a.md'), 'utf-8');
+    put('.hewtd/reconcile.json', JSON.stringify({ version: 1, entries: { 'backend/a.md': { path: 'backend/a.md', lane: 'check', verdict: 'point', content_hash: createHash('sha256').update(raw).digest('hex'), pointer: { target: 'procedures/release.md#release-procedure', section_hash: 'h' } } } }));
+    gitAt('2026-02-01T12:00:00', 'docs');
+    put('src/real.ts', 'export const realThing = 2;\n');
+    gitAt('2026-04-01T12:00:00', 'code');
+  });
+
+  it('missing refs are resolved:false, resolved file refs carry code_changed, and it matches reconcile', () => {
+    expect(hewtd(['index']).status).toBe(0);
+    const a = graph().docs['backend/a.md'];
+    expect(a.refs).toContainEqual({ kind: 'file', target: 'src/gone.ts', resolved: false });
+    expect(a.refs).toContainEqual({ kind: 'file', target: 'src/real.ts', resolved: true, code_changed: '2026-04-01' });
+    expect(a.body_changed).toBe(g('log', '-1', '--format=%cs', '--', '.documentation/backend/a.md'));
+    const rec = JSON.parse(hewtd(['reconcile', 'backend', '--json']).stdout);
+    const missing: string[] = (rec.docs ?? rec.triage?.docs ?? []).find((d: any) => d.path === 'backend/a.md')?.missing ?? [];
+    expect(missing).toContain('src/gone.ts');
+    for (const m of missing) expect(a.refs).toContainEqual({ kind: 'file', target: m, resolved: false });
+  });
+
+  it('owner, pointer and duplicate data match the ledger and reconcile', () => {
+    hewtd(['index']);
+    const d = graph().docs;
+    expect(d['backend/a.md'].points_to).toEqual([{ from: null, to: 'procedures/release.md#release-procedure' }]);
+    expect(d['procedures/release.md'].owner_of).toContain('procedures/release.md#release-procedure');
+    expect(d['guides/admin.md'].duplicates).toEqual([expect.objectContaining({ owner: expect.stringMatching(/^procedures\/release\.md#/) })]);
+  });
+
+  it('a generated graph validates against the shipped schema and is deterministic', () => {
+    hewtd(['index']);
+    const first = readFileSync(GRAPH(), 'utf-8');
+    expect(check(schema, JSON.parse(first))).toEqual([]);
+    expect(JSON.parse(first).source_commit).toBe(g('rev-parse', 'HEAD'));
+    expect(first).not.toMatch(/generated_at|timestamp/);
+    rmSync(GRAPH());
+    hewtd(['index']);
+    expect(readFileSync(GRAPH(), 'utf-8')).toBe(first);
+  });
+
+  it('the schema rejects a graph with a bad verdict (the check can fail)', () => {
+    hewtd(['index']);
+    const bad = graph();
+    bad.docs['backend/a.md'].verdict = 'bogus';
+    expect(check(schema, bad)).not.toEqual([]);
   });
 });

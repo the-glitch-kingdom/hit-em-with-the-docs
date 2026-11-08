@@ -11,7 +11,7 @@ const g = (...a: string[]) => execFileSync('git', ['-c', 'user.name=Ann', '-c', 
 const hewtd = (args: string[]) => spawnSync('node', [CLI, ...args], { cwd: root, encoding: 'utf8' });
 const put = (rel: string, text: string) => { mkdirSync(join(root, rel, '..'), { recursive: true }); writeFileSync(join(root, rel), text); };
 const GRAPH = () => join(root, '.hewtd/graph.json');
-const norm = (s: string) => s.split(root).join('<root>').replace(/\d{4}-\d{2}-\d{2}[T ]?[\d:.]*Z?/g, '<date>').replace(/\d+(\.\d+)?\s?ms/g, '<t>').replace(/<date>-\d+-\d+/g, '<date>');
+const norm = (s: string) => s.split(root).join('<root>').replace(/\d{4}-\d{2}-\d{2}[T ]?[\d:.]*Z?/g, '<date>').replace(/\d+(\.\d+)?\s?ms/g, '<t>').replace(/Duration: [\d.]+s/g, 'Duration: <t>').replace(/<date>-\d+-\d+/g, '<date>');
 
 const COMMANDS: string[][] = [
   ['audit'],

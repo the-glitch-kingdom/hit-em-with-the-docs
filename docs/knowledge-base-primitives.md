@@ -238,13 +238,13 @@ file has at least one error-severity issue, matching pre-2.3.0 behavior.
 
 ```typescript
 import {
-  validateMetadata,
-  validateKnowledgeBaseFields,
-  getMissingRequiredFields,
+  validate_metadata,
+  validate_knowledge_base_fields,
+  get_missing_required_fields,
 } from '@theglitchking/hit-em-with-the-docs';
 
 // Full validation (zod schema with all refinements):
-validateMetadata({
+validate_metadata({
   title: 'Alloy reads env only at entrypoint',
   tier: 'fact',
   domains: ['observability'],
@@ -258,14 +258,14 @@ validateMetadata({
 // → { valid: true, errors: [], data: {...} }
 
 // KB-only coded errors (the audit layer's entrypoint):
-validateKnowledgeBaseFields({
+validate_knowledge_base_fields({
   tier: 'fact',
   /* missing provenance */
 });
 // → [{ code: 'FACT_MISSING_PROVENANCE', message: '...', path: 'provenance' }, ...]
 
 // Tier-aware missing-required check:
-getMissingRequiredFields({
+get_missing_required_fields({
   title: 'My Fact',
   tier: 'fact',
   domains: ['observability'],

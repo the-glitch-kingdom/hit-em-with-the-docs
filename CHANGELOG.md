@@ -171,6 +171,23 @@ words. Behaviour, the CLI, `--json` output and every file under `.hewtd/` are un
 | `validatePartialMetadata` | `validate_partial_metadata` |
 | `writeRawConfig` | `write_raw_config` |
 
+Downstream consumers: `company-websites/tools/regenerate-docs-index.mjs` imports `generateRootIndex`,
+`generateRootRegistry`, `generateDomainIndexContent`, `generateDomainRegistryContent`, `parseFrontmatter` and
+`formatDate`. After upgrading, change them to `generate_root_index`, `generate_root_registry`,
+`generate_domain_index_content`, `generate_domain_registry_content`, `parse_frontmatter` and `format_date`.
+
+### Unchanged
+
+CLI commands and flags, `--json` output keys, every file under `.hewtd/`, plugin config keys, frontmatter keys and
+the gaps/graph JSON schemas keep their names.
+
+### Added
+
+- Naming standard in `docs/naming.md` (glossary, verb list with one meaning per verb, casing, short-name rules,
+  serialized-name exception).
+- `npm run lint:naming` (`.eslintrc.naming.json`), a local check; it is not part of CI.
+- `tests/integration/library-api.test.ts` pins the renamed exports.
+
 ## [2.22.0] — 2026-11-07
 
 Fixes from the 2.21.0 field test (#69).

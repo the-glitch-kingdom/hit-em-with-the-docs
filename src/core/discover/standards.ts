@@ -1,6 +1,6 @@
 import { readFile } from 'fs/promises';
 import { relative, basename } from 'path';
-import { glob } from '../../utils/glob.js';
+import { list_glob_matches } from '../../utils/glob.js';
 import { logger } from '../../utils/logger.js';
 
 export interface StandardsDiscoveryOptions {
@@ -70,14 +70,14 @@ export async function discover_standards(
   }
 
   // Find all source files
-  const ts_files = await glob('**/*.{ts,tsx}', {
+  const ts_files = await list_glob_matches('**/*.{ts,tsx}', {
     // eslint-disable-next-line id-denylist -- child_process/glob option name
     cwd: root_path,
     absolute: true,
     ignore: ['**/node_modules/**', '**/dist/**'],
   });
 
-  const js_files = await glob('**/*.{js,jsx,mjs}', {
+  const js_files = await list_glob_matches('**/*.{js,jsx,mjs}', {
     // eslint-disable-next-line id-denylist -- child_process/glob option name
     cwd: root_path,
     absolute: true,
@@ -280,7 +280,7 @@ async function discover_file_organization(
   ];
 
   for (const { pattern: name, glob: glob_pattern } of folder_patterns) {
-    const files = await glob(glob_pattern, {
+    const files = await list_glob_matches(glob_pattern, {
       // eslint-disable-next-line id-denylist -- child_process/glob option name
       cwd: root_path,
       ignore: ['**/node_modules/**', '**/dist/**'],
@@ -297,7 +297,7 @@ async function discover_file_organization(
 
   // Get root folders
   // eslint-disable-next-line id-denylist -- child_process/glob option name
-  const root_entries = await glob('*', { cwd: root_path });
+  const root_entries = await list_glob_matches('*', { cwd: root_path });
   const root_folders = root_entries.filter((root_entry) => !root_entry.includes('.'));
 
   return {
@@ -454,7 +454,7 @@ async function discover_testing_standards(
   let max_files = 0;
 
   for (const pattern of patterns) {
-    const files = await glob(pattern, {
+    const files = await list_glob_matches(pattern, {
       // eslint-disable-next-line id-denylist -- child_process/glob option name
       cwd: root_path,
       ignore: ['**/node_modules/**'],
@@ -467,7 +467,7 @@ async function discover_testing_standards(
   }
 
   // Check for fixtures
-  const fixtures = await glob('**/fixtures/**/*', {
+  const fixtures = await list_glob_matches('**/fixtures/**/*', {
     // eslint-disable-next-line id-denylist -- child_process/glob option name
     cwd: root_path,
     ignore: ['**/node_modules/**'],

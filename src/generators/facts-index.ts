@@ -19,7 +19,7 @@ import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import type { CiterIndex, FactRef } from '../core/knowledge-base/citers.js';
 import { count_citers } from '../core/knowledge-base/citers.js';
-import { format_markdown_table } from './table.js';
+import { render_markdown_table } from './table.js';
 
 const CONFIDENCE_ORDER = ['high', 'medium', 'low', 'hypothesis'] as const;
 const UNTAGGED_BUCKET = '(untagged)';
@@ -29,7 +29,7 @@ export interface GenerateFactsIndexOptions {
   index: CiterIndex;
 }
 
-export async function generate_facts_index(
+export async function write_facts_index(
   options: GenerateFactsIndexOptions
 ): Promise<string> {
   const { vault_root, index } = options;
@@ -47,7 +47,7 @@ export async function generate_facts_index(
  * Pure rendering function — exposed for snapshot tests.
  */
 export function render_facts_index(index: CiterIndex): string {
-  const buckets = bucket_facts(index);
+  const buckets = group_facts_by_confidence(index);
 
   const lines: string[] = [];
   lines.push('---');
@@ -90,7 +90,7 @@ export function render_facts_index(index: CiterIndex): string {
 
     const confidence_buckets = buckets[tag] ?? {};
     const present_confidences = CONFIDENCE_ORDER.filter(
-      (c) => confidence_buckets[c] !== undefined && confidence_buckets[c]!.length > 0
+      (confidence) => confidence_buckets[confidence] !== undefined && confidence_buckets[confidence]!.length > 0
     );
 
     for (const confidence of present_confidences) {
@@ -100,15 +100,15 @@ export function render_facts_index(index: CiterIndex): string {
       const rows = confidence_buckets[confidence]!
         .slice()
         .sort((a, b) => a.id.localeCompare(b.id))
-        .map((f) => [
-          `\`${f.id}\``,
-          escape_md(f.title),
-          f.lastVerified ?? '—',
-          String(count_citers(index, f.id)),
+        .map((fact) => [
+          `\`${fact.id}\``,
+          escape_markdown(fact.title),
+          fact.lastVerified ?? '—',
+          String(count_citers(index, fact.id)),
         ]);
 
       lines.push(
-        format_markdown_table(['ID', 'Title', 'Last verified', 'Citers'], rows)
+        render_markdown_table(['ID', 'Title', 'Last verified', 'Citers'], rows)
       );
       lines.push('');
     }
@@ -119,24 +119,24 @@ export function render_facts_index(index: CiterIndex): string {
 
 type ConfidenceBuckets = Partial<Record<string, FactRef[]>>;
 
-function bucket_facts(index: CiterIndex): Record<string, ConfidenceBuckets> {
-  const out: Record<string, ConfidenceBuckets> = {};
+function group_facts_by_confidence(index: CiterIndex): Record<string, ConfidenceBuckets> {
+  const found: Record<string, ConfidenceBuckets> = {};
   for (const fact of index.facts.values()) {
     const tags = fact.tags.length > 0 ? fact.tags : [UNTAGGED_BUCKET];
     const confidence = fact.confidence ?? 'unknown';
     for (const tag of tags) {
-      if (!out[tag]) out[tag] = {};
-      if (!out[tag][confidence]) out[tag][confidence] = [];
-      out[tag][confidence]!.push(fact);
+      if (!found[tag]) found[tag] = {};
+      if (!found[tag][confidence]) found[tag][confidence] = [];
+      found[tag][confidence]!.push(fact);
     }
   }
-  return out;
+  return found;
 }
 
-function escape_md(s: string): string {
-  return s.replace(/\|/g, '\\|');
+function escape_markdown(text: string): string {
+  return text.replace(/\|/g, '\\|');
 }
 
-function ensure_trailing_newline(s: string): string {
-  return s.endsWith('\n') ? s : s + '\n';
+function ensure_trailing_newline(text: string): string {
+  return text.endsWith('\n') ? text : text + '\n';
 }

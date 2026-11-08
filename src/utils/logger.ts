@@ -71,13 +71,13 @@ class Logger {
 
   table(headers: string[], rows: string[][]): void {
     if (this.silent) return;
-    const col_widths = headers.map((h, i) =>
-      Math.max(h.length, ...rows.map((r) => (r[i] ?? '').length))
+    const col_widths = headers.map((header, i) =>
+      Math.max(header.length, ...rows.map((row) => (row[i] ?? '').length))
     );
 
-    const separator = col_widths.map((w) => '─'.repeat(w + 2)).join('┼');
+    const separator = col_widths.map((col_width) => '─'.repeat(col_width + 2)).join('┼');
     const header_row = headers
-      .map((h, i) => ` ${h.padEnd(col_widths[i] ?? 0)} `)
+      .map((header, i) => ` ${header.padEnd(col_widths[i] ?? 0)} `)
       .join('│');
 
     console.log(chalk.gray(`┌${separator.replace(/┼/g, '┬')}┐`));

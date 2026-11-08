@@ -7,7 +7,7 @@ import { execFileSync } from 'child_process';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, statSync, writeFileSync } from 'fs';
 import { mkdir, readFile, stat, writeFile } from 'fs/promises';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
-import { parse_frontmatter, set_frontmatter, set_frontmatter_keys } from '../../utils/frontmatter.js';
+import { parse_frontmatter, with_frontmatter, with_frontmatter_keys } from '../../utils/frontmatter.js';
 import { format_date } from '../metadata/generator.js';
 import { archive_doc } from '../archive/manage.js';
 import { regenerate_indexes } from '../../generators/regenerate.js';
@@ -186,7 +186,7 @@ function build_edit_doc(raw_text: string, entry: ReviewEntry, today: string): st
   if (entry.sources) changes.sources = entry.sources;
   if (entry.verdict === 'verify') changes.last_verified = today;
   if (entry.verdict === 'unverifiable') changes.confidence = 'low';
-  const next = set_frontmatter_keys(raw_text, changes);
+  const next = with_frontmatter_keys(raw_text, changes);
   if (!entry.patch?.length) return next;
   const frontmatter_length = next.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/)?.[0].length ?? 0;
   let body = next.slice(frontmatter_length);
@@ -208,7 +208,7 @@ function build_phrases_doc(raw_text: string, entry: ReviewEntry, config: Awaited
     const symptom_record = symptoms[i] as Record<string, unknown>;
     symptoms[i] = { ...symptom_record, user_phrase: [...(Array.isArray(symptom_record.user_phrase) ? symptom_record.user_phrase : symptom_record.user_phrase ? [symptom_record.user_phrase] : []), ...accepted_phrases] };
   } else symptoms.push(...accepted_phrases);
-  return set_frontmatter_keys(raw_text, { symptoms });
+  return with_frontmatter_keys(raw_text, { symptoms });
 }
 
 /** point: check the owner section and the no-loss rule, then write the one-line pointer into the copy. */
@@ -250,7 +250,7 @@ async function build_overview_doc(entry: ReviewEntry, docs_path: string, ledger:
     if (unmarked.length) throw new Error(`draft must mark these links "(unreviewed)": ${unmarked.join(', ')}`);
   }
   const { last_verified: _v, last_validated: _l, ...frontmatter } = entry.frontmatter ?? {};
-  return set_frontmatter(entry.draft!, { ...frontmatter, kind: 'overview', ...(entry.sources && { sources: entry.sources }) });
+  return with_frontmatter(entry.draft!, { ...frontmatter, kind: 'overview', ...(entry.sources && { sources: entry.sources }) });
 }
 
 export async function apply_reviews(options: {

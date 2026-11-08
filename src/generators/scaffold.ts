@@ -8,7 +8,7 @@ import { generate_root_registry } from './registry-generator.js';
 import { generate_domain_index } from './templates/domain-index.js';
 import { generate_domain_registry } from './templates/domain-registry.js';
 import { logger } from '../utils/logger.js';
-import { path_exists, ARCHIVE_DIR } from '../utils/glob.js';
+import { is_path_present, ARCHIVE_DIR } from '../utils/glob.js';
 
 export interface ScaffoldOptions {
   root_path: string;
@@ -91,7 +91,7 @@ async function create_directory(
   result: ScaffoldResult,
   overwrite: boolean
 ): Promise<void> {
-  const exists = await path_exists(path);
+  const exists = await is_path_present(path);
 
   if (exists && !overwrite) {
     result.skipped.push(path);
@@ -111,7 +111,7 @@ async function create_file(
   result: ScaffoldResult,
   overwrite: boolean
 ): Promise<void> {
-  const exists = await path_exists(path);
+  const exists = await is_path_present(path);
 
   if (exists && !overwrite) {
     result.skipped.push(path);
@@ -154,17 +154,17 @@ async function create_domain_structure(
   overwrite: boolean
 ): Promise<void> {
   const domain_path = join(root_path, domain);
-  const def = get_domain_definition(domain);
+  const definition = get_domain_definition(domain);
 
   // Create domain directory
   await create_directory(domain_path, result, overwrite);
 
   // Create INDEX.md
-  const index_content = generate_domain_index(domain, def);
+  const index_content = generate_domain_index(domain, definition);
   await create_file(join(domain_path, 'INDEX.md'), index_content, result, overwrite);
 
   // Create REGISTRY.md
-  const registry_content = generate_domain_registry(domain, def);
+  const registry_content = generate_domain_registry(domain, definition);
   await create_file(join(domain_path, 'REGISTRY.md'), registry_content, result, overwrite);
 }
 
@@ -280,7 +280,7 @@ This documentation system uses a hierarchical, domain-based structure for optima
 
 | Domain | Description |
 |--------|-------------|
-${domains.map((d) => `| [${d}](${d}/) | ${get_domain_definition(d).description} |`).join('\n')}
+${domains.map((domain) => `| [${domain}](${domain}/) | ${get_domain_definition(domain).description} |`).join('\n')}
 
 ## Adding New Documentation
 
@@ -323,20 +323,20 @@ This will:
 /**
  * Check if scaffold already exists
  */
-export async function scaffold_exists(root_path: string): Promise<boolean> {
+export async function is_scaffold_present(root_path: string): Promise<boolean> {
   const index_path = join(root_path, 'INDEX.md');
-  return path_exists(index_path);
+  return is_path_present(index_path);
 }
 
 /**
  * Get scaffold status
  */
-export async function get_scaffold_status(root_path: string): Promise<{
+export async function load_scaffold_status(root_path: string): Promise<{
   exists: boolean;
   domains: Domain[];
   missing_domains: Domain[];
 }> {
-  const exists = await scaffold_exists(root_path);
+  const exists = await is_scaffold_present(root_path);
 
   if (!exists) {
     return {
@@ -351,7 +351,7 @@ export async function get_scaffold_status(root_path: string): Promise<{
 
   for (const domain of get_all_domains()) {
     const domain_path = join(root_path, domain);
-    if (await path_exists(domain_path)) {
+    if (await is_path_present(domain_path)) {
       present_domains.push(domain);
     } else {
       missing_domains.push(domain);

@@ -1,6 +1,6 @@
 import { readFile } from 'fs/promises';
 import { relative, extname } from 'path';
-import { glob } from '../../utils/glob.js';
+import { list_glob_matches } from '../../utils/glob.js';
 import { logger } from '../../utils/logger.js';
 
 export interface PatternDiscoveryOptions {
@@ -284,7 +284,7 @@ export async function discover_patterns(
   // Find all source files
   let files: string[] = [];
   for (const pattern of patterns) {
-    const matches = await glob(pattern, {
+    const matches = await list_glob_matches(pattern, {
       // eslint-disable-next-line id-denylist -- child_process/glob option name
       cwd: root_path,
       absolute: true,

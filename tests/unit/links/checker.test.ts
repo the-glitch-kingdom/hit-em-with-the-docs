@@ -5,7 +5,7 @@ import {
   extract_headings,
   extract_title,
   count_words,
-  calculate_read_time,
+  compute_read_time,
 } from '../../../src/utils/markdown.js';
 
 describe('Markdown Link Utilities', () => {
@@ -149,7 +149,7 @@ More text here.
       // Create content with ~400 words
       const words = Array(400).fill('word').join(' ');
       const content = `# Title\n\n${words}`;
-      const read_time = calculate_read_time(content);
+      const read_time = compute_read_time(content);
       // Should be approximately 2-3 minutes at 200 wpm (rounds up)
       expect(read_time).toBeGreaterThanOrEqual(2);
       expect(read_time).toBeLessThanOrEqual(3);
@@ -157,7 +157,7 @@ More text here.
 
     it('should return minimum 1 minute', () => {
       const content = 'Just a few words.';
-      const read_time = calculate_read_time(content);
+      const read_time = compute_read_time(content);
       expect(read_time).toBe(1);
     });
   });

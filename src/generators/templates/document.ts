@@ -25,7 +25,7 @@ export function generate_document_template(options: DocumentTemplateOptions): st
     purpose,
   } = options;
 
-  const now = format_date(new Date());
+  const today = format_date(new Date());
 
   let frontmatter = `---
 title: "${title}"
@@ -35,9 +35,9 @@ domains:
 audience:
   - all
 tags:
-${tags.length > 0 ? tags.map((t) => `  - ${t}`).join('\n') : '  []'}
+${tags.length > 0 ? tags.map((tag) => `  - ${tag}`).join('\n') : '  []'}
 status: draft
-last_updated: '${now}'
+last_updated: '${today}'
 version: '1.0.0'
 ${
   purpose

@@ -5,8 +5,8 @@
  */
 
 import { readFile, writeFile } from 'fs/promises';
-import { parse_frontmatter, stringify_frontmatter } from '../../utils/frontmatter.js';
-import { glob } from '../../utils/glob.js';
+import { parse_frontmatter, render_frontmatter } from '../../utils/frontmatter.js';
+import { list_glob_matches } from '../../utils/glob.js';
 import { dirname } from 'path';
 import { load_plugin_config } from '../../utils/config.js';
 import { is_weak_purpose } from '../audit/retrieval.js';
@@ -35,7 +35,7 @@ export async function fix_retrieval_fields(options: {
   const result: FixRetrievalFieldsResult = { changed: [], conflicts: [], errors: [], dropped: 0, cleared: 0 };
   const config = (await load_plugin_config(dirname(options.docs_path))).retrieval;
   // eslint-disable-next-line id-denylist -- child_process/glob option name
-  const files = (await glob('**/*.md', { cwd: options.docs_path, absolute: true })).sort();
+  const files = (await list_glob_matches('**/*.md', { cwd: options.docs_path, absolute: true })).sort();
 
   for (const file of files) {
     if (/(^|[\\/])(INDEX|REGISTRY)\.md$/.test(file)) continue;
@@ -87,7 +87,7 @@ export async function fix_retrieval_fields(options: {
     if (options.apply) {
       // Replace only the frontmatter block; the body is written back byte for byte.
       const body = raw_text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
-      await writeFile(file, `---\n${stringify_frontmatter(data, raw_text)}---\n${body}`, 'utf-8');
+      await writeFile(file, `---\n${render_frontmatter(data, raw_text)}---\n${body}`, 'utf-8');
     }
   }
   return result;

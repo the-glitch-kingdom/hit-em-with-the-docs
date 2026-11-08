@@ -4,7 +4,7 @@ import { existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { run_maintenance } from '../../../src/core/maintain/orchestrator.js';
-import { save_health_report, generate_health_report } from '../../../src/reports/health-report.js';
+import { write_health_report, generate_health_report } from '../../../src/reports/health-report.js';
 import { resolve_reports_dir } from '../../../src/utils/config.js';
 
 const GOOD = 'Explains how the deploy pipeline promotes builds to production safely';
@@ -36,7 +36,7 @@ describe('reports_dir', () => {
     const result = await run_maintenance({ docs_path: docs, quick: true, silent: true });
     expect(result.report_path).toBe(join(root, '.hewtd/reports', (result.report_path as string).split('/').pop()!));
     expect(existsSync(join(docs, 'reports'))).toBe(false);
-    const saved = await save_health_report(docs, result);
+    const saved = await write_health_report(docs, result);
     expect(saved.startsWith(join(root, '.hewtd/reports'))).toBe(true);
     expect((await readdir(join(root, '.hewtd/reports'))).length).toBeGreaterThanOrEqual(2);
   });

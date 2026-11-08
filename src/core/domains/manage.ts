@@ -10,9 +10,9 @@
 
 import {
   custom_domain_schema,
-  read_raw_config,
+  load_raw_config,
   write_raw_config,
-  config_file_path,
+  resolve_config_file_path,
   DOMAIN_CATEGORY_VALUES,
   type CustomDomainConfig,
 } from '../../utils/config.js';
@@ -88,7 +88,7 @@ export interface AddDomainResult {
  */
 export async function add_domain(input: AddDomainInput): Promise<AddDomainResult> {
   const { project_root, docs_path, spec, dry_run = false } = input;
-  const config_path = config_file_path(project_root);
+  const config_path = resolve_config_file_path(project_root);
   const errors: string[] = [];
 
   // Strict, user-facing validation (the config loader's lenient filter is the
@@ -114,7 +114,7 @@ export async function add_domain(input: AddDomainInput): Promise<AddDomainResult
     return { ok: false, errors, action: 'rejected', config_path };
   }
 
-  const raw_text = await read_raw_config(project_root);
+  const raw_text = await load_raw_config(project_root);
   const existing = Array.isArray(raw_text.domains)
     ? (raw_text.domains as unknown[])
     : [];
@@ -196,7 +196,7 @@ export async function remove_domain(
   input: RemoveDomainInput
 ): Promise<RemoveDomainResult> {
   const { project_root, docs_path, id, dry_run = false } = input;
-  const config_path = config_file_path(project_root);
+  const config_path = resolve_config_file_path(project_root);
   const domain_folder = `${docs_path}/${id}`;
   const errors: string[] = [];
 
@@ -214,7 +214,7 @@ export async function remove_domain(
     };
   }
 
-  const raw_text = await read_raw_config(project_root);
+  const raw_text = await load_raw_config(project_root);
   const existing = Array.isArray(raw_text.domains) ? (raw_text.domains as unknown[]) : [];
   const present = existing.some(
     (doc) => doc && typeof doc === 'object' && (doc as { id?: unknown }).id === id

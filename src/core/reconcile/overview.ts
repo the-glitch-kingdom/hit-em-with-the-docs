@@ -8,7 +8,7 @@ import { mkdir, readFile, readdir, writeFile } from 'fs/promises';
 import { dirname, join, posix, relative } from 'path';
 import type { PluginConfig } from '../../utils/config.js';
 import { parse_frontmatter } from '../../utils/frontmatter.js';
-import { extract_links, slugify } from '../../utils/markdown.js';
+import { extract_links, format_slug } from '../../utils/markdown.js';
 import { compute_content_hash, type Ledger } from './ledger.js';
 import { render_review, resolve_review_dir, find_next_batch } from './review.js';
 import { find_duplicates, type Duplicate } from './duplicates.js';
@@ -96,7 +96,7 @@ export async function load_overview_seed(options: {
 
 /** The members file: the user confirms the list from it before anything is drafted. */
 export async function write_members_file(repo_root: string, seed: OverviewSeed): Promise<string> {
-  const file = join(resolve_review_dir(repo_root), `overview-${slugify(seed.question).slice(0, 60) || 'overview'}.json`);
+  const file = join(resolve_review_dir(repo_root), `overview-${format_slug(seed.question).slice(0, 60) || 'overview'}.json`);
   const json_text = JSON.stringify(seed, null, 2) + '\n';
   validate_no_secrets(json_text, 'the overview members file');
   await mkdir(dirname(file), { recursive: true });
@@ -114,7 +114,7 @@ export async function write_overview_review(options: { root: string; docs_path: 
   const dir_path = resolve_review_dir(options.root);
   const batch = options.batch ?? (await find_next_batch(dir_path));
   const folder = posix.dirname(members[0]!.path);
-  const slug = slugify(seed.question).slice(0, 60) || 'overview';
+  const slug = format_slug(seed.question).slice(0, 60) || 'overview';
   const entry = {
     path: posix.join(folder === '.' ? '' : folder, `overview-${slug}.md`), content_hash: compute_content_hash(''), verdict: null,
     members, draft: '', frontmatter: { title: seed.question, purpose: '', symptoms: [seed.question] },

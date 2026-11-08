@@ -10,7 +10,7 @@ import { discover_anti_patterns } from '../core/discover/antipatterns.js';
 import { discover_standards } from '../core/discover/standards.js';
 import { discover_dependencies } from '../core/discover/dependencies.js';
 
-async function run(): Promise<void> {
+async function run_action(): Promise<void> {
   try {
     // Get inputs
     const command = core.getInput('command', { required: true });
@@ -192,4 +192,4 @@ async function run(): Promise<void> {
   }
 }
 
-run();
+run_action();

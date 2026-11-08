@@ -1,6 +1,6 @@
 import { readFile } from 'fs/promises';
 import { join, relative } from 'path';
-import { glob, path_exists } from '../../utils/glob.js';
+import { list_glob_matches, is_path_present } from '../../utils/glob.js';
 import { logger } from '../../utils/logger.js';
 
 export interface DependencyAnalysisOptions {
@@ -127,7 +127,7 @@ async function scan_packages(root_path: string): Promise<PackageAnalysis> {
 
   const package_json_path = join(root_path, 'package.json');
 
-  if (!(await path_exists(package_json_path))) {
+  if (!(await is_path_present(package_json_path))) {
     return result;
   }
 
@@ -179,7 +179,7 @@ async function scan_modules(root_path: string): Promise<ModuleAnalysis> {
   };
 
   // Find all source files
-  const files = await glob('**/*.{ts,tsx,js,jsx}', {
+  const files = await list_glob_matches('**/*.{ts,tsx,js,jsx}', {
     // eslint-disable-next-line id-denylist -- child_process/glob option name
     cwd: root_path,
     absolute: true,
@@ -388,7 +388,7 @@ async function find_unused_dependencies(
   const unused: UnusedDependency[] = [];
 
   // Get all source files
-  const files = await glob('**/*.{ts,tsx,js,jsx,json}', {
+  const files = await list_glob_matches('**/*.{ts,tsx,js,jsx,json}', {
     // eslint-disable-next-line id-denylist -- child_process/glob option name
     cwd: root_path,
     absolute: true,

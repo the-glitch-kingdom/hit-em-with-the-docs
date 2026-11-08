@@ -4,7 +4,7 @@ import { type Domain } from '../core/domains/constants.js';
 import { get_all_domains } from '../core/domains/registry.js';
 import { parse_frontmatter } from '../utils/frontmatter.js';
 import { format_date } from '../core/metadata/generator.js';
-import { path_exists } from '../utils/glob.js';
+import { is_path_present } from '../utils/glob.js';
 import {
   load_plugin_config,
   load_plugin_config_sync,
@@ -12,9 +12,9 @@ import {
   resolve_playbook_globs,
 } from '../utils/config.js';
 import { build_citer_index } from '../core/knowledge-base/citers.js';
-import { generate_facts_index } from './facts-index.js';
-import { generate_incidents_index } from './incidents-index.js';
-import { generate_symptoms_index } from './symptoms-index.js';
+import { write_facts_index } from './facts-index.js';
+import { write_incidents_index } from './incidents-index.js';
+import { write_symptoms_index } from './symptoms-index.js';
 import { logger } from '../utils/logger.js';
 import {
   generate_root_index,
@@ -64,13 +64,13 @@ const VAULT_GENERATED_SUBDIRS = ['facts', 'incidents', 'symptoms'];
  * e.g. `['knowledge-base/facts', 'knowledge-base/incidents', ...]`. Empty when
  * the configured vault lives outside the docs tree entirely.
  */
-function vault_owned_prefixes(docs_path: string): string[] {
+function get_vault_owned_prefixes(docs_path: string): string[] {
   const docs_abs = resolve(docs_path);
   const project_root = dirname(docs_abs);
   const vault_abs = resolve_vault_root(project_root, load_plugin_config_sync(project_root));
-  const rel = relative(docs_abs, vault_abs);
-  if (!rel || rel.startsWith('..')) return [];
-  const vault_path = rel.split(sep).join('/');
+  const doc_path = relative(docs_abs, vault_abs);
+  if (!doc_path || doc_path.startsWith('..')) return [];
+  const vault_path = doc_path.split(sep).join('/');
   return VAULT_GENERATED_SUBDIRS.map((sub) => `${vault_path}/${sub}`);
 }
 
@@ -115,8 +115,8 @@ export async function list_domain_doc_files(
   docs_path: string,
   domain: string
 ): Promise<string[]> {
-  const vault_prefixes = vault_owned_prefixes(docs_path);
-  const in_vault = (doc_rel_path: string): boolean => {
+  const vault_prefixes = get_vault_owned_prefixes(docs_path);
+  const is_in_vault = (doc_rel_path: string): boolean => {
     const from_docs_root = `${domain}/${doc_rel_path}`;
     return vault_prefixes.some((prefix) => from_docs_root.startsWith(`${prefix}/`));
   };
@@ -124,11 +124,11 @@ export async function list_domain_doc_files(
   try {
     const names = await readdir(join(docs_path, domain), { recursive: true });
     return names
-      .map((n) => n.split(sep).join('/'))
-      .filter((n) => n.endsWith('.md'))
-      .filter((n) => !SYSTEM_FILES.has(basename(n)))
-      .filter((n) => !n.split('/').some((seg) => EXCLUDED_DIRS.has(seg)))
-      .filter((n) => !in_vault(n))
+      .map((name) => name.split(sep).join('/'))
+      .filter((file_name) => file_name.endsWith('.md'))
+      .filter((file_name) => !SYSTEM_FILES.has(basename(file_name)))
+      .filter((file_name) => !file_name.split('/').some((seg) => EXCLUDED_DIRS.has(seg)))
+      .filter((file_name) => !is_in_vault(file_name))
       .sort();
   } catch {
     return [];
@@ -156,11 +156,11 @@ function count_words(body: string): number {
  * whole thing would render `backend/entity-schema-contract.md` as
  * "Backend/entity Schema Contract".
  */
-function title_from_file_name(file_name: string): string {
+function format_title_from_file_name(file_name: string): string {
   return basename(file_name)
     .replace(/\.md$/, '')
     .replace(/[-_]/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+    .replace(/\b\w/g, (first_letter) => first_letter.toUpperCase());
 }
 
 /**
@@ -177,9 +177,9 @@ async function build_domain_entries(
   const entries: IndexEntry[] = [];
 
   for (const file_name of files) {
-    let raw: string;
+    let raw_text: string;
     try {
-      raw = await readFile(join(docs_path, domain, file_name), 'utf-8');
+      raw_text = await readFile(join(docs_path, domain, file_name), 'utf-8');
     } catch {
       continue;
     }
@@ -193,7 +193,7 @@ async function build_domain_entries(
     let data: Record<string, unknown> = {};
     let content = '';
     try {
-      ({ data, content } = parse_frontmatter<Record<string, unknown>>(raw));
+      ({ data, content } = parse_frontmatter<Record<string, unknown>>(raw_text));
     } catch (error) {
       logger.warn(
         `Unparseable frontmatter in ${domain}/${file_name} — indexing it with ` +
@@ -207,7 +207,7 @@ async function build_domain_entries(
       title:
         typeof data.title === 'string' && data.title.trim()
           ? data.title
-          : title_from_file_name(file_name),
+          : format_title_from_file_name(file_name),
       tier: typeof data.tier === 'string' ? data.tier : 'guide',
       status: typeof data.status === 'string' ? data.status : 'active',
       last_updated: normalize_date(data.last_updated),
@@ -251,16 +251,16 @@ export async function regenerate_indexes(
   // Generated files link only to domains with a folder on disk (#45).
   const present: Domain[] = [];
   for (const domain of all_domains) {
-    if (await path_exists(join(docs_path, domain))) present.push(domain);
+    if (await is_path_present(join(docs_path, domain))) present.push(domain);
   }
 
   for (const domain of all_domains) {
     const domain_entries = await build_domain_entries(docs_path, domain, '');
     result.document_counts[domain] = domain_entries.length;
     result.total_documents += domain_entries.length;
-    root_entries_by_domain[domain] = domain_entries.map((e) => ({
-      ...e,
-      path: `${domain}/${e.path}`,
+    root_entries_by_domain[domain] = domain_entries.map((domain_entry) => ({
+      ...domain_entry,
+      path: `${domain}/${domain_entry.path}`,
     }));
 
     // Only (re)write a domain's own files when it is in the target set and
@@ -286,7 +286,7 @@ export async function regenerate_indexes(
   }
 
   // Root INDEX.md / REGISTRY.md — always refreshed.
-  if (await path_exists(docs_path)) {
+  if (await is_path_present(docs_path)) {
     const root_index_path = join(docs_path, 'INDEX.md');
     const root_registry_path = join(docs_path, 'REGISTRY.md');
     if (!dry_run) {
@@ -324,7 +324,7 @@ export interface KbIndexResult {
  * (and no writes) when it doesn't. With `dryRun` only counts the facts and
  * incidents; nothing is written.
  */
-export async function generate_kb_indexes(
+export async function generate_knowledge_base_indexes(
   docs_path: string,
   dry_run = false
 ): Promise<KbIndexResult | null> {
@@ -332,7 +332,7 @@ export async function generate_kb_indexes(
   const project_root = dirname(docs_path);
   const config = await load_plugin_config(project_root);
   const vault_root = resolve_vault_root(project_root, config);
-  if (!(await path_exists(vault_root))) return null;
+  if (!(await is_path_present(vault_root))) return null;
 
   const playbook_globs = resolve_playbook_globs(project_root, config);
   const index = await build_citer_index({ project_root, vault_root, playbook_globs });
@@ -343,8 +343,8 @@ export async function generate_kb_indexes(
   }
   return {
     ...base,
-    facts_path: await generate_facts_index({ vault_root, index }),
-    incidents_path: await generate_incidents_index({ vault_root, index }),
-    symptoms_path: await generate_symptoms_index({ vault_root, index }),
+    facts_path: await write_facts_index({ vault_root, index }),
+    incidents_path: await write_incidents_index({ vault_root, index }),
+    symptoms_path: await write_symptoms_index({ vault_root, index }),
   };
 }

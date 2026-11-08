@@ -4,32 +4,32 @@ import { format_date } from '../../core/metadata/generator.js';
 /**
  * Generate initial domain REGISTRY.md content
  */
-export function generate_domain_registry(domain: Domain, def: DomainDefinition): string {
-  const now = format_date(new Date());
+export function generate_domain_registry(domain: Domain, definition: DomainDefinition): string {
+  const today = format_date(new Date());
 
   return `---
-title: ${def.name} Registry
+title: ${definition.name} Registry
 tier: reference
 domains:
   - ${domain}
 status: active
-last_updated: '${now}'
+last_updated: '${today}'
 version: '1.0.0'
 generated: true
 purpose: Quick reference for ${domain} documentation
 ---
 
-# ${def.name} Registry
+# ${definition.name} Registry
 
-> Quick reference for ${def.description.toLowerCase()}.
+> Quick reference for ${definition.description.toLowerCase()}.
 
 ## At a Glance
 
 | Metric | Value |
 |--------|-------|
 | Documents | 0 |
-| Category | ${def.category} |
-| Load Priority | ${def.loadPriority}/10 |
+| Category | ${definition.category} |
+| Load Priority | ${definition.loadPriority}/10 |
 
 ## Quick Links
 
@@ -47,7 +47,7 @@ purpose: Quick reference for ${domain} documentation
 
 ## Keywords
 
-\`${def.keywords.slice(0, 8).join('` `')}\`
+\`${definition.keywords.slice(0, 8).join('` `')}\`
 
 ## See Also
 
@@ -57,6 +57,6 @@ purpose: Quick reference for ${domain} documentation
 
 ---
 
-*Last updated: ${now}*
+*Last updated: ${today}*
 `;
 }

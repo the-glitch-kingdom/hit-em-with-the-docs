@@ -14,7 +14,7 @@
 import { writeFile, mkdir } from 'fs/promises';
 import { join, relative, sep } from 'path';
 import type { CiterIndex, PlaybookCitation } from '../core/knowledge-base/citers.js';
-import { format_markdown_table } from './table.js';
+import { render_markdown_table } from './table.js';
 
 export interface GenerateSymptomsIndexOptions {
   vault_root: string;
@@ -33,7 +33,7 @@ interface FlatSymptom {
   cites: string[];
 }
 
-export async function generate_symptoms_index(
+export async function write_symptoms_index(
   options: GenerateSymptomsIndexOptions
 ): Promise<string> {
   const { vault_root, index } = options;
@@ -53,7 +53,7 @@ export async function generate_symptoms_index(
  *   the project root.
  */
 export function render_symptoms_index(index: CiterIndex, symptoms_dir?: string): string {
-  const flat = flatten_symptoms(index);
+  const flat = build_flat_symptoms(index);
 
   const lines: string[] = [];
   lines.push('---');
@@ -88,7 +88,7 @@ export function render_symptoms_index(index: CiterIndex, symptoms_dir?: string):
 
   for (const kind of ['alert_name', 'user_phrase', 'error_pattern'] as const) {
     const subset = flat
-      .filter((s) => s.kind === kind)
+      .filter((symptom) => symptom.kind === kind)
       .sort((a, b) => {
         const cmp = a.key.localeCompare(b.key);
         if (cmp !== 0) return cmp;
@@ -97,23 +97,23 @@ export function render_symptoms_index(index: CiterIndex, symptoms_dir?: string):
 
     if (subset.length === 0) continue;
 
-    lines.push(`## ${humanize_kind(kind)}`);
+    lines.push(`## ${format_kind(kind)}`);
     lines.push('');
 
-    const rows = subset.map((s) => [
-      `\`${escape_md(s.key)}\``,
+    const rows = subset.map((symptom) => [
+      `\`${escape_markdown(symptom.key)}\``,
       // The LABEL stays project-relative (a stable, readable identifier), but the HREF
       // must be relative to this index's own directory. `playbookRelPath` is
       // `relative(projectRoot, ...)`, and this file lives at <vaultRoot>/symptoms/, so
       // using it as the href resolved to <vaultRoot>/symptoms/<projectRelPath> and every
       // generated link was broken. Windows: normalise `\` to `/` for markdown.
-      `[${s.playbook_rel_path}](${href_for(s, symptoms_dir)}${s.target})`,
-      s.severity ?? '—',
-      s.cites.map((c) => `\`${c}\``).join(', '),
+      `[${symptom.playbook_rel_path}](${build_href(symptom, symptoms_dir)}${symptom.target})`,
+      symptom.severity ?? '—',
+      symptom.cites.map((cite) => `\`${cite}\``).join(', '),
     ]);
 
     lines.push(
-      format_markdown_table(['Key', 'Playbook', 'Severity', 'Cites'], rows)
+      render_markdown_table(['Key', 'Playbook', 'Severity', 'Cites'], rows)
     );
     lines.push('');
   }
@@ -121,7 +121,7 @@ export function render_symptoms_index(index: CiterIndex, symptoms_dir?: string):
   return ensure_trailing_newline(lines.join('\n'));
 }
 
-function flatten_symptoms(index: CiterIndex): FlatSymptom[] {
+function build_flat_symptoms(index: CiterIndex): FlatSymptom[] {
   // For each fact id in the citers map, each citation already carries
   // kind + key + target + severity. We expand user_phrase arrays to one
   // row per phrase, then coalesce by (kind, key, playbook, target) so the
@@ -129,21 +129,21 @@ function flatten_symptoms(index: CiterIndex): FlatSymptom[] {
   const coalesced = new Map<string, FlatSymptom>();
 
   for (const [fact_id, citation_list] of index.citers.entries()) {
-    for (const c of citation_list) {
-      const keys = Array.isArray(c.key) ? c.key : [c.key];
-      for (const k of keys) {
-        const composite = `${c.kind}|${k}|${c.rel_path}|${c.target}`;
+    for (const citation of citation_list) {
+      const keys = Array.isArray(citation.key) ? citation.key : [citation.key];
+      for (const key of keys) {
+        const composite = `${citation.kind}|${key}|${citation.rel_path}|${citation.target}`;
         const existing = coalesced.get(composite);
         if (existing) {
           if (!existing.cites.includes(fact_id)) existing.cites.push(fact_id);
         } else {
           coalesced.set(composite, {
-            kind: c.kind,
-            key: k,
-            playbook_rel_path: c.rel_path,
-            playbook_abs_path: c.path,
-            target: c.target,
-            severity: c.severity,
+            kind: citation.kind,
+            key: key,
+            playbook_rel_path: citation.rel_path,
+            playbook_abs_path: citation.path,
+            target: citation.target,
+            severity: citation.severity,
             cites: [fact_id],
           });
         }
@@ -157,12 +157,12 @@ function flatten_symptoms(index: CiterIndex): FlatSymptom[] {
 }
 
 /** Href relative to the index's own directory; falls back to the project-relative path. */
-function href_for(s: FlatSymptom, symptoms_dir?: string): string {
-  if (!symptoms_dir) return s.playbook_rel_path;
-  return relative(symptoms_dir, s.playbook_abs_path).split(sep).join('/');
+function build_href(flat_symptom: FlatSymptom, symptoms_dir?: string): string {
+  if (!symptoms_dir) return flat_symptom.playbook_rel_path;
+  return relative(symptoms_dir, flat_symptom.playbook_abs_path).split(sep).join('/');
 }
 
-function humanize_kind(kind: PlaybookCitation['kind']): string {
+function format_kind(kind: PlaybookCitation['kind']): string {
   switch (kind) {
     case 'alert_name':
       return 'Alert names (exact match)';
@@ -173,10 +173,10 @@ function humanize_kind(kind: PlaybookCitation['kind']): string {
   }
 }
 
-function escape_md(s: string): string {
-  return s.replace(/\|/g, '\\|');
+function escape_markdown(text: string): string {
+  return text.replace(/\|/g, '\\|');
 }
 
-function ensure_trailing_newline(s: string): string {
-  return s.endsWith('\n') ? s : s + '\n';
+function ensure_trailing_newline(text: string): string {
+  return text.endsWith('\n') ? text : text + '\n';
 }

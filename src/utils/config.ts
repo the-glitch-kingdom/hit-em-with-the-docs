@@ -59,9 +59,9 @@ export type CustomDomainConfig = z.infer<typeof custom_domain_schema>;
  * validation; this is the last-line filter for the runtime.
  */
 const lenient_domains_array = z
-  .preprocess((val) => {
-    if (!Array.isArray(val)) return [];
-    return val.filter((entry) => custom_domain_schema.safeParse(entry).success);
+  .preprocess((value) => {
+    if (!Array.isArray(value)) return [];
+    return value.filter((entry) => custom_domain_schema.safeParse(entry).success);
   }, z.array(custom_domain_schema))
   .default([]);
 
@@ -135,9 +135,9 @@ export const status_value_schema = z
  * the whole config load, preserving `loadPluginConfig`'s never-throw contract.
  */
 const lenient_status_array = z
-  .preprocess((val) => {
-    if (!Array.isArray(val)) return [];
-    return val.filter((entry) => status_value_schema.safeParse(entry).success);
+  .preprocess((value) => {
+    if (!Array.isArray(value)) return [];
+    return value.filter((entry) => status_value_schema.safeParse(entry).success);
   }, z.array(status_value_schema))
   .default([]);
 
@@ -195,20 +195,20 @@ export const DEFAULT_RECONCILE_SCHEMA_SOURCES: string[] = [];
 const related_repo_schema = z.object({ name: z.string().regex(/^[\w.-]+$/), path: z.string().min(1) });
 const lenient_related_repos = z
   .array(z.unknown())
-  .transform((a) => a.flatMap((x) => { const r = related_repo_schema.safeParse(x); return r.success ? [r.data] : []; }))
+  .transform((a) => a.flatMap((item) => { const result = related_repo_schema.safeParse(item); return result.success ? [result.data] : []; }))
   .catch([]);
 
 /** Secret scan (#59). An allow entry needs a `reason` and a `fingerprint` or `pattern`; others are dropped with a warning. */
 export interface SecretAllow { fingerprint?: string | undefined; pattern?: string | undefined; file?: string | undefined; reason: string }
 const lenient_secret_allow = z
   .array(z.unknown())
-  .transform((a) => a.flatMap((x): SecretAllow[] => {
-    const e = x as Partial<SecretAllow> | null;
-    const ok = !!e && typeof e === 'object' && typeof e.reason === 'string' && e.reason.trim() &&
-      (typeof e.fingerprint === 'string' || typeof e.pattern === 'string') &&
-      (e.file === undefined || typeof e.file === 'string');
+  .transform((a) => a.flatMap((item): SecretAllow[] => {
+    const entry = item as Partial<SecretAllow> | null;
+    const ok = !!entry && typeof entry === 'object' && typeof entry.reason === 'string' && entry.reason.trim() &&
+      (typeof entry.fingerprint === 'string' || typeof entry.pattern === 'string') &&
+      (entry.file === undefined || typeof entry.file === 'string');
     if (!ok) { console.warn('hewtd: ignoring reconcile.secrets.allow entry without a reason and a fingerprint or pattern'); return []; }
-    return [{ fingerprint: e.fingerprint, pattern: e.pattern, file: e.file, reason: e.reason!.trim() }];
+    return [{ fingerprint: entry.fingerprint, pattern: entry.pattern, file: entry.file, reason: entry.reason!.trim() }];
   }))
   .catch([]);
 const secrets_config_schema = z
@@ -304,23 +304,23 @@ const CONFIG_FILENAME = '.claude/hit-em-with-the-docs.json';
  * which directory to read from.
  */
 export async function load_plugin_config(project_root?: string): Promise<PluginConfig> {
-  const root = project_root ?? process.cwd();
-  const config_path = resolve(root, CONFIG_FILENAME);
+  const repo_root = project_root ?? process.cwd();
+  const config_path = resolve(repo_root, CONFIG_FILENAME);
 
-  let raw: unknown;
+  let raw_text: unknown;
   try {
     const contents = await readFile(config_path, 'utf-8');
-    raw = JSON.parse(contents);
+    raw_text = JSON.parse(contents);
   } catch {
-    raw = {};
+    raw_text = {};
   }
 
-  const parsed = plugin_config_schema.safeParse(raw);
-  const cfg = parsed.success ? parsed.data : plugin_config_schema.parse({}); // malformed: defaults, not a crash
+  const parsed = plugin_config_schema.safeParse(raw_text);
+  const config = parsed.success ? parsed.data : plugin_config_schema.parse({}); // malformed: defaults, not a crash
   // The committed secrets baseline joins the allowlist, so every secret check honours it (#61).
   const { load_baseline, build_baseline_allow: baseline_allow } = await import('../core/reconcile/secrets.js');
-  cfg.reconcile.secrets.allow = [...cfg.reconcile.secrets.allow, ...baseline_allow(await load_baseline(root))];
-  return cfg;
+  config.reconcile.secrets.allow = [...config.reconcile.secrets.allow, ...baseline_allow(await load_baseline(repo_root))];
+  return config;
 }
 
 /**
@@ -328,18 +328,18 @@ export async function load_plugin_config(project_root?: string): Promise<PluginC
  * Same fail-open behavior.
  */
 export function load_plugin_config_sync(project_root?: string): PluginConfig {
-  const root = project_root ?? process.cwd();
-  const config_path = resolve(root, CONFIG_FILENAME);
+  const repo_root = project_root ?? process.cwd();
+  const config_path = resolve(repo_root, CONFIG_FILENAME);
 
-  let raw: unknown;
+  let raw_text: unknown;
   try {
     const contents = readFileSync(config_path, 'utf-8');
-    raw = JSON.parse(contents);
+    raw_text = JSON.parse(contents);
   } catch {
-    raw = {};
+    raw_text = {};
   }
 
-  const parsed = plugin_config_schema.safeParse(raw);
+  const parsed = plugin_config_schema.safeParse(raw_text);
   if (parsed.success) {
     return parsed.data;
   }
@@ -352,11 +352,11 @@ export function load_plugin_config_sync(project_root?: string): PluginConfig {
  * you need to MUTATE the config and write it back without clobbering keys this
  * module doesn't model (e.g. the runtime's `updatePolicy`). Never throws.
  */
-export async function read_raw_config(
+export async function load_raw_config(
   project_root?: string
 ): Promise<Record<string, unknown>> {
-  const root = project_root ?? process.cwd();
-  const config_path = resolve(root, CONFIG_FILENAME);
+  const repo_root = project_root ?? process.cwd();
+  const config_path = resolve(repo_root, CONFIG_FILENAME);
   try {
     const contents = await readFile(config_path, 'utf-8');
     const parsed = JSON.parse(contents);
@@ -384,7 +384,7 @@ export async function write_raw_config(
 }
 
 /** Absolute path to a project's config file (whether or not it exists). */
-export function config_file_path(project_root: string): string {
+export function resolve_config_file_path(project_root: string): string {
   return resolve(project_root, CONFIG_FILENAME);
 }
 
@@ -412,7 +412,7 @@ export function resolve_playbook_globs(
   project_root: string,
   config: PluginConfig
 ): string[] {
-  return config.vault.playbook_paths.map((p) => join(project_root, p));
+  return config.vault.playbook_paths.map((playbook_path) => join(project_root, playbook_path));
 }
 
 /**
@@ -424,12 +424,12 @@ export async function resolve_reports_dir(docs_path: string): Promise<string> {
   const project_root = dirname(docs_path);
   const configured = (await load_plugin_config(project_root)).reports_dir;
   if (!configured) return join(docs_path, 'reports');
-  const dir = resolve(project_root, configured);
-  const rel = relative(project_root, dir);
-  if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+  const dir_path = resolve(project_root, configured);
+  const repo_path = relative(project_root, dir_path);
+  if (repo_path === '..' || repo_path.startsWith(`..${sep}`) || isAbsolute(repo_path)) {
     // Lenient like the rest of the config: bad value → default, never a crash.
     console.warn(`hewtd: reports_dir "${configured}" must stay inside the repo root; using ${join(docs_path, 'reports')}`);
     return join(docs_path, 'reports');
   }
-  return dir;
+  return dir_path;
 }

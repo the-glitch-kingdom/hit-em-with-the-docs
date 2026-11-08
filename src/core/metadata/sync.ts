@@ -1,9 +1,9 @@
 import { readFile, writeFile } from 'fs/promises';
 import { relative } from 'path';
-import { find_markdown_files, path_exists } from '../../utils/glob.js';
+import { find_markdown_files, is_path_present } from '../../utils/glob.js';
 import { join, resolve, sep } from 'path';
 import { load_plugin_config, resolve_docs_root } from '../../utils/config.js';
-import { parse_frontmatter, set_frontmatter } from '../../utils/frontmatter.js';
+import { parse_frontmatter, with_frontmatter } from '../../utils/frontmatter.js';
 import { count_words, format_read_time } from '../../utils/markdown.js';
 import { logger } from '../../utils/logger.js';
 import {
@@ -231,7 +231,7 @@ async function is_documentation_root(docs_path: string, project_root: string): P
   const target = resolve(docs_path);
   if (target === declared || target.startsWith(declared + sep)) return true;
 
-  return path_exists(join(docs_path, 'INDEX.md'));
+  return is_path_present(join(docs_path, 'INDEX.md'));
 }
 
 interface FileSyncResult {
@@ -277,7 +277,7 @@ async function sync_file(
       const updated = with_auto_fields(data, body);
       if (JSON.stringify(updated) !== JSON.stringify(data)) {
         if (!dry_run) {
-          const new_content = set_frontmatter(content, updated as Record<string, unknown>);
+          const new_content = with_frontmatter(content, updated as Record<string, unknown>);
           await writeFile(file_path, new_content, 'utf-8');
         }
         result.fixed = true;
@@ -310,7 +310,7 @@ async function sync_file(
   result.metadata = merged;
 
   if (!dry_run) {
-    const new_content = set_frontmatter(content, merged as unknown as Record<string, unknown>);
+    const new_content = with_frontmatter(content, merged as unknown as Record<string, unknown>);
     await writeFile(file_path, new_content, 'utf-8');
   }
 

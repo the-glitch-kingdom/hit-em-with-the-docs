@@ -126,7 +126,7 @@ describe('fixRetrievalFields', () => {
   });
 
   it('setFrontmatter keeps list style from an explicit original; new files default to indented', async () => {
-    const { set_frontmatter, stringify_frontmatter } = await import('../../../src/utils/frontmatter.js');
+    const { with_frontmatter: set_frontmatter, render_frontmatter: stringify_frontmatter } = await import('../../../src/utils/frontmatter.js');
     const orig = '---\ntags:\n- a\n---\n\nB\n';
     expect(set_frontmatter('B\n', { tags: ['a', 'b'] }, orig)).toContain('tags:\n- a\n- b\n');
     expect(stringify_frontmatter({ tags: ['a'] })).toBe('tags:\n  - a\n');

@@ -1,7 +1,7 @@
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { resolve_reports_dir } from '../utils/config.js';
-import { path_exists } from '../utils/glob.js';
+import { is_path_present } from '../utils/glob.js';
 import { format_date } from '../core/metadata/generator.js';
 import type { MaintainResult } from '../core/maintain/orchestrator.js';
 
@@ -30,7 +30,7 @@ export async function generate_health_report(
  * Generate markdown health report
  */
 function generate_markdown_report(result: MaintainResult): string {
-  const now = format_date(new Date());
+  const today = format_date(new Date());
   const timestamp = new Date().toISOString();
 
   return `---
@@ -38,7 +38,7 @@ title: Documentation Health Report
 tier: admin
 domains: [root]
 status: active
-last_updated: '${now}'
+last_updated: '${today}'
 version: '1.0.0'
 generated: true
 ---
@@ -81,31 +81,31 @@ ${generate_recommendations(result)}
 }
 
 /** Percentage of `n` in `total`, 0 when the tree is empty. */
-const pct = (n: number, total: number): string => (total === 0 ? '0.0' : ((n / total) * 100).toFixed(1));
+const format_percent = (count: number, total: number): string => (total === 0 ? '0.0' : ((count / total) * 100).toFixed(1));
 
 function render_coverage(result: MaintainResult): string {
-  const c = result.retrieval_coverage;
-  if (!c) return '';
-  const row = (label: string, n: number): string => `| ${label} | ${n}/${c.total} | ${pct(n, c.total)}% |`;
+  const content = result.retrieval_coverage;
+  if (!content) return '';
+  const render_row = (label: string, count: number): string => `| ${label} | ${count}/${content.total} | ${format_percent(count, content.total)}% |`;
   return `## Retrieval Coverage
 
 Generated files, drafts, reports, archive and plan docs are excluded.
 
 | Check | Docs | Coverage |
 |-------|------|----------|
-${row('Non-weak purpose', c.withPurpose)}
-${row('Symptoms', c.withSymptoms)}
-${row('Unique title', c.withUniqueTitle)}
+${render_row('Non-weak purpose', content.withPurpose)}
+${render_row('Symptoms', content.withSymptoms)}
+${render_row('Unique title', content.withUniqueTitle)}
 ${render_overviews(result)}
 `;
 }
 
 function render_overviews(result: MaintainResult): string {
-  const o = result.overview_coverage;
-  if (!o) return '';
-  const rows = o.missing.map((m) => `| ${m.id} | ${m.size} | ${m.generatedOnlyHub ? 'yes' : 'no'} |`).join('\n');
+  const option = result.overview_coverage;
+  if (!option) return '';
+  const rows = option.missing.map((match) => `| ${match.id} | ${match.size} | ${match.generatedOnlyHub ? 'yes' : 'no'} |`).join('\n');
   return `
-Overview docs: ${o.withOverview} cluster(s) with an overview, ${o.withoutOverview} without.
+Overview docs: ${option.withOverview} cluster(s) with an overview, ${option.withoutOverview} without.
 ${rows ? `\n| Cluster missing an overview | Docs | Generated-only hub |\n|---|---|---|\n${rows}\n` : ''}`;
 }
 
@@ -213,20 +213,20 @@ function generate_recommendations(result: MaintainResult): string {
 /**
  * Save health report to file
  */
-export async function save_health_report(
+export async function write_health_report(
   docs_path: string,
   result: MaintainResult,
   format: 'markdown' | 'json' = 'markdown'
 ): Promise<string> {
   const reports_dir = await resolve_reports_dir(docs_path);
 
-  if (!(await path_exists(reports_dir))) {
+  if (!(await is_path_present(reports_dir))) {
     await mkdir(reports_dir, { recursive: true });
   }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const ext = format === 'json' ? 'json' : 'md';
-  const file_name = `health-${timestamp}.${ext}`;
+  const extension = format === 'json' ? 'json' : 'md';
+  const file_name = `health-${timestamp}.${extension}`;
   const file_path = join(reports_dir, file_name);
 
   const content = await generate_health_report({ docs_path, result, format });

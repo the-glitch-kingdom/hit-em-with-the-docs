@@ -4,30 +4,30 @@ import { format_date } from '../../core/metadata/generator.js';
 /**
  * Generate initial domain INDEX.md content
  */
-export function generate_domain_index(domain: Domain, def: DomainDefinition): string {
-  const now = format_date(new Date());
+export function generate_domain_index(domain: Domain, definition: DomainDefinition): string {
+  const today = format_date(new Date());
 
   return `---
-title: ${def.name} Documentation Index
+title: ${definition.name} Documentation Index
 tier: reference
 domains:
   - ${domain}
 status: active
-last_updated: '${now}'
+last_updated: '${today}'
 version: '1.0.0'
 generated: true
 purpose: Complete listing of ${domain} documentation
 ---
 
-# ${def.name} Documentation
+# ${definition.name} Documentation
 
-> ${def.description}
+> ${definition.description}
 
 ## Overview
 
 - **Domain:** \`${domain}/\`
-- **Category:** ${def.category}
-- **Load Priority:** ${def.loadPriority}/10
+- **Category:** ${definition.category}
+- **Load Priority:** ${definition.loadPriority}/10
 
 ## Documents
 
@@ -45,7 +45,7 @@ tier: guide
 domains:
   - ${domain}
 status: draft
-last_updated: '${now}'
+last_updated: '${today}'
 version: '1.0.0'
 ---
 \`\`\`
@@ -56,7 +56,7 @@ version: '1.0.0'
 
 This domain covers topics related to:
 
-${def.keywords.map((k) => `- ${k}`).join('\n')}
+${definition.keywords.map((keyword) => `- ${keyword}`).join('\n')}
 
 ## Related Resources
 
@@ -65,6 +65,6 @@ ${def.keywords.map((k) => `- ${k}`).join('\n')}
 
 ---
 
-*Last updated: ${now}*
+*Last updated: ${today}*
 `;
 }

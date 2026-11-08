@@ -4,6 +4,7 @@ import { stat, readdir } from 'fs/promises';
 import { existsSync } from 'fs';
 
 export interface GlobOptions {
+  // eslint-disable-next-line id-denylist -- glob/child_process option name
   cwd?: string;
   absolute?: boolean;
   ignore?: string[];
@@ -13,19 +14,20 @@ export interface GlobOptions {
 /**
  * Find files matching a glob pattern
  */
-export async function glob(
+export async function list_glob_matches(
   pattern: string,
   options: GlobOptions = {}
 ): Promise<string[]> {
   const {
-    cwd = process.cwd(),
+    cwd: working_dir = process.cwd(),
     absolute = false,
     ignore = ['node_modules/**', 'dist/**', '.git/**'],
     dot = false,
   } = options;
 
   const matches = await glob_lib(pattern, {
-    cwd,
+    // eslint-disable-next-line id-denylist -- glob/child_process option name
+    cwd: working_dir,
     absolute,
     ignore,
     dot,
@@ -92,14 +94,15 @@ const DOC_SCAN_IGNORE = [
  * are merged, never override these exclusions.
  */
 export async function find_markdown_files(
-  dir: string,
+  dir_path: string,
   options: Omit<GlobOptions, 'absolute'> = {}
 ): Promise<string[]> {
   const { ignore: extra_ignore = [], ...rest } = options;
-  return glob('**/*.md', {
+  return list_glob_matches('**/*.md', {
     ...rest,
     ignore: [...DOC_SCAN_IGNORE, ...extra_ignore],
-    cwd: dir,
+    // eslint-disable-next-line id-denylist -- glob/child_process option name
+    cwd: dir_path,
     absolute: true,
   });
 }
@@ -107,7 +110,7 @@ export async function find_markdown_files(
 /**
  * Check if a path exists
  */
-export async function path_exists(path: string): Promise<boolean> {
+export async function is_path_present(path: string): Promise<boolean> {
   try {
     await stat(path);
     return true;
@@ -119,7 +122,7 @@ export async function path_exists(path: string): Promise<boolean> {
 /**
  * Check if a path exists (sync)
  */
-export function path_exists_sync(path: string): boolean {
+export function is_path_present_sync(path: string): boolean {
   return existsSync(path);
 }
 
@@ -150,12 +153,12 @@ export async function is_file(path: string): Promise<boolean> {
 /**
  * Get all subdirectories in a directory
  */
-export async function get_subdirectories(dir: string): Promise<string[]> {
+export async function list_subdirectories(dir_path: string): Promise<string[]> {
   try {
-    const entries = await readdir(dir, { withFileTypes: true });
+    const entries = await readdir(dir_path, { withFileTypes: true });
     return entries
       .filter((entry) => entry.isDirectory())
-      .map((entry) => join(dir, entry.name));
+      .map((entry) => join(dir_path, entry.name));
   } catch {
     return [];
   }
@@ -199,9 +202,9 @@ export function get_extension(path: string): string {
 /**
  * Remove file extension from path
  */
-export function remove_extension(path: string): string {
-  const ext = extname(path);
-  return path.slice(0, -ext.length);
+export function strip_extension(path: string): string {
+  const extension = extname(path);
+  return path.slice(0, -extension.length);
 }
 
 /**

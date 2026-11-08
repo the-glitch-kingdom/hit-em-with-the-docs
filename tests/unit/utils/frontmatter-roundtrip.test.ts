@@ -14,8 +14,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   parse_frontmatter,
-  stringify_frontmatter,
-  set_frontmatter,
+  render_frontmatter,
+  with_frontmatter,
 } from '../../../src/utils/frontmatter.js';
 import { metadata_schema } from '../../../src/core/metadata/schema.js';
 
@@ -28,7 +28,7 @@ describe('frontmatter round-trip (#28)', () => {
     const first = parse_frontmatter(src);
     expect(typeof first.data.last_updated).toBe('string');
 
-    const second = parse_frontmatter(set_frontmatter(src, first.data));
+    const second = parse_frontmatter(with_frontmatter(src, first.data));
     expect(second.data.last_updated).not.toBeInstanceOf(Date);
     expect(second.data.last_updated).toBe('2026-08-22');
   });
@@ -48,23 +48,23 @@ describe('frontmatter round-trip (#28)', () => {
     );
 
     const once = parse_frontmatter(src).data;
-    const twice = parse_frontmatter(set_frontmatter(src, once)).data;
+    const twice = parse_frontmatter(with_frontmatter(src, once)).data;
     expect(twice).toEqual(once);
 
     // and again, so a repeated `maintain --fix` cannot drift
-    const thrice = parse_frontmatter(set_frontmatter(src, twice)).data;
+    const thrice = parse_frontmatter(with_frontmatter(src, twice)).data;
     expect(thrice).toEqual(twice);
   });
 
   it('writes date-shaped values quoted, so other YAML readers agree', () => {
     // Most YAML readers still default to 1.1, where a bare 2026-08-22 is a
     // timestamp. Frontmatter is a shared contract with editors and sister tools.
-    const out = stringify_frontmatter({ last_updated: '2026-08-22', version: '1.0.0' });
+    const out = render_frontmatter({ last_updated: '2026-08-22', version: '1.0.0' });
     expect(out).toContain("last_updated: '2026-08-22'");
   });
 
   it('quotes date-shaped values nested in objects and arrays', () => {
-    const out = stringify_frontmatter({
+    const out = render_frontmatter({
       provenance: [{ date: '2026-08-22' }],
       nested: { archived_on: '2026-01-05' },
     });
@@ -73,7 +73,7 @@ describe('frontmatter round-trip (#28)', () => {
   });
 
   it('does not quote values that merely contain digits', () => {
-    const out = stringify_frontmatter({ version: '1.0.0', title: 'Release 2026 notes' });
+    const out = render_frontmatter({ version: '1.0.0', title: 'Release 2026 notes' });
     expect(out).toContain('version: 1.0.0');
     expect(out).not.toContain("version: '1.0.0'");
   });
@@ -83,12 +83,12 @@ describe('frontmatter round-trip (#28)', () => {
     const { data } = parse_frontmatter(doc('last_updated: 2026-08-22'));
     expect(data.last_updated).not.toBeInstanceOf(Date);
     expect(data.last_updated).toBe('2026-08-22');
-    expect(stringify_frontmatter(data)).toContain("last_updated: '2026-08-22'");
+    expect(render_frontmatter(data)).toContain("last_updated: '2026-08-22'");
   });
 
   it('does not mutate the object it is given', () => {
     const data = { last_updated: '2026-08-22' };
-    stringify_frontmatter(data);
+    render_frontmatter(data);
     expect(data.last_updated).toBe('2026-08-22');
     expect(typeof data.last_updated).toBe('string');
   });
@@ -105,7 +105,7 @@ describe('frontmatter round-trip (#28)', () => {
         "version: '1.0.0'",
       ].join('\n')
     );
-    const round_tripped = parse_frontmatter(set_frontmatter(src, parse_frontmatter(src).data)).data;
+    const round_tripped = parse_frontmatter(with_frontmatter(src, parse_frontmatter(src).data)).data;
     expect(metadata_schema.safeParse(round_tripped).success).toBe(true);
   });
 });

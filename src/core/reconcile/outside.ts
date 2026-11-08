@@ -9,7 +9,7 @@ import { existsSync } from 'fs';
 import { mkdir, readFile, unlink, writeFile } from 'fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'path';
 import { find_markdown_files } from '../../utils/glob.js';
-import { parse_frontmatter, set_frontmatter } from '../../utils/frontmatter.js';
+import { parse_frontmatter, with_frontmatter } from '../../utils/frontmatter.js';
 import { integrate_document } from '../integrate/integrator.js';
 import { load_plugin_config } from '../../utils/config.js';
 import { build_glob_regex } from './references.js';
@@ -199,7 +199,7 @@ export async function apply_outside_entry(options: { docs_path: string; entry: R
   const provenance = Array.isArray(frontmatter.provenance) ? (frontmatter.provenance as string[]) : [];
   // Links inside the moved doc keep pointing at the same files from the new location.
   const rebased = with_rewritten_links(content, (link_target) => format_posix_relative_path(dirname(target), resolve(dirname(abs_path), link_target)));
-  await writeFile(target, set_frontmatter(rebased, { ...frontmatter, moved_from: repo_path, provenance: [...provenance, `moved from ${repo_path}${history ? `; ${history}` : ''}`] }), 'utf-8');
+  await writeFile(target, with_frontmatter(rebased, { ...frontmatter, moved_from: repo_path, provenance: [...provenance, `moved from ${repo_path}${history ? `; ${history}` : ''}`] }), 'utf-8');
 
   const touched = [abs_path, target];
   for (const { file, next } of rewrites) {

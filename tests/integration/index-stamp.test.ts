@@ -4,7 +4,7 @@ import { existsSync } from 'fs';
 import { spawnSync } from 'child_process';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
-import { stamp_generated } from '../../src/generators/stamp-reports.js';
+import { with_generated_stamp } from '../../src/generators/stamp-reports.js';
 
 const CLI = join(resolve(__dirname, '../..'), 'dist/cli/index.js');
 let root: string;
@@ -91,7 +91,7 @@ describe('hewtd init reports_dir', () => {
 
 describe('stampGenerated', () => {
   it('handles CRLF and skips stamped files', () => {
-    expect(stamp_generated('---\r\ntitle: a\r\n---\r\nbody')).toBe('---\r\ntitle: a\r\ngenerated: true\r\n---\r\nbody');
-    expect(stamp_generated('---\ngenerated: true\n---\nx')).toBeNull();
+    expect(with_generated_stamp('---\r\ntitle: a\r\n---\r\nbody')).toBe('---\r\ntitle: a\r\ngenerated: true\r\n---\r\nbody');
+    expect(with_generated_stamp('---\ngenerated: true\n---\nx')).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 import { readFile } from 'fs/promises';
 import { join, relative, dirname, resolve } from 'path';
-import { find_markdown_files, path_exists } from '../../utils/glob.js';
+import { find_markdown_files, is_path_present } from '../../utils/glob.js';
 import { extract_links } from '../../utils/markdown.js';
 import { logger } from '../../utils/logger.js';
 import { detect_domain_from_path } from '../domains/detector.js';
@@ -129,7 +129,7 @@ export async function check_links(options: LinkCheckOptions): Promise<LinkCheckR
           const target_path = resolve_link(link.url, file_dir, docs_path, file);
 
           // Check if target exists
-          const exists = await path_exists(target_path);
+          const exists = await is_path_present(target_path);
 
           if (!exists) {
             result.broken_links.push({
@@ -284,7 +284,7 @@ export async function check_single_link(
   const file_dir = dirname(source_file);
   const target_path = resolve_link(link_url, file_dir, docs_path);
 
-  const exists = await path_exists(target_path);
+  const exists = await is_path_present(target_path);
 
   if (!exists) {
     return { valid: false, reason: 'Target file does not exist' };
@@ -309,7 +309,7 @@ export async function find_file_broken_links(
   for (const link of links) {
     if (link.is_internal) {
       const target_path = resolve_link(link.url, file_dir, docs_path);
-      const exists = await path_exists(target_path);
+      const exists = await is_path_present(target_path);
 
       if (!exists) {
         broken_links.push({

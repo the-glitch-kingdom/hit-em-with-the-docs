@@ -1,7 +1,7 @@
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { resolve_reports_dir } from '../utils/config.js';
-import { path_exists } from '../utils/glob.js';
+import { is_path_present } from '../utils/glob.js';
 import { format_date } from '../core/metadata/generator.js';
 import type { AuditResult } from '../core/audit/auditor.js';
 
@@ -30,7 +30,7 @@ export async function generate_audit_report(
  * Generate markdown audit report
  */
 function generate_markdown_report(result: AuditResult): string {
-  const now = format_date(new Date());
+  const today = format_date(new Date());
   const timestamp = new Date().toISOString();
 
   const error_issues = result.issues.filter((i) => i.severity === 'error');
@@ -42,7 +42,7 @@ title: Documentation Audit Report
 tier: admin
 domains: [root]
 status: active
-last_updated: '${now}'
+last_updated: '${today}'
 version: '1.0.0'
 generated: true
 ---
@@ -159,20 +159,20 @@ function generate_json_report(result: AuditResult): string {
 /**
  * Save audit report to file
  */
-export async function save_audit_report(
+export async function write_audit_report(
   docs_path: string,
   result: AuditResult,
   format: 'markdown' | 'json' = 'markdown'
 ): Promise<string> {
   const reports_dir = await resolve_reports_dir(docs_path);
 
-  if (!(await path_exists(reports_dir))) {
+  if (!(await is_path_present(reports_dir))) {
     await mkdir(reports_dir, { recursive: true });
   }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const ext = format === 'json' ? 'json' : 'md';
-  const file_name = `audit-${timestamp}.${ext}`;
+  const extension = format === 'json' ? 'json' : 'md';
+  const file_name = `audit-${timestamp}.${extension}`;
   const file_path = join(reports_dir, file_name);
 
   const content = await generate_audit_report({ docs_path, result, format });

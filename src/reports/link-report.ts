@@ -1,7 +1,7 @@
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { resolve_reports_dir } from '../utils/config.js';
-import { path_exists } from '../utils/glob.js';
+import { is_path_present } from '../utils/glob.js';
 import { format_date } from '../core/metadata/generator.js';
 import type { LinkCheckResult } from '../core/links/checker.js';
 
@@ -30,7 +30,7 @@ export async function generate_link_report(
  * Generate markdown link report
  */
 function generate_markdown_report(result: LinkCheckResult): string {
-  const now = format_date(new Date());
+  const today = format_date(new Date());
   const timestamp = new Date().toISOString();
 
   let content = `---
@@ -38,7 +38,7 @@ title: Link Check Report
 tier: admin
 domains: [root]
 status: active
-last_updated: '${now}'
+last_updated: '${today}'
 version: '1.0.0'
 generated: true
 ---
@@ -172,20 +172,20 @@ function generate_json_report(result: LinkCheckResult): string {
 /**
  * Save link report to file
  */
-export async function save_link_report(
+export async function write_link_report(
   docs_path: string,
   result: LinkCheckResult,
   format: 'markdown' | 'json' = 'markdown'
 ): Promise<string> {
   const reports_dir = await resolve_reports_dir(docs_path);
 
-  if (!(await path_exists(reports_dir))) {
+  if (!(await is_path_present(reports_dir))) {
     await mkdir(reports_dir, { recursive: true });
   }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const ext = format === 'json' ? 'json' : 'md';
-  const file_name = `links-${timestamp}.${ext}`;
+  const extension = format === 'json' ? 'json' : 'md';
+  const file_name = `links-${timestamp}.${extension}`;
   const file_path = join(reports_dir, file_name);
 
   const content = await generate_link_report({ docs_path, result, format });

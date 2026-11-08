@@ -6,7 +6,7 @@
 import { execFileSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { remove_frontmatter } from '../../utils/frontmatter.js';
+import { strip_frontmatter } from '../../utils/frontmatter.js';
 
 export type StalenessSignal =
   | { status: 'signal'; commits: number; doc_commit: string; doc_date: string }
@@ -27,7 +27,7 @@ const MAX_WALK = 50;
 
 const get_body = (text: string): string => {
   try {
-    return remove_frontmatter(text).trim();
+    return strip_frontmatter(text).trim();
   } catch {
     return text.trim(); // unparsable frontmatter: compare the whole file
   }

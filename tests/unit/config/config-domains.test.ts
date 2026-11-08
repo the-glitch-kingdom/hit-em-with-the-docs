@@ -6,9 +6,9 @@ import {
   custom_domain_schema,
   load_plugin_config,
   load_plugin_config_sync,
-  read_raw_config,
+  load_raw_config,
   write_raw_config,
-  config_file_path,
+  resolve_config_file_path,
 } from '../../../src/utils/config.js';
 
 const VALID = {
@@ -112,7 +112,7 @@ describe('readRawConfig / writeRawConfig', () => {
   });
 
   it('returns {} when no config exists', async () => {
-    expect(await read_raw_config(tmp_dir)).toEqual({});
+    expect(await load_raw_config(tmp_dir)).toEqual({});
   });
 
   it('round-trips and preserves unmodeled keys (updatePolicy)', async () => {
@@ -121,7 +121,7 @@ describe('readRawConfig / writeRawConfig', () => {
       vault: { audit_window_days: 45 },
       domains: [VALID],
     });
-    const raw = await read_raw_config(tmp_dir);
+    const raw = await load_raw_config(tmp_dir);
     expect(raw.updatePolicy).toBe('nudge');
     expect((raw.vault as { audit_window_days: number }).audit_window_days).toBe(45);
     expect((raw.domains as unknown[]).length).toBe(1);
@@ -129,7 +129,7 @@ describe('readRawConfig / writeRawConfig', () => {
 
   it('creates the .claude directory if missing', async () => {
     const path = await write_raw_config(tmp_dir, { domains: [] });
-    expect(path).toBe(config_file_path(tmp_dir));
+    expect(path).toBe(resolve_config_file_path(tmp_dir));
     const contents = await readFile(path, 'utf-8');
     expect(contents.endsWith('\n')).toBe(true);
   });

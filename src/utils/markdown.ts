@@ -22,7 +22,7 @@ export interface MarkdownHeading {
  * Extract all links from markdown content
  */
 /** A tab counts as four columns when measuring block indentation. */
-function indent_width(line: string): number {
+function get_indent_width(line: string): number {
   let width = 0;
   for (const ch of line) {
     if (ch === ' ') width += 1;
@@ -46,9 +46,9 @@ interface Fence {
  * A fence opener: three or more backticks or tildes, indented at most three
  * columns. At four it is indented code, not a fence.
  */
-function opening_fence(line: string): Fence | null {
-  const m = /^ {0,3}(`{3,}|~{3,})/.exec(line);
-  const run = m?.[1];
+function parse_opening_fence(line: string): Fence | null {
+  const match = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+  const run = match?.[1];
   if (!run) return null;
   const marker = run[0] as '`' | '~';
   return { marker, length: run.length };
@@ -58,7 +58,7 @@ function opening_fence(line: string): Fence | null {
  * A fence closes only on the same marker, at least as long as the opener, with
  * nothing after it. `````` inside a ``` block is content, not a close.
  */
-function closes_fence(line: string, fence: Fence): boolean {
+function is_closing_fence(line: string, fence: Fence): boolean {
   return new RegExp(`^ {0,3}\\${fence.marker}{${fence.length},}\\s*$`).test(line);
 }
 
@@ -82,11 +82,11 @@ export function extract_links(content: string): MarkdownLink[] {
 
   lines.forEach((raw_line, line_index) => {
     if (fence) {
-      if (closes_fence(raw_line, fence)) fence = null;
+      if (is_closing_fence(raw_line, fence)) fence = null;
       return; // fence body and its delimiters hold no links
     }
 
-    const opener = opening_fence(raw_line);
+    const opener = parse_opening_fence(raw_line);
     if (opener) {
       fence = opener;
       in_indented_code = false;
@@ -99,7 +99,7 @@ export function extract_links(content: string): MarkdownLink[] {
       return; // a blank line neither opens nor closes a list
     }
 
-    const indent = indent_width(raw_line);
+    const indent = get_indent_width(raw_line);
     const list_item = is_list_item(raw_line);
 
     // An indented code block needs four columns AND a preceding blank line — it
@@ -126,7 +126,7 @@ export function extract_links(content: string): MarkdownLink[] {
     prev_blank = false;
 
     // Blank out inline code spans (`...`, ``...``), preserving offsets.
-    const line = raw_line.replace(/(`+)(?:(?!\1)[\s\S])*?\1/g, (m) => ' '.repeat(m.length));
+    const line = raw_line.replace(/(`+)(?:(?!\1)[\s\S])*?\1/g, (match_item) => ' '.repeat(match_item.length));
 
     link_regex.lastIndex = 0;
     let match: RegExpExecArray | null;
@@ -193,7 +193,7 @@ export function extract_headings(content: string): MarkdownHeading[] {
  */
 export function extract_title(content: string): string | null {
   const headings = extract_headings(content);
-  const h1 = headings.find((h) => h.level === 1);
+  const h1 = headings.find((heading) => heading.level === 1);
   return h1?.text ?? null;
 }
 
@@ -219,7 +219,7 @@ export function count_words(content: string): number {
 /**
  * Calculate estimated read time in minutes
  */
-export function calculate_read_time(content: string, words_per_minute: number = 200): number {
+export function compute_read_time(content: string, words_per_minute: number = 200): number {
   const word_count = count_words(content);
   return Math.ceil(word_count / words_per_minute);
 }
@@ -228,14 +228,14 @@ export function calculate_read_time(content: string, words_per_minute: number = 
  * Format read time as string
  */
 export function format_read_time(content: string): string {
-  const minutes = calculate_read_time(content);
+  const minutes = compute_read_time(content);
   return `${minutes} minute${minutes === 1 ? '' : 's'}`;
 }
 
 /**
  * Generate a markdown link
  */
-export function create_link(text: string, url: string, title?: string): string {
+export function render_link(text: string, url: string, title?: string): string {
   if (title) {
     return `[${text}](${url} "${title}")`;
   }
@@ -245,7 +245,7 @@ export function create_link(text: string, url: string, title?: string): string {
 /**
  * Generate a markdown heading
  */
-export function create_heading(text: string, level: number = 1): string {
+export function render_heading(text: string, level: number = 1): string {
   const hashes = '#'.repeat(Math.min(Math.max(level, 1), 6));
   return `${hashes} ${text}`;
 }
@@ -253,7 +253,7 @@ export function create_heading(text: string, level: number = 1): string {
 /**
  * Generate a markdown table
  */
-export function create_table(headers: string[], rows: string[][]): string {
+export function render_table(headers: string[], rows: string[][]): string {
   const header_row = `| ${headers.join(' | ')} |`;
   const separator_row = `| ${headers.map(() => '---').join(' | ')} |`;
   const data_rows = rows.map((row) => `| ${row.join(' | ')} |`);
@@ -264,7 +264,7 @@ export function create_table(headers: string[], rows: string[][]): string {
 /**
  * Generate a markdown list
  */
-export function create_list(items: string[], ordered: boolean = false): string {
+export function render_list(items: string[], ordered: boolean = false): string {
   return items
     .map((item, index) => (ordered ? `${index + 1}. ${item}` : `- ${item}`))
     .join('\n');
@@ -273,7 +273,7 @@ export function create_list(items: string[], ordered: boolean = false): string {
 /**
  * Generate a markdown checkbox list
  */
-export function create_checkbox_list(
+export function render_checkbox_list(
   items: { text: string; checked: boolean }[]
 ): string {
   return items
@@ -284,21 +284,21 @@ export function create_checkbox_list(
 /**
  * Wrap text in a code block
  */
-export function create_code_block(code: string, language: string = ''): string {
+export function render_code_block(code: string, language: string = ''): string {
   return `\`\`\`${language}\n${code}\n\`\`\``;
 }
 
 /**
  * Create an inline code span
  */
-export function create_inline_code(code: string): string {
+export function render_inline_code(code: string): string {
   return `\`${code}\``;
 }
 
 /**
  * Create a blockquote
  */
-export function create_blockquote(text: string): string {
+export function render_blockquote(text: string): string {
   return text
     .split('\n')
     .map((line) => `> ${line}`)
@@ -308,7 +308,7 @@ export function create_blockquote(text: string): string {
 /**
  * Slugify text for use in URLs/anchors
  */
-export function slugify(text: string): string {
+export function format_slug(text: string): string {
   return text
     .toLowerCase()
     .replace(/[^\w\s-]/g, '')
@@ -328,7 +328,7 @@ export function extract_excerpt(content: string, max_length: number = 200): stri
   text = text.replace(/^#+\s+.*$/gm, '');
 
   // Get first paragraph
-  const paragraphs = text.split(/\n\n+/).filter((p) => p.trim().length > 0);
+  const paragraphs = text.split(/\n\n+/).filter((paragraph) => paragraph.trim().length > 0);
   const first_paragraph = paragraphs[0] ?? '';
 
   // Truncate if needed

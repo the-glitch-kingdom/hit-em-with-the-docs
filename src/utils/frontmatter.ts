@@ -30,8 +30,8 @@ const DATE_LIKE = /^\d{4}-\d{2}-\d{2}/;
  */
 const FRONTMATTER_ENGINES = {
   yaml: {
-    parse: (str: string): object => yaml.parse(str) as object,
-    stringify: (data: object): string => stringify_frontmatter(data as Record<string, unknown>),
+    parse: (text: string): object => yaml.parse(text) as object,
+    stringify: (data: object): string => render_frontmatter(data as Record<string, unknown>),
   },
 };
 
@@ -80,17 +80,17 @@ export function extract_frontmatter_string(content: string): string | null {
  * Undefined when there is none to judge by. `text` is a whole file or just its frontmatter.
  */
 function detect_indent_seq(text: string | undefined): boolean | undefined {
-  const m = text?.match(/^[\w-]+:[ \t]*\r?\n([ \t]*)- /m);
-  return m ? m[1]!.length > 0 : undefined;
+  const match = text?.match(/^[\w-]+:[ \t]*\r?\n([ \t]*)- /m);
+  return match ? match[1]!.length > 0 : undefined;
 }
 
 /**
  * Stringify frontmatter data to YAML. Pass the file's original text (full file or
  * frontmatter only) to keep its list style; without it, lists are indented.
  */
-export function stringify_frontmatter(data: Record<string, unknown>, original?: string): string {
+export function render_frontmatter(data: Record<string, unknown>, original?: string): string {
   // Use yaml library for better formatting control
-  return yaml.stringify(quote_date_like(data), {
+  return yaml.stringify(with_quoted_date_like(data), {
     indent: 2,
     indentSeq: detect_indent_seq(original) ?? true,
     lineWidth: 80,
@@ -109,18 +109,18 @@ export function stringify_frontmatter(data: Record<string, unknown>, original?: 
  *
  * Returns a copy — the caller's object is never mutated.
  */
-function quote_date_like(value: unknown): unknown {
+function with_quoted_date_like(value: unknown): unknown {
   if (typeof value === 'string' && DATE_LIKE.test(value)) {
     const scalar = new Scalar(value);
     scalar.type = Scalar.QUOTE_SINGLE;
     return scalar;
   }
 
-  if (Array.isArray(value)) return value.map(quote_date_like);
+  if (Array.isArray(value)) return value.map(with_quoted_date_like);
 
   if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
     return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, quote_date_like(v)])
+      Object.entries(value as Record<string, unknown>).map(([key, nested_value]) => [key, with_quoted_date_like(nested_value)])
     );
   }
 
@@ -131,13 +131,13 @@ function quote_date_like(value: unknown): unknown {
  * Add or update frontmatter in content. List style follows `original`, which
  * defaults to `content`; pass the raw file when `content` is already the bare body.
  */
-export function set_frontmatter(
+export function with_frontmatter(
   content: string,
   data: Record<string, unknown>,
   original: string = content
 ): string {
   const { content: body } = parse_frontmatter(content);
-  const frontmatter = stringify_frontmatter(data, original);
+  const frontmatter = render_frontmatter(data, original);
   return `---\n${frontmatter}---\n\n${body.trimStart()}`;
 }
 
@@ -146,30 +146,30 @@ export function set_frontmatter(
  * by the key re-rendered, new keys are appended, every other byte of the file stays. Falls back to
  * `setFrontmatter` when the frontmatter is not one YAML map, so a file is never corrupted.
  */
-export function set_frontmatter_keys(raw: string, changes: Record<string, unknown>): string {
-  const fallback = (): string => set_frontmatter(raw, { ...parse_frontmatter(raw).data, ...changes }, raw);
-  const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!m) return fallback();
-  const fm = m[1]!;
-  const start = raw.indexOf('\n') + 1;
-  const doc = yaml.parseDocument(fm);
-  if (doc.errors.length || !isMap(doc.contents)) return fallback();
-  const eol = raw.includes('\r\n') ? '\r\n' : '\n';
-  const render = (k: string): string => stringify_frontmatter({ [k]: changes[k] }, raw).replace(/\n$/, '').replace(/\n/g, eol);
+export function with_frontmatter_keys(raw_text: string, changes: Record<string, unknown>): string {
+  const build_fallback = (): string => with_frontmatter(raw_text, { ...parse_frontmatter(raw_text).data, ...changes }, raw_text);
+  const match = raw_text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!match) return build_fallback();
+  const frontmatter = match[1]!;
+  const start = raw_text.indexOf('\n') + 1;
+  const doc = yaml.parseDocument(frontmatter);
+  if (doc.errors.length || !isMap(doc.contents)) return build_fallback();
+  const eol = raw_text.includes('\r\n') ? '\r\n' : '\n';
+  const render_field = (key: string): string => render_frontmatter({ [key]: changes[key] }, raw_text).replace(/\n$/, '').replace(/\n/g, eol);
   const edits: Array<[number, number, string]> = [];
   let appended = '';
-  for (const k of Object.keys(changes)) {
-    const pair = doc.contents.items.find((p) => isScalar(p.key) && p.key.value === k);
-    if (!pair) { appended += eol + render(k); continue; }
+  for (const key of Object.keys(changes)) {
+    const pair = doc.contents.items.find((item) => isScalar(item.key) && item.key.value === key);
+    if (!pair) { appended += eol + render_field(key); continue; }
     const kr = (pair.key as Scalar).range!;
     // A key with no value (`k:`) has no value range; end after its colon.
-    const end = pair.value && (pair.value as Scalar).range ? (pair.value as Scalar).range![1] : fm.indexOf(':', kr[1]) + 1;
+    const end = pair.value && (pair.value as Scalar).range ? (pair.value as Scalar).range![1] : frontmatter.indexOf(':', kr[1]) + 1;
     // A block value's range includes its trailing line break, which belongs to the next line.
-    edits.push([kr[0], fm.slice(0, end).trimEnd().length, render(k)]);
+    edits.push([kr[0], frontmatter.slice(0, end).trimEnd().length, render_field(key)]);
   }
-  let out = fm;
-  for (const [a, b, text] of edits.sort((x, y) => y[0] - x[0])) out = out.slice(0, a) + text + out.slice(b);
-  return raw.slice(0, start) + out + appended + raw.slice(start + fm.length);
+  let found = frontmatter;
+  for (const [a, b, text] of edits.sort((first, later) => later[0] - first[0])) found = found.slice(0, a) + text + found.slice(b);
+  return raw_text.slice(0, start) + found + appended + raw_text.slice(start + frontmatter.length);
 }
 
 /**
@@ -181,14 +181,14 @@ export function merge_frontmatter(
 ): string {
   const { data: existing_data, content: body } = parse_frontmatter(content);
   const merged_data = { ...existing_data, ...new_data };
-  const frontmatter = stringify_frontmatter(merged_data, content);
+  const frontmatter = render_frontmatter(merged_data, content);
   return `---\n${frontmatter}---\n\n${body.trimStart()}`;
 }
 
 /**
  * Remove frontmatter from content
  */
-export function remove_frontmatter(content: string): string {
+export function strip_frontmatter(content: string): string {
   const { content: body } = parse_frontmatter(content);
   return body.trimStart();
 }
@@ -207,14 +207,14 @@ export function get_frontmatter_field<T>(
 /**
  * Set specific frontmatter field
  */
-export function set_frontmatter_field(
+export function with_frontmatter_field(
   content: string,
   field: string,
   value: unknown
 ): string {
   const { data, content: body } = parse_frontmatter(content);
   data[field] = value;
-  const frontmatter = stringify_frontmatter(data, content);
+  const frontmatter = render_frontmatter(data, content);
   return `---\n${frontmatter}---\n\n${body.trimStart()}`;
 }
 

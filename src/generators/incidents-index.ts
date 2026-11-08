@@ -15,14 +15,14 @@
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import type { CiterIndex, IncidentRef } from '../core/knowledge-base/citers.js';
-import { format_markdown_table } from './table.js';
+import { render_markdown_table } from './table.js';
 
 export interface GenerateIncidentsIndexOptions {
   vault_root: string;
   index: CiterIndex;
 }
 
-export async function generate_incidents_index(
+export async function write_incidents_index(
   options: GenerateIncidentsIndexOptions
 ): Promise<string> {
   const { vault_root, index } = options;
@@ -72,7 +72,7 @@ export function render_incidents_index(index: CiterIndex): string {
   const rows = sorted.map((inc) => [
     inc.date ?? '—',
     `\`${inc.id}\``,
-    escape_md(inc.title),
+    escape_markdown(inc.title),
     inc.severity ?? '—',
     inc.resolution_status ?? '—',
     inc.components.length > 0 ? inc.components.join(', ') : '—',
@@ -80,7 +80,7 @@ export function render_incidents_index(index: CiterIndex): string {
   ]);
 
   lines.push(
-    format_markdown_table(
+    render_markdown_table(
       ['Date', 'ID', 'Title', 'Severity', 'Resolution', 'Components', 'Facts produced'],
       rows
     )
@@ -98,10 +98,10 @@ function compare_incidents(a: IncidentRef, b: IncidentRef): number {
   return a.id.localeCompare(b.id);
 }
 
-function escape_md(s: string): string {
-  return s.replace(/\|/g, '\\|');
+function escape_markdown(text: string): string {
+  return text.replace(/\|/g, '\\|');
 }
 
-function ensure_trailing_newline(s: string): string {
-  return s.endsWith('\n') ? s : s + '\n';
+function ensure_trailing_newline(text: string): string {
+  return text.endsWith('\n') ? text : text + '\n';
 }

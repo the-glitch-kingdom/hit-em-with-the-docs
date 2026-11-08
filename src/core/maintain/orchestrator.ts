@@ -1,7 +1,7 @@
 import { dirname, join } from 'path';
 import { writeFile, mkdir } from 'fs/promises';
 import { logger } from '../../utils/logger.js';
-import { path_exists, find_markdown_files } from '../../utils/glob.js';
+import { is_path_present, find_markdown_files } from '../../utils/glob.js';
 import { load_retrieval_docs, compute_retrieval_coverage, type RetrievalCoverage } from '../audit/retrieval.js';
 import { find_clusters } from '../links/clusters.js';
 import { add_overview_backlinks, type BacklinkChange } from '../links/backlinks.js';
@@ -13,7 +13,7 @@ import { format_date } from '../metadata/generator.js';
 import { load_plugin_config, resolve_reports_dir } from '../../utils/config.js';
 import {
   regenerate_indexes,
-  generate_kb_indexes,
+  generate_knowledge_base_indexes,
   type RegenerateResult,
 } from '../../generators/regenerate.js';
 
@@ -297,9 +297,9 @@ async function check_domain_health(docs_path: string): Promise<DomainHealthResul
     const index_path = join(domain_path, 'INDEX.md');
     const registry_path = join(domain_path, 'REGISTRY.md');
 
-    const domain_exists = await path_exists(domain_path);
-    const index_exists = await path_exists(index_path);
-    const registry_exists = await path_exists(registry_path);
+    const domain_exists = await is_path_present(domain_path);
+    const index_exists = await is_path_present(index_path);
+    const registry_exists = await is_path_present(registry_path);
 
     if (!domain_exists) {
       result.missingDomains.push(domain);
@@ -506,7 +506,7 @@ generated: true
 
   // Save report
   const reports_dir = await resolve_reports_dir(docs_path);
-  if (!(await path_exists(reports_dir))) {
+  if (!(await is_path_present(reports_dir))) {
     await mkdir(reports_dir, { recursive: true });
   }
 
@@ -526,7 +526,7 @@ async function ensure_knowledge_base_indexes(
   silent: boolean,
   result: MaintainResult
 ): Promise<void> {
-  const knowledge_base_indexes = await generate_kb_indexes(docs_path);
+  const knowledge_base_indexes = await generate_knowledge_base_indexes(docs_path);
   if (!knowledge_base_indexes) return;
 
   if (!silent) {

@@ -1,8 +1,8 @@
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join, relative, basename, dirname, resolve, isAbsolute } from 'path';
 import { logger } from '../../utils/logger.js';
-import { parse_frontmatter, set_frontmatter } from '../../utils/frontmatter.js';
-import { path_exists, find_markdown_files } from '../../utils/glob.js';
+import { parse_frontmatter, with_frontmatter } from '../../utils/frontmatter.js';
+import { is_path_present, find_markdown_files } from '../../utils/glob.js';
 import { detect_domain } from '../domains/detector.js';
 import { is_valid_domain } from '../domains/registry.js';
 import { classify_tier } from '../domains/classifier.js';
@@ -78,7 +78,7 @@ export async function integrate_document(
 
   try {
     // Check if file exists
-    if (!(await path_exists(file_path))) {
+    if (!(await is_path_present(file_path))) {
       result.error = 'File does not exist';
       return result;
     }
@@ -221,12 +221,12 @@ export async function integrate_document(
 
     // Create target directory if needed
     const target_dir = dirname(target_path);
-    if (!(await path_exists(target_dir))) {
+    if (!(await is_path_present(target_dir))) {
       await mkdir(target_dir, { recursive: true });
     }
 
     // Write file with updated metadata
-    const new_content = set_frontmatter(content, final_metadata as unknown as Record<string, unknown>);
+    const new_content = with_frontmatter(content, final_metadata as unknown as Record<string, unknown>);
     await writeFile(target_path, new_content, 'utf-8');
 
     // Regenerate the target domain's INDEX.md / REGISTRY.md (and the root

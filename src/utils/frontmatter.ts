@@ -1,5 +1,5 @@
 import matter from 'gray-matter';
-import yaml, { Scalar } from 'yaml';
+import yaml, { Scalar, isMap, isScalar } from 'yaml';
 
 /**
  * A `YYYY-MM-DD` value, optionally carrying a time part.
@@ -139,6 +139,37 @@ export function setFrontmatter(
   const { content: body } = parseFrontmatter(content);
   const frontmatter = stringifyFrontmatter(data, original);
   return `---\n${frontmatter}---\n\n${body.trimStart()}`;
+}
+
+/**
+ * Change only the given top-level keys: each one's source range (key start to value end) is replaced
+ * by the key re-rendered, new keys are appended, every other byte of the file stays. Falls back to
+ * `setFrontmatter` when the frontmatter is not one YAML map, so a file is never corrupted.
+ */
+export function setFrontmatterKeys(raw: string, changes: Record<string, unknown>): string {
+  const fallback = (): string => setFrontmatter(raw, { ...parseFrontmatter(raw).data, ...changes }, raw);
+  const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!m) return fallback();
+  const fm = m[1]!;
+  const start = raw.indexOf('\n') + 1;
+  const doc = yaml.parseDocument(fm);
+  if (doc.errors.length || !isMap(doc.contents)) return fallback();
+  const eol = raw.includes('\r\n') ? '\r\n' : '\n';
+  const render = (k: string): string => stringifyFrontmatter({ [k]: changes[k] }, raw).replace(/\n$/, '').replace(/\n/g, eol);
+  const edits: Array<[number, number, string]> = [];
+  let appended = '';
+  for (const k of Object.keys(changes)) {
+    const pair = doc.contents.items.find((p) => isScalar(p.key) && p.key.value === k);
+    if (!pair) { appended += eol + render(k); continue; }
+    const kr = (pair.key as Scalar).range!;
+    // A key with no value (`k:`) has no value range; end after its colon.
+    const end = pair.value && (pair.value as Scalar).range ? (pair.value as Scalar).range![1] : fm.indexOf(':', kr[1]) + 1;
+    // A block value's range includes its trailing line break, which belongs to the next line.
+    edits.push([kr[0], fm.slice(0, end).trimEnd().length, render(k)]);
+  }
+  let out = fm;
+  for (const [a, b, text] of edits.sort((x, y) => y[0] - x[0])) out = out.slice(0, a) + text + out.slice(b);
+  return raw.slice(0, start) + out + appended + raw.slice(start + fm.length);
 }
 
 /**

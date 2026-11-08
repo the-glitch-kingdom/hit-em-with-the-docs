@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { headingAnchors, sectionOf, checkLinks } from '../../../src/core/links/checker.js';
-import { countActionableIssues } from '../../../src/core/audit/auditor.js';
+import { headingAnchors, sectionOf, check_links } from '../../../src/core/links/checker.js';
+import { count_actionable_issues } from '../../../src/core/audit/auditor.js';
 
 describe('headingAnchors / sectionOf', () => {
   const md = '# Title\n\n## Setup & Run\n\ntext\n\n## Setup & Run\n\n### Deep\n\n## Custom {#my-id}\n\n<a id="legacy"></a>\n\n```\n## Not a heading\n```\n';
@@ -28,7 +28,7 @@ describe('checkLinks anchors', () => {
       await mkdir(join(dir, 'guides'), { recursive: true });
       await writeFile(join(dir, 'guides', 'a.md'), '# A\n\n[ok](b.md#target) [old](b.md#renamed) [self](#a) [bad self](#zzz)\n');
       await writeFile(join(dir, 'guides', 'b.md'), '# B\n\n## Target\n');
-      const r = await checkLinks({ docsPath: dir, silent: true });
+      const r = await check_links({ docsPath: dir, silent: true });
       expect(r.brokenLinks).toHaveLength(0);
       expect(r.anchorWarnings.map((w) => w.targetPath).sort()).toEqual(['#zzz', 'b.md#renamed']);
     } finally {
@@ -37,15 +37,15 @@ describe('checkLinks anchors', () => {
   });
 
   it('LINK_BROKEN_ANCHOR is not actionable', () => {
-    expect(countActionableIssues([{ rule: 'LINK_BROKEN_ANCHOR' }])).toBe(0);
+    expect(count_actionable_issues([{ rule: 'LINK_BROKEN_ANCHOR' }])).toBe(0);
   });
 });
 
 describe('anchor scanning matches GitHub more closely (review fixes)', () => {
   it('setext headings, blockquoted headings and combining marks get anchors; frontmatter comments do not', async () => {
-    const { headingAnchors } = await import('../../../src/core/links/anchors');
+    const { heading_anchors: heading_anchors } = await import('../../../src/core/links/anchors');
     const md = '---\ntitle: x\n# foo\n---\n\nTag the release\n---------------\n\nIntro\n=====\n\n> ## Quoted part\n\n# foo\n\n# Café\n';
-    const a = headingAnchors(md);
+    const a = heading_anchors(md);
     expect(a.has('tag-the-release')).toBe(true);
     expect(a.has('intro')).toBe(true);
     expect(a.has('quoted-part')).toBe(true);

@@ -21,7 +21,7 @@ const walk = (d: string): string[] => readdirSync(d, { withFileTypes: true }).fl
 /** Every file in the tree except the one place values are meant to live. */
 const leaks = (vals: string[], skip: string[] = []) => walk(root).filter((f) => !skip.includes(f.slice(root.length + 1))).flatMap((f) => { const t = readFileSync(f, 'utf-8'); return vals.filter((v) => t.includes(v)).map((v) => `${f.slice(root.length + 1)}`); });
 const accept = (file: string) => writeFileSync(file, readFileSync(file, 'utf-8').replace(/- \[ \] accept/g, '- [x] accept'));
-const reviewFiles = () => readdirSync(join(root, '.hewtd/reconcile')).filter((f) => /^review-.*\.md$/.test(f)).map((f) => join(root, '.hewtd/reconcile', f));
+const review_files = () => readdirSync(join(root, '.hewtd/reconcile')).filter((f) => /^review-.*\.md$/.test(f)).map((f) => join(root, '.hewtd/reconcile', f));
 
 beforeAll(() => { if (!existsSync(CLI)) throw new Error('run `npm run build` before the integration tests'); });
 beforeEach(() => {
@@ -49,10 +49,10 @@ describe('#59 secrets through the built CLI', () => {
     expect(lane('backend/cites.md').blocked_files).toEqual(['src/creds.ts']);
     expect(out.mode).toBe('team');
     expect(out.shards.length).toBeGreaterThanOrEqual(2);
-    const shardText = JSON.stringify(out.shards);
-    expect(shardText).not.toContain('main.md');
-    expect(shardText).not.toContain('cites.md');
-    expect(shardText).not.toContain('creds.ts');
+    const shard_text = JSON.stringify(out.shards);
+    expect(shard_text).not.toContain('main.md');
+    expect(shard_text).not.toContain('cites.md');
+    expect(shard_text).not.toContain('creds.ts');
     expect(r.stdout + r.stderr).not.toContain(V.main);
     expect(r.stdout + r.stderr).not.toContain(V.key);
 
@@ -87,7 +87,7 @@ describe('#59 secrets through the built CLI', () => {
 
   it('secret verdict: doc keeps only a pointer, .env.hewtd is 0600 and ignored, nothing leaks, history clean', () => {
     expect(hewtd(['reconcile', 'backend/main.md', '--write-review']).status).toBe(0);
-    const [file] = reviewFiles();
+    const [file] = review_files();
     expect(readFileSync(file!, 'utf-8')).not.toContain(V.main);
     accept(file!);
     const before = g('rev-parse', 'HEAD');
@@ -119,7 +119,7 @@ describe('#59 secrets through the built CLI', () => {
     put('.git/hooks/pre-commit', '#!/bin/sh\nexit 1\n');
     chmodSync(join(root, '.git/hooks/pre-commit'), 0o755);
     expect(hewtd(['reconcile', 'backend/main.md', '--write-review']).status).toBe(0);
-    const [file] = reviewFiles();
+    const [file] = review_files();
     accept(file!);
     const doc = readFileSync(join(root, '.documentation/backend/main.md'), 'utf-8');
     const head = g('rev-parse', 'HEAD');

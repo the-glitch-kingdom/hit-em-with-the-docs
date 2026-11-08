@@ -6,8 +6,8 @@
 import { execFileSync } from 'child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
-import { hashContent } from '../reconcile/ledger.js';
-import { bodyChange } from '../reconcile/staleness.js';
+import { hash_content } from '../reconcile/ledger.js';
+import { body_change } from '../reconcile/staleness.js';
 
 const git = (cwd: string, args: string[]): string =>
   execFileSync('git', args, { cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 256 * 1024 * 1024 });
@@ -19,12 +19,12 @@ export interface FileDates {
 }
 
 /** Last commit date of every file in the repo, one `git log` pass (newest first, first hit wins). Null outside git. */
-export function lastChanged(repoRoot: string): FileDates | null {
+export function last_changed(repo_root: string): FileDates | null {
   try {
-    const shallow = git(repoRoot, ['rev-parse', '--is-shallow-repository']).trim() === 'true';
+    const shallow = git(repo_root, ['rev-parse', '--is-shallow-repository']).trim() === 'true';
     const dates = new Map<string, string>();
     let date = '';
-    for (const line of git(repoRoot, ['log', '-z', '--format=%x01%cs', '--name-only']).split(/[\0\n]/)) {
+    for (const line of git(repo_root, ['log', '-z', '--format=%x01%cs', '--name-only']).split(/[\0\n]/)) {
       if (line.startsWith('\x01')) date = line.slice(1);
       else if (line && date && !dates.has(line)) dates.set(line, date);
     }
@@ -42,41 +42,41 @@ interface Cache { head: string; docs: Record<string, { hash: string; body_change
  * doc's content hash are unchanged, so unchanged docs are not walked again.
  * `walked` counts the docs that needed a git walk.
  */
-export function bodyChangedDates(
-  repoRoot: string,
+export function body_changed_dates(
+  repo_root: string,
   docs: Array<{ path: string; content: string }>,
   opts: { persist?: boolean } = {}
 ): { dates: Map<string, string | null>; walked: number } {
   const dates = new Map<string, string | null>();
   let head: string;
   try {
-    head = git(repoRoot, ['rev-parse', 'HEAD']).trim();
+    head = git(repo_root, ['rev-parse', 'HEAD']).trim();
   } catch {
     for (const d of docs) dates.set(d.path, null);
     return { dates, walked: 0 };
   }
   let old: Cache | null = null;
   try {
-    const c = JSON.parse(readFileSync(join(repoRoot, CACHE), 'utf-8')) as Cache;
+    const c = JSON.parse(readFileSync(join(repo_root, CACHE), 'utf-8')) as Cache;
     if (c.head === head && c.docs) old = c;
   } catch { /* no cache */ }
   const next: Cache = { head, docs: {} };
   let walked = 0;
   for (const d of docs) {
-    const hash = hashContent(d.content);
+    const hash = hash_content(d.content);
     let hit = old?.docs[d.path];
     if (!hit || hit.hash !== hash) {
       walked++;
       let changed: string | null = null;
-      try { changed = bodyChange(repoRoot, d.path)?.date.slice(0, 10) ?? null; } catch { /* leave null */ }
+      try { changed = body_change(repo_root, d.path)?.date.slice(0, 10) ?? null; } catch { /* leave null */ }
       hit = { hash, body_changed: changed };
     }
     next.docs[d.path] = hit;
     dates.set(d.path, hit.body_changed);
   }
   if (opts.persist !== false) try {
-    mkdirSync(dirname(join(repoRoot, CACHE)), { recursive: true });
-    writeFileSync(join(repoRoot, CACHE), JSON.stringify(next));
+    mkdirSync(dirname(join(repo_root, CACHE)), { recursive: true });
+    writeFileSync(join(repo_root, CACHE), JSON.stringify(next));
   } catch { /* cache is best effort */ }
   return { dates, walked };
 }

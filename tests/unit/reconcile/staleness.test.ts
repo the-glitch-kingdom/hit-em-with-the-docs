@@ -3,7 +3,7 @@ import { execFileSync } from 'child_process';
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { stalenessSignal, bodyChange } from '../../../src/core/reconcile/staleness';
+import { staleness_signal, body_change } from '../../../src/core/reconcile/staleness';
 
 let dir: string;
 const g = (...a: string[]) =>
@@ -28,7 +28,7 @@ describe('stalenessSignal', () => {
     commit('src/a.ts', '1');
     commit('src/a.ts', '2');
     commit('src/a.ts', '3');
-    const s = stalenessSignal(dir, 'doc.md', ['src/a.ts']);
+    const s = staleness_signal(dir, 'doc.md', ['src/a.ts']);
     expect(s).toMatchObject({ status: 'signal', commits: 3 });
   });
 
@@ -37,13 +37,13 @@ describe('stalenessSignal', () => {
     commit('doc.md', 'x');
     commit('other.ts', '1');
     commit('other.ts', '2');
-    expect(stalenessSignal(dir, 'doc.md', ['src/a.ts'])).toMatchObject({ status: 'signal', commits: 0 });
+    expect(staleness_signal(dir, 'doc.md', ['src/a.ts'])).toMatchObject({ status: 'signal', commits: 0 });
   });
 
   it('gives no signal for an uncommitted doc', () => {
     commit('src/a.ts', '0');
     writeFileSync(join(dir, 'new.md'), 'x');
-    expect(stalenessSignal(dir, 'new.md', ['src/a.ts'])).toEqual({ status: 'none' });
+    expect(staleness_signal(dir, 'new.md', ['src/a.ts'])).toEqual({ status: 'none' });
   });
 
   it('follows a renamed doc', () => {
@@ -53,7 +53,7 @@ describe('stalenessSignal', () => {
     g('commit', '-m', 'rename');
     commit('src/a.ts', '2');
     // body unchanged since the first commit (the rename kept it), so both cited commits count
-    expect(stalenessSignal(dir, 'new.md', ['src/a.ts'])).toMatchObject({ status: 'signal', commits: 2 });
+    expect(staleness_signal(dir, 'new.md', ['src/a.ts'])).toMatchObject({ status: 'signal', commits: 2 });
   });
 
   it('ignores frontmatter-only commits to the doc', () => {
@@ -62,17 +62,17 @@ describe('stalenessSignal', () => {
     commit('src/a.ts', '2');
     commit('src/a.ts', '3');
     commit('doc.md', '---\ntitle: a\nlast_verified: 2026-01-01\n---\n\nbody\n');
-    const s = stalenessSignal(dir, 'doc.md', ['src/a.ts']);
+    const s = staleness_signal(dir, 'doc.md', ['src/a.ts']);
     expect(s).toMatchObject({ status: 'signal', commits: 3 });
     expect((s as { docDate: string }).docDate).toMatch(/^\d{4}-/);
-    expect(bodyChange(dir, 'doc.md')?.date).toBe((s as { docDate: string }).docDate);
+    expect(body_change(dir, 'doc.md')?.date).toBe((s as { docDate: string }).docDate);
   });
 
   it('resets on a body edit after the code commits', () => {
     commit('doc.md', '---\ntitle: a\n---\n\nold\n');
     commit('src/a.ts', '1');
     commit('doc.md', '---\ntitle: a\n---\n\nnew\n');
-    expect(stalenessSignal(dir, 'doc.md', ['src/a.ts'])).toMatchObject({ status: 'signal', commits: 0 });
+    expect(staleness_signal(dir, 'doc.md', ['src/a.ts'])).toMatchObject({ status: 'signal', commits: 0 });
   });
 
   it('is unknown in a shallow clone', () => {
@@ -82,7 +82,7 @@ describe('stalenessSignal', () => {
     const clone = mkdtempSync(join(tmpdir(), 'stale-clone-'));
     try {
       execFileSync('git', ['clone', '-q', '--depth', '1', `file://${dir}`, clone], { stdio: 'ignore' });
-      const s = stalenessSignal(clone, 'doc.md', ['src/a.ts']);
+      const s = staleness_signal(clone, 'doc.md', ['src/a.ts']);
       expect(s.status).toBe('unknown');
       expect((s as { warning: string }).warning).toMatch(/shallow/);
     } finally {
@@ -93,7 +93,7 @@ describe('stalenessSignal', () => {
   it('gives no signal outside a git repo', () => {
     const plain = mkdtempSync(join(tmpdir(), 'stale-plain-'));
     try {
-      expect(stalenessSignal(plain, 'doc.md', ['a.ts'])).toEqual({ status: 'none' });
+      expect(staleness_signal(plain, 'doc.md', ['a.ts'])).toEqual({ status: 'none' });
     } finally {
       rmSync(plain, { recursive: true, force: true });
     }

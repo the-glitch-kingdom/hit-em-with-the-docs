@@ -1,43 +1,43 @@
 import * as core from '@actions/core';
 import { resolve } from 'path';
-import { createScaffold } from '../generators/scaffold.js';
-import { syncMetadata } from '../core/metadata/sync.js';
-import { checkLinks } from '../core/links/checker.js';
-import { auditDocumentation, countActionableIssues } from '../core/audit/auditor.js';
-import { runMaintenance } from '../core/maintain/orchestrator.js';
-import { discoverPatterns } from '../core/discover/patterns.js';
-import { discoverAntiPatterns } from '../core/discover/antipatterns.js';
-import { discoverStandards } from '../core/discover/standards.js';
-import { analyzeDependencies } from '../core/discover/dependencies.js';
+import { create_scaffold } from '../generators/scaffold.js';
+import { sync_metadata } from '../core/metadata/sync.js';
+import { check_links } from '../core/links/checker.js';
+import { audit_documentation, count_actionable_issues } from '../core/audit/auditor.js';
+import { run_maintenance } from '../core/maintain/orchestrator.js';
+import { discover_patterns } from '../core/discover/patterns.js';
+import { discover_anti_patterns } from '../core/discover/antipatterns.js';
+import { discover_standards } from '../core/discover/standards.js';
+import { analyze_dependencies } from '../core/discover/dependencies.js';
 
 async function run(): Promise<void> {
   try {
     // Get inputs
     const command = core.getInput('command', { required: true });
     const mode = core.getInput('mode') || 'quick';
-    const docsPath = resolve(process.cwd(), core.getInput('docs-path') || '.documentation');
+    const docs_path = resolve(process.cwd(), core.getInput('docs-path') || '.documentation');
     const domain = core.getInput('domain') || undefined;
-    const discoverType = core.getInput('discover-type') || 'patterns';
-    const failOnError = core.getInput('fail-on-error') === 'true';
-    const failThreshold = parseInt(core.getInput('fail-threshold') || '50', 10);
+    const discover_type = core.getInput('discover-type') || 'patterns';
+    const fail_on_error = core.getInput('fail-on-error') === 'true';
+    const fail_threshold = parseInt(core.getInput('fail-threshold') || '50', 10);
 
     core.info(`Running command: ${command}`);
-    core.info(`Documentation path: ${docsPath}`);
+    core.info(`Documentation path: ${docs_path}`);
     core.info(`Mode: ${mode}`);
 
-    let healthScore = 100;
-    let totalDocuments = 0;
-    let issuesFound = 0;
-    let issuesFixed = 0;
-    let brokenLinks = 0;
-    let metadataCompliance = 100;
-    let reportPath = '';
+    let health_score = 100;
+    let total_documents = 0;
+    let issues_found = 0;
+    let issues_fixed = 0;
+    let broken_links = 0;
+    let metadata_compliance = 100;
+    let report_path = '';
 
     switch (command) {
       case 'init': {
         core.info('Initializing documentation structure...');
-        const result = await createScaffold({
-          rootPath: docsPath,
+        const result = await create_scaffold({
+          rootPath: docs_path,
           overwrite: false,
           silent: false,
         });
@@ -52,20 +52,20 @@ async function run(): Promise<void> {
 
       case 'maintain': {
         core.info('Running maintenance...');
-        const result = await runMaintenance({
-          docsPath,
+        const result = await run_maintenance({
+          docsPath: docs_path,
           quick: mode === 'quick',
           fix: mode === 'fix',
           silent: false,
         });
 
-        healthScore = result.healthScore;
-        totalDocuments = result.metadataSync?.totalFiles ?? 0;
-        issuesFound = countActionableIssues(result.audit?.issues ?? []);
-        issuesFixed = result.metadataSync?.fixedFiles ?? 0;
-        brokenLinks = result.linkCheck?.brokenLinks.length ?? 0;
-        metadataCompliance = result.audit?.stats.metadataCompliance ?? 100;
-        reportPath = result.reportPath ?? '';
+        health_score = result.healthScore;
+        total_documents = result.metadataSync?.totalFiles ?? 0;
+        issues_found = count_actionable_issues(result.audit?.issues ?? []);
+        issues_fixed = result.metadataSync?.fixedFiles ?? 0;
+        broken_links = result.linkCheck?.brokenLinks.length ?? 0;
+        metadata_compliance = result.audit?.stats.metadataCompliance ?? 100;
+        report_path = result.reportPath ?? '';
 
         if (result.errors.length > 0) {
           core.warning(`Maintenance completed with errors: ${result.errors.join(', ')}`);
@@ -75,35 +75,35 @@ async function run(): Promise<void> {
 
       case 'metadata-sync': {
         core.info('Syncing metadata...');
-        const result = await syncMetadata({
-          docsPath,
+        const result = await sync_metadata({
+          docsPath: docs_path,
           ...(domain ? { domain } : {}),
           fix: mode === 'fix',
           dryRun: mode !== 'fix',
           silent: false,
         });
 
-        totalDocuments = result.totalFiles;
-        issuesFound = result.errors.length;
-        issuesFixed = result.fixedFiles;
-        metadataCompliance = result.stats.avgCompleteness;
+        total_documents = result.totalFiles;
+        issues_found = result.errors.length;
+        issues_fixed = result.fixedFiles;
+        metadata_compliance = result.stats.avgCompleteness;
         break;
       }
 
       case 'link-check': {
         core.info('Checking links...');
-        const result = await checkLinks({
-          docsPath,
+        const result = await check_links({
+          docsPath: docs_path,
           ...(domain ? { domain } : {}),
           silent: false,
         });
 
-        totalDocuments = result.totalFiles;
-        brokenLinks = result.brokenLinks.length;
-        issuesFound = brokenLinks;
+        total_documents = result.totalFiles;
+        broken_links = result.brokenLinks.length;
+        issues_found = broken_links;
 
-        if (brokenLinks > 0) {
-          core.warning(`Found ${brokenLinks} broken links`);
+        if (broken_links > 0) {
+          core.warning(`Found ${broken_links} broken links`);
           for (const link of result.brokenLinks.slice(0, 10)) {
             core.warning(`  ${link.sourceFile}:${link.lineNumber} -> ${link.targetPath}`);
           }
@@ -113,16 +113,16 @@ async function run(): Promise<void> {
 
       case 'audit': {
         core.info('Auditing documentation...');
-        const result = await auditDocumentation({
-          docsPath,
+        const result = await audit_documentation({
+          docsPath: docs_path,
           ...(domain ? { domain } : {}),
           silent: false,
         });
 
-        healthScore = result.healthScore;
-        totalDocuments = result.totalFiles;
-        issuesFound = countActionableIssues(result.issues);
-        metadataCompliance = result.stats.metadataCompliance;
+        health_score = result.healthScore;
+        total_documents = result.totalFiles;
+        issues_found = count_actionable_issues(result.issues);
+        metadata_compliance = result.stats.metadataCompliance;
 
         const errors = result.issues.filter((i) => i.severity === 'error');
         if (errors.length > 0) {
@@ -132,23 +132,23 @@ async function run(): Promise<void> {
       }
 
       case 'discover': {
-        core.info(`Discovering ${discoverType}...`);
+        core.info(`Discovering ${discover_type}...`);
 
-        switch (discoverType) {
+        switch (discover_type) {
           case 'patterns':
-            await discoverPatterns({ rootPath: process.cwd(), silent: false });
+            await discover_patterns({ rootPath: process.cwd(), silent: false });
             break;
           case 'anti-patterns':
-            await discoverAntiPatterns({ rootPath: process.cwd(), silent: false });
+            await discover_anti_patterns({ rootPath: process.cwd(), silent: false });
             break;
           case 'standards':
-            await discoverStandards({ rootPath: process.cwd(), silent: false });
+            await discover_standards({ rootPath: process.cwd(), silent: false });
             break;
           case 'dependencies':
-            await analyzeDependencies({ rootPath: process.cwd(), silent: false });
+            await analyze_dependencies({ rootPath: process.cwd(), silent: false });
             break;
           default:
-            throw new Error(`Unknown discover type: ${discoverType}`);
+            throw new Error(`Unknown discover type: ${discover_type}`);
         }
         break;
       }
@@ -158,29 +158,29 @@ async function run(): Promise<void> {
     }
 
     // Set outputs
-    core.setOutput('health-score', healthScore.toString());
-    core.setOutput('total-documents', totalDocuments.toString());
-    core.setOutput('issues-found', issuesFound.toString());
-    core.setOutput('issues-fixed', issuesFixed.toString());
-    core.setOutput('broken-links', brokenLinks.toString());
-    core.setOutput('metadata-compliance', metadataCompliance.toFixed(1));
-    core.setOutput('report-path', reportPath);
+    core.setOutput('health-score', health_score.toString());
+    core.setOutput('total-documents', total_documents.toString());
+    core.setOutput('issues-found', issues_found.toString());
+    core.setOutput('issues-fixed', issues_fixed.toString());
+    core.setOutput('broken-links', broken_links.toString());
+    core.setOutput('metadata-compliance', metadata_compliance.toFixed(1));
+    core.setOutput('report-path', report_path);
 
     // Check fail conditions
-    if (failOnError) {
-      if (healthScore < failThreshold) {
-        core.setFailed(`Health score ${healthScore.toFixed(1)} is below threshold ${failThreshold}`);
+    if (fail_on_error) {
+      if (health_score < fail_threshold) {
+        core.setFailed(`Health score ${health_score.toFixed(1)} is below threshold ${fail_threshold}`);
         return;
       }
 
-      if (brokenLinks > 0) {
-        core.setFailed(`Found ${brokenLinks} broken links`);
+      if (broken_links > 0) {
+        core.setFailed(`Found ${broken_links} broken links`);
         return;
       }
 
-      const criticalIssues = issuesFound;
-      if (criticalIssues > 0 && mode !== 'fix') {
-        core.setFailed(`Found ${criticalIssues} issues that need attention`);
+      const critical_issues = issues_found;
+      if (critical_issues > 0 && mode !== 'fix') {
+        core.setFailed(`Found ${critical_issues} issues that need attention`);
         return;
       }
     }

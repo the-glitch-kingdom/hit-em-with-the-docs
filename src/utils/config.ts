@@ -40,7 +40,7 @@ export const DOMAIN_CATEGORY_VALUES = [
  * that requires knowing the built-in set, so it is enforced in the registry
  * merge (drop-with-warning) and in the CLI writer (hard error).
  */
-export const customDomainSchema = z.object({
+export const custom_domain_schema = z.object({
   id: z.string().regex(KEBAB_SLUG_RE, 'domain id must be kebab-case'),
   name: z.string().min(1),
   description: z.string().min(1),
@@ -49,7 +49,7 @@ export const customDomainSchema = z.object({
   category: z.enum(DOMAIN_CATEGORY_VALUES),
 });
 
-export type CustomDomainConfig = z.infer<typeof customDomainSchema>;
+export type CustomDomainConfig = z.infer<typeof custom_domain_schema>;
 
 /**
  * Lenient `domains[]` parser: drops malformed entries instead of failing the
@@ -58,11 +58,11 @@ export type CustomDomainConfig = z.infer<typeof customDomainSchema>;
  * valid vault block). The CLI `domain add` command does the strict, user-facing
  * validation; this is the last-line filter for the runtime.
  */
-const lenientDomainsArray = z
+const lenient_domains_array = z
   .preprocess((val) => {
     if (!Array.isArray(val)) return [];
-    return val.filter((entry) => customDomainSchema.safeParse(entry).success);
-  }, z.array(customDomainSchema))
+    return val.filter((entry) => custom_domain_schema.safeParse(entry).success);
+  }, z.array(custom_domain_schema))
   .default([]);
 
 /**
@@ -70,7 +70,7 @@ const lenientDomainsArray = z
  * with a sensible default. The runtime's `updatePolicy` is preserved via
  * `.passthrough()`.
  */
-const vaultConfigSchema = z
+const vault_config_schema = z
   .object({
     root: z.string().default(DEFAULT_VAULT_ROOT),
     playbook_paths: z.array(z.string()).default(DEFAULT_PLAYBOOK_GLOBS),
@@ -86,7 +86,7 @@ export const DEFAULT_ARCHIVE_CANDIDATE_DAYS = 365;
  * (`auto: false`), age alone never qualifies a doc (`require_orphaned: true`),
  * and the recency threshold is generous (docs churn slower than code).
  */
-const archiveConfigSchema = z
+const archive_config_schema = z
   .object({
     honor_status_deprecated: z.boolean().default(true),
     candidate_after_days: z
@@ -105,7 +105,7 @@ const archiveConfigSchema = z
  * rules default ON — but they are opt-out, because a guard nobody can disable
  * is a guard people uninstall the plugin to escape.
  */
-const enforcementConfigSchema = z
+const enforcement_config_schema = z
   .object({
     block_index_edits: z.boolean().default(true),
     block_doc_deletion: z.boolean().default(true),
@@ -119,7 +119,7 @@ const enforcementConfigSchema = z
  */
 const STATUS_VALUE_RE = /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/;
 
-export const statusValueSchema = z
+export const status_value_schema = z
   .string()
   .regex(STATUS_VALUE_RE, 'status value must be lowercase, - or _ separated');
 
@@ -134,11 +134,11 @@ export const statusValueSchema = z
  * Lenient like `domains[]`: malformed entries are dropped rather than failing
  * the whole config load, preserving `loadPluginConfig`'s never-throw contract.
  */
-const lenientStatusArray = z
+const lenient_status_array = z
   .preprocess((val) => {
     if (!Array.isArray(val)) return [];
-    return val.filter((entry) => statusValueSchema.safeParse(entry).success);
-  }, z.array(statusValueSchema))
+    return val.filter((entry) => status_value_schema.safeParse(entry).success);
+  }, z.array(status_value_schema))
   .default([]);
 
 const DEFAULT_GENERIC_TITLES = [
@@ -150,7 +150,7 @@ const DEFAULT_GENERIC_TITLES = [
  * default on an invalid value (`.catch`) so a hand-edited config never throws.
  * `disabled` lists RETRIEVAL_* codes to silence.
  */
-const retrievalConfigSchema = z
+const retrieval_config_schema = z
   .object({
     purpose_min_words: z.number().int().positive().catch(8),
     generic_titles: z.array(z.string()).catch(DEFAULT_GENERIC_TITLES),
@@ -175,7 +175,7 @@ const retrievalConfigSchema = z
  * Overview-doc cluster thresholds (#51). Lenient like `retrieval`: any invalid
  * key falls back to its default. `disabled` lists OVERVIEW_* codes to silence.
  */
-const overviewConfigSchema = z
+const overview_config_schema = z
   .object({
     min_cluster_size: z.number().int().positive().catch(5),
     min_link_coverage: z.number().gt(0).lte(1).catch(0.6),
@@ -192,15 +192,15 @@ export const DEFAULT_RECONCILE_KEEP_IN_PLACE = [
 export const DEFAULT_RECONCILE_SCHEMA_SOURCES: string[] = [];
 
 /** Sibling checkouts reconcile may read (never write) to resolve references and cross-links (#58). */
-const relatedRepoSchema = z.object({ name: z.string().regex(/^[\w.-]+$/), path: z.string().min(1) });
-const lenientRelatedRepos = z
+const related_repo_schema = z.object({ name: z.string().regex(/^[\w.-]+$/), path: z.string().min(1) });
+const lenient_related_repos = z
   .array(z.unknown())
-  .transform((a) => a.flatMap((x) => { const r = relatedRepoSchema.safeParse(x); return r.success ? [r.data] : []; }))
+  .transform((a) => a.flatMap((x) => { const r = related_repo_schema.safeParse(x); return r.success ? [r.data] : []; }))
   .catch([]);
 
 /** Secret scan (#59). An allow entry needs a `reason` and a `fingerprint` or `pattern`; others are dropped with a warning. */
 export interface SecretAllow { fingerprint?: string | undefined; pattern?: string | undefined; file?: string | undefined; reason: string }
-const lenientSecretAllow = z
+const lenient_secret_allow = z
   .array(z.unknown())
   .transform((a) => a.flatMap((x): SecretAllow[] => {
     const e = x as Partial<SecretAllow> | null;
@@ -211,22 +211,22 @@ const lenientSecretAllow = z
     return [{ fingerprint: e.fingerprint, pattern: e.pattern, file: e.file, reason: e.reason!.trim() }];
   }))
   .catch([]);
-const secretsConfigSchema = z
+const secrets_config_schema = z
   .object({
-    allow: lenientSecretAllow,
+    allow: lenient_secret_allow,
     disabled_rules: z.array(z.string()).catch([]),
   })
   .catch({ allow: [] as SecretAllow[], disabled_rules: [] as string[] })
   .default({});
 
 /** Reconcile (#54). Lenient like `retrieval`: any invalid key falls back to its default. */
-const reconcileConfigSchema = z
+const reconcile_config_schema = z
   .object({
     keep_in_place: z.array(z.string()).catch(DEFAULT_RECONCILE_KEEP_IN_PLACE),
     ledger_path: z.string().min(1).catch('.hewtd/reconcile.json'),
     schema_sources: z.array(z.string()).catch(DEFAULT_RECONCILE_SCHEMA_SOURCES),
-    related_repos: lenientRelatedRepos,
-    secrets: secretsConfigSchema,
+    related_repos: lenient_related_repos,
+    secrets: secrets_config_schema,
     /** Optional doc search hook (#59): argv template with a `{query}` placeholder; stdout lines are doc paths. */
     search_command: z.string().min(1).optional().catch(undefined),
     /** `reconcile --gaps` (#66): cap on user_phrase entries per doc, existing ones included. */
@@ -256,12 +256,12 @@ const reconcileConfigSchema = z
   .default({});
 
 /** Integrate (#61). Lenient: an invalid cap falls back to 10; 0 turns `sources` recording off. */
-const integrateConfigSchema = z
+const integrate_config_schema = z
   .object({ sources_max: z.number().int().nonnegative().catch(10) })
   .catch({ sources_max: 10 })
   .default({});
 
-const pluginConfigSchema = z
+const plugin_config_schema = z
   .object({
     /**
      * Where this project's documentation lives — the single source of truth for
@@ -270,15 +270,15 @@ const pluginConfigSchema = z
      * documentation tree and not at a source tree (#25).
      */
     docs_root: z.string().min(1).default(DEFAULT_DOCS_ROOT),
-    vault: vaultConfigSchema,
-    enforcement: enforcementConfigSchema,
-    domains: lenientDomainsArray,
-    status: lenientStatusArray,
-    archive: archiveConfigSchema,
-    retrieval: retrievalConfigSchema,
-    overview: overviewConfigSchema,
-    reconcile: reconcileConfigSchema,
-    integrate: integrateConfigSchema,
+    vault: vault_config_schema,
+    enforcement: enforcement_config_schema,
+    domains: lenient_domains_array,
+    status: lenient_status_array,
+    archive: archive_config_schema,
+    retrieval: retrieval_config_schema,
+    overview: overview_config_schema,
+    reconcile: reconcile_config_schema,
+    integrate: integrate_config_schema,
     /** Write `.hewtd/graph.json` on `hewtd index` and after `reconcile --apply` (#65). */
     graph_export: z.boolean().catch(true).default(true),
     /** Reports directory, relative to the repo root. Unset = `<docs root>/reports`. */
@@ -286,14 +286,14 @@ const pluginConfigSchema = z
   })
   .passthrough();
 
-export type VaultConfig = z.infer<typeof vaultConfigSchema>;
-export type EnforcementConfig = z.infer<typeof enforcementConfigSchema>;
-export type ArchiveConfig = z.infer<typeof archiveConfigSchema>;
-export type RetrievalConfig = z.infer<typeof retrievalConfigSchema>;
-export type OverviewConfig = z.infer<typeof overviewConfigSchema>;
-export type SecretsConfig = z.infer<typeof secretsConfigSchema>;
-export type ReconcileConfig = z.infer<typeof reconcileConfigSchema>;
-export type PluginConfig = z.infer<typeof pluginConfigSchema>;
+export type VaultConfig = z.infer<typeof vault_config_schema>;
+export type EnforcementConfig = z.infer<typeof enforcement_config_schema>;
+export type ArchiveConfig = z.infer<typeof archive_config_schema>;
+export type RetrievalConfig = z.infer<typeof retrieval_config_schema>;
+export type OverviewConfig = z.infer<typeof overview_config_schema>;
+export type SecretsConfig = z.infer<typeof secrets_config_schema>;
+export type ReconcileConfig = z.infer<typeof reconcile_config_schema>;
+export type PluginConfig = z.infer<typeof plugin_config_schema>;
 
 const CONFIG_FILENAME = '.claude/hit-em-with-the-docs.json';
 
@@ -303,23 +303,23 @@ const CONFIG_FILENAME = '.claude/hit-em-with-the-docs.json';
  * defaults. Pass `projectRoot` (defaults to `process.cwd()`) to control
  * which directory to read from.
  */
-export async function loadPluginConfig(projectRoot?: string): Promise<PluginConfig> {
-  const root = projectRoot ?? process.cwd();
-  const configPath = resolve(root, CONFIG_FILENAME);
+export async function load_plugin_config(project_root?: string): Promise<PluginConfig> {
+  const root = project_root ?? process.cwd();
+  const config_path = resolve(root, CONFIG_FILENAME);
 
   let raw: unknown;
   try {
-    const contents = await readFile(configPath, 'utf-8');
+    const contents = await readFile(config_path, 'utf-8');
     raw = JSON.parse(contents);
   } catch {
     raw = {};
   }
 
-  const parsed = pluginConfigSchema.safeParse(raw);
-  const cfg = parsed.success ? parsed.data : pluginConfigSchema.parse({}); // malformed: defaults, not a crash
+  const parsed = plugin_config_schema.safeParse(raw);
+  const cfg = parsed.success ? parsed.data : plugin_config_schema.parse({}); // malformed: defaults, not a crash
   // The committed secrets baseline joins the allowlist, so every secret check honours it (#61).
-  const { loadBaseline, baselineAllow } = await import('../core/reconcile/secrets.js');
-  cfg.reconcile.secrets.allow = [...cfg.reconcile.secrets.allow, ...baselineAllow(await loadBaseline(root))];
+  const { load_baseline: load_baseline, baseline_allow: baseline_allow } = await import('../core/reconcile/secrets.js');
+  cfg.reconcile.secrets.allow = [...cfg.reconcile.secrets.allow, ...baseline_allow(await load_baseline(root))];
   return cfg;
 }
 
@@ -327,23 +327,23 @@ export async function loadPluginConfig(projectRoot?: string): Promise<PluginConf
  * Synchronous variant — used in test setup where async loading is awkward.
  * Same fail-open behavior.
  */
-export function loadPluginConfigSync(projectRoot?: string): PluginConfig {
-  const root = projectRoot ?? process.cwd();
-  const configPath = resolve(root, CONFIG_FILENAME);
+export function load_plugin_config_sync(project_root?: string): PluginConfig {
+  const root = project_root ?? process.cwd();
+  const config_path = resolve(root, CONFIG_FILENAME);
 
   let raw: unknown;
   try {
-    const contents = readFileSync(configPath, 'utf-8');
+    const contents = readFileSync(config_path, 'utf-8');
     raw = JSON.parse(contents);
   } catch {
     raw = {};
   }
 
-  const parsed = pluginConfigSchema.safeParse(raw);
+  const parsed = plugin_config_schema.safeParse(raw);
   if (parsed.success) {
     return parsed.data;
   }
-  return pluginConfigSchema.parse({});
+  return plugin_config_schema.parse({});
 }
 
 /**
@@ -352,13 +352,13 @@ export function loadPluginConfigSync(projectRoot?: string): PluginConfig {
  * you need to MUTATE the config and write it back without clobbering keys this
  * module doesn't model (e.g. the runtime's `updatePolicy`). Never throws.
  */
-export async function readRawConfig(
-  projectRoot?: string
+export async function read_raw_config(
+  project_root?: string
 ): Promise<Record<string, unknown>> {
-  const root = projectRoot ?? process.cwd();
-  const configPath = resolve(root, CONFIG_FILENAME);
+  const root = project_root ?? process.cwd();
+  const config_path = resolve(root, CONFIG_FILENAME);
   try {
-    const contents = await readFile(configPath, 'utf-8');
+    const contents = await readFile(config_path, 'utf-8');
     const parsed = JSON.parse(contents);
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
       ? (parsed as Record<string, unknown>)
@@ -373,46 +373,46 @@ export async function readRawConfig(
  * creating the `.claude/` directory if needed. Pretty-printed with a trailing
  * newline. Returns the absolute path written.
  */
-export async function writeRawConfig(
-  projectRoot: string,
+export async function write_raw_config(
+  project_root: string,
   data: Record<string, unknown>
 ): Promise<string> {
-  const configPath = resolve(projectRoot, CONFIG_FILENAME);
-  await mkdir(dirname(configPath), { recursive: true });
-  await writeFile(configPath, JSON.stringify(data, null, 2) + '\n', 'utf-8');
-  return configPath;
+  const config_path = resolve(project_root, CONFIG_FILENAME);
+  await mkdir(dirname(config_path), { recursive: true });
+  await writeFile(config_path, JSON.stringify(data, null, 2) + '\n', 'utf-8');
+  return config_path;
 }
 
 /** Absolute path to a project's config file (whether or not it exists). */
-export function configFilePath(projectRoot: string): string {
-  return resolve(projectRoot, CONFIG_FILENAME);
+export function config_file_path(project_root: string): string {
+  return resolve(project_root, CONFIG_FILENAME);
 }
 
 /**
  * Resolve the documentation root for a project, applying config + defaults.
  * The returned path is absolute.
  */
-export function resolveDocsRoot(projectRoot: string, config: PluginConfig): string {
-  return resolve(projectRoot, config.docs_root);
+export function resolve_docs_root(project_root: string, config: PluginConfig): string {
+  return resolve(project_root, config.docs_root);
 }
 
 /**
  * Resolve the vault root for a project, applying config + defaults.
  * The returned path is absolute.
  */
-export function resolveVaultRoot(projectRoot: string, config: PluginConfig): string {
-  return resolve(projectRoot, config.vault.root);
+export function resolve_vault_root(project_root: string, config: PluginConfig): string {
+  return resolve(project_root, config.vault.root);
 }
 
 /**
  * Resolve playbook scan globs relative to project root, as absolute glob
  * patterns. Returned globs are suitable for `glob` library consumption.
  */
-export function resolvePlaybookGlobs(
-  projectRoot: string,
+export function resolve_playbook_globs(
+  project_root: string,
   config: PluginConfig
 ): string[] {
-  return config.vault.playbook_paths.map((p) => join(projectRoot, p));
+  return config.vault.playbook_paths.map((p) => join(project_root, p));
 }
 
 /**
@@ -420,16 +420,16 @@ export function resolvePlaybookGlobs(
  * (relative to the repo root, the parent of docsPath) overrides it. A path
  * that escapes the repo root warns and falls back to the default.
  */
-export async function resolveReportsDir(docsPath: string): Promise<string> {
-  const projectRoot = dirname(docsPath);
-  const configured = (await loadPluginConfig(projectRoot)).reports_dir;
-  if (!configured) return join(docsPath, 'reports');
-  const dir = resolve(projectRoot, configured);
-  const rel = relative(projectRoot, dir);
+export async function resolve_reports_dir(docs_path: string): Promise<string> {
+  const project_root = dirname(docs_path);
+  const configured = (await load_plugin_config(project_root)).reports_dir;
+  if (!configured) return join(docs_path, 'reports');
+  const dir = resolve(project_root, configured);
+  const rel = relative(project_root, dir);
   if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
     // Lenient like the rest of the config: bad value → default, never a crash.
-    console.warn(`hewtd: reports_dir "${configured}" must stay inside the repo root; using ${join(docsPath, 'reports')}`);
-    return join(docsPath, 'reports');
+    console.warn(`hewtd: reports_dir "${configured}" must stay inside the repo root; using ${join(docs_path, 'reports')}`);
+    return join(docs_path, 'reports');
   }
   return dir;
 }

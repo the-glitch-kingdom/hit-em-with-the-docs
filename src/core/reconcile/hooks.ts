@@ -1,14 +1,14 @@
 import { readFile, writeFile, unlink, mkdir, chmod, lstat } from 'fs/promises';
 import { join, relative, resolve, isAbsolute, dirname } from 'path';
 import { spawnSync } from 'child_process';
-import { scanText, type SecretFinding } from './secrets.js';
+import { scan_text, type SecretFinding } from './secrets.js';
 import type { SecretsConfig } from '../../utils/config.js';
 
 const git = (root: string, args: string[]) => spawnSync('git', ['-c', 'core.quotepath=off', ...args], { cwd: root, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
 
 /** Secret findings on lines the staged diff ADDS under `docsPath` (legacy lines are never scanned). Masked only. */
-export function scanStaged(root: string, docsPath: string, cfg: SecretsConfig): SecretFinding[] {
-  const rel = relative(root, docsPath).split('\\').join('/') || '.';
+export function scan_staged(root: string, docs_path: string, cfg: SecretsConfig): SecretFinding[] {
+  const rel = relative(root, docs_path).split('\\').join('/') || '.';
   const r = git(root, ['diff', '--cached', '-U0', '--no-color', '--diff-filter=ACMR', '--', rel]);
   if (r.status !== 0) throw new Error(`git diff --cached failed: ${r.stderr.trim()}`);
   const out: SecretFinding[] = [];
@@ -19,18 +19,18 @@ export function scanStaged(root: string, docsPath: string, cfg: SecretsConfig): 
   let header = false;
   for (const l of r.stdout.split('\n')) {
     if (l.startsWith('diff --git ')) { header = true; file = ''; continue; }
-    if (header && l.startsWith('+++ ')) { file = headerPath(l.slice(4)); continue; }
+    if (header && l.startsWith('+++ ')) { file = header_path(l.slice(4)); continue; }
     const h = /^@@ -\S+ \+(\d+)/.exec(l);
     if (h) { header = false; line = parseInt(h[1]!, 10); continue; }
     if (header || !file || !l.startsWith('+')) continue;
-    for (const f of scanText(l.slice(1), file, cfg)) if (f.kind === 'secret') out.push({ ...f, line, col: f.col });
+    for (const f of scan_text(l.slice(1), file, cfg)) if (f.kind === 'secret') out.push({ ...f, line, col: f.col });
     line++;
   }
   return out;
 }
 
 /** `b/path`, a C-quoted `"b/pa\\th"`, and a trailing tab git adds after paths with spaces. */
-function headerPath(raw: string): string {
+function header_path(raw: string): string {
   let p = raw.replace(/\t$/, '');
   if (p.startsWith('"')) { try { p = JSON.parse(p); } catch { return ''; } }
   return p.startsWith('b/') ? p.slice(2) : '';
@@ -41,7 +41,7 @@ const END = '# <<< hewtd secrets <<<';
 const BLOCK = `${START}\nnpx --no-install hewtd secrets --staged || exit 1\n${END}\n`;
 const SHEBANG = '#!/bin/sh\n';
 
-function hookPath(root: string): string {
+function hook_path(root: string): string {
   const cp = git(root, ['config', 'core.hooksPath']).stdout.trim();
   if (cp) return join(isAbsolute(cp) ? cp : resolve(root, cp), 'pre-commit');
   const g = git(root, ['rev-parse', '--git-path', 'hooks']);
@@ -55,8 +55,8 @@ function hookPath(root: string): string {
  * a symlink or not a POSIX shell script is refused: the block is shell and must not be written into
  * another language or through a link into someone else's file.
  */
-export async function installHook(root: string): Promise<{ path: string; changed: boolean }> {
-  const path = hookPath(root);
+export async function install_hook(root: string): Promise<{ path: string; changed: boolean }> {
+  const path = hook_path(root);
   let cur: string | null = null;
   try { cur = await readFile(path, 'utf-8'); } catch { /* absent */ }
   if (cur?.includes(START)) return { path, changed: false };
@@ -76,8 +76,8 @@ export async function installHook(root: string): Promise<{ path: string; changed
 }
 
 /** Removes only the block (byte-exact restore); deletes a hook file that hewtd created. */
-export async function uninstallHook(root: string): Promise<{ path: string; changed: boolean }> {
-  const path = hookPath(root);
+export async function uninstall_hook(root: string): Promise<{ path: string; changed: boolean }> {
+  const path = hook_path(root);
   let cur: string;
   try { cur = await readFile(path, 'utf-8'); } catch { return { path, changed: false }; }
   if (!cur.includes(START)) return { path, changed: false };

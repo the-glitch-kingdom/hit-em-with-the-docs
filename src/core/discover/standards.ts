@@ -59,46 +59,46 @@ export interface TestingStandards {
 /**
  * Discover implicit standards from codebase
  */
-export async function discoverStandards(
+export async function discover_standards(
   options: StandardsDiscoveryOptions
 ): Promise<DiscoveredStandards> {
-  const { rootPath, silent = false } = options;
+  const { rootPath: root_path, silent = false } = options;
 
   if (!silent) {
     logger.header('Standards Discovery');
-    logger.info(`Analyzing: ${rootPath}`);
+    logger.info(`Analyzing: ${root_path}`);
   }
 
   // Find all source files
-  const tsFiles = await glob('**/*.{ts,tsx}', {
-    cwd: rootPath,
+  const ts_files = await glob('**/*.{ts,tsx}', {
+    cwd: root_path,
     absolute: true,
     ignore: ['**/node_modules/**', '**/dist/**'],
   });
 
-  const jsFiles = await glob('**/*.{js,jsx,mjs}', {
-    cwd: rootPath,
+  const js_files = await glob('**/*.{js,jsx,mjs}', {
+    cwd: root_path,
     absolute: true,
     ignore: ['**/node_modules/**', '**/dist/**'],
   });
 
-  const allFiles = [...new Set([...tsFiles, ...jsFiles])];
+  const all_files = [...new Set([...ts_files, ...js_files])];
 
   if (!silent) {
-    logger.info(`Analyzing ${allFiles.length} source files...`);
+    logger.info(`Analyzing ${all_files.length} source files...`);
   }
 
   // Discover each category
-  const naming = await discoverNamingStandards(allFiles, rootPath);
-  const fileOrganization = await discoverFileOrganization(rootPath);
-  const codeStyle = await discoverCodeStyle(allFiles);
-  const documentation = await discoverDocumentationStandards(allFiles);
-  const testing = await discoverTestingStandards(rootPath);
+  const naming = await discover_naming_standards(all_files, root_path);
+  const file_organization = await discover_file_organization(root_path);
+  const code_style = await discover_code_style(all_files);
+  const documentation = await discover_documentation_standards(all_files);
+  const testing = await discover_testing_standards(root_path);
 
   const standards: DiscoveredStandards = {
     naming,
-    fileOrganization,
-    codeStyle,
+    fileOrganization: file_organization,
+    codeStyle: code_style,
     documentation,
     testing,
   };
@@ -108,7 +108,7 @@ export async function discoverStandards(
     logger.success('Standards discovered:');
     logger.info(`  Functions: ${naming.functions.convention} (${naming.functions.compliance.toFixed(0)}% compliance)`);
     logger.info(`  Classes: ${naming.classes.convention} (${naming.classes.compliance.toFixed(0)}% compliance)`);
-    logger.info(`  Indentation: ${codeStyle.indentation}${codeStyle.indentSize ? ` (${codeStyle.indentSize} spaces)` : ''}`);
+    logger.info(`  Indentation: ${code_style.indentation}${code_style.indentSize ? ` (${code_style.indentSize} spaces)` : ''}`);
     logger.info(`  Type hints: ${documentation.typeHintCoverage.toFixed(0)}% coverage`);
   }
 
@@ -118,43 +118,43 @@ export async function discoverStandards(
 /**
  * Discover naming conventions
  */
-async function discoverNamingStandards(
+async function discover_naming_standards(
   files: string[],
-  rootPath: string
+  root_path: string
 ): Promise<NamingStandards> {
-  const functionNames: { name: string; file: string }[] = [];
-  const classNames: { name: string; file: string }[] = [];
-  const constantNames: { name: string; file: string }[] = [];
-  const variableNames: { name: string; file: string }[] = [];
+  const function_names: { name: string; file: string }[] = [];
+  const class_names: { name: string; file: string }[] = [];
+  const constant_names: { name: string; file: string }[] = [];
+  const variable_names: { name: string; file: string }[] = [];
 
   for (const file of files.slice(0, 100)) {
     try {
       const content = await readFile(file, 'utf-8');
-      const relPath = relative(rootPath, file);
+      const rel_path = relative(root_path, file);
 
       // Extract function names
-      const funcMatches = content.matchAll(/(?:function\s+(\w+)|(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>)/g);
-      for (const match of funcMatches) {
+      const func_matches = content.matchAll(/(?:function\s+(\w+)|(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>)/g);
+      for (const match of func_matches) {
         const name = match[1] ?? match[2];
-        if (name) functionNames.push({ name, file: relPath });
+        if (name) function_names.push({ name, file: rel_path });
       }
 
       // Extract class names
-      const classMatches = content.matchAll(/class\s+(\w+)/g);
-      for (const match of classMatches) {
-        if (match[1]) classNames.push({ name: match[1], file: relPath });
+      const class_matches = content.matchAll(/class\s+(\w+)/g);
+      for (const match of class_matches) {
+        if (match[1]) class_names.push({ name: match[1], file: rel_path });
       }
 
       // Extract constants (UPPER_SNAKE_CASE)
-      const constMatches = content.matchAll(/const\s+([A-Z][A-Z0-9_]+)\s*=/g);
-      for (const match of constMatches) {
-        if (match[1]) constantNames.push({ name: match[1], file: relPath });
+      const const_matches = content.matchAll(/const\s+([A-Z][A-Z0-9_]+)\s*=/g);
+      for (const match of const_matches) {
+        if (match[1]) constant_names.push({ name: match[1], file: rel_path });
       }
 
       // Extract regular variables
-      const varMatches = content.matchAll(/(?:const|let|var)\s+([a-z][a-zA-Z0-9]*)\s*=/g);
-      for (const match of varMatches) {
-        if (match[1]) variableNames.push({ name: match[1], file: relPath });
+      const var_matches = content.matchAll(/(?:const|let|var)\s+([a-z][a-zA-Z0-9]*)\s*=/g);
+      for (const match of var_matches) {
+        if (match[1]) variable_names.push({ name: match[1], file: rel_path });
       }
     } catch {
       // Skip
@@ -162,26 +162,26 @@ async function discoverNamingStandards(
   }
 
   // Analyze file naming
-  const fileNameExamples = files.slice(0, 20).map((f) => ({
+  const file_name_examples = files.slice(0, 20).map((f) => ({
     name: basename(f),
-    file: relative(rootPath, f),
+    file: relative(root_path, f),
   }));
 
   return {
-    functions: analyzeNamingConvention(functionNames, 'camelCase'),
-    classes: analyzeNamingConvention(classNames, 'PascalCase'),
-    constants: analyzeNamingConvention(constantNames, 'UPPER_SNAKE_CASE'),
-    variables: analyzeNamingConvention(variableNames, 'camelCase'),
-    files: analyzeFileNaming(fileNameExamples),
+    functions: analyze_naming_convention(function_names, 'camelCase'),
+    classes: analyze_naming_convention(class_names, 'PascalCase'),
+    constants: analyze_naming_convention(constant_names, 'UPPER_SNAKE_CASE'),
+    variables: analyze_naming_convention(variable_names, 'camelCase'),
+    files: analyze_file_naming(file_name_examples),
   };
 }
 
 /**
  * Analyze naming convention compliance
  */
-function analyzeNamingConvention(
+function analyze_naming_convention(
   names: { name: string; file: string }[],
-  expectedConvention: string
+  expected_convention: string
 ): ConventionCompliance {
   const checks = {
     camelCase: (n: string) => /^[a-z][a-zA-Z0-9]*$/.test(n),
@@ -191,26 +191,26 @@ function analyzeNamingConvention(
     snake_case: (n: string) => /^[a-z][a-z0-9_]*$/.test(n),
   };
 
-  const check = checks[expectedConvention as keyof typeof checks] ?? checks.camelCase;
+  const check = checks[expected_convention as keyof typeof checks] ?? checks.camelCase;
 
   const compliant = names.filter((n) => check(n.name));
   const compliance = names.length > 0 ? (compliant.length / names.length) * 100 : 100;
 
   // Detect actual convention used
-  let detectedConvention = expectedConvention;
-  let maxCompliance = compliance;
+  let detected_convention = expected_convention;
+  let max_compliance = compliance;
 
-  for (const [convention, checkFn] of Object.entries(checks)) {
-    const conventionCompliance = names.filter((n) => checkFn(n.name)).length / Math.max(names.length, 1) * 100;
-    if (conventionCompliance > maxCompliance) {
-      maxCompliance = conventionCompliance;
-      detectedConvention = convention;
+  for (const [convention, check_fn] of Object.entries(checks)) {
+    const convention_compliance = names.filter((n) => check_fn(n.name)).length / Math.max(names.length, 1) * 100;
+    if (convention_compliance > max_compliance) {
+      max_compliance = convention_compliance;
+      detected_convention = convention;
     }
   }
 
   return {
-    convention: detectedConvention,
-    compliance: maxCompliance,
+    convention: detected_convention,
+    compliance: max_compliance,
     examples: names.slice(0, 5).map((n) => ({
       ...n,
       compliant: check(n.name),
@@ -221,20 +221,20 @@ function analyzeNamingConvention(
 /**
  * Analyze file naming convention
  */
-function analyzeFileNaming(
+function analyze_file_naming(
   files: { name: string; file: string }[]
 ): ConventionCompliance {
-  const kebabCase = files.filter((f) => /^[a-z][a-z0-9-]*\./.test(f.name)).length;
-  const camelCase = files.filter((f) => /^[a-z][a-zA-Z0-9]*\./.test(f.name)).length;
-  const pascalCase = files.filter((f) => /^[A-Z][a-zA-Z0-9]*\./.test(f.name)).length;
-  const snakeCase = files.filter((f) => /^[a-z][a-z0-9_]*\./.test(f.name)).length;
+  const kebab_case = files.filter((f) => /^[a-z][a-z0-9-]*\./.test(f.name)).length;
+  const camel_case = files.filter((f) => /^[a-z][a-zA-Z0-9]*\./.test(f.name)).length;
+  const pascal_case = files.filter((f) => /^[A-Z][a-zA-Z0-9]*\./.test(f.name)).length;
+  const snake_case = files.filter((f) => /^[a-z][a-z0-9_]*\./.test(f.name)).length;
 
   const total = files.length || 1;
   const conventions = [
-    { name: 'kebab-case', count: kebabCase },
-    { name: 'camelCase', count: camelCase },
-    { name: 'PascalCase', count: pascalCase },
-    { name: 'snake_case', count: snakeCase },
+    { name: 'kebab-case', count: kebab_case },
+    { name: 'camelCase', count: camel_case },
+    { name: 'PascalCase', count: pascal_case },
+    { name: 'snake_case', count: snake_case },
   ];
 
   const best = conventions.sort((a, b) => b.count - a.count)[0]!;
@@ -252,13 +252,13 @@ function analyzeFileNaming(
 /**
  * Discover file organization patterns
  */
-async function discoverFileOrganization(
-  rootPath: string
+async function discover_file_organization(
+  root_path: string
 ): Promise<FileOrganizationStandards> {
   const patterns: { pattern: string; files: number; examples: string[] }[] = [];
 
   // Common folder patterns to check
-  const folderPatterns = [
+  const folder_patterns = [
     { pattern: 'src/', glob: 'src/**/*' },
     { pattern: 'lib/', glob: 'lib/**/*' },
     { pattern: 'components/', glob: '**/components/**/*' },
@@ -273,9 +273,9 @@ async function discoverFileOrganization(
     { pattern: '__tests__/', glob: '**/__tests__/**/*' },
   ];
 
-  for (const { pattern: name, glob: globPattern } of folderPatterns) {
-    const files = await glob(globPattern, {
-      cwd: rootPath,
+  for (const { pattern: name, glob: glob_pattern } of folder_patterns) {
+    const files = await glob(glob_pattern, {
+      cwd: root_path,
       ignore: ['**/node_modules/**', '**/dist/**'],
     });
 
@@ -289,30 +289,30 @@ async function discoverFileOrganization(
   }
 
   // Get root folders
-  const rootEntries = await glob('*', { cwd: rootPath });
-  const rootFolders = rootEntries.filter((e) => !e.includes('.'));
+  const root_entries = await glob('*', { cwd: root_path });
+  const root_folders = root_entries.filter((e) => !e.includes('.'));
 
   return {
     patterns: patterns.sort((a, b) => b.files - a.files),
-    rootFolders,
+    rootFolders: root_folders,
   };
 }
 
 /**
  * Discover code style preferences
  */
-async function discoverCodeStyle(files: string[]): Promise<CodeStyleStandards> {
-  let tabCount = 0;
-  let spaceCount = 0;
-  let space2Count = 0;
-  let space4Count = 0;
-  let semiCount = 0;
-  let noSemiCount = 0;
-  let singleQuoteCount = 0;
-  let doubleQuoteCount = 0;
-  let trailingCommaCount = 0;
-  let noTrailingCommaCount = 0;
-  let maxLineLength = 0;
+async function discover_code_style(files: string[]): Promise<CodeStyleStandards> {
+  let tab_count = 0;
+  let space_count = 0;
+  let space2_count = 0;
+  let space4_count = 0;
+  let semi_count = 0;
+  let no_semi_count = 0;
+  let single_quote_count = 0;
+  let double_quote_count = 0;
+  let trailing_comma_count = 0;
+  let no_trailing_comma_count = 0;
+  let max_line_length = 0;
 
   for (const file of files.slice(0, 50)) {
     try {
@@ -321,27 +321,27 @@ async function discoverCodeStyle(files: string[]): Promise<CodeStyleStandards> {
 
       for (const line of lines) {
         // Check indentation
-        if (line.startsWith('\t')) tabCount++;
+        if (line.startsWith('\t')) tab_count++;
         if (line.startsWith('  ')) {
-          spaceCount++;
-          if (line.startsWith('    ') && !line.startsWith('      ')) space4Count++;
-          else if (line.startsWith('  ') && !line.startsWith('    ')) space2Count++;
+          space_count++;
+          if (line.startsWith('    ') && !line.startsWith('      ')) space4_count++;
+          else if (line.startsWith('  ') && !line.startsWith('    ')) space2_count++;
         }
 
         // Check max line length
-        if (line.length > maxLineLength) maxLineLength = line.length;
+        if (line.length > max_line_length) max_line_length = line.length;
 
         // Check semicolons (at end of statements)
-        if (/[a-zA-Z0-9)}\]'"`]\s*;$/.test(line.trim())) semiCount++;
-        if (/[a-zA-Z0-9)}\]'"`]$/.test(line.trim()) && !line.trim().endsWith('{')) noSemiCount++;
+        if (/[a-zA-Z0-9)}\]'"`]\s*;$/.test(line.trim())) semi_count++;
+        if (/[a-zA-Z0-9)}\]'"`]$/.test(line.trim()) && !line.trim().endsWith('{')) no_semi_count++;
 
         // Check quotes
-        if (line.includes("'") && !line.includes('"')) singleQuoteCount++;
-        if (line.includes('"') && !line.includes("'")) doubleQuoteCount++;
+        if (line.includes("'") && !line.includes('"')) single_quote_count++;
+        if (line.includes('"') && !line.includes("'")) double_quote_count++;
 
         // Check trailing commas
-        if (/,\s*[}\]]/.test(line)) trailingCommaCount++;
-        if (/[^,\s]\s*[}\]]/.test(line)) noTrailingCommaCount++;
+        if (/,\s*[}\]]/.test(line)) trailing_comma_count++;
+        if (/[^,\s]\s*[}\]]/.test(line)) no_trailing_comma_count++;
       }
     } catch {
       // Skip
@@ -350,32 +350,32 @@ async function discoverCodeStyle(files: string[]): Promise<CodeStyleStandards> {
 
   // Determine preferences
   const indentation: 'spaces' | 'tabs' | 'mixed' =
-    tabCount > spaceCount * 0.8 ? 'tabs' :
-    spaceCount > tabCount * 0.8 ? 'spaces' : 'mixed';
+    tab_count > space_count * 0.8 ? 'tabs' :
+    space_count > tab_count * 0.8 ? 'spaces' : 'mixed';
 
-  const indentSize = space4Count > space2Count ? 4 : 2;
+  const indent_size = space4_count > space2_count ? 4 : 2;
 
   const semicolons: 'always' | 'never' | 'mixed' =
-    semiCount > noSemiCount * 2 ? 'always' :
-    noSemiCount > semiCount * 2 ? 'never' : 'mixed';
+    semi_count > no_semi_count * 2 ? 'always' :
+    no_semi_count > semi_count * 2 ? 'never' : 'mixed';
 
   const quotes: 'single' | 'double' | 'mixed' =
-    singleQuoteCount > doubleQuoteCount * 2 ? 'single' :
-    doubleQuoteCount > singleQuoteCount * 2 ? 'double' : 'mixed';
+    single_quote_count > double_quote_count * 2 ? 'single' :
+    double_quote_count > single_quote_count * 2 ? 'double' : 'mixed';
 
-  const trailingCommas: 'always' | 'never' | 'mixed' =
-    trailingCommaCount > noTrailingCommaCount * 2 ? 'always' :
-    noTrailingCommaCount > trailingCommaCount * 2 ? 'never' : 'mixed';
+  const trailing_commas: 'always' | 'never' | 'mixed' =
+    trailing_comma_count > no_trailing_comma_count * 2 ? 'always' :
+    no_trailing_comma_count > trailing_comma_count * 2 ? 'never' : 'mixed';
 
   const result: CodeStyleStandards = {
-    maxLineLength,
+    maxLineLength: max_line_length,
     indentation,
     semicolons,
     quotes,
-    trailingCommas,
+    trailingCommas: trailing_commas,
   };
   if (indentation === 'spaces') {
-    result.indentSize = indentSize;
+    result.indentSize = indent_size;
   }
   return result;
 }
@@ -383,14 +383,14 @@ async function discoverCodeStyle(files: string[]): Promise<CodeStyleStandards> {
 /**
  * Discover documentation standards
  */
-async function discoverDocumentationStandards(
+async function discover_documentation_standards(
   files: string[]
 ): Promise<DocumentationStandards> {
-  let totalFunctions = 0;
-  let documentedFunctions = 0;
-  let typedFunctions = 0;
-  let jsdocCount = 0;
-  let tsdocCount = 0;
+  let total_functions = 0;
+  let documented_functions = 0;
+  let typed_functions = 0;
+  let jsdoc_count = 0;
+  let tsdoc_count = 0;
 
   for (const file of files.slice(0, 50)) {
     try {
@@ -398,40 +398,40 @@ async function discoverDocumentationStandards(
 
       // Count functions
       const functions = content.match(/(?:function\s+\w+|(?:const|let|var)\s+\w+\s*=\s*(?:async\s*)?\([^)]*\)\s*=>)/g);
-      totalFunctions += functions?.length ?? 0;
+      total_functions += functions?.length ?? 0;
 
       // Count documented functions (JSDoc/TSDoc comments before functions)
       const jsdocs = content.match(/\/\*\*[\s\S]*?\*\/\s*(?:export\s+)?(?:async\s+)?(?:function|const|let|var)/g);
-      documentedFunctions += jsdocs?.length ?? 0;
+      documented_functions += jsdocs?.length ?? 0;
 
       // Check docstring style
-      if (content.includes('@param')) jsdocCount++;
-      if (content.includes('@returns')) tsdocCount++;
+      if (content.includes('@param')) jsdoc_count++;
+      if (content.includes('@returns')) tsdoc_count++;
 
       // Count typed functions (TypeScript)
       const typed = content.match(/\([^)]*:[^)]+\)\s*(?::\s*\w+)?\s*(?:=>|{)/g);
-      typedFunctions += typed?.length ?? 0;
+      typed_functions += typed?.length ?? 0;
     } catch {
       // Skip
     }
   }
 
-  const docstringStyle = tsdocCount > jsdocCount ? 'TSDoc' : 'JSDoc';
-  const coverage = totalFunctions > 0 ? (documentedFunctions / totalFunctions) * 100 : 0;
-  const typeHintCoverage = totalFunctions > 0 ? (typedFunctions / totalFunctions) * 100 : 0;
+  const docstring_style = tsdoc_count > jsdoc_count ? 'TSDoc' : 'JSDoc';
+  const coverage = total_functions > 0 ? (documented_functions / total_functions) * 100 : 0;
+  const type_hint_coverage = total_functions > 0 ? (typed_functions / total_functions) * 100 : 0;
 
   return {
-    docstringStyle,
+    docstringStyle: docstring_style,
     coverage,
-    typeHintCoverage,
+    typeHintCoverage: type_hint_coverage,
   };
 }
 
 /**
  * Discover testing standards
  */
-async function discoverTestingStandards(
-  rootPath: string
+async function discover_testing_standards(
+  root_path: string
 ): Promise<TestingStandards> {
   // Check for test files in various patterns
   const patterns = [
@@ -442,29 +442,29 @@ async function discoverTestingStandards(
     '**/tests/*.ts',
   ];
 
-  let testPattern = '*.test.ts';
-  let maxFiles = 0;
+  let test_pattern = '*.test.ts';
+  let max_files = 0;
 
   for (const pattern of patterns) {
     const files = await glob(pattern, {
-      cwd: rootPath,
+      cwd: root_path,
       ignore: ['**/node_modules/**'],
     });
 
-    if (files.length > maxFiles) {
-      maxFiles = files.length;
-      testPattern = pattern.replace('**/', '').replace('/*.ts', '');
+    if (files.length > max_files) {
+      max_files = files.length;
+      test_pattern = pattern.replace('**/', '').replace('/*.ts', '');
     }
   }
 
   // Check for fixtures
   const fixtures = await glob('**/fixtures/**/*', {
-    cwd: rootPath,
+    cwd: root_path,
     ignore: ['**/node_modules/**'],
   });
 
   const result: TestingStandards = {
-    pattern: testPattern,
+    pattern: test_pattern,
   };
   if (fixtures.length > 0) {
     result.fixturePattern = 'fixtures/';

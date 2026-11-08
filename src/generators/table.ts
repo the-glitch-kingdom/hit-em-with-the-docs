@@ -5,7 +5,7 @@
  * are added/removed. Uses `\n` line endings explicitly.
  */
 
-export function formatMarkdownTable(
+export function format_markdown_table(
   headers: string[],
   rows: string[][]
 ): string {
@@ -20,12 +20,12 @@ export function formatMarkdownTable(
 
   const pad = (cell: string, width: number): string => cell.padEnd(width, ' ');
 
-  const headerLine = `| ${headers.map((h, i) => pad(h, widths[i]!)).join(' | ')} |`;
-  const sepLine = `|${widths.map((w) => '-'.repeat(w + 2)).join('|')}|`;
-  const bodyLines = rows.map(
+  const header_line = `| ${headers.map((h, i) => pad(h, widths[i]!)).join(' | ')} |`;
+  const sep_line = `|${widths.map((w) => '-'.repeat(w + 2)).join('|')}|`;
+  const body_lines = rows.map(
     (row) =>
       `| ${row.map((cell, i) => pad(cell ?? '', widths[i]!)).join(' | ')} |`
   );
 
-  return [headerLine, sepLine, ...bodyLines].join('\n');
+  return [header_line, sep_line, ...body_lines].join('\n');
 }

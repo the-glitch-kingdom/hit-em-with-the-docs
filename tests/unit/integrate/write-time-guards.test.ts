@@ -3,13 +3,13 @@ import { execFileSync } from 'child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, readdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { integrateDocument } from '../../../src/core/integrate/integrator';
-import { parseFrontmatter } from '../../../src/utils/frontmatter';
+import { integrate_document } from '../../../src/core/integrate/integrator';
+import { parse_frontmatter } from '../../../src/utils/frontmatter';
 import { fingerprint } from '../../../src/core/reconcile/secrets';
 import { triage } from '../../../src/core/reconcile/triage';
-import { searchDocs } from '../../../src/core/reconcile/search';
-import { loadPluginConfig } from '../../../src/utils/config';
-import { loadLedger } from '../../../src/core/reconcile/ledger';
+import { search_docs } from '../../../src/core/reconcile/search';
+import { load_plugin_config } from '../../../src/utils/config';
+import { load_ledger } from '../../../src/core/reconcile/ledger';
 
 // Secret-shaped values are assembled at runtime so the repo never holds a scannable literal.
 const rnd = (n: number, seed = 7) => { let x = seed; let s = ''; const a = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'; for (let i = 0; i < n; i++) { x = (x * 1103515245 + 12345) & 0x7fffffff; s += a[x % a.length]; } return s; };
@@ -19,9 +19,9 @@ let root: string, docs: string, inbox: string;
 const run = (name: string, text: string, extra: Record<string, unknown> = {}) => {
   const f = join(inbox, name);
   writeFileSync(f, text);
-  return integrateDocument({ filePath: f, docsPath: docs, auto: true, silent: true, ...extra });
+  return integrate_document({ filePath: f, docsPath: docs, auto: true, silent: true, ...extra });
 };
-const fm = (p: string) => parseFrontmatter<Record<string, unknown>>(readFileSync(p, 'utf-8')).data;
+const fm = (p: string) => parse_frontmatter<Record<string, unknown>>(readFileSync(p, 'utf-8')).data;
 const files = (dir: string): string[] => readdirSync(dir, { recursive: true }).map(String);
 
 beforeEach(() => {
@@ -129,9 +129,9 @@ describe('integrate records sources', () => {
   it('triage puts the integrated doc in check, and search never indexes sources', async () => {
     const r = await run('t.md', doc('Details live in `src/f3.ts`.', '---\ntitle: Details\n---\n\n'));
     const rel = r.targetPath!.slice(docs.length + 1);
-    const t = await triage({ root, docsPath: docs, rels: [rel], config: await loadPluginConfig(root), ledger: await loadLedger(join(root, '.hewtd/reconcile.json')) });
+    const t = await triage({ root, docsPath: docs, rels: [rel], config: await load_plugin_config(root), ledger: await load_ledger(join(root, '.hewtd/reconcile.json')) });
     expect(t.docs[0]!.lane).toBe('check');
     writeFileSync(r.targetPath!, readFileSync(r.targetPath!, 'utf-8').replaceAll('Details live in `src/f3.ts`.', 'Details live elsewhere.'));
-    expect(await searchDocs(docs, 'src/f3.ts', { config: await loadPluginConfig(root) })).toEqual([]);
+    expect(await search_docs(docs, 'src/f3.ts', { config: await load_plugin_config(root) })).toEqual([]);
   });
 });

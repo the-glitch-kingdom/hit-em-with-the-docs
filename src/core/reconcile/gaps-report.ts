@@ -3,9 +3,9 @@ import { mkdir, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import type { SecretsConfig } from '../../utils/config.js';
 import type { GapsClassification } from './gaps.js';
-import { assertNoSecrets } from './secrets.js';
+import { assert_no_secrets } from './secrets.js';
 
-export function renderGapsReport(c: GapsClassification, cfg: SecretsConfig, date = new Date().toISOString().slice(0, 10)): string {
+export function render_gaps_report(c: GapsClassification, cfg: SecretsConfig, date = new Date().toISOString().slice(0, 10)): string {
   const L: string[] = [`# Search gaps report ${date}`, '', 'Nothing in the docs tree was changed. Secret-shaped queries are dropped and never shown.', ''];
   const n = (x: number | undefined): string => (x && x > 1 ? ` (x${x})` : '');
   L.push(`## user_phrase proposals (${c.proposals.length} docs)`, '');
@@ -24,11 +24,11 @@ export function renderGapsReport(c: GapsClassification, cfg: SecretsConfig, date
   if (!c.dropped.length) L.push('None.');
   for (const d of c.dropped) L.push(`- ${d.query} - ${d.reason}${d.note ? ` (${d.note})` : ''}`);
   const text = L.join('\n') + '\n';
-  assertNoSecrets(text, 'the gaps report', cfg);
+  assert_no_secrets(text, 'the gaps report', cfg);
   return text;
 }
 
-export async function writeGapsReport(root: string, text: string, date = new Date().toISOString().slice(0, 10)): Promise<string> {
+export async function write_gaps_report(root: string, text: string, date = new Date().toISOString().slice(0, 10)): Promise<string> {
   const file = join(root, '.hewtd/reconcile', `gaps-report-${date}.md`);
   await mkdir(dirname(file), { recursive: true });
   await writeFile(file, text);

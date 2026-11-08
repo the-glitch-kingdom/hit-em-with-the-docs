@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { scanText, findSecrets, fingerprint, mask } from '../../../src/core/reconcile/secrets';
-import { loadPluginConfig } from '../../../src/utils/config';
+import { scan_text, find_secrets, fingerprint, mask } from '../../../src/core/reconcile/secrets';
+import { load_plugin_config } from '../../../src/utils/config';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -13,8 +13,8 @@ const uuid = ['3f2a9c1e', '7b4d', '4e8a', '9c1d', '5a6b7c8d9e0f'].join('-');
 const pem = ['-----BEGIN RSA PRIV', 'ATE KEY-----'].join('') + '\n' + rnd(64, 5) + '\n' + ['-----END RSA PRIV', 'ATE KEY-----'].join('');
 const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
 const jwt = [b64({ alg: 'HS256', typ: 'JWT' }), b64({ sub: 'u1' }), rnd(20, 9)].join('.');
-const cfg = { allow: [], disabled_rules: [] } as Parameters<typeof scanText>[2];
-const scan = (t: string, c = cfg) => scanText(t, 'doc.md', c);
+const cfg = { allow: [], disabled_rules: [] } as Parameters<typeof scan_text>[2];
+const scan = (t: string, c = cfg) => scan_text(t, 'doc.md', c);
 
 describe('scanText', () => {
   it.each([
@@ -56,7 +56,7 @@ describe('scanText', () => {
     expect(f).toMatchObject({ line: 2, col: 9, length: hvs.length, masked: mask(hvs), fingerprint: fingerprint(hvs) });
     expect(f.masked.replace('…', '').startsWith(hvs.slice(0, 4))).toBe(true);
     expect(JSON.stringify(f)).not.toContain(hvs.slice(5));
-    expect(findSecrets(`t ${hvs}`, 'd', cfg)[0].value).toBe(hvs);
+    expect(find_secrets(`t ${hvs}`, 'd', cfg)[0].value).toBe(hvs);
   });
 
   it('a token inside NAME=value is reported once', () => {
@@ -71,7 +71,7 @@ describe('config', () => {
     writeFileSync(join(root, '.claude/hit-em-with-the-docs.json'), JSON.stringify({
       reconcile: { secrets: { allow: [{ fingerprint: 'a', reason: 'ok' }, { fingerprint: 'b' }, 5], disabled_rules: ['email'] } },
     }));
-    const c = await loadPluginConfig(root);
+    const c = await load_plugin_config(root);
     expect(c.reconcile.secrets).toEqual({ allow: [{ fingerprint: 'a', pattern: undefined, file: undefined, reason: 'ok' }], disabled_rules: ['email'] });
   });
 });

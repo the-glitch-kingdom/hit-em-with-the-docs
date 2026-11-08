@@ -64,13 +64,13 @@ function scan(markdown: string): { headings: Heading[]; lines: string[]; extra: 
   return { headings, lines, extra };
 }
 
-export function headingAnchors(markdown: string): Set<string> {
+export function heading_anchors(markdown: string): Set<string> {
   const { headings, extra } = scan(markdown);
   return new Set([...headings.flatMap((h) => h.ids), ...extra]);
 }
 
 /** The heading line through the next heading of the same or higher level; null if no heading has the anchor. */
-export function sectionOf(markdown: string, anchor: string): string | null {
+export function section_of(markdown: string, anchor: string): string | null {
   const { headings, lines } = scan(markdown);
   const idx = headings.findIndex((h) => h.ids.includes(anchor));
   if (idx < 0) return null;
@@ -80,7 +80,7 @@ export function sectionOf(markdown: string, anchor: string): string | null {
 }
 
 /** Flat sections (heading line to the next heading of any level), for duplicate detection. Body excludes the heading line. */
-export function flatSections(markdown: string): { anchor: string; heading: string; text: string }[] {
+export function flat_sections(markdown: string): { anchor: string; heading: string; text: string }[] {
   const { headings, lines } = scan(markdown);
   return headings.map((h, i) => ({
     anchor: h.ids[0]!,

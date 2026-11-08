@@ -3,7 +3,7 @@ import { execFileSync } from 'child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { buildRepoIndex, checkDocReferences } from '../../../src/core/reconcile/references.js';
+import { build_repo_index, check_doc_references } from '../../../src/core/reconcile/references.js';
 
 let root: string;
 const put = (p: string, c: string): void => { mkdirSync(join(root, p, '..'), { recursive: true }); writeFileSync(join(root, p), c); };
@@ -24,7 +24,7 @@ afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 describe('symbol definition site (#69)', () => {
   it('points at the defining file, not the first referencing one, and says which', async () => {
-    const rs = await checkDocReferences(buildRepoIndex(root), 'Uses `require_role()`, `saveProgressForm()`, `doOnlyReferenced()`, `user_accounts()` and `order_items()`.');
+    const rs = await check_doc_references(build_repo_index(root), 'Uses `require_role()`, `saveProgressForm()`, `doOnlyReferenced()`, `user_accounts()` and `order_items()`.');
     const at = (n: string) => rs.find((r) => r.ref === n);
     expect(at('require_role')).toMatchObject({ where: 'src/auth.py', whereKind: 'definition' });
     expect(at('saveProgressForm')).toMatchObject({ where: 'src/Form.tsx', whereKind: 'definition' });
@@ -37,7 +37,7 @@ describe('symbol definition site (#69)', () => {
     put('zz.ts', 'useJsonOnlyName();\n');
     put('a.json', '{"useJsonOnlyName": 1}\n');
     execFileSync('git', ['add', '-A'], { cwd: root });
-    const rs = await checkDocReferences(buildRepoIndex(root), 'Calls `useJsonOnlyName()`.');
+    const rs = await check_doc_references(build_repo_index(root), 'Calls `useJsonOnlyName()`.');
     expect(rs[0]).toMatchObject({ where: 'zz.ts', whereKind: 'reference' });
   });
 
@@ -46,7 +46,7 @@ describe('symbol definition site (#69)', () => {
     put('app/tests/fake.py', 'class TaskResponse:\n    pass\n');
     put('src/schemas/task.py', 'class TaskResponse:\n    pass\n');
     execFileSync('git', ['add', '-A'], { cwd: root });
-    const rs = await checkDocReferences(buildRepoIndex(root), 'Returns `TaskResponse`.');
+    const rs = await check_doc_references(build_repo_index(root), 'Returns `TaskResponse`.');
     expect(rs[0]).toMatchObject({ where: 'src/schemas/task.py', whereKind: 'definition' });
   });
 });

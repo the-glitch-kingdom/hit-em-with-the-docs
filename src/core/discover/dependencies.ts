@@ -1,6 +1,6 @@
 import { readFile } from 'fs/promises';
 import { join, relative } from 'path';
-import { glob, pathExists } from '../../utils/glob.js';
+import { glob, path_exists } from '../../utils/glob.js';
 import { logger } from '../../utils/logger.js';
 
 export interface DependencyAnalysisOptions {
@@ -68,25 +68,25 @@ export interface UnusedDependency {
 /**
  * Analyze project dependencies
  */
-export async function analyzeDependencies(
+export async function analyze_dependencies(
   options: DependencyAnalysisOptions
 ): Promise<DependencyAnalysis> {
-  const { rootPath, silent = false } = options;
+  const { rootPath: root_path, silent = false } = options;
 
   if (!silent) {
     logger.header('Dependency Analysis');
-    logger.info(`Analyzing: ${rootPath}`);
+    logger.info(`Analyzing: ${root_path}`);
   }
 
   // Analyze package.json dependencies
-  const packages = await analyzePackages(rootPath);
+  const packages = await analyze_packages(root_path);
 
   if (!silent) {
     logger.info(`Found ${packages.total} packages (${packages.production} prod, ${packages.development} dev)`);
   }
 
   // Analyze module imports
-  const modules = await analyzeModules(rootPath);
+  const modules = await analyze_modules(root_path);
 
   if (!silent) {
     logger.info(`Analyzed ${modules.totalFiles} files, ${modules.imports} imports`);
@@ -96,10 +96,10 @@ export async function analyzeDependencies(
   }
 
   // Check for security issues (basic check)
-  const security = await analyzeSecurityBasic(packages);
+  const security = await analyze_security_basic(packages);
 
   // Find unused dependencies
-  const unused = await findUnusedDependencies(rootPath, packages);
+  const unused = await find_unused_dependencies(root_path, packages);
 
   if (!silent && unused.length > 0) {
     logger.warn(`Found ${unused.length} potentially unused dependencies`);
@@ -116,7 +116,7 @@ export async function analyzeDependencies(
 /**
  * Analyze package.json
  */
-async function analyzePackages(rootPath: string): Promise<PackageAnalysis> {
+async function analyze_packages(root_path: string): Promise<PackageAnalysis> {
   const result: PackageAnalysis = {
     total: 0,
     production: 0,
@@ -125,14 +125,14 @@ async function analyzePackages(rootPath: string): Promise<PackageAnalysis> {
     devDependencies: [],
   };
 
-  const packageJsonPath = join(rootPath, 'package.json');
+  const package_json_path = join(root_path, 'package.json');
 
-  if (!(await pathExists(packageJsonPath))) {
+  if (!(await path_exists(package_json_path))) {
     return result;
   }
 
   try {
-    const content = await readFile(packageJsonPath, 'utf-8');
+    const content = await readFile(package_json_path, 'utf-8');
     const pkg = JSON.parse(content);
 
     // Production dependencies
@@ -170,7 +170,7 @@ async function analyzePackages(rootPath: string): Promise<PackageAnalysis> {
 /**
  * Analyze module imports and dependencies
  */
-async function analyzeModules(rootPath: string): Promise<ModuleAnalysis> {
+async function analyze_modules(root_path: string): Promise<ModuleAnalysis> {
   const result: ModuleAnalysis = {
     totalFiles: 0,
     imports: 0,
@@ -180,7 +180,7 @@ async function analyzeModules(rootPath: string): Promise<ModuleAnalysis> {
 
   // Find all source files
   const files = await glob('**/*.{ts,tsx,js,jsx}', {
-    cwd: rootPath,
+    cwd: root_path,
     absolute: true,
     ignore: ['**/node_modules/**', '**/dist/**', '**/build/**'],
   });
@@ -188,53 +188,53 @@ async function analyzeModules(rootPath: string): Promise<ModuleAnalysis> {
   result.totalFiles = files.length;
 
   // Build import graph
-  const importGraph = new Map<string, Set<string>>();
-  const importedBy = new Map<string, Set<string>>();
+  const import_graph = new Map<string, Set<string>>();
+  const imported_by = new Map<string, Set<string>>();
 
   for (const file of files) {
     try {
       const content = await readFile(file, 'utf-8');
-      const relPath = relative(rootPath, file);
+      const rel_path = relative(root_path, file);
 
       // Extract imports
-      const importMatches = content.matchAll(/import\s+.*?from\s+['"]([^'"]+)['"]/g);
+      const import_matches = content.matchAll(/import\s+.*?from\s+['"]([^'"]+)['"]/g);
       const imports = new Set<string>();
 
-      for (const match of importMatches) {
-        const importPath = match[1];
-        if (importPath?.startsWith('.')) {
+      for (const match of import_matches) {
+        const import_path = match[1];
+        if (import_path?.startsWith('.')) {
           // Resolve relative import
-          const resolved = resolveImport(relPath, importPath);
+          const resolved = resolve_import(rel_path, import_path);
           imports.add(resolved);
           result.imports++;
 
           // Track imported by
-          if (!importedBy.has(resolved)) {
-            importedBy.set(resolved, new Set());
+          if (!imported_by.has(resolved)) {
+            imported_by.set(resolved, new Set());
           }
-          importedBy.get(resolved)!.add(relPath);
+          imported_by.get(resolved)!.add(rel_path);
         }
       }
 
-      importGraph.set(relPath, imports);
+      import_graph.set(rel_path, imports);
     } catch {
       // Skip unreadable files
     }
   }
 
   // Detect circular dependencies
-  result.circularDependencies = detectCircularDependencies(importGraph);
+  result.circularDependencies = detect_circular_dependencies(import_graph);
 
   // Find high coupling modules
-  for (const [file, imports] of importGraph) {
-    const importCount = imports.size;
-    const importedByCount = importedBy.get(file)?.size ?? 0;
+  for (const [file, imports] of import_graph) {
+    const import_count = imports.size;
+    const imported_by_count = imported_by.get(file)?.size ?? 0;
 
-    if (importCount > 10 || importedByCount > 10) {
+    if (import_count > 10 || imported_by_count > 10) {
       result.highCoupling.push({
         file,
-        imports: importCount,
-        importedBy: importedByCount,
+        imports: import_count,
+        importedBy: imported_by_count,
       });
     }
   }
@@ -250,10 +250,10 @@ async function analyzeModules(rootPath: string): Promise<ModuleAnalysis> {
 /**
  * Resolve relative import path
  */
-function resolveImport(fromFile: string, importPath: string): string {
-  const fromDir = fromFile.split('/').slice(0, -1).join('/');
-  const parts = importPath.split('/');
-  const result: string[] = fromDir ? fromDir.split('/') : [];
+function resolve_import(from_file: string, import_path: string): string {
+  const from_dir = from_file.split('/').slice(0, -1).join('/');
+  const parts = import_path.split('/');
+  const result: string[] = from_dir ? from_dir.split('/') : [];
 
   for (const part of parts) {
     if (part === '.') continue;
@@ -277,19 +277,19 @@ function resolveImport(fromFile: string, importPath: string): string {
 /**
  * Detect circular dependencies using DFS
  */
-function detectCircularDependencies(
+function detect_circular_dependencies(
   graph: Map<string, Set<string>>
 ): CircularDependency[] {
   const cycles: CircularDependency[] = [];
   const visited = new Set<string>();
-  const recursionStack = new Set<string>();
+  const recursion_stack = new Set<string>();
 
   function dfs(node: string, path: string[]): boolean {
-    if (recursionStack.has(node)) {
+    if (recursion_stack.has(node)) {
       // Found a cycle
-      const cycleStart = path.indexOf(node);
-      if (cycleStart !== -1) {
-        cycles.push({ files: path.slice(cycleStart) });
+      const cycle_start = path.indexOf(node);
+      if (cycle_start !== -1) {
+        cycles.push({ files: path.slice(cycle_start) });
       }
       return true;
     }
@@ -299,7 +299,7 @@ function detectCircularDependencies(
     }
 
     visited.add(node);
-    recursionStack.add(node);
+    recursion_stack.add(node);
     path.push(node);
 
     const imports = graph.get(node) ?? new Set();
@@ -307,7 +307,7 @@ function detectCircularDependencies(
       dfs(imported, [...path]);
     }
 
-    recursionStack.delete(node);
+    recursion_stack.delete(node);
     return false;
   }
 
@@ -318,30 +318,30 @@ function detectCircularDependencies(
   }
 
   // Deduplicate cycles (same cycle can be detected from different starting points)
-  const uniqueCycles: CircularDependency[] = [];
+  const unique_cycles: CircularDependency[] = [];
   const seen = new Set<string>();
 
   for (const cycle of cycles) {
     const key = [...cycle.files].sort().join('->');
     if (!seen.has(key)) {
       seen.add(key);
-      uniqueCycles.push(cycle);
+      unique_cycles.push(cycle);
     }
   }
 
-  return uniqueCycles.slice(0, 10); // Limit to first 10
+  return unique_cycles.slice(0, 10); // Limit to first 10
 }
 
 /**
  * Basic security check (pattern-based)
  */
-async function analyzeSecurityBasic(
+async function analyze_security_basic(
   packages: PackageAnalysis
 ): Promise<SecurityAnalysis> {
   const vulnerabilities: SecurityVulnerability[] = [];
 
   // Known vulnerable packages (simplified - real implementation would use a vulnerability database)
-  const knownVulnerable: Record<string, { severity: SecurityVulnerability['severity']; title: string; fix: string }> = {
+  const known_vulnerable: Record<string, { severity: SecurityVulnerability['severity']; title: string; fix: string }> = {
     'lodash': {
       severity: 'high',
       title: 'Prototype Pollution in lodash < 4.17.21',
@@ -359,10 +359,10 @@ async function analyzeSecurityBasic(
     },
   };
 
-  const allPackages = [...packages.dependencies, ...packages.devDependencies];
+  const all_packages = [...packages.dependencies, ...packages.devDependencies];
 
-  for (const pkg of allPackages) {
-    const vuln = knownVulnerable[pkg.name];
+  for (const pkg of all_packages) {
+    const vuln = known_vulnerable[pkg.name];
     if (vuln) {
       // Check version (simplified - real implementation would do proper semver comparison)
       vulnerabilities.push({
@@ -380,34 +380,34 @@ async function analyzeSecurityBasic(
 /**
  * Find potentially unused dependencies
  */
-async function findUnusedDependencies(
-  rootPath: string,
+async function find_unused_dependencies(
+  root_path: string,
   packages: PackageAnalysis
 ): Promise<UnusedDependency[]> {
   const unused: UnusedDependency[] = [];
 
   // Get all source files
   const files = await glob('**/*.{ts,tsx,js,jsx,json}', {
-    cwd: rootPath,
+    cwd: root_path,
     absolute: true,
     ignore: ['**/node_modules/**', '**/dist/**'],
   });
 
   // Read all file contents
-  let allContent = '';
+  let all_content = '';
   for (const file of files) {
     try {
       const content = await readFile(file, 'utf-8');
-      allContent += content + '\n';
+      all_content += content + '\n';
     } catch {
       // Skip
     }
   }
 
   // Check each dependency
-  const allPackages = [...packages.dependencies, ...packages.devDependencies];
+  const all_packages = [...packages.dependencies, ...packages.devDependencies];
 
-  for (const pkg of allPackages) {
+  for (const pkg of all_packages) {
     const name = pkg.name;
 
     // Skip common false positives
@@ -416,7 +416,7 @@ async function findUnusedDependencies(
     }
 
     // Check if package is imported
-    const importPatterns = [
+    const import_patterns = [
       `from '${name}'`,
       `from "${name}"`,
       `require('${name}')`,
@@ -425,9 +425,9 @@ async function findUnusedDependencies(
       `from "${name}/`,
     ];
 
-    const isUsed = importPatterns.some((p) => allContent.includes(p));
+    const is_used = import_patterns.some((p) => all_content.includes(p));
 
-    if (!isUsed) {
+    if (!is_used) {
       unused.push({
         name,
         type: pkg.type,

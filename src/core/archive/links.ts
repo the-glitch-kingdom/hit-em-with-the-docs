@@ -8,8 +8,8 @@
  */
 
 import { relative, resolve, sep } from 'path';
-import { buildLinkGraph } from '../links/tracker.js';
-import { isGeneratedIndexRel } from '../enforce/guard.js';
+import { build_link_graph } from '../links/tracker.js';
+import { is_generated_index_rel } from '../enforce/guard.js';
 
 export interface InboundLink {
   /** docs-relative path of the doc that links to the target. */
@@ -26,17 +26,17 @@ export interface InboundLink {
  * the archive's own reindex removes those rows, and counting them forced
  * `--force`, which also switched the check off for real inbound links (#39).
  */
-export async function findInboundLinks(
-  docsPath: string,
-  targetRelPath: string
+export async function find_inbound_links(
+  docs_path: string,
+  target_rel_path: string
 ): Promise<InboundLink[]> {
-  const normalizedTarget = targetRelPath.replace(/\\/g, '/');
-  const graph = await buildLinkGraph(docsPath);
+  const normalized_target = target_rel_path.replace(/\\/g, '/');
+  const graph = await build_link_graph(docs_path);
   return graph.edges
-    .filter((e) => e.target.replace(/\\/g, '/') === normalizedTarget)
+    .filter((e) => e.target.replace(/\\/g, '/') === normalized_target)
     // ponytail: built-in domain shapes only; a custom domain id containing a
     // slash is treated as hand-written, which blocks (the safe direction).
-    .filter((e) => !isGeneratedIndexRel(e.source))
+    .filter((e) => !is_generated_index_rel(e.source))
     .map((e) => ({
       source: e.source.replace(/\\/g, '/'),
       lineNumber: e.lineNumber,
@@ -51,8 +51,8 @@ export async function findInboundLinks(
  * docs-relative worked: a project-relative path became
  * `<docs>/.documentation/...` and was reported as not found.
  */
-export function toDocsRelative(docsPath: string, file: string, base = process.cwd()): string {
+export function to_docs_relative(docs_path: string, file: string, base = process.cwd()): string {
   const abs = resolve(base, file);
-  const rel = abs.startsWith(docsPath + sep) ? relative(docsPath, abs) : file;
+  const rel = abs.startsWith(docs_path + sep) ? relative(docs_path, abs) : file;
   return rel.replace(/\\/g, '/').replace(/^\.\//, '');
 }

@@ -14,7 +14,7 @@
 import { writeFile, mkdir } from 'fs/promises';
 import { join, relative, sep } from 'path';
 import type { CiterIndex, PlaybookCitation } from '../core/knowledge-base/citers.js';
-import { formatMarkdownTable } from './table.js';
+import { format_markdown_table } from './table.js';
 
 export interface GenerateSymptomsIndexOptions {
   vaultRoot: string;
@@ -33,27 +33,27 @@ interface FlatSymptom {
   cites: string[];
 }
 
-export async function generateSymptomsIndex(
+export async function generate_symptoms_index(
   options: GenerateSymptomsIndexOptions
 ): Promise<string> {
-  const { vaultRoot, index } = options;
-  const symptomsDir = join(vaultRoot, 'symptoms');
-  await mkdir(symptomsDir, { recursive: true });
-  const indexPath = join(symptomsDir, 'INDEX.md');
+  const { vaultRoot: vault_root, index } = options;
+  const symptoms_dir = join(vault_root, 'symptoms');
+  await mkdir(symptoms_dir, { recursive: true });
+  const index_path = join(symptoms_dir, 'INDEX.md');
 
-  const content = renderSymptomsIndex(index, symptomsDir);
-  await writeFile(indexPath, content, 'utf-8');
-  return indexPath;
+  const content = render_symptoms_index(index, symptoms_dir);
+  await writeFile(index_path, content, 'utf-8');
+  return index_path;
 }
 
 /**
- * @param symptomsDir Absolute path to the directory this index is written into. Supplied so
+ * @param symptoms_dir Absolute path to the directory this index is written into. Supplied so
  *   playbook hrefs can be made relative to it. Optional for back-compat: without it the
  *   project-relative path is used as the href, which is only correct when the index sits at
  *   the project root.
  */
-export function renderSymptomsIndex(index: CiterIndex, symptomsDir?: string): string {
-  const flat = flattenSymptoms(index);
+export function render_symptoms_index(index: CiterIndex, symptoms_dir?: string): string {
+  const flat = flatten_symptoms(index);
 
   const lines: string[] = [];
   lines.push('---');
@@ -83,7 +83,7 @@ export function renderSymptomsIndex(index: CiterIndex, symptomsDir?: string): st
       '_No symptoms blocks found in scanned playbooks. Add a `symptoms:` block to any playbook frontmatter to populate this index._'
     );
     lines.push('');
-    return ensureTrailingNewline(lines.join('\n'));
+    return ensure_trailing_newline(lines.join('\n'));
   }
 
   for (const kind of ['alert_name', 'user_phrase', 'error_pattern'] as const) {
@@ -97,45 +97,45 @@ export function renderSymptomsIndex(index: CiterIndex, symptomsDir?: string): st
 
     if (subset.length === 0) continue;
 
-    lines.push(`## ${humanizeKind(kind)}`);
+    lines.push(`## ${humanize_kind(kind)}`);
     lines.push('');
 
     const rows = subset.map((s) => [
-      `\`${escapeMd(s.key)}\``,
+      `\`${escape_md(s.key)}\``,
       // The LABEL stays project-relative (a stable, readable identifier), but the HREF
       // must be relative to this index's own directory. `playbookRelPath` is
       // `relative(projectRoot, ...)`, and this file lives at <vaultRoot>/symptoms/, so
       // using it as the href resolved to <vaultRoot>/symptoms/<projectRelPath> and every
       // generated link was broken. Windows: normalise `\` to `/` for markdown.
-      `[${s.playbookRelPath}](${hrefFor(s, symptomsDir)}${s.target})`,
+      `[${s.playbookRelPath}](${href_for(s, symptoms_dir)}${s.target})`,
       s.severity ?? '—',
       s.cites.map((c) => `\`${c}\``).join(', '),
     ]);
 
     lines.push(
-      formatMarkdownTable(['Key', 'Playbook', 'Severity', 'Cites'], rows)
+      format_markdown_table(['Key', 'Playbook', 'Severity', 'Cites'], rows)
     );
     lines.push('');
   }
 
-  return ensureTrailingNewline(lines.join('\n'));
+  return ensure_trailing_newline(lines.join('\n'));
 }
 
-function flattenSymptoms(index: CiterIndex): FlatSymptom[] {
+function flatten_symptoms(index: CiterIndex): FlatSymptom[] {
   // For each fact id in the citers map, each citation already carries
   // kind + key + target + severity. We expand user_phrase arrays to one
   // row per phrase, then coalesce by (kind, key, playbook, target) so the
   // same symptom entry's multiple cites end up on a single row.
   const coalesced = new Map<string, FlatSymptom>();
 
-  for (const [factId, citationList] of index.citers.entries()) {
-    for (const c of citationList) {
+  for (const [fact_id, citation_list] of index.citers.entries()) {
+    for (const c of citation_list) {
       const keys = Array.isArray(c.key) ? c.key : [c.key];
       for (const k of keys) {
         const composite = `${c.kind}|${k}|${c.relPath}|${c.target}`;
         const existing = coalesced.get(composite);
         if (existing) {
-          if (!existing.cites.includes(factId)) existing.cites.push(factId);
+          if (!existing.cites.includes(fact_id)) existing.cites.push(fact_id);
         } else {
           coalesced.set(composite, {
             kind: c.kind,
@@ -144,7 +144,7 @@ function flattenSymptoms(index: CiterIndex): FlatSymptom[] {
             playbookAbsPath: c.path,
             target: c.target,
             severity: c.severity,
-            cites: [factId],
+            cites: [fact_id],
           });
         }
       }
@@ -157,12 +157,12 @@ function flattenSymptoms(index: CiterIndex): FlatSymptom[] {
 }
 
 /** Href relative to the index's own directory; falls back to the project-relative path. */
-function hrefFor(s: FlatSymptom, symptomsDir?: string): string {
-  if (!symptomsDir) return s.playbookRelPath;
-  return relative(symptomsDir, s.playbookAbsPath).split(sep).join('/');
+function href_for(s: FlatSymptom, symptoms_dir?: string): string {
+  if (!symptoms_dir) return s.playbookRelPath;
+  return relative(symptoms_dir, s.playbookAbsPath).split(sep).join('/');
 }
 
-function humanizeKind(kind: PlaybookCitation['kind']): string {
+function humanize_kind(kind: PlaybookCitation['kind']): string {
   switch (kind) {
     case 'alert_name':
       return 'Alert names (exact match)';
@@ -173,10 +173,10 @@ function humanizeKind(kind: PlaybookCitation['kind']): string {
   }
 }
 
-function escapeMd(s: string): string {
+function escape_md(s: string): string {
   return s.replace(/\|/g, '\\|');
 }
 
-function ensureTrailingNewline(s: string): string {
+function ensure_trailing_newline(s: string): string {
   return s.endsWith('\n') ? s : s + '\n';
 }

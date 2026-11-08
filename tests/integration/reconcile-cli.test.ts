@@ -18,8 +18,8 @@ const fm = (title: string, extra = '') => `---\ntitle: ${title}\ndomains:\n  - b
 const today = () => new Date().toISOString().slice(0, 10);
 const sha = (): string => g('rev-parse', 'HEAD');
 const tree = (): string => g('ls-files', '-s') + readdirSync(docs, { recursive: true } as never).join(',');
-const triageJson = (...a: string[]) => JSON.parse(hewtd(['reconcile', ...a, '--json']).stdout);
-const reviewFiles = () => readdirSync(join(root, '.hewtd/reconcile')).filter((f) => /^review-.*\.md$/.test(f)).sort().map((f) => join(root, '.hewtd/reconcile', f));
+const triage_json = (...a: string[]) => JSON.parse(hewtd(['reconcile', ...a, '--json']).stdout);
+const review_files = () => readdirSync(join(root, '.hewtd/reconcile')).filter((f) => /^review-.*\.md$/.test(f)).sort().map((f) => join(root, '.hewtd/reconcile', f));
 
 /** Fake agent: set verdict/fields on the json block of every entry, then tick accept. */
 function fill(file: string, fn: (path: string) => Record<string, unknown> | null): void {
@@ -54,8 +54,8 @@ describe('hewtd reconcile (built CLI)', () => {
     expect(r.status).toBe(0);
     expect(tree()).toBe(before);
     expect(g('status', '--porcelain')).toBe('');
-    expect(reviewFiles()).toHaveLength(1);
-    const lanes = Object.fromEntries(triageJson('backend').docs.map((d: { path: string; lane: string }) => [d.path, d.lane]));
+    expect(review_files()).toHaveLength(1);
+    const lanes = Object.fromEntries(triage_json('backend').docs.map((d: { path: string; lane: string }) => [d.path, d.lane]));
     expect(lanes['backend/a.md']).toBe('check');
     expect(lanes['backend/dead.md']).toBe('archive-candidate');
     expect(Object.values(lanes)).not.toContain('clean');
@@ -63,7 +63,7 @@ describe('hewtd reconcile (built CLI)', () => {
 
   it('unaccepted and unfilled entries change nothing on apply', () => {
     hewtd(['reconcile', 'backend', '--write-review']);
-    const f = reviewFiles()[0]!;
+    const f = review_files()[0]!;
     const before = tree();
     fill(f, () => ({ verdict: 'verify', sources: ['src/real.ts'] }));
     writeFileSync(f, readFileSync(f, 'utf-8').replaceAll('- [x] accept', '- [ ] accept'));
@@ -74,9 +74,9 @@ describe('hewtd reconcile (built CLI)', () => {
   });
 
   it('full cycle: apply stamps today (never the git date), writes sources as listed, creates no folder, and a rerun changes nothing', () => {
-    const dirsBefore = readdirSync(docs, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+    const dirs_before = readdirSync(docs, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
     hewtd(['reconcile', 'backend', '--write-review']);
-    const f = reviewFiles()[0]!;
+    const f = review_files()[0]!;
     fill(f, (p) => p === 'backend/a.md'
       ? { verdict: 'verify', sources: ['src/real.ts'], patch: [{ old: 'See `src/real.ts` and `src/gone.ts`.', new: 'See `src/real.ts`.' }] }
       : p === 'backend/dead.md' ? { verdict: 'archive', reason: 'code removed' }
@@ -94,8 +94,8 @@ describe('hewtd reconcile (built CLI)', () => {
     expect(readFileSync(join(docs, 'backend/b.md'), 'utf-8')).not.toContain('last_verified'); // fields verdict never stamps
     expect(existsSync(join(docs, 'backend/dead.md'))).toBe(false);
     expect(existsSync(join(docs, 'archive'))).toBe(true); // the one allowed new folder is the archive
-    const dirsAfter = readdirSync(docs, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).filter((n) => n !== 'archive');
-    expect(dirsAfter.sort()).toEqual(dirsBefore.sort());
+    const dirs_after = readdirSync(docs, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).filter((n) => n !== 'archive');
+    expect(dirs_after.sort()).toEqual(dirs_before.sort());
     expect(g('status', '--porcelain')).toBe('');
     expect(g('log', '-1', '--format=%s')).toMatch(/^docs\(reconcile\):/);
 
@@ -110,10 +110,10 @@ describe('hewtd reconcile (built CLI)', () => {
 
   it('--next resumes from the first unreviewed doc', () => {
     hewtd(['reconcile', 'backend', '--write-review']);
-    const f = reviewFiles()[0]!;
+    const f = review_files()[0]!;
     fill(f, (p) => (p === 'backend/a.md' ? { verdict: 'verify', sources: ['src/real.ts'] } : null));
     hewtd(['reconcile', '--apply', f]);
-    const paths = triageJson('--next', '1').docs.map((d: { path: string }) => d.path);
+    const paths = triage_json('--next', '1').docs.map((d: { path: string }) => d.path);
     expect(paths).toHaveLength(1);
     expect(paths[0]).not.toBe('backend/a.md');
     const st = hewtd(['reconcile', '--status']).stdout;
@@ -122,17 +122,17 @@ describe('hewtd reconcile (built CLI)', () => {
 
   it('an error entry exits 1 with a summary line; a rewrite doc stays in --next', () => {
     hewtd(['reconcile', 'backend', '--write-review']);
-    const f = reviewFiles()[0]!;
+    const f = review_files()[0]!;
     fill(f, (p) => (p === 'backend/a.md' ? { verdict: 'rewrite', draft: 'x' } : p === 'backend/b.md' ? { verdict: 'integrate' } : null));
     const r = hewtd(['reconcile', '--apply', f]);
     expect(r.status).toBe(1);
     expect(r.stdout).toMatch(/applied 1, stale 0, rejected 1, error 1/);
-    expect(triageJson('--next', '3').docs.map((d: { path: string }) => d.path)).toContain('backend/a.md');
+    expect(triage_json('--next', '3').docs.map((d: { path: string }) => d.path)).toContain('backend/a.md');
   });
 
   it('a doc edited after the review is stale: skipped, nothing overwritten', () => {
     hewtd(['reconcile', 'backend', '--write-review']);
-    const f = reviewFiles()[0]!;
+    const f = review_files()[0]!;
     fill(f, (p) => (p === 'backend/b.md' ? { verdict: 'verify', sources: ['src/real.ts'] } : null));
     put('.documentation/backend/b.md', fm('b') + '\nChanged by a human.\n');
     g('add', '-A'); g('commit', '-qm', 'human edit');
@@ -156,20 +156,20 @@ describe('hewtd reconcile (built CLI)', () => {
   it('team mode: shards are disjoint and complete, serial applies the same docs, overlapping shards are rejected', () => {
     for (let i = 0; i < 14; i++) put(`.documentation/backend/n${i}.md`, fm(`n${i}`) + `\nSee \`src/real.ts\`.\n`);
     g('add', '-A'); g('commit', '-qm', 'more');
-    const team = triageJson('backend');
+    const team = triage_json('backend');
     expect(team.mode).toBe('team'); // 16 judged docs >= min_docs 12
     const all = team.shards.flatMap((s: { docs: string[] }) => s.docs);
     expect(new Set(all).size).toBe(all.length);
-    const serial = triageJson('backend', '--serial');
+    const serial = triage_json('backend', '--serial');
     expect(serial.mode).toBe('serial');
     const judged = (r: typeof team) => r.docs.filter((d: { lane: string }) => d.lane === 'check' || d.lane === 'fields-only').map((d: { path: string }) => d.path).sort();
     expect(all.slice().sort()).toEqual(judged(serial));
 
     hewtd(['reconcile', 'backend', '--write-review']);
-    const files = reviewFiles();
+    const files = review_files();
     expect(files.length).toBe(team.shards.length);
-    const entryPaths = files.flatMap((f) => [...readFileSync(f, 'utf-8').matchAll(/^## (.*)$/gm)].map((m) => m[1]));
-    expect(new Set(entryPaths).size).toBe(entryPaths.length);
+    const entry_paths = files.flatMap((f) => [...readFileSync(f, 'utf-8').matchAll(/^## (.*)$/gm)].map((m) => m[1]));
+    expect(new Set(entry_paths).size).toBe(entry_paths.length);
 
     // forge an overlap: shard 2 also claims a doc from shard 1
     const dup = files[0]!.replace(/review-(\d+)-1\.md$/, 'review-$1-99.md');
@@ -200,7 +200,7 @@ describe('hewtd reconcile (built CLI)', () => {
     hewtd(['reconcile', '--outside', '--write-review', '-p', '../.documentation'], sub);
     expect(existsSync(join(sub, '.documentation'))).toBe(false); // no second docs tree under the subdirectory
     expect(existsSync(join(sub, '.hewtd'))).toBe(false);
-    const f = reviewFiles().find((x) => x.includes('outside'))!;
+    const f = review_files().find((x) => x.includes('outside'))!;
     const before = tree();
     // nothing accepted: nothing deleted or moved
     hewtd(['reconcile', '--apply', f], root);

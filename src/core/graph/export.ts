@@ -6,48 +6,48 @@ import { execFileSync } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join, relative, resolve } from 'path';
 import type { PluginConfig } from '../../utils/config.js';
-import { parseFrontmatter } from '../../utils/frontmatter.js';
-import { hashContent, loadLedger } from '../reconcile/ledger.js';
-import { assertNoSecrets } from '../reconcile/secrets.js';
-import { gitRoot, mdFiles, resolveDocs, STALE_COMMITS_BAR, type TriageDoc } from '../reconcile/triage.js';
-import { bodyChangedDates, lastChanged } from './dates.js';
+import { parse_frontmatter } from '../../utils/frontmatter.js';
+import { hash_content, load_ledger } from '../reconcile/ledger.js';
+import { assert_no_secrets } from '../reconcile/secrets.js';
+import { git_root, md_files, resolve_docs, STALE_COMMITS_BAR, type TriageDoc } from '../reconcile/triage.js';
+import { body_changed_dates, last_changed } from './dates.js';
 import { GRAPH_VERSION, type GraphDoc, type GraphRef, type GraphRefKind, type GraphSymbol, type GraphV1, type GraphVerdict } from './schema.js';
 
 const posix = (p: string): string => p.split('\\').join('/');
 const cmp = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 const KIND: Record<string, GraphRefKind> = { path: 'file', 'doc-link': 'doc' };
 
-function verdictOf(d: TriageDoc, ledgerVerified: boolean, inLedger: boolean): GraphVerdict {
+function verdict_of(d: TriageDoc, ledger_verified: boolean, in_ledger: boolean): GraphVerdict {
   if (d.lane === 'secret') return 'secret';
   if (d.lane === 'archive-candidate') return 'archive-candidate';
   if (d.lane === 'clean') return 'verified'; // attributed (sources + last_verified) and every ref resolves
   // Never through reconcile: say so instead of guessing check/fields-only (refs still carry resolved:false).
-  if (!inLedger) return 'unreviewed';
+  if (!in_ledger) return 'unreviewed';
   // a pointer or overview member that changed drops the verdict, as in triage
-  if (ledgerVerified && !d.reasons.some((r) => /^(member changed|pointer target changed)/.test(r))) return 'verified';
+  if (ledger_verified && !d.reasons.some((r) => /^(member changed|pointer target changed)/.test(r))) return 'verified';
   if (d.lane === 'fields-only') return 'fields-only';
-  const onlyStale = d.reasons.length > 0 && d.reasons.every((r) => /commits to cited files/.test(r)) && (d.staleCommits ?? 0) >= STALE_COMMITS_BAR;
-  return onlyStale ? 'stale' : 'check';
+  const only_stale = d.reasons.length > 0 && d.reasons.every((r) => /commits to cited files/.test(r)) && (d.staleCommits ?? 0) >= STALE_COMMITS_BAR;
+  return only_stale ? 'stale' : 'check';
 }
 
-export async function buildGraph(opts: { root: string; docsPath: string; config: PluginConfig; dryRun?: boolean }): Promise<GraphV1> {
-  const { root, docsPath, config } = opts;
-  const repo = gitRoot(docsPath) ?? root;
+export async function build_graph(opts: { root: string; docsPath: string; config: PluginConfig; dryRun?: boolean }): Promise<GraphV1> {
+  const { root, docsPath: docs_path, config } = opts;
+  const repo = git_root(docs_path) ?? root;
   // exactly the set triage judges: the export and triage cannot diverge
-  const rels = (await mdFiles(docsPath)).map((f) => posix(relative(docsPath, f))).sort(cmp);
+  const rels = (await md_files(docs_path)).map((f) => posix(relative(docs_path, f))).sort(cmp);
   const raws = new Map<string, { raw: string; data: Record<string, unknown> }>();
   for (const r of rels) {
-    const raw = readFileSync(join(docsPath, r), 'utf-8');
-    raws.set(r, { raw, data: parseFrontmatter<Record<string, unknown>>(raw).data });
+    const raw = readFileSync(join(docs_path, r), 'utf-8');
+    raws.set(r, { raw, data: parse_frontmatter<Record<string, unknown>>(raw).data });
   }
   const kept = [...raws.keys()];
-  const ledger = await loadLedger(resolve(root, config.reconcile.ledger_path));
-  const triaged = new Map((await resolveDocs({ root, docsPath, rels: kept, config, ledger })).map((d) => [d.path, d]));
-  const body = bodyChangedDates(repo, kept.map((r) => ({ path: posix(relative(repo, join(docsPath, r))), content: raws.get(r)!.raw })), { persist: !opts.dryRun });
+  const ledger = await load_ledger(resolve(root, config.reconcile.ledger_path));
+  const triaged = new Map((await resolve_docs({ root, docsPath: docs_path, rels: kept, config, ledger })).map((d) => [d.path, d]));
+  const body = body_changed_dates(repo, kept.map((r) => ({ path: posix(relative(repo, join(docs_path, r))), content: raws.get(r)!.raw })), { persist: !opts.dryRun });
 
-  const own = lastChanged(repo);
-  const sibs = new Map(config.reconcile.related_repos.map((r) => [r.name, lastChanged(resolve(root, r.path))]));
-  const dateOf = (where: string): { repo?: string; file: string; date?: string | undefined } => {
+  const own = last_changed(repo);
+  const sibs = new Map(config.reconcile.related_repos.map((r) => [r.name, last_changed(resolve(root, r.path))]));
+  const date_of = (where: string): { repo?: string; file: string; date?: string | undefined } => {
     const m = /^([\w.-]+):(.+)$/.exec(where);
     const name = m && sibs.has(m[1]!) ? m[1]! : undefined;
     const file = name ? m![2]! : where;
@@ -67,7 +67,7 @@ export async function buildGraph(opts: { root: string; docsPath: string; config:
       const kind = KIND[r.kind] ?? (r.kind as GraphRefKind);
       const ref: GraphRef = { kind, target: r.ref, resolved: r.status === 'ok' ? true : r.status === 'missing' ? false : null };
       if (r.status === 'ok' && r.where && (r.kind === 'path' || r.kind === 'symbol' || r.kind === 'env')) {
-        const w = dateOf(r.where);
+        const w = date_of(r.where);
         if (r.kind !== 'path') ref.file = w.file;
         if (r.kind === 'symbol' && r.whereKind) ref.file_kind = r.whereKind;
         if (w.repo) ref.repo = w.repo;
@@ -83,10 +83,10 @@ export async function buildGraph(opts: { root: string; docsPath: string; config:
     for (const m of t.missing) if (![...refs.values()].some((x) => x.target === m && x.resolved === false)) refs.set(`file\0${m}`, { kind: 'file', target: m, resolved: false });
 
     const lv = raws.get(rel)!.data.last_verified;
-    const docRepoPath = posix(relative(repo, join(docsPath, rel)));
+    const doc_repo_path = posix(relative(repo, join(docs_path, rel)));
     docs[rel] = {
-      body_changed: body.dates.get(docRepoPath) ?? null,
-      verdict: verdictOf(t, led?.verdict === 'verify' && led.content_hash === hashContent(raws.get(rel)!.raw), !!led),
+      body_changed: body.dates.get(doc_repo_path) ?? null,
+      verdict: verdict_of(t, led?.verdict === 'verify' && led.content_hash === hash_content(raws.get(rel)!.raw), !!led),
       last_verified: typeof lv === 'string' ? lv : lv instanceof Date ? lv.toISOString().slice(0, 10) : null,
       refs: [...refs.values()].sort((a, b) => cmp(a.kind, b.kind) || cmp(a.target, b.target)),
       owner_of: [],
@@ -105,7 +105,7 @@ export async function buildGraph(opts: { root: string; docsPath: string; config:
 }
 
 /** Sorted keys at every level, 2-space indent, trailing newline: byte-identical for equal graphs. */
-export function serializeGraph(g: GraphV1): string {
+export function serialize_graph(g: GraphV1): string {
   const sort = (v: unknown): unknown =>
     Array.isArray(v) ? v.map(sort) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort(cmp).map((k) => [k, sort((v as Record<string, unknown>)[k])])) : v;
   return JSON.stringify(sort(g), null, 2) + '\n';
@@ -119,13 +119,13 @@ export interface WriteGraphResult {
 }
 
 /** Build and write `<git root>/.hewtd/graph.json`; a byte-identical file is left alone (mtime kept). */
-export async function writeGraph(opts: { root: string; docsPath: string; config: PluginConfig; dryRun?: boolean }): Promise<WriteGraphResult> {
+export async function write_graph(opts: { root: string; docsPath: string; config: PluginConfig; dryRun?: boolean }): Promise<WriteGraphResult> {
   if (!opts.config.graph_export) return { status: 'disabled' };
-  const top = gitRoot(opts.docsPath);
+  const top = git_root(opts.docsPath);
   if (!top) return { status: 'no-git' };
   const file = join(top, '.hewtd', 'graph.json');
-  const text = serializeGraph(await buildGraph(opts));
-  assertNoSecrets(text, 'the graph export', opts.config.reconcile.secrets);
+  const text = serialize_graph(await build_graph(opts));
+  assert_no_secrets(text, 'the graph export', opts.config.reconcile.secrets);
   const had = existsSync(file);
   if (had && readFileSync(file, 'utf-8') === text) return { status: 'unchanged', file };
   if (opts.dryRun) return { status: 'would-write', file };

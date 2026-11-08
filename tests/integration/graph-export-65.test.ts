@@ -13,7 +13,7 @@ const hewtd = (args: string[]) => spawnSync('node', [CLI, ...args], { cwd: root,
 const put = (rel: string, text: string) => { mkdirSync(join(root, rel, '..'), { recursive: true }); writeFileSync(join(root, rel), text); };
 const GRAPH = () => join(root, '.hewtd/graph.json');
 const verdict = (p: string) => JSON.parse(readFileSync(GRAPH(), 'utf-8')).docs[p]?.verdict;
-const reviewFile = () => join(root, '.hewtd/reconcile', readdirSync(join(root, '.hewtd/reconcile')).find((f) => /^review-.*\.md$/.test(f))!);
+const review_file = () => join(root, '.hewtd/reconcile', readdirSync(join(root, '.hewtd/reconcile')).find((f) => /^review-.*\.md$/.test(f))!);
 function fill(file: string, fn: (path: string) => Record<string, unknown> | null): void {
   const out = readFileSync(file, 'utf-8').split(/^(?=## )/m).map((sec) => {
     const m = /```json\n([\s\S]*?)\n```/.exec(sec);
@@ -81,7 +81,7 @@ describe('graph export on index and apply', () => {
     hewtd(['index']);
     expect(verdict('backend/a.md')).not.toBe('verified');
     hewtd(['reconcile', 'backend', '--write-review']);
-    const f = reviewFile();
+    const f = review_file();
     fill(f, () => ({ verdict: 'integrate' })); // invalid for in-tree docs: error, nothing applied
     const before = readFileSync(GRAPH(), 'utf-8');
     expect(hewtd(['reconcile', '--apply', f]).status).toBe(1);
@@ -117,7 +117,7 @@ function check(s: any, v: any, path = '$'): string[] {
 describe('graph content through the CLI', () => {
   const steps = Array.from({ length: 8 }, (_, i) => `${i + 1}. Run the release step number ${i + 1} and confirm the pipeline reports green before tagging version ${i}.`).join('\n');
   const filler = Array.from({ length: 400 }, (_, i) => `Admin note ${i}: rotate unrelated knob ${i * 7} weekly.`).join('\n');
-  const gitAt = (date: string, msg: string) => { g('add', '-A'); execFileSync('git', ['-c', 'user.name=Ann', '-c', 'user.email=t@t', 'commit', '-qm', msg], { cwd: root, env: { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } }); };
+  const git_at = (date: string, msg: string) => { g('add', '-A'); execFileSync('git', ['-c', 'user.name=Ann', '-c', 'user.email=t@t', 'commit', '-qm', msg], { cwd: root, env: { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } }); };
   const graph = () => JSON.parse(readFileSync(GRAPH(), 'utf-8'));
 
   beforeEach(() => {
@@ -125,9 +125,9 @@ describe('graph content through the CLI', () => {
     put('.documentation/guides/admin.md', `---\ntitle: Admin\n---\n# Admin\n\n${filler}\n\n## Cutting a release\n\n${steps}\n`);
     const raw = readFileSync(join(root, '.documentation/backend/a.md'), 'utf-8');
     put('.hewtd/reconcile.json', JSON.stringify({ version: 1, entries: { 'backend/a.md': { path: 'backend/a.md', lane: 'check', verdict: 'point', content_hash: createHash('sha256').update(raw).digest('hex'), pointer: { target: 'procedures/release.md#release-procedure', section_hash: 'h' } } } }));
-    gitAt('2026-02-01T12:00:00', 'docs');
+    git_at('2026-02-01T12:00:00', 'docs');
     put('src/real.ts', 'export const realThing = 2;\n');
-    gitAt('2026-04-01T12:00:00', 'code');
+    git_at('2026-04-01T12:00:00', 'code');
   });
 
   it('missing refs are resolved:false, resolved file refs carry code_changed, and it matches reconcile', () => {

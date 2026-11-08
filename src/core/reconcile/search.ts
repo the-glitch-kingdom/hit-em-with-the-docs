@@ -7,9 +7,9 @@ import { execFileSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { readdir } from 'fs/promises';
 import { basename, isAbsolute, join, relative } from 'path';
-import { parseFrontmatter } from '../../utils/frontmatter.js';
+import { parse_frontmatter } from '../../utils/frontmatter.js';
 import type { PluginConfig } from '../../utils/config.js';
-import { findSecrets } from './secrets.js';
+import { find_secrets } from './secrets.js';
 
 export interface SearchHit { path: string; score: number; matched: string[] }
 
@@ -38,14 +38,14 @@ async function walk(dir: string, out: string[] = []): Promise<string[]> {
 
 interface Indexed { path: string; fields: Record<Field, string[]> }
 
-async function indexDocs(docsPath: string, config?: PluginConfig): Promise<Indexed[]> {
+async function index_docs(docs_path: string, config?: PluginConfig): Promise<Indexed[]> {
   const out: Indexed[] = [];
-  for (const abs of await walk(docsPath)) {
+  for (const abs of await walk(docs_path)) {
     const raw = readFileSync(abs, 'utf-8');
-    const rel = relative(docsPath, abs).split('\\').join('/');
-    const { data, content } = parseFrontmatter<Record<string, unknown>>(raw);
+    const rel = relative(docs_path, abs).split('\\').join('/');
+    const { data, content } = parse_frontmatter<Record<string, unknown>>(raw);
     if (data.generated === true || data.tier === 'plan' || basename(rel) === 'INDEX.md') continue;
-    if (config && findSecrets(raw, rel, config.reconcile.secrets).some((r) => r.finding.kind === 'secret')) continue;
+    if (config && find_secrets(raw, rel, config.reconcile.secrets).some((r) => r.finding.kind === 'secret')) continue;
     const lines = content.split('\n');
     out.push({
       path: rel,
@@ -61,20 +61,20 @@ async function indexDocs(docsPath: string, config?: PluginConfig): Promise<Index
   return out;
 }
 
-function runCommand(template: string, query: string): string[] {
+function run_command(template: string, query: string): string[] {
   const [bin, ...args] = template.trim().split(/\s+/).map((a) => a.split('{query}').join(query));
   const out = execFileSync(bin!, args, { encoding: 'utf-8', timeout: 30000, maxBuffer: 8 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] });
   return out.split('\n').map((l) => l.trim()).filter(Boolean);
 }
 
 /** BM25F-style ranking; ties break on path so the order is deterministic. */
-export async function searchDocs(
-  docsPath: string,
+export async function search_docs(
+  docs_path: string,
   query: string,
   opts: { limit?: number; config?: PluginConfig } = {}
 ): Promise<SearchHit[]> {
   const limit = opts.limit ?? 10;
-  const docs = await indexDocs(docsPath, opts.config);
+  const docs = await index_docs(docs_path, opts.config);
   const q = [...new Set(tokenize(query))];
   const eff = (d: Indexed): number => (Object.keys(WEIGHTS) as Field[]).reduce((n, f) => n + WEIGHTS[f] * d.fields[f].length, 0);
   const avg = docs.reduce((n, d) => n + eff(d), 0) / (docs.length || 1) || 1;
@@ -104,8 +104,8 @@ export async function searchDocs(
   if (cmd) {
     try {
       const known = new Set(docs.map((d) => d.path));
-      for (const line of runCommand(cmd, query)) {
-        const rel = (isAbsolute(line) ? relative(docsPath, line) : line).split('\\').join('/').replace(/^\.\//, '');
+      for (const line of run_command(cmd, query)) {
+        const rel = (isAbsolute(line) ? relative(docs_path, line) : line).split('\\').join('/').replace(/^\.\//, '');
         if (known.has(rel) && !first.some((h) => h.path === rel)) first.push({ path: rel, score: Infinity, matched: ['search_command'] });
       }
     } catch (e) {

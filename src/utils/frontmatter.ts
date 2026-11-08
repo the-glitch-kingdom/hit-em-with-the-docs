@@ -31,7 +31,7 @@ const DATE_LIKE = /^\d{4}-\d{2}-\d{2}/;
 const FRONTMATTER_ENGINES = {
   yaml: {
     parse: (str: string): object => yaml.parse(str) as object,
-    stringify: (data: object): string => stringifyFrontmatter(data as Record<string, unknown>),
+    stringify: (data: object): string => stringify_frontmatter(data as Record<string, unknown>),
   },
 };
 
@@ -45,7 +45,7 @@ export interface FrontmatterResult<T = Record<string, unknown>> {
 /**
  * Parse frontmatter from markdown content
  */
-export function parseFrontmatter<T = Record<string, unknown>>(
+export function parse_frontmatter<T = Record<string, unknown>>(
   content: string
 ): FrontmatterResult<T> {
   const result = matter(content, { engines: FRONTMATTER_ENGINES });
@@ -63,14 +63,14 @@ export function parseFrontmatter<T = Record<string, unknown>>(
 /**
  * Check if content has frontmatter
  */
-export function hasFrontmatter(content: string): boolean {
+export function has_frontmatter(content: string): boolean {
   return content.trimStart().startsWith('---');
 }
 
 /**
  * Extract frontmatter string from content
  */
-export function extractFrontmatterString(content: string): string | null {
+export function extract_frontmatter_string(content: string): string | null {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   return match ? match[1] ?? null : null;
 }
@@ -79,7 +79,7 @@ export function extractFrontmatterString(content: string): string | null {
  * Whether the first top-level block sequence in `text` is indented (`key:\n  - x`).
  * Undefined when there is none to judge by. `text` is a whole file or just its frontmatter.
  */
-function detectIndentSeq(text: string | undefined): boolean | undefined {
+function detect_indent_seq(text: string | undefined): boolean | undefined {
   const m = text?.match(/^[\w-]+:[ \t]*\r?\n([ \t]*)- /m);
   return m ? m[1]!.length > 0 : undefined;
 }
@@ -88,11 +88,11 @@ function detectIndentSeq(text: string | undefined): boolean | undefined {
  * Stringify frontmatter data to YAML. Pass the file's original text (full file or
  * frontmatter only) to keep its list style; without it, lists are indented.
  */
-export function stringifyFrontmatter(data: Record<string, unknown>, original?: string): string {
+export function stringify_frontmatter(data: Record<string, unknown>, original?: string): string {
   // Use yaml library for better formatting control
-  return yaml.stringify(quoteDateLike(data), {
+  return yaml.stringify(quote_date_like(data), {
     indent: 2,
-    indentSeq: detectIndentSeq(original) ?? true,
+    indentSeq: detect_indent_seq(original) ?? true,
     lineWidth: 80,
     singleQuote: true,
   });
@@ -109,18 +109,18 @@ export function stringifyFrontmatter(data: Record<string, unknown>, original?: s
  *
  * Returns a copy — the caller's object is never mutated.
  */
-function quoteDateLike(value: unknown): unknown {
+function quote_date_like(value: unknown): unknown {
   if (typeof value === 'string' && DATE_LIKE.test(value)) {
     const scalar = new Scalar(value);
     scalar.type = Scalar.QUOTE_SINGLE;
     return scalar;
   }
 
-  if (Array.isArray(value)) return value.map(quoteDateLike);
+  if (Array.isArray(value)) return value.map(quote_date_like);
 
   if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
     return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, quoteDateLike(v)])
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, quote_date_like(v)])
     );
   }
 
@@ -131,13 +131,13 @@ function quoteDateLike(value: unknown): unknown {
  * Add or update frontmatter in content. List style follows `original`, which
  * defaults to `content`; pass the raw file when `content` is already the bare body.
  */
-export function setFrontmatter(
+export function set_frontmatter(
   content: string,
   data: Record<string, unknown>,
   original: string = content
 ): string {
-  const { content: body } = parseFrontmatter(content);
-  const frontmatter = stringifyFrontmatter(data, original);
+  const { content: body } = parse_frontmatter(content);
+  const frontmatter = stringify_frontmatter(data, original);
   return `---\n${frontmatter}---\n\n${body.trimStart()}`;
 }
 
@@ -146,8 +146,8 @@ export function setFrontmatter(
  * by the key re-rendered, new keys are appended, every other byte of the file stays. Falls back to
  * `setFrontmatter` when the frontmatter is not one YAML map, so a file is never corrupted.
  */
-export function setFrontmatterKeys(raw: string, changes: Record<string, unknown>): string {
-  const fallback = (): string => setFrontmatter(raw, { ...parseFrontmatter(raw).data, ...changes }, raw);
+export function set_frontmatter_keys(raw: string, changes: Record<string, unknown>): string {
+  const fallback = (): string => set_frontmatter(raw, { ...parse_frontmatter(raw).data, ...changes }, raw);
   const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!m) return fallback();
   const fm = m[1]!;
@@ -155,7 +155,7 @@ export function setFrontmatterKeys(raw: string, changes: Record<string, unknown>
   const doc = yaml.parseDocument(fm);
   if (doc.errors.length || !isMap(doc.contents)) return fallback();
   const eol = raw.includes('\r\n') ? '\r\n' : '\n';
-  const render = (k: string): string => stringifyFrontmatter({ [k]: changes[k] }, raw).replace(/\n$/, '').replace(/\n/g, eol);
+  const render = (k: string): string => stringify_frontmatter({ [k]: changes[k] }, raw).replace(/\n$/, '').replace(/\n/g, eol);
   const edits: Array<[number, number, string]> = [];
   let appended = '';
   for (const k of Object.keys(changes)) {
@@ -175,62 +175,62 @@ export function setFrontmatterKeys(raw: string, changes: Record<string, unknown>
 /**
  * Merge frontmatter data with existing
  */
-export function mergeFrontmatter(
+export function merge_frontmatter(
   content: string,
-  newData: Record<string, unknown>
+  new_data: Record<string, unknown>
 ): string {
-  const { data: existingData, content: body } = parseFrontmatter(content);
-  const mergedData = { ...existingData, ...newData };
-  const frontmatter = stringifyFrontmatter(mergedData, content);
+  const { data: existing_data, content: body } = parse_frontmatter(content);
+  const merged_data = { ...existing_data, ...new_data };
+  const frontmatter = stringify_frontmatter(merged_data, content);
   return `---\n${frontmatter}---\n\n${body.trimStart()}`;
 }
 
 /**
  * Remove frontmatter from content
  */
-export function removeFrontmatter(content: string): string {
-  const { content: body } = parseFrontmatter(content);
+export function remove_frontmatter(content: string): string {
+  const { content: body } = parse_frontmatter(content);
   return body.trimStart();
 }
 
 /**
  * Get specific frontmatter field
  */
-export function getFrontmatterField<T>(
+export function get_frontmatter_field<T>(
   content: string,
   field: string
 ): T | undefined {
-  const { data } = parseFrontmatter(content);
+  const { data } = parse_frontmatter(content);
   return data[field] as T | undefined;
 }
 
 /**
  * Set specific frontmatter field
  */
-export function setFrontmatterField(
+export function set_frontmatter_field(
   content: string,
   field: string,
   value: unknown
 ): string {
-  const { data, content: body } = parseFrontmatter(content);
+  const { data, content: body } = parse_frontmatter(content);
   data[field] = value;
-  const frontmatter = stringifyFrontmatter(data, content);
+  const frontmatter = stringify_frontmatter(data, content);
   return `---\n${frontmatter}---\n\n${body.trimStart()}`;
 }
 
 /**
  * Validate frontmatter structure
  */
-export function validateFrontmatter(
+export function validate_frontmatter(
   content: string,
-  requiredFields: string[]
+  required_fields: string[]
 ): { valid: boolean; missingFields: string[] } {
-  const { data } = parseFrontmatter(content);
-  const missingFields = requiredFields.filter(
+  const { data } = parse_frontmatter(content);
+  const missing_fields = required_fields.filter(
     (field) => !(field in data) || data[field] === undefined || data[field] === null
   );
   return {
-    valid: missingFields.length === 0,
-    missingFields,
+    valid: missing_fields.length === 0,
+    missingFields: missing_fields,
   };
 }

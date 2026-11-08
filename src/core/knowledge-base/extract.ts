@@ -67,34 +67,34 @@ export interface ExtractFactsResult {
   factsMdPath: string;
 }
 
-export async function extractFacts(
+export async function extract_facts(
   options: ExtractFactsOptions
 ): Promise<ExtractFactsResult> {
-  const { incidentFolder, vaultRoot, projectRoot, accept, dryRun = false } = options;
+  const { incidentFolder: incident_folder, vaultRoot: vault_root, projectRoot: project_root, accept, dryRun: dry_run = false } = options;
 
-  const narrativePath = join(incidentFolder, 'narrative.md');
-  const narrativeRaw = await readFile(narrativePath, 'utf-8');
-  const narrative = matter(narrativeRaw);
-  const incidentId =
+  const narrative_path = join(incident_folder, 'narrative.md');
+  const narrative_raw = await readFile(narrative_path, 'utf-8');
+  const narrative = matter(narrative_raw);
+  const incident_id =
     typeof narrative.data.id === 'string'
       ? narrative.data.id
-      : basename(incidentFolder);
-  const provenanceRelPath = relative(projectRoot, incidentFolder).replace(/\\/g, '/');
+      : basename(incident_folder);
+  const provenance_rel_path = relative(project_root, incident_folder).replace(/\\/g, '/');
 
-  const factsDir = join(vaultRoot, 'facts');
+  const facts_dir = join(vault_root, 'facts');
   const today = new Date().toISOString().slice(0, 10);
 
-  const extractedFacts: ExtractedFact[] = [];
+  const extracted_facts: ExtractedFact[] = [];
 
   for (const spec of accept) {
-    const factPath = join(factsDir, `${spec.id}.md`);
+    const fact_path = join(facts_dir, `${spec.id}.md`);
 
-    if (existsSync(factPath)) {
-      extractedFacts.push({
+    if (existsSync(fact_path)) {
+      extracted_facts.push({
         id: spec.id,
-        factPath,
+        factPath: fact_path,
         action: 'already_exists',
-        content: await readFile(factPath, 'utf-8'),
+        content: await readFile(fact_path, 'utf-8'),
       });
       continue;
     }
@@ -108,7 +108,7 @@ export async function extractFacts(
       id: spec.id,
       confidence: spec.confidence,
       last_verified: today,
-      provenance: [provenanceRelPath + '/'],
+      provenance: [provenance_rel_path + '/'],
       tags: spec.tags ?? [],
     };
     if (spec.purpose) frontmatter.purpose = spec.purpose;
@@ -117,17 +117,17 @@ export async function extractFacts(
       frontmatter.verify_command = spec.verifyCommand;
     }
 
-    const body = renderFactBody(spec);
+    const body = render_fact_body(spec);
     const content = matter.stringify(body, frontmatter);
 
-    if (!dryRun) {
-      await mkdir(dirname(factPath), { recursive: true });
-      await writeFile(factPath, content, 'utf-8');
+    if (!dry_run) {
+      await mkdir(dirname(fact_path), { recursive: true });
+      await writeFile(fact_path, content, 'utf-8');
     }
 
-    extractedFacts.push({
+    extracted_facts.push({
       id: spec.id,
-      factPath,
+      factPath: fact_path,
       action: 'created',
       content,
     });
@@ -135,46 +135,46 @@ export async function extractFacts(
 
   // Update incident's facts.md `produced:` list (idempotent — only adds new
   // ids, never removes existing ones).
-  const factsMdPath = join(incidentFolder, 'facts.md');
-  let factsMdUpdated = false;
+  const facts_md_path = join(incident_folder, 'facts.md');
+  let facts_md_updated = false;
 
-  if (existsSync(factsMdPath)) {
-    const factsMdRaw = await readFile(factsMdPath, 'utf-8');
-    const factsMd = matter(factsMdRaw);
+  if (existsSync(facts_md_path)) {
+    const facts_md_raw = await readFile(facts_md_path, 'utf-8');
+    const facts_md = matter(facts_md_raw);
     // Important: gray-matter caches parse results keyed by content. Mutating
     // factsMd.data leaks across calls with identical input strings (notably
     // in tests). Always build a fresh data object.
-    const existing = Array.isArray(factsMd.data.produced)
-      ? [...(factsMd.data.produced as string[])]
+    const existing = Array.isArray(facts_md.data.produced)
+      ? [...(facts_md.data.produced as string[])]
       : [];
-    const newIds = extractedFacts
+    const new_ids = extracted_facts
       .filter((e) => e.action === 'created')
       .map((e) => e.id);
-    const toAdd = newIds.filter((id) => !existing.includes(id));
-    if (toAdd.length > 0) {
-      const newData = {
-        ...factsMd.data,
-        produced: [...existing, ...toAdd],
+    const to_add = new_ids.filter((id) => !existing.includes(id));
+    if (to_add.length > 0) {
+      const new_data = {
+        ...facts_md.data,
+        produced: [...existing, ...to_add],
         last_updated: today,
       };
-      const newContent = matter.stringify(factsMd.content, newData);
-      if (!dryRun) {
-        await writeFile(factsMdPath, newContent, 'utf-8');
+      const new_content = matter.stringify(facts_md.content, new_data);
+      if (!dry_run) {
+        await writeFile(facts_md_path, new_content, 'utf-8');
       }
-      factsMdUpdated = true;
+      facts_md_updated = true;
     }
   }
 
   return {
-    incidentId,
-    incidentFolder,
-    extractedFacts,
-    factsMdUpdated,
-    factsMdPath,
+    incidentId: incident_id,
+    incidentFolder: incident_folder,
+    extractedFacts: extracted_facts,
+    factsMdUpdated: facts_md_updated,
+    factsMdPath: facts_md_path,
   };
 }
 
-function renderFactBody(spec: FactSpec): string {
+function render_fact_body(spec: FactSpec): string {
   const sections: string[] = [];
   sections.push(`# ${spec.title}`);
   sections.push('');
@@ -197,6 +197,6 @@ function renderFactBody(spec: FactSpec): string {
 /**
  * Re-export the resolved vault root so callers don't have to recompute it.
  */
-export function defaultVaultRoot(projectRoot: string): string {
-  return resolve(projectRoot, '.documentation/knowledge-base');
+export function default_vault_root(project_root: string): string {
+  return resolve(project_root, '.documentation/knowledge-base');
 }

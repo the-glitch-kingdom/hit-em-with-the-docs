@@ -3,9 +3,9 @@ import { execFileSync } from 'child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync, statSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { applyReviews } from '../../../src/core/reconcile/apply';
-import { renderReview, writeReviewSkeletons, parseReview, type ReviewEntry } from '../../../src/core/reconcile/review';
-import { hashContent, loadLedger } from '../../../src/core/reconcile/ledger';
+import { apply_reviews } from '../../../src/core/reconcile/apply';
+import { render_review, write_review_skeletons, parse_review, type ReviewEntry } from '../../../src/core/reconcile/review';
+import { hash_content, load_ledger } from '../../../src/core/reconcile/ledger';
 import { fingerprint } from '../../../src/core/reconcile/secrets';
 import type { TriageResult } from '../../../src/core/reconcile/triage';
 
@@ -14,17 +14,17 @@ const rnd = (n: number, seed = 7) => { let x = seed; let s = ''; const a = 'abcd
 const tok = 'hv' + 's.' + rnd(24);
 const tok2 = 'hv' + 's.' + rnd(24, 11);
 
-let root: string, docs: string, ledgerFile: string;
+let root: string, docs: string, ledger_file: string;
 const g = (...a: string[]) => execFileSync('git', a, { cwd: root, encoding: 'utf-8' }).trim();
 const doc = (body: string) => `---\ntitle: a\ndomains:\n  - backend\n---\n\n# a\n\n${body}\n`;
 const read = (rel: string) => readFileSync(join(docs, rel), 'utf-8');
 const env = () => join(root, '.env.hewtd');
-const entry = (over: Partial<ReviewEntry> = {}): ReviewEntry => ({ path: 'backend/a.md', content_hash: hashContent(read('backend/a.md')), verdict: 'secret', ...over });
+const entry = (over: Partial<ReviewEntry> = {}): ReviewEntry => ({ path: 'backend/a.md', content_hash: hash_content(read('backend/a.md')), verdict: 'secret', ...over });
 const run = async (e: ReviewEntry) => {
   mkdirSync(join(root, '.hewtd/reconcile'), { recursive: true });
   const f = join(root, '.hewtd/reconcile/review-1-1.md');
-  writeFileSync(f, renderReview({ batch: '1', shard: 1, scope: 'backend' }, [e]).replace('- [ ] accept', '- [x] accept'));
-  return applyReviews({ root, docsPath: docs, files: [f], ledger: await loadLedger(ledgerFile), ledgerFile, today: '2026-11-07' });
+  writeFileSync(f, render_review({ batch: '1', shard: 1, scope: 'backend' }, [e]).replace('- [ ] accept', '- [x] accept'));
+  return apply_reviews({ root, docsPath: docs, files: [f], ledger: await load_ledger(ledger_file), ledgerFile: ledger_file, today: '2026-11-07' });
 };
 const seed = (body: string, gitignore = '.hewtd/\n') => {
   writeFileSync(join(docs, 'backend/a.md'), doc(body));
@@ -35,7 +35,7 @@ const seed = (body: string, gitignore = '.hewtd/\n') => {
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'secverd-'));
   docs = join(root, '.documentation');
-  ledgerFile = join(root, '.hewtd/reconcile.json');
+  ledger_file = join(root, '.hewtd/reconcile.json');
   mkdirSync(join(docs, 'backend'), { recursive: true });
   g('init', '-q');
 });
@@ -45,11 +45,11 @@ describe('secret verdict', () => {
   it('review skeleton proposes a secret entry with masked findings and env names, no value', async () => {
     seed(`VAULT_TOKEN=${tok}\nVAULT_TOKEN_2=${tok2}`);
     const triage = { docs: [{ path: 'backend/a.md', lane: 'secret', reasons: ['x'] }], shards: [] } as unknown as TriageResult;
-    const [file] = await writeReviewSkeletons({ root, docsPath: docs, triage, scope: 's' });
+    const [file] = await write_review_skeletons({ root, docsPath: docs, triage, scope: 's' });
     const text = readFileSync(file!, 'utf-8');
     expect(text).not.toContain(tok);
     expect(text).not.toContain(tok2);
-    const [{ entry: e }] = (await parseReview(file!)).entries as [{ entry: ReviewEntry }];
+    const [{ entry: e }] = (await parse_review(file!)).entries as [{ entry: ReviewEntry }];
     expect(e.verdict).toBe('secret');
     expect(e.secrets?.map((s) => s.env)).toEqual(['HEWTD_SECRET_VAULT_TOKEN', 'HEWTD_SECRET_VAULT_TOKEN_2']);
     expect(e.secrets![0]!.masked).toBe('hvs.…28');
@@ -68,7 +68,7 @@ describe('secret verdict', () => {
     expect(g('show', 'HEAD').split('\n').filter((l) => l.startsWith('+')).join('\n')).not.toContain(tok);
     expect(g('ls-files')).not.toContain('.env.hewtd');
     expect(g('show', 'HEAD:.gitignore')).toContain('.env.hewtd');
-    const led = (await loadLedger(ledgerFile)).entries['backend/a.md']!;
+    const led = (await load_ledger(ledger_file)).entries['backend/a.md']!;
     expect(led).toMatchObject({ verdict: 'secret', env_names: ['HEWTD_SECRET_VAULT_TOKEN'] });
     expect(JSON.stringify(led)).not.toContain(tok);
   });
@@ -114,8 +114,8 @@ describe('secret verdict', () => {
     g('add', '-A'); g('commit', '-qm', 'seed');
     const res = await run(entry());
     expect(res.outcomes[0]!.status).toBe('applied');
-    const { parseFrontmatter } = await import('../../../src/utils/frontmatter');
-    const fm = parseFrontmatter<Record<string, unknown>>(read('backend/a.md')).data;
+    const { parse_frontmatter: parse_frontmatter } = await import('../../../src/utils/frontmatter');
+    const fm = parse_frontmatter<Record<string, unknown>>(read('backend/a.md')).data;
     expect(fm.api_token).toMatch(/^<secret: HEWTD_SECRET_\w+, see \.env\.hewtd>$/);
     expect(read('backend/a.md')).not.toContain(tok);
   });
@@ -144,7 +144,7 @@ describe('secret verdict', () => {
     writeFileSync(join(docs, 'backend/b.md'), doc('plain text, no secrets here at all'));
     g('add', '-A'); g('commit', '-qm', 'b');
     const triage = { docs: [{ path: 'backend/a.md', lane: 'secret', reasons: ['x'] }, { path: 'backend/b.md', lane: 'check', reasons: ['y'] }], shards: [{ id: 1, docs: ['backend/b.md'], bytes: 1 }] } as unknown as TriageResult;
-    const files = await writeReviewSkeletons({ root, docsPath: docs, triage, scope: 's' });
+    const files = await write_review_skeletons({ root, docsPath: docs, triage, scope: 's' });
     const names = files.map((f) => f.split('/').pop());
     expect(names.sort()).toEqual(['review-1-1.md', 'review-1-secrets.md']);
     expect(readFileSync(files.find((f) => f.endsWith('-1.md'))!, 'utf-8')).not.toContain('backend/a.md');

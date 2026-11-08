@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractLinks } from '../../../src/utils/markdown.js';
+import { extract_links } from '../../../src/utils/markdown.js';
 
 /**
  * Link-shaped text inside a fenced block or a code span is an EXAMPLE, not a link.
@@ -19,20 +19,20 @@ describe('extractLinks skips code', () => {
       'Also real: [b](./b.md)',
     ].join('\n');
 
-    expect(extractLinks(md).map((l) => l.url)).toEqual(['./a.md', './b.md']);
+    expect(extract_links(md).map((l) => l.url)).toEqual(['./a.md', './b.md']);
   });
 
   it('ignores links inside inline code spans', () => {
     const md = 'Use the `[text](./path.md)` form, e.g. [real](./real.md).';
 
-    expect(extractLinks(md).map((l) => l.url)).toEqual(['./real.md']);
+    expect(extract_links(md).map((l) => l.url)).toEqual(['./real.md']);
   });
 
   it('keeps lineNumber and startIndex accurate for a real link beside a code span', () => {
     // The span is BLANKED with spaces rather than removed, so offsets still line up.
     const md = ['intro', 'see `[x](./x.md)` and [y](./y.md)'].join('\n');
 
-    const links = extractLinks(md);
+    const links = extract_links(md);
     expect(links).toHaveLength(1);
 
     const link = links[0]!;
@@ -47,7 +47,7 @@ describe('extractLinks skips code', () => {
   it('handles ~~~ fences and longer backtick runs', () => {
     const md = ['~~~', '[in-tilde](./nope.md)', '~~~', '````', '[in-four](./nope2.md)', '````', '[ok](./ok.md)'].join('\n');
 
-    expect(extractLinks(md).map((l) => l.url)).toEqual(['./ok.md']);
+    expect(extract_links(md).map((l) => l.url)).toEqual(['./ok.md']);
   });
 });
 
@@ -58,7 +58,7 @@ describe('extractLinks — indented code blocks and CommonMark fences', () => {
   // continuation content. That would hide links that ARE broken, which is a
   // worse failure than #20's reporting of links that are not.
 
-  const urls = (doc: string) => extractLinks(doc).map((l) => l.url);
+  const urls = (doc: string) => extract_links(doc).map((l) => l.url);
 
   describe('indented code blocks', () => {
     it('skips an indented code block after a blank line', () => {
@@ -111,7 +111,7 @@ describe('extractLinks — indented code blocks and CommonMark fences', () => {
 
   it('still preserves offsets for a real link sharing a line with a span', () => {
     const doc = 'Span `[s](./s.md)` and real [b](./b.md)';
-    const link = extractLinks(doc)[0]!;
+    const link = extract_links(doc)[0]!;
     expect(doc.slice(link.startIndex, link.endIndex)).toBe('[b](./b.md)');
     expect(link.lineNumber).toBe(1);
   });

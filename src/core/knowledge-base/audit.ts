@@ -41,9 +41,9 @@ export interface AuditFactsResult {
   unverifiable: FactRef[];
 }
 
-export function auditFacts(options: AuditFactsOptions): AuditFactsResult {
-  const { index, now = new Date(), auditWindowDays = 90 } = options;
-  const cutoffMs = now.getTime() - auditWindowDays * 24 * 60 * 60 * 1000;
+export function audit_facts(options: AuditFactsOptions): AuditFactsResult {
+  const { index, now = new Date(), auditWindowDays: audit_window_days = 90 } = options;
+  const cutoff_ms = now.getTime() - audit_window_days * 24 * 60 * 60 * 1000;
 
   const stale: StaleFact[] = [];
   const unverifiable: FactRef[] = [];
@@ -53,14 +53,14 @@ export function auditFacts(options: AuditFactsOptions): AuditFactsResult {
       unverifiable.push(fact);
       continue;
     }
-    const verifiedMs = new Date(`${fact.lastVerified}T00:00:00Z`).getTime();
-    if (Number.isNaN(verifiedMs)) {
+    const verified_ms = new Date(`${fact.lastVerified}T00:00:00Z`).getTime();
+    if (Number.isNaN(verified_ms)) {
       unverifiable.push(fact);
       continue;
     }
-    if (verifiedMs < cutoffMs) {
-      const daysSinceVerified = Math.floor(
-        (now.getTime() - verifiedMs) / (24 * 60 * 60 * 1000)
+    if (verified_ms < cutoff_ms) {
+      const days_since_verified = Math.floor(
+        (now.getTime() - verified_ms) / (24 * 60 * 60 * 1000)
       );
       stale.push({
         id: fact.id,
@@ -69,7 +69,7 @@ export function auditFacts(options: AuditFactsOptions): AuditFactsResult {
         title: fact.title,
         confidence: fact.confidence,
         lastVerified: fact.lastVerified,
-        daysSinceVerified,
+        daysSinceVerified: days_since_verified,
       });
     }
   }
@@ -119,19 +119,19 @@ export interface RunVerifyResult {
  *   2. Fact's frontmatter `working_dir:` field, resolved relative to vaultRoot
  *   3. `<vaultRoot>/facts/` default
  */
-export async function runFactVerify(
+export async function run_fact_verify(
   options: RunVerifyOptions
 ): Promise<RunVerifyResult> {
-  const { fact, vaultRoot, cwdOverride, now = new Date(), skipExec = false } = options;
+  const { fact, vaultRoot: vault_root, cwdOverride: cwd_override, now = new Date(), skipExec: skip_exec = false } = options;
 
   // Read the fact file fresh — we need the full frontmatter (verify_command,
   // working_dir) which isn't in the lightweight CiterIndex FactRef.
-  const factContent = await readFile(fact.path, 'utf-8');
-  const parsed = matter(factContent);
-  const verifyCommand = parsed.data.verify_command;
-  const workingDir = parsed.data.working_dir;
+  const fact_content = await readFile(fact.path, 'utf-8');
+  const parsed = matter(fact_content);
+  const verify_command = parsed.data.verify_command;
+  const working_dir = parsed.data.working_dir;
 
-  if (typeof verifyCommand !== 'string' || verifyCommand.trim().length === 0) {
+  if (typeof verify_command !== 'string' || verify_command.trim().length === 0) {
     return {
       factId: fact.id,
       executed: false,
@@ -144,12 +144,12 @@ export async function runFactVerify(
   }
 
   const cwd =
-    cwdOverride ??
-    (typeof workingDir === 'string'
-      ? resolve(vaultRoot, workingDir)
-      : resolve(vaultRoot, 'facts'));
+    cwd_override ??
+    (typeof working_dir === 'string'
+      ? resolve(vault_root, working_dir)
+      : resolve(vault_root, 'facts'));
 
-  if (skipExec) {
+  if (skip_exec) {
     return finalize({
       success: true,
       exitCode: 0,
@@ -158,7 +158,7 @@ export async function runFactVerify(
     });
   }
 
-  const result = await execShell(verifyCommand, cwd);
+  const result = await exec_shell(verify_command, cwd);
   return finalize(result);
 
   async function finalize(r: {
@@ -178,8 +178,8 @@ export async function runFactVerify(
         newLastVerified: undefined,
       };
     }
-    const newDate = now.toISOString().slice(0, 10);
-    parsed.data.last_verified = newDate;
+    const new_date = now.toISOString().slice(0, 10);
+    parsed.data.last_verified = new_date;
     const rewritten = matter.stringify(parsed.content, parsed.data);
     await writeFile(fact.path, rewritten, 'utf-8');
     return {
@@ -189,7 +189,7 @@ export async function runFactVerify(
       stdout: r.stdout,
       stderr: r.stderr,
       updated: true,
-      newLastVerified: newDate,
+      newLastVerified: new_date,
     };
   }
 }
@@ -201,10 +201,10 @@ interface ShellResult {
   stderr: string;
 }
 
-function execShell(command: string, cwd: string): Promise<ShellResult> {
-  return new Promise((resolvePromise) => {
+function exec_shell(command: string, cwd: string): Promise<ShellResult> {
+  return new Promise((resolve_promise) => {
     if (!existsSync(cwd)) {
-      resolvePromise({
+      resolve_promise({
         success: false,
         exitCode: -1,
         stdout: '',
@@ -219,7 +219,7 @@ function execShell(command: string, cwd: string): Promise<ShellResult> {
     child.stdout.on('data', (chunk) => (stdout += chunk.toString()));
     child.stderr.on('data', (chunk) => (stderr += chunk.toString()));
     child.on('close', (code) => {
-      resolvePromise({
+      resolve_promise({
         success: code === 0,
         exitCode: code ?? -1,
         stdout,
@@ -227,7 +227,7 @@ function execShell(command: string, cwd: string): Promise<ShellResult> {
       });
     });
     child.on('error', (err) => {
-      resolvePromise({
+      resolve_promise({
         success: false,
         exitCode: -1,
         stdout: '',

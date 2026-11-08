@@ -5,12 +5,12 @@
 import { existsSync, readFileSync, statSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { isAbsolute, join, relative, resolve } from 'path';
-import { parseFrontmatter } from '../../utils/frontmatter.js';
-import { findMarkdownFiles } from '../../utils/glob.js';
+import { parse_frontmatter } from '../../utils/frontmatter.js';
+import { find_markdown_files } from '../../utils/glob.js';
 import type { PluginConfig } from '../../utils/config.js';
-import { citedSources } from '../integrate/integrator.js';
-import { buildPhrases, type DroppedPhrase, type PhraseInput } from './phrases.js';
-import { scanText } from './secrets.js';
+import { cited_sources } from '../integrate/integrator.js';
+import { build_phrases, type DroppedPhrase, type PhraseInput } from './phrases.js';
+import { scan_text } from './secrets.js';
 
 export const GAPS_VERSION = 1;
 
@@ -39,23 +39,23 @@ export interface GapsContext {
 
 /** Resolve a docs-relative, vault-relative or absolute path to a docs-relative one; null when it is not a live doc
  * (a missing file, outside the docs root, not markdown, or `generated: true` such as INDEX.md). */
-export function normalizeUsedDoc(p: string, ctx: GapsContext): string | null {
+export function normalize_used_doc(p: string, ctx: GapsContext): string | null {
   const repo = ctx.repoRoot ?? resolve(ctx.docsRoot, '..');
   const candidates = isAbsolute(p) ? [p] : [join(ctx.docsRoot, p), join(repo, p)];
   for (const c of candidates) {
     const rel = relative(ctx.docsRoot, resolve(c));
     if (rel.startsWith('..') || isAbsolute(rel) || !rel) continue;
     if (!c.endsWith('.md') || !existsSync(c) || !statSync(c).isFile()) continue;
-    if (parseFrontmatter<Record<string, unknown>>(readFileSync(c, 'utf-8')).data.generated === true) continue;
+    if (parse_frontmatter<Record<string, unknown>>(readFileSync(c, 'utf-8')).data.generated === true) continue;
     return rel.split('\\').join('/');
   }
   return null;
 }
 
 /** Whitespace collapsed, trailing punctuation dropped; the reader's wording is kept. */
-const cleanQuery = (q: string): string => q.replace(/\s+/g, ' ').trim().replace(/[\s.?!,;:]+$/, '');
+const clean_query = (q: string): string => q.replace(/\s+/g, ' ').trim().replace(/[\s.?!,;:]+$/, '');
 
-export function parseGaps(text: string, ctx: GapsContext): GapsRead {
+export function parse_gaps(text: string, ctx: GapsContext): GapsRead {
   const out: GapsRead = { gaps: [], errors: [] };
   let items: unknown[];
   let json: unknown;
@@ -83,11 +83,11 @@ export function parseGaps(text: string, ctx: GapsContext): GapsRead {
 
   items.forEach((it, i) => {
     const o = typeof it === 'string' ? { query: it } : it && typeof it === 'object' && !Array.isArray(it) ? (it as Record<string, unknown>) : null;
-    if (!o || typeof o.query !== 'string' || !cleanQuery(o.query)) return void out.errors.push(`gaps[${i}]: needs a non-empty "query" string`);
-    const gap: Gap = { query: cleanQuery(o.query), used_doc: null };
+    if (!o || typeof o.query !== 'string' || !clean_query(o.query)) return void out.errors.push(`gaps[${i}]: needs a non-empty "query" string`);
+    const gap: Gap = { query: clean_query(o.query), used_doc: null };
     if (o.used_doc != null) {
       if (typeof o.used_doc !== 'string') return void out.errors.push(`gaps[${i}]: "used_doc" must be a string or null`);
-      gap.used_doc = normalizeUsedDoc(o.used_doc, ctx);
+      gap.used_doc = normalize_used_doc(o.used_doc, ctx);
       if (!gap.used_doc) out.errors.push(`gaps[${i}]: used_doc "${o.used_doc}" is not a doc under the docs root; treated as no doc`);
     }
     if (o.suggested !== undefined) {
@@ -119,32 +119,32 @@ export interface GapsClassification {
   dropped: DroppedPhrase[];
 }
 
-const asList = (v: unknown): string[] => (Array.isArray(v) ? v : [v]).filter((x): x is string => typeof x === 'string');
+const as_list = (v: unknown): string[] => (Array.isArray(v) ? v : [v]).filter((x): x is string => typeof x === 'string');
 
 /** Current symptom text of a doc: plain symptoms plus playbook `user_phrase` values. */
-export function symptomText(data: Record<string, unknown>): string[] {
+export function symptom_text(data: Record<string, unknown>): string[] {
   const out: string[] = [];
   for (const s of Array.isArray(data.symptoms) ? data.symptoms : []) {
     if (typeof s === 'string') out.push(s);
-    else if (s && typeof s === 'object') out.push(...asList((s as Record<string, unknown>).user_phrase ?? []));
+    else if (s && typeof s === 'object') out.push(...as_list((s as Record<string, unknown>).user_phrase ?? []));
   }
   return out;
 }
 
 /** Bare identifier/path-like tokens of a query, wrapped in backticks so `extractReferences` sees them. */
-const identifierBody = (q: string): string =>
+const identifier_body = (q: string): string =>
   (q.match(/[\w$./-]+(?:\(\))?/g) ?? []).filter((t) => /[a-z][A-Z]|_|\/|\.[A-Za-z]{1,5}$|\(\)$/.test(t.replace(/\.$/, ''))).map((t) => `\`${t.replace(/\.$/, '')}\``).join(' ');
 
 /** Every gap lands in exactly one outcome. Read-only: nothing in the docs tree changes. */
-export async function classifyGaps(gaps: Gap[], opts: { root: string; docsRoot: string; config: PluginConfig }): Promise<GapsClassification> {
-  const { root, docsRoot, config } = opts;
+export async function classify_gaps(gaps: Gap[], opts: { root: string; docsRoot: string; config: PluginConfig }): Promise<GapsClassification> {
+  const { root, docsRoot: docs_root, config } = opts;
   const secrets = config.reconcile.secrets;
   const res: GapsClassification = { proposals: [], candidates: [], questions: [], dropped: [] };
 
   // same query (case-insensitive) across entries: counts add up
   const merged = new Map<string, { query: string; count: number; doc: string | null }>();
   for (const g of gaps) {
-    const hit = scanText(g.query, 'gaps', secrets)[0];
+    const hit = scan_text(g.query, 'gaps', secrets)[0];
     if (hit) { res.dropped.push({ query: '[redacted]', reason: 'secret', note: `${hit.rule}, ${hit.masked}` }); continue; }
     const k = `${g.used_doc ?? ''}\0${g.query.toLowerCase()}`;
     const m = merged.get(k);
@@ -153,39 +153,39 @@ export async function classifyGaps(gaps: Gap[], opts: { root: string; docsRoot: 
   }
 
   // docs that can take a phrase: live (not archived) and free of secrets
-  const docState = new Map<string, { ok: boolean; existing: string[] }>();
-  const docInfo = async (rel: string): Promise<{ ok: boolean; existing: string[] }> => {
-    let s = docState.get(rel);
+  const doc_state = new Map<string, { ok: boolean; existing: string[] }>();
+  const doc_info = async (rel: string): Promise<{ ok: boolean; existing: string[] }> => {
+    let s = doc_state.get(rel);
     if (!s) {
-      const raw = await readFile(join(docsRoot, rel), 'utf-8');
-      const ok = !/^archive\//.test(rel) && !scanText(raw, rel, secrets).length;
-      s = { ok, existing: ok ? symptomText(parseFrontmatter(raw).data) : [] };
-      docState.set(rel, s);
+      const raw = await readFile(join(docs_root, rel), 'utf-8');
+      const ok = !/^archive\//.test(rel) && !scan_text(raw, rel, secrets).length;
+      s = { ok, existing: ok ? symptom_text(parse_frontmatter(raw).data) : [] };
+      doc_state.set(rel, s);
     }
     return s;
   };
 
-  const byDoc = new Map<string, PhraseInput[]>();
+  const by_doc = new Map<string, PhraseInput[]>();
   const rest: Array<{ query: string; count: number }> = [];
   for (const m of merged.values()) {
-    if (m.doc && (await docInfo(m.doc)).ok) byDoc.set(m.doc, [...(byDoc.get(m.doc) ?? []), { query: m.query, count: m.count }]);
+    if (m.doc && (await doc_info(m.doc)).ok) by_doc.set(m.doc, [...(by_doc.get(m.doc) ?? []), { query: m.query, count: m.count }]);
     else rest.push(m);
   }
-  for (const [doc, inputs] of [...byDoc].sort((a, b) => a[0].localeCompare(b[0]))) {
-    const { existing } = await docInfo(doc);
-    const r = buildPhrases(inputs, existing, secrets, config.reconcile.gaps.max_phrases_per_doc);
+  for (const [doc, inputs] of [...by_doc].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const { existing } = await doc_info(doc);
+    const r = build_phrases(inputs, existing, secrets, config.reconcile.gaps.max_phrases_per_doc);
     res.dropped.push(...r.dropped);
     if (r.accepted.length) res.proposals.push({ doc, accepted: r.accepted, existing });
   }
 
   let owners: Map<string, string> | undefined; // source file -> top-level domain folder of the first doc citing it
-  const ownerOf = async (file: string): Promise<string | undefined> => {
+  const owner_of = async (file: string): Promise<string | undefined> => {
     if (!owners) {
       owners = new Map();
-      for (const f of await findMarkdownFiles(docsRoot)) {
-        const rel = relative(docsRoot, f).split('\\').join('/');
+      for (const f of await find_markdown_files(docs_root)) {
+        const rel = relative(docs_root, f).split('\\').join('/');
         if (rel.startsWith('archive/') || !rel.includes('/')) continue;
-        const src = parseFrontmatter(await readFile(f, 'utf-8')).data.sources;
+        const src = parse_frontmatter(await readFile(f, 'utf-8')).data.sources;
         for (const s of Array.isArray(src) ? src : []) {
           const p = typeof s === 'string' ? s : (s as { path?: unknown } | null)?.path;
           if (typeof p === 'string' && !owners.has(p)) owners.set(p, rel.split('/')[0]!);
@@ -195,15 +195,15 @@ export async function classifyGaps(gaps: Gap[], opts: { root: string; docsRoot: 
     return owners.get(file);
   };
   for (const g of rest) {
-    const body = identifierBody(g.query);
-    const found = body ? await citedSources(body, root, config, undefined, true) : [];
+    const body = identifier_body(g.query);
+    const found = body ? await cited_sources(body, root, config, undefined, true) : [];
     if (!found.length) { res.questions.push({ query: g.query, count: g.count }); continue; }
     const sources = found.map((s) => s.path);
-    const domain = (await Promise.all(sources.map(ownerOf))).find(Boolean);
+    const domain = (await Promise.all(sources.map(owner_of))).find(Boolean);
     res.candidates.push({ query: g.query, count: g.count, sources, ...(domain && { domain }) });
   }
-  const byCount = (a: { count: number }, b: { count: number }): number => b.count - a.count;
-  res.candidates.sort(byCount);
-  res.questions.sort(byCount);
+  const by_count = (a: { count: number }, b: { count: number }): number => b.count - a.count;
+  res.candidates.sort(by_count);
+  res.questions.sort(by_count);
   return res;
 }

@@ -3,9 +3,9 @@ import { execFileSync, spawnSync } from 'child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, readdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
-import { renderReview, type ReviewEntry } from '../../src/core/reconcile/review';
-import { hashContent } from '../../src/core/reconcile/ledger';
-import { parseFrontmatter } from '../../src/utils/frontmatter';
+import { render_review, type ReviewEntry } from '../../src/core/reconcile/review';
+import { hash_content } from '../../src/core/reconcile/ledger';
+import { parse_frontmatter } from '../../src/utils/frontmatter';
 
 // #59 acceptance checks through the built CLI on fixture repos.
 const CLI = join(resolve(__dirname, '../..'), 'dist/cli/index.js');
@@ -16,7 +16,7 @@ const g = (...a: string[]) => execFileSync('git', ['-c', 'user.name=Ann', '-c', 
 const hewtd = (args: string[]) => spawnSync('node', [CLI, ...args], { cwd: root, encoding: 'utf8' });
 const put = (rel: string, text: string) => { mkdirSync(join(docs, rel, '..'), { recursive: true }); writeFileSync(join(docs, rel), text); };
 const read = (rel: string) => readFileSync(join(docs, rel), 'utf-8');
-const h = (rel: string) => hashContent(read(rel));
+const h = (rel: string) => hash_content(read(rel));
 const commit = () => { g('add', '-A'); if (g('status', '--porcelain')) g('commit', '-qm', 'x'); };
 const fm = (title: string) => `---\ntitle: ${title}\ndomains:\n  - backend\n---\n\n`;
 /** Commits any hand edit first: reconcile refuses a dirty scope. */
@@ -28,7 +28,7 @@ let n = 0;
 function apply(entries: ReviewEntry[]) {
   const f = join(root, `.hewtd/reconcile/review-t${++n}-1.md`);
   mkdirSync(join(root, '.hewtd/reconcile'), { recursive: true });
-  writeFileSync(f, renderReview({ batch: `t${n}`, shard: 1, scope: 'backend' }, entries).replace(/- \[ \] accept/g, '- [x] accept'));
+  writeFileSync(f, render_review({ batch: `t${n}`, shard: 1, scope: 'backend' }, entries).replace(/- \[ \] accept/g, '- [x] accept'));
   return hewtd(['reconcile', '--apply', f]);
 }
 const verify = (rel: string): ReviewEntry => ({ path: rel, content_hash: h(rel), verdict: 'verify', sources: ['src/real.ts'] });
@@ -64,8 +64,8 @@ describe('question-seeded overview (#59 section 1)', () => {
 
     const sk = hewtd(['reconcile', '--write-review', '--overview', s.file]);
     expect(sk.status).toBe(0);
-    const reviewPath = join(root, '.hewtd/reconcile', readdirSync(join(root, '.hewtd/reconcile')).find((f) => /^review-.*\.md$/.test(f))!);
-    const skeleton = readFileSync(reviewPath, 'utf-8');
+    const review_path = join(root, '.hewtd/reconcile', readdirSync(join(root, '.hewtd/reconcile')).find((f) => /^review-.*\.md$/.test(f))!);
+    const skeleton = readFileSync(review_path, 'utf-8');
     const json = JSON.parse(/```json\n([\s\S]*?)\n```/.exec(skeleton)![1]!) as ReviewEntry;
     const filled: ReviewEntry = {
       ...json, verdict: 'overview',
@@ -84,7 +84,7 @@ describe('question-seeded overview (#59 section 1)', () => {
     const f2 = { ...filled, members: filled.members!.map((m) => ({ path: m.path, content_hash: h(m.path) })) };
     res = apply([f2]);
     expect(res.status).toBe(0);
-    const { data } = parseFrontmatter<Record<string, unknown>>(read(target));
+    const { data } = parse_frontmatter<Record<string, unknown>>(read(target));
     expect(data.kind).toBe('overview');
     expect(data.last_validated).toBeUndefined();
     expect(triage()[target]?.reasons.join() ?? '').not.toMatch(/member changed/);

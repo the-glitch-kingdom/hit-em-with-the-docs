@@ -9,7 +9,7 @@
 import { createHash } from 'crypto';
 import { readFile } from 'fs/promises';
 import { basename, relative } from 'path';
-import { parseFrontmatter } from '../../utils/frontmatter.js';
+import { parse_frontmatter } from '../../utils/frontmatter.js';
 import type { RetrievalConfig } from '../../utils/config.js';
 import { KB_ERROR_CODES } from '../metadata/errors.js';
 import type { AuditIssue } from './auditor.js';
@@ -35,12 +35,12 @@ export interface RetrievalCoverage {
 }
 
 /** Read the docs the retrieval rules apply to (generated/skipped ones are dropped later). */
-export async function collectRetrievalDocs(docsPath: string, files: string[]): Promise<RetrievalDoc[]> {
+export async function collect_retrieval_docs(docs_path: string, files: string[]): Promise<RetrievalDoc[]> {
   const docs: RetrievalDoc[] = [];
   for (const file of files) {
     try {
-      const { data, content } = parseFrontmatter<Record<string, unknown>>(await readFile(file, 'utf-8'));
-      docs.push({ rel: relative(docsPath, file), data, body: content });
+      const { data, content } = parse_frontmatter<Record<string, unknown>>(await readFile(file, 'utf-8'));
+      docs.push({ rel: relative(docs_path, file), data, body: content });
     } catch {
       // unreadable files are reported by the per-file audit
     }
@@ -48,34 +48,34 @@ export async function collectRetrievalDocs(docsPath: string, files: string[]): P
   return docs;
 }
 
-function isExempt(d: RetrievalDoc): boolean {
+function is_exempt(d: RetrievalDoc): boolean {
   if (d.data.generated === true || GENERATED_NAMES.has(basename(d.rel))) return true;
   if (d.data.tier === 'plan') return true;
   return d.rel.split(/[\\/]/).some((seg) => SKIP_DIRS.has(seg));
 }
 
 /** The paragraph normalisation behind the near-duplicate hash; reconcile's duplicate detection reuses it. */
-export const normalizeBlock = (block: string): string => block.replace(/\s+/g, ' ').trim().toLowerCase();
+export const normalize_block = (block: string): string => block.replace(/\s+/g, ' ').trim().toLowerCase();
 
 const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
-const wordCount = (s: string): number => (s ? s.split(/\s+/).length : 0);
+const word_count = (s: string): number => (s ? s.split(/\s+/).length : 0);
 
 /** The weak-purpose rule, shared with `fix-retrieval-fields`. Expects a non-empty value. */
-export function isWeakPurpose(value: string, title: string, cfg: RetrievalConfig): boolean {
+export function is_weak_purpose(value: string, title: string, cfg: RetrievalConfig): boolean {
   const p = norm(value);
   const t = norm(title);
-  const echoes = t !== '' && p.startsWith(t) && wordCount(p) <= wordCount(t) + 2;
-  return echoes || wordCount(p) < cfg.purpose_min_words || p.startsWith('documentation for ');
+  const echoes = t !== '' && p.startsWith(t) && word_count(p) <= word_count(t) + 2;
+  return echoes || word_count(p) < cfg.purpose_min_words || p.startsWith('documentation for ');
 }
 
-function purposeProblem(d: RetrievalDoc, cfg: RetrievalConfig): 'missing' | 'weak' | null {
+function purpose_problem(d: RetrievalDoc, cfg: RetrievalConfig): 'missing' | 'weak' | null {
   const purpose = str(d.data.purpose);
   if (!purpose) return 'missing';
-  return isWeakPurpose(purpose, str(d.data.title), cfg) ? 'weak' : null;
+  return is_weak_purpose(purpose, str(d.data.title), cfg) ? 'weak' : null;
 }
 
-function needsSymptoms(d: RetrievalDoc): boolean {
+function needs_symptoms(d: RetrievalDoc): boolean {
   const domains = [d.rel.split(/[\\/]/)[0], ...(Array.isArray(d.data.domains) ? d.data.domains : [])];
   return (
     d.data.tier === 'fact' ||
@@ -85,9 +85,9 @@ function needsSymptoms(d: RetrievalDoc): boolean {
   );
 }
 
-const hasSymptoms = (d: RetrievalDoc): boolean => Array.isArray(d.data.symptoms) && d.data.symptoms.length > 0;
+const has_symptoms = (d: RetrievalDoc): boolean => Array.isArray(d.data.symptoms) && d.data.symptoms.length > 0;
 
-function titleCounts(docs: RetrievalDoc[]): Map<string, number> {
+function title_counts(docs: RetrievalDoc[]): Map<string, number> {
   const counts = new Map<string, number>();
   for (const d of docs) {
     const t = norm(str(d.data.title));
@@ -97,13 +97,13 @@ function titleCounts(docs: RetrievalDoc[]): Map<string, number> {
 }
 
 /** Coverage counts for the health report. Generated and skipped docs are excluded. */
-export function retrievalCoverage(allDocs: RetrievalDoc[], cfg: RetrievalConfig): RetrievalCoverage {
-  const docs = allDocs.filter((d) => !isExempt(d));
-  const counts = titleCounts(docs);
+export function retrieval_coverage(all_docs: RetrievalDoc[], cfg: RetrievalConfig): RetrievalCoverage {
+  const docs = all_docs.filter((d) => !is_exempt(d));
+  const counts = title_counts(docs);
   return {
     total: docs.length,
-    withPurpose: docs.filter((d) => purposeProblem(d, cfg) === null).length,
-    withSymptoms: docs.filter(hasSymptoms).length,
+    withPurpose: docs.filter((d) => purpose_problem(d, cfg) === null).length,
+    withSymptoms: docs.filter(has_symptoms).length,
     withUniqueTitle: docs.filter((d) => {
       const t = norm(str(d.data.title));
       return t !== '' && counts.get(t) === 1;
@@ -123,20 +123,20 @@ interface DuplicatePair {
  * no pairwise body compare. shortcut: paragraph blocks only, so a passage straddling a
  * blank line is missed; switch to rolling-hash shingles if users report misses.
  */
-function findNearDuplicates(docs: RetrievalDoc[], minChars: number): DuplicatePair[] {
-  const byHash = new Map<string, { docs: Set<number>; snippet: string }>();
+function find_near_duplicates(docs: RetrievalDoc[], min_chars: number): DuplicatePair[] {
+  const by_hash = new Map<string, { docs: Set<number>; snippet: string }>();
   docs.forEach((d, i) => {
     for (const block of d.body.split(/\n\s*\n/)) {
-      const text = normalizeBlock(block);
-      if (text.length < minChars) continue;
+      const text = normalize_block(block);
+      if (text.length < min_chars) continue;
       const h = createHash('sha1').update(text).digest('hex');
-      const e = byHash.get(h) ?? { docs: new Set<number>(), snippet: text.slice(0, 80) };
+      const e = by_hash.get(h) ?? { docs: new Set<number>(), snippet: text.slice(0, 80) };
       e.docs.add(i);
-      byHash.set(h, e);
+      by_hash.set(h, e);
     }
   });
   const pairs = new Map<string, DuplicatePair>();
-  for (const { docs: set, snippet } of byHash.values()) {
+  for (const { docs: set, snippet } of by_hash.values()) {
     const ids = [...set].sort((x, y) => x - y);
     for (let x = 0; x < ids.length; x++) {
       for (let y = x + 1; y < ids.length; y++) {
@@ -150,19 +150,19 @@ function findNearDuplicates(docs: RetrievalDoc[], minChars: number): DuplicatePa
   return [...pairs.values()];
 }
 
-export function checkRetrieval(allDocs: RetrievalDoc[], cfg: RetrievalConfig): AuditIssue[] {
-  const docs = allDocs.filter((d) => !isExempt(d));
+export function check_retrieval(all_docs: RetrievalDoc[], cfg: RetrievalConfig): AuditIssue[] {
+  const docs = all_docs.filter((d) => !is_exempt(d));
   const issues: AuditIssue[] = [];
   const warn = (d: RetrievalDoc, code: string, message: string, suggestion: string): void => {
     if (cfg.disabled.includes(code)) return;
     issues.push({ file: d.rel, rule: code, severity: 'warning', message, fixable: false, suggestion });
   };
 
-  const counts = titleCounts(docs);
+  const counts = title_counts(docs);
   const denied = new Set(cfg.generic_titles.map(norm));
 
   for (const d of docs) {
-    const problem = purposeProblem(d, cfg);
+    const problem = purpose_problem(d, cfg);
     if (problem === 'missing') {
       const legacy = str(d.data.summary) ? 'summary' : str(d.data.description) ? 'description' : '';
       warn(
@@ -192,7 +192,7 @@ export function checkRetrieval(allDocs: RetrievalDoc[], cfg: RetrievalConfig): A
       );
     }
 
-    if (needsSymptoms(d) && !hasSymptoms(d)) {
+    if (needs_symptoms(d) && !has_symptoms(d)) {
       warn(
         d,
         R.RETRIEVAL_MISSING_SYMPTOMS,
@@ -214,7 +214,7 @@ export function checkRetrieval(allDocs: RetrievalDoc[], cfg: RetrievalConfig): A
   }
 
   if (cfg.near_duplicate) {
-    for (const p of findNearDuplicates(docs, cfg.near_duplicate_min_chars)) {
+    for (const p of find_near_duplicates(docs, cfg.near_duplicate_min_chars)) {
       warn(
         p.b,
         R.RETRIEVAL_NEAR_DUPLICATE,

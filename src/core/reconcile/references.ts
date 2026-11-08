@@ -7,8 +7,8 @@ import { execFileSync } from 'child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, statSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join, relative, resolve } from 'path';
-import { extractLinks } from '../../utils/markdown.js';
-import { checkSingleLink } from '../links/checker.js';
+import { extract_links } from '../../utils/markdown.js';
+import { check_single_link } from '../links/checker.js';
 
 export type RefKind = 'path' | 'symbol' | 'env' | 'command' | 'table' | 'column' | 'doc-link';
 export type RefStatus = 'ok' | 'missing' | 'unknown';
@@ -41,31 +41,31 @@ const SQL_TABLE_RES = [
   /\b(?:FROM|JOIN|UPDATE|INTO|ALTER\s+TABLE)\s+(?:IF\s+EXISTS\s+)?["`]?([A-Za-z_][\w.]*)["`]?/gi,
 ];
 
-function looksLikeSymbol(t: string): boolean {
+function looks_like_symbol(t: string): boolean {
   const name = t.replace(/\(\)$/, '');
   if (!SYMBOL_RE.test(name) || name.length < 4 || ENV_RE.test(name)) return false;
   return t.endsWith('()') || /[a-z][A-Z]/.test(name) || /^[A-Z][a-z]+[A-Z]/.test(name) || /^[a-z]+_[a-z_]+$/.test(name);
 }
 
-function looksLikePath(t: string): boolean {
+function looks_like_path(t: string): boolean {
   if (/[\s*?<>{}$|=,;]/.test(t) || /^[a-z][a-z0-9+.-]*:\/\//i.test(t) || t.startsWith('~') || t.startsWith('@')) return false;
   const p = t.replace(/:\d+(?::\d+)?$/, '');
   return (p.includes('/') && (FILE_EXT.test(p) || p.endsWith('/'))) || (FILE_EXT.test(p) && /^[\w.-]+$/.test(p) && p.includes('.') && !/^\.\w+$/.test(p));
 }
 
-export function extractReferences(body: string): Reference[] {
+export function extract_references(body: string): Reference[] {
   const out: Reference[] = [];
   const seen = new Set<string>();
   const add = (ref: string, kind: RefKind, line: number): void => {
     const k = `${kind}\0${ref}`;
     if (!seen.has(k)) { seen.add(k); out.push({ ref, kind, line }); }
   };
-  const scanCommands = (text: string, line: number): void => {
+  const scan_commands = (text: string, line: number): void => {
     for (const [re, prefix] of CMD_RES) {
       for (const m of text.matchAll(re)) add(prefix + m[1], 'command', line);
     }
   };
-  const scanSql = (text: string, line: number): void => {
+  const scan_sql = (text: string, line: number): void => {
     for (const re of SQL_TABLE_RES) {
       for (const m of text.matchAll(re)) {
         const t = m[1]!;
@@ -84,8 +84,8 @@ export function extractReferences(body: string): Reference[] {
     if (fence) {
       if (new RegExp(`^ {0,3}\\${fence.marker}{${fence.len},}\\s*$`).test(raw)) { fence = null; return; }
       if (fence.skip) return;
-      scanCommands(raw, line);
-      if (fence.sql) scanSql(raw, line);
+      scan_commands(raw, line);
+      if (fence.sql) scan_sql(raw, line);
       return;
     }
     const open = /^ {0,3}(`{3,}|~{3,})\s*(.*)$/.exec(raw);
@@ -96,11 +96,11 @@ export function extractReferences(body: string): Reference[] {
     }
     for (const m of raw.matchAll(/`([^`\n]+)`/g)) {
       const t = m[1]!.trim();
-      scanCommands(t, line);
-      if (/^(?:SELECT|INSERT|UPDATE|DELETE|ALTER)\b/i.test(t)) { scanSql(t, line); continue; }
+      scan_commands(t, line);
+      if (/^(?:SELECT|INSERT|UPDATE|DELETE|ALTER)\b/i.test(t)) { scan_sql(t, line); continue; }
       if (ENV_RE.test(t)) add(t, 'env', line);
-      else if (looksLikePath(t)) add(t.replace(/:\d+(?::\d+)?$/, ''), 'path', line);
-      else if (looksLikeSymbol(t)) add(t.replace(/\(\)$/, ''), 'symbol', line);
+      else if (looks_like_path(t)) add(t.replace(/:\d+(?::\d+)?$/, ''), 'path', line);
+      else if (looks_like_symbol(t)) add(t.replace(/\(\)$/, ''), 'symbol', line);
       else {
         const d = /^([a-z][a-z0-9_]*)\.([a-z][a-z0-9_]*)$/.exec(t);
         if (d && !NOT_COLUMN_OWNER_EXT.test(d[2]!)) add(t, 'column', line);
@@ -108,7 +108,7 @@ export function extractReferences(body: string): Reference[] {
     }
     for (const m of raw.matchAll(/\$([A-Z][A-Z0-9_]{2,})\b/g)) add(m[1]!, 'env', line);
   });
-  for (const l of extractLinks(body)) {
+  for (const l of extract_links(body)) {
     if (l.isInternal && !/^[a-z][a-z0-9+.-]*:/i.test(l.url)) add(l.url, 'doc-link', l.lineNumber);
   }
   return out;
@@ -140,7 +140,7 @@ export interface RepoIndex {
 const git = (root: string, args: string[]): string =>
   execFileSync('git', args, { cwd: root, encoding: 'utf-8', maxBuffer: 512 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] });
 
-export function globToRe(glob: string): RegExp {
+export function glob_to_re(glob: string): RegExp {
   const s = glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*\/?/g, '\0').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]').replace(/\0/g, '(?:.*/)?');
   return new RegExp(`^${s}$`);
 }
@@ -148,7 +148,7 @@ export function globToRe(glob: string): RegExp {
 const norm = (n: string): string => n.replace(/["`]/g, '').split('.').pop()!.toLowerCase();
 const SQL_CONSTRAINT = /^(?:primary|foreign|unique|constraint|check|index|key|exclude|like)$/i;
 
-export function parseSql(sql: string, schema: Schema): void {
+export function parse_sql(sql: string, schema: Schema): void {
   const s = sql.replace(/--.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
   for (const m of s.matchAll(/CREATE\s+(?:\w+\s+)*?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([\w."`]+)\s*\(/gi)) {
     const cols = new Set<string>();
@@ -177,7 +177,7 @@ export function parseSql(sql: string, schema: Schema): void {
   }
 }
 
-export function parsePrisma(src: string, schema: Schema): void {
+export function parse_prisma(src: string, schema: Schema): void {
   for (const m of src.matchAll(/^model\s+(\w+)\s*\{([\s\S]*?)^\}/gm)) {
     const cols = new Set<string>();
     let table = m[1]!;
@@ -195,7 +195,7 @@ export function parsePrisma(src: string, schema: Schema): void {
 }
 
 /** Build every per-run index: tracked files, package scripts, Makefile targets, parsed schema. */
-export function buildRepoIndex(root: string, schemaSources: string[] = []): RepoIndex {
+export function build_repo_index(root: string, schema_sources: string[] = []): RepoIndex {
   const files = new Set(git(root, ['ls-files', '-z']).split('\0').filter(Boolean));
   const read = (p: string): string => { try { return readFileSync(join(root, p), 'utf-8'); } catch { return ''; } };
   let pkg: Record<string, Record<string, unknown> | string> = {};
@@ -203,8 +203,8 @@ export function buildRepoIndex(root: string, schemaSources: string[] = []): Repo
   const obj = (k: string): Record<string, unknown> => (typeof pkg[k] === 'object' && pkg[k] ? (pkg[k] as Record<string, unknown>) : {});
   const deps = new Set([...Object.keys(obj('dependencies')), ...Object.keys(obj('devDependencies')), ...Object.keys(obj('bin'))]);
   if (typeof pkg.name === 'string') deps.add(pkg.name);
-  const makeTargets = new Set<string>();
-  for (const m of read('Makefile').matchAll(/^([A-Za-z0-9_.-]+)\s*:(?!=)/gm)) makeTargets.add(m[1]!);
+  const make_targets = new Set<string>();
+  for (const m of read('Makefile').matchAll(/^([A-Za-z0-9_.-]+)\s*:(?!=)/gm)) make_targets.add(m[1]!);
   const scripts = new Map<string, string>();
   for (const f of [...files].filter((f) => f === 'package.json' || f.endsWith('/package.json')).sort()) {
     try {
@@ -214,15 +214,15 @@ export function buildRepoIndex(root: string, schemaSources: string[] = []): Repo
     } catch { /* unreadable package.json: no scripts */ }
   }
   const schema: Schema = { tables: new Map() };
-  const schemaFiles: string[] = [];
-  const res = schemaSources.map(globToRe);
+  const schema_files: string[] = [];
+  const res = schema_sources.map(glob_to_re);
   for (const f of files) {
     if (!res.some((r) => r.test(f))) continue;
-    if (f.endsWith('.sql') || f.endsWith('.prisma')) schemaFiles.push(f);
-    if (f.endsWith('.sql')) parseSql(read(f), schema);
-    else if (f.endsWith('.prisma')) parsePrisma(read(f), schema);
+    if (f.endsWith('.sql') || f.endsWith('.prisma')) schema_files.push(f);
+    if (f.endsWith('.sql')) parse_sql(read(f), schema);
+    else if (f.endsWith('.prisma')) parse_prisma(read(f), schema);
   }
-  return { root, files, scripts, makeTargets, deps, schema, schemaFiles, mdNames: new Map(), symbols: new Map(), symbolKinds: new Map() };
+  return { root, files, scripts, makeTargets: make_targets, deps, schema, schemaFiles: schema_files, mdNames: new Map(), symbols: new Map(), symbolKinds: new Map() };
 }
 
 const BIG_FILE = 512 * 1024;
@@ -231,11 +231,11 @@ const WORD = /\w/;
 const NOT_SOURCE = /(?:\.json|\.lock|[-.]lock\.[\w]+|\.generated\.[\w]+|\.min\.[\w]+)$|(?:^|\/)(?:dist|build)\//;
 /** Test and mock files: a definition there loses to one in source. */
 const TEST_FILE = /(?:^|\/)(?:tests?|__tests__|__mocks__|mocks?|fixtures?|spec)\/|[._-](?:test|spec)\.[\w]+$/;
-const defRank = (f: string): string => `${TEST_FILE.test(f) ? 1 : 0}${f}`;
+const def_rank = (f: string): string => `${TEST_FILE.test(f) ? 1 : 0}${f}`;
 const esc = (n: string): string => n.replace(/\$/g, '\\$');
 
 /** First file (in order) containing `name` as a whole word, read in Node; for files too big for `git grep -o`. */
-function hasWord(text: string, name: string): boolean {
+function has_word(text: string, name: string): boolean {
   for (let i = text.indexOf(name); i >= 0; i = text.indexOf(name, i + 1)) {
     if (!WORD.test(text[i - 1] ?? '') && !WORD.test(text[i + name.length] ?? '')) return true;
   }
@@ -246,7 +246,7 @@ function hasWord(text: string, name: string): boolean {
  * One `git grep` per chunk (two: SQL is case-insensitive) for lines that define a name; source beats test/mock
  * files, then path order. Names without one keep their referencing file and are marked `reference`.
  */
-function definitionPass(idx: RepoIndex, names: string[], files: string[]): void {
+function definition_pass(idx: RepoIndex, names: string[], files: string[]): void {
   const run = (args: string[]): string => { try { return git(idx.root, args); } catch { return ''; } };
   const want = new Set(names);
   const defs = new Map<string, string>();
@@ -259,15 +259,15 @@ function definitionPass(idx: RepoIndex, names: string[], files: string[]): void 
         [[/^(?:def|class|function|const|let|var|interface|type|enum|struct|fn|func)\s+([\w$]+)$/, 1], [/^([\w$]+)\s*[:=]/, 1], [/^__tablename__\s*=\s*["']([\w$]+)["']$/, 1]]],
       [['-i', '-e', `CREATE (OR REPLACE )?(TABLE|VIEW|FUNCTION|POLICY|TYPE)\\s+(IF NOT EXISTS\\s+)?([[:alnum:]_."]+\\.)?"?${alt}\\b`], [[/([\w$]+)$/, 1]]],
     ];
-    for (const [flags, nameRes] of jobs) {
+    for (const [flags, name_res] of jobs) {
       for (let j = 0; j < src.length; j += 500) {
         const out = run(['grep', '-I', '-n', '-o', '-E', ...flags, '--', ...src.slice(j, j + 500).map((f) => `:(literal)${f}`)]);
         for (const l of out.split('\n')) {
           const m = /^(.*?):\d+:(.*)$/.exec(l);
-          const name = m && nameRes.map(([re]) => re.exec(m[2]!)?.[1]).find((n) => n && want.has(n));
+          const name = m && name_res.map(([re]) => re.exec(m[2]!)?.[1]).find((n) => n && want.has(n));
           if (!name) continue;
           const cur = defs.get(name);
-          if (cur === undefined || defRank(m![1]!) < defRank(cur)) defs.set(name, m![1]!);
+          if (cur === undefined || def_rank(m![1]!) < def_rank(cur)) defs.set(name, m![1]!);
         }
       }
     }
@@ -284,7 +284,7 @@ function definitionPass(idx: RepoIndex, names: string[], files: string[]): void 
  * huge single-line file), large ones are scanned in Node. Markdown is excluded: docs do not prove code exists,
  * but a second pass records which still-unfound names docs mention (those become unknown, not missing).
  */
-export function primeSymbols(idx: RepoIndex, names: Iterable<string>): void {
+export function prime_symbols(idx: RepoIndex, names: Iterable<string>): void {
   const todo = [...new Set(names)].filter((n) => !idx.symbols.has(n));
   const run = (args: string[]): string => { try { return git(idx.root, args); } catch { return ''; } /* exit 1 = no matches */ };
   for (let i = 0; i < todo.length; i += 400) {
@@ -318,9 +318,9 @@ export function primeSymbols(idx: RepoIndex, names: Iterable<string>): void {
         if (!left.length) continue;
         let text = '';
         try { text = readFileSync(join(idx.root, f), 'utf-8'); } catch { continue; }
-        for (const n of left) if (hasWord(text, n)) idx.symbols.set(n, f);
+        for (const n of left) if (has_word(text, n)) idx.symbols.set(n, f);
       }
-      definitionPass(idx, chunk.filter((n) => idx.symbols.get(n)), small); // shortcut: files over 512KB are not searched for definitions (git grep -o crawls on them)
+      definition_pass(idx, chunk.filter((n) => idx.symbols.get(n)), small); // shortcut: files over 512KB are not searched for definitions (git grep -o crawls on them)
       const unfound = chunk.filter((n) => !idx.symbols.get(n));
       if (unfound.length) {
         writeFileSync(pf, unfound.join('\n') + '\n');
@@ -339,7 +339,7 @@ export function primeSymbols(idx: RepoIndex, names: Iterable<string>): void {
 
 // ---------- resolution ----------
 
-function mentionedElsewhere(idx: RepoIndex, name: string, self: string | undefined): boolean {
+function mentioned_elsewhere(idx: RepoIndex, name: string, self: string | undefined): boolean {
   const files = idx.mdNames.get(name);
   return !!files && [...files].some((f) => f !== self);
 }
@@ -348,9 +348,9 @@ function mentionedElsewhere(idx: RepoIndex, name: string, self: string | undefin
 export interface RelatedRepo { name: string; root: string; idx?: RepoIndex | null }
 
 /** The sibling's index, or null when it is not a checked-out git repo. Never reads the sibling's config. */
-export function relatedIndex(r: RelatedRepo): RepoIndex | null {
+export function related_index(r: RelatedRepo): RepoIndex | null {
   if (r.idx === undefined) {
-    try { r.idx = existsSync(r.root) ? buildRepoIndex(r.root) : null; } catch { r.idx = null; }
+    try { r.idx = existsSync(r.root) ? build_repo_index(r.root) : null; } catch { r.idx = null; }
   }
   return r.idx;
 }
@@ -367,7 +367,7 @@ export interface ResolveOptions {
 /** `example.com/x`: a host-like first segment (letters-only TLD) is a URL, not a repo directory. */
 const HOST_LIKE = /^[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}\//i;
 
-function resolvePath(idx: RepoIndex, ref: string): string | undefined {
+function resolve_path(idx: RepoIndex, ref: string): string | undefined {
   const p = ref.replace(/^\.\//, '').replace(/^\//, '');
   if (idx.files.has(p)) return p;
   const dir = p.endsWith('/') ? p : `${p}/`;
@@ -379,13 +379,13 @@ function resolvePath(idx: RepoIndex, ref: string): string | undefined {
 }
 
 /** `<name>:<where>` for the first sibling that has the ref (and how it holds a symbol); undefined if none does. */
-function inRelated(related: RelatedRepo[], r: Reference): { where: string; kind?: 'definition' | 'reference' } | undefined {
+function in_related(related: RelatedRepo[], r: Reference): { where: string; kind?: 'definition' | 'reference' } | undefined {
   for (const rel of related) {
-    const sib = relatedIndex(rel);
+    const sib = related_index(rel);
     if (!sib) continue;
     let where: string | undefined;
     let kind: 'definition' | 'reference' | undefined;
-    if (r.kind === 'path') where = resolvePath(sib, r.ref);
+    if (r.kind === 'path') where = resolve_path(sib, r.ref);
     else if (r.kind === 'symbol' || r.kind === 'env') { where = sib.symbols.get(r.ref) ?? undefined; kind = sib.symbolKinds.get(r.ref); }
     else if (r.kind === 'command') {
       const name = r.ref.replace(/^\S+( run)? /, '');
@@ -397,31 +397,31 @@ function inRelated(related: RelatedRepo[], r: Reference): { where: string; kind?
   return undefined;
 }
 
-export async function resolveReferences(idx: RepoIndex, refs: Reference[], opts: ResolveOptions = {}): Promise<ResolvedReference[]> {
+export async function resolve_references(idx: RepoIndex, refs: Reference[], opts: ResolveOptions = {}): Promise<ResolvedReference[]> {
   const related = opts.related ?? [];
-  const symNames = refs.filter((r) => r.kind === 'symbol' || r.kind === 'env').map((r) => r.ref);
-  primeSymbols(idx, symNames);
-  const lost = symNames.filter((n) => !idx.symbols.get(n));
-  if (related.length && lost.length) for (const rel of related) { const sib = relatedIndex(rel); if (sib) primeSymbols(sib, lost); }
-  const haveSchema = idx.schema.tables.size > 0;
+  const sym_names = refs.filter((r) => r.kind === 'symbol' || r.kind === 'env').map((r) => r.ref);
+  prime_symbols(idx, sym_names);
+  const lost = sym_names.filter((n) => !idx.symbols.get(n));
+  if (related.length && lost.length) for (const rel of related) { const sib = related_index(rel); if (sib) prime_symbols(sib, lost); }
+  const have_schema = idx.schema.tables.size > 0;
   const self = opts.docFile ? relative(idx.root, opts.docFile).split('\\').join('/') : undefined;
   const out: ResolvedReference[] = [];
   for (const r of refs) {
     let status: RefStatus = 'unknown';
     let where: string | undefined;
-    let whereKind: 'definition' | 'reference' | undefined;
+    let where_kind: 'definition' | 'reference' | undefined;
     switch (r.kind) {
       case 'path':
         // `/docs/x/` and `/api/v1/x` are URL paths, not repo paths
         if (r.ref.startsWith('/')) break;
-        where = resolvePath(idx, r.ref);
+        where = resolve_path(idx, r.ref);
         status = where ? 'ok' : HOST_LIKE.test(r.ref) ? 'unknown' : 'missing';
         break;
       case 'symbol': case 'env':
         where = idx.symbols.get(r.ref) ?? undefined;
-        if (where) whereKind = idx.symbolKinds.get(r.ref);
+        if (where) where_kind = idx.symbolKinds.get(r.ref);
         // Only another doc's mention makes a code-less name `unknown` (an external name); the citing doc itself proves nothing.
-        status = where ? 'ok' : mentionedElsewhere(idx, r.ref, self) ? 'unknown' : 'missing';
+        status = where ? 'ok' : mentioned_elsewhere(idx, r.ref, self) ? 'unknown' : 'missing';
         break;
       case 'command': {
         const [tool, name] = [r.ref.split(' ')[0]!, r.ref.replace(/^\S+( run)? /, '')];
@@ -431,7 +431,7 @@ export async function resolveReferences(idx: RepoIndex, refs: Reference[], opts:
         break;
       }
       case 'table': case 'column': {
-        if (!haveSchema) break;
+        if (!have_schema) break;
         const [t, c] = r.kind === 'column' ? r.ref.split('.') : [r.ref, undefined];
         const cols = idx.schema.tables.get(norm(t!));
         // shortcut: `a.b` with a one-word owner not in the schema is probably an object property, so unknown
@@ -449,7 +449,7 @@ export async function resolveReferences(idx: RepoIndex, refs: Reference[], opts:
               where = `${rel.name}:${relative(rel.root, target).split('\\').join('/')}`;
             }
           } else {
-            status = (await checkSingleLink(r.ref, opts.docFile, opts.docsPath)).valid ? 'ok' : 'missing';
+            status = (await check_single_link(r.ref, opts.docFile, opts.docsPath)).valid ? 'ok' : 'missing';
           }
         }
         break;
@@ -457,18 +457,18 @@ export async function resolveReferences(idx: RepoIndex, refs: Reference[], opts:
     // markdown-only names are unknown locally, but code in a sibling still proves them
     const lookup = status === 'missing' || (status === 'unknown' && !where && (r.kind === 'symbol' || r.kind === 'env'));
     if (lookup && related.length && r.kind !== 'doc-link' && r.kind !== 'table' && r.kind !== 'column') {
-      const hit = inRelated(related, r);
+      const hit = in_related(related, r);
       where = hit?.where;
-      whereKind = hit?.kind;
+      where_kind = hit?.kind;
       // a sibling that is not checked out might own it: unknown, not missing
-      status = where ? 'ok' : related.some((x) => !relatedIndex(x)) ? 'unknown' : status;
+      status = where ? 'ok' : related.some((x) => !related_index(x)) ? 'unknown' : status;
     }
-    out.push(where ? { ...r, status, where, ...(r.kind === 'symbol' && whereKind && { whereKind }) } : { ...r, status });
+    out.push(where ? { ...r, status, where, ...(r.kind === 'symbol' && where_kind && { whereKind: where_kind }) } : { ...r, status });
   }
   return out;
 }
 
 /** Convenience: extract and resolve one doc body. */
-export async function checkDocReferences(idx: RepoIndex, body: string, opts: ResolveOptions = {}): Promise<ResolvedReference[]> {
-  return resolveReferences(idx, extractReferences(body), opts);
+export async function check_doc_references(idx: RepoIndex, body: string, opts: ResolveOptions = {}): Promise<ResolvedReference[]> {
+  return resolve_references(idx, extract_references(body), opts);
 }

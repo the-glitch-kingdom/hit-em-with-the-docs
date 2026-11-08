@@ -3,9 +3,9 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { classifyGaps } from '../../../src/core/reconcile/gaps.js';
-import { renderGapsReport } from '../../../src/core/reconcile/gaps-report.js';
-import { loadPluginConfig } from '../../../src/utils/config.js';
+import { classify_gaps } from '../../../src/core/reconcile/gaps.js';
+import { render_gaps_report } from '../../../src/core/reconcile/gaps-report.js';
+import { load_plugin_config } from '../../../src/utils/config.js';
 
 const token = 'AK' + 'IA' + 'ABCDEFGHIJKLMNOP'; // runtime fragments: no secret literal in the repo
 let repo: string, docs: string;
@@ -26,7 +26,7 @@ beforeAll(() => {
 afterAll(() => rmSync(repo, { recursive: true, force: true }));
 
 const run = async (gaps: Array<{ query: string; used_doc: string | null; count?: number }>) =>
-  classifyGaps(gaps, { root: repo, docsRoot: docs, config: await loadPluginConfig(repo) });
+  classify_gaps(gaps, { root: repo, docsRoot: docs, config: await load_plugin_config(repo) });
 
 describe('classifyGaps (#66)', () => {
   it('known used doc -> phrase proposal, counts of repeated queries added', async () => {
@@ -55,7 +55,7 @@ describe('classifyGaps (#66)', () => {
   it('secret-shaped query is dropped and the report never shows it', async () => {
     const r = await run([{ query: `why does ${token} fail on login`, used_doc: 'devops/release-flow.md' }]);
     expect(r.dropped[0]!.reason).toBe('secret');
-    const text = renderGapsReport(r, (await loadPluginConfig(repo)).reconcile.secrets, '2026-11-07');
+    const text = render_gaps_report(r, (await load_plugin_config(repo)).reconcile.secrets, '2026-11-07');
     expect(text).not.toContain(token);
     expect(text).toContain('Dropped (1)');
   });

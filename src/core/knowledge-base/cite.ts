@@ -53,9 +53,9 @@ interface SymptomEntry {
 }
 
 export async function cite(options: CiteOptions): Promise<CiteResult> {
-  const { playbookPath, factId, symptomMatch, dryRun = false } = options;
+  const { playbookPath: playbook_path, factId: fact_id, symptomMatch: symptom_match, dryRun: dry_run = false } = options;
 
-  const content = await readFile(playbookPath, 'utf-8');
+  const content = await readFile(playbook_path, 'utf-8');
   const parsed = matter(content);
   const data = (parsed.data ?? {}) as Record<string, unknown>;
 
@@ -63,61 +63,61 @@ export async function cite(options: CiteOptions): Promise<CiteResult> {
   const symptoms = Array.isArray(data.symptoms)
     ? (data.symptoms as (SymptomEntry | string)[])
     : [];
-  const isEntry = (s: SymptomEntry | string): s is SymptomEntry =>
+  const is_entry = (s: SymptomEntry | string): s is SymptomEntry =>
     typeof s === 'object' && s !== null;
-  const firstEntry = symptoms.findIndex(isEntry);
+  const first_entry = symptoms.findIndex(is_entry);
 
   let action: CiteResult['action'];
-  let symptomIndex: number;
+  let symptom_index: number;
 
-  if (firstEntry < 0) {
+  if (first_entry < 0) {
     // No citable entry — add one placeholder entry.
     symptoms.push({
       alert_name: '<TODO: specify alert_name, user_phrase, or error_pattern>',
       target: '<TODO: anchor>',
-      cites: [factId],
+      cites: [fact_id],
     });
-    symptomIndex = symptoms.length - 1;
+    symptom_index = symptoms.length - 1;
     action = 'created_block';
   } else {
     // Find the target entry. If symptomMatch is provided, look for a match;
     // otherwise default to the first entry.
-    let targetIdx = firstEntry;
-    if (symptomMatch) {
-      const matched = symptoms.findIndex((s) => isEntry(s) && matchesSymptom(s, symptomMatch));
-      if (matched >= 0) targetIdx = matched;
+    let target_idx = first_entry;
+    if (symptom_match) {
+      const matched = symptoms.findIndex((s) => is_entry(s) && matches_symptom(s, symptom_match));
+      if (matched >= 0) target_idx = matched;
     }
 
-    const entry = symptoms[targetIdx] as SymptomEntry;
+    const entry = symptoms[target_idx] as SymptomEntry;
     const cites = Array.isArray(entry.cites) ? entry.cites : [];
 
-    if (cites.includes(factId)) {
+    if (cites.includes(fact_id)) {
       action = 'already_present';
     } else {
-      cites.push(factId);
+      cites.push(fact_id);
       entry.cites = cites;
       action = 'inserted';
     }
-    symptomIndex = targetIdx;
+    symptom_index = target_idx;
   }
 
   data.symptoms = symptoms;
-  const newContent = matter.stringify(parsed.content, data);
+  const new_content = matter.stringify(parsed.content, data);
 
-  if (!dryRun && action !== 'already_present') {
-    await writeFile(playbookPath, newContent, 'utf-8');
+  if (!dry_run && action !== 'already_present') {
+    await writeFile(playbook_path, new_content, 'utf-8');
   }
 
   return {
-    playbookPath,
-    factId,
+    playbookPath: playbook_path,
+    factId: fact_id,
     action,
-    symptomIndex,
-    newContent,
+    symptomIndex: symptom_index,
+    newContent: new_content,
   };
 }
 
-function matchesSymptom(
+function matches_symptom(
   entry: SymptomEntry,
   match: NonNullable<CiteOptions['symptomMatch']>
 ): boolean {

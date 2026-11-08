@@ -7,12 +7,12 @@ import { execFileSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { readdir } from 'fs/promises';
 import { basename, join, relative } from 'path';
-import { normalizeBlock } from '../audit/retrieval.js';
-import { flatSections } from '../links/anchors.js';
+import { normalize_block } from '../audit/retrieval.js';
+import { flat_sections } from '../links/anchors.js';
 import type { PluginConfig } from '../../utils/config.js';
-import { parseFrontmatter } from '../../utils/frontmatter.js';
+import { parse_frontmatter } from '../../utils/frontmatter.js';
 import { tokenize } from './search.js';
-import { findSecrets } from './secrets.js';
+import { find_secrets } from './secrets.js';
 
 export interface Duplicate {
   /** docs-relative path of the doc that should own the text */
@@ -41,9 +41,9 @@ async function walk(dir: string, out: string[] = []): Promise<string[]> {
   return out;
 }
 
-function firstCommit(docsPath: string, rel: string): number | undefined {
+function first_commit(docs_path: string, rel: string): number | undefined {
   try {
-    const out = execFileSync('git', ['log', '--follow', '--diff-filter=A', '--format=%ct', '--', rel], { cwd: docsPath, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const out = execFileSync('git', ['log', '--follow', '--diff-filter=A', '--format=%ct', '--', rel], { cwd: docs_path, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
     const t = out.trim().split('\n').pop();
     return t ? Number(t) : undefined;
   } catch { return undefined; }
@@ -62,23 +62,23 @@ const jaccard = (a: Set<string>, b: Set<string>): number => {
  */
 const MAX_POSTING = 20;
 
-export async function findDuplicates(docsPath: string, config: PluginConfig): Promise<Map<string, Duplicate[]>> {
+export async function find_duplicates(docs_path: string, config: PluginConfig): Promise<Map<string, Duplicate[]>> {
   const floor = config.retrieval.near_duplicate_min_chars;
   const secs: Sec[] = [];
-  for (const abs of await walk(docsPath)) {
+  for (const abs of await walk(docs_path)) {
     const raw = readFileSync(abs, 'utf-8');
-    const rel = relative(docsPath, abs).split('\\').join('/');
-    const { data, content } = parseFrontmatter<Record<string, unknown>>(raw);
+    const rel = relative(docs_path, abs).split('\\').join('/');
+    const { data, content } = parse_frontmatter<Record<string, unknown>>(raw);
     if (data.generated === true || data.tier === 'plan') continue;
-    if (findSecrets(raw, rel, config.reconcile.secrets).some((r) => r.finding.kind === 'secret')) continue;
-    const docLabel = `${typeof data.title === 'string' ? data.title : ''} ${typeof data.purpose === 'string' ? data.purpose : ''} ${basename(rel, '.md')}`;
-    const docSize = tokenize(content).length || 1;
-    for (const s of flatSections(content)) {
-      if (normalizeBlock(s.text).length < floor) continue;
-      const w = tokenize(normalizeBlock(s.text));
+    if (find_secrets(raw, rel, config.reconcile.secrets).some((r) => r.finding.kind === 'secret')) continue;
+    const doc_label = `${typeof data.title === 'string' ? data.title : ''} ${typeof data.purpose === 'string' ? data.purpose : ''} ${basename(rel, '.md')}`;
+    const doc_size = tokenize(content).length || 1;
+    for (const s of flat_sections(content)) {
+      if (normalize_block(s.text).length < floor) continue;
+      const w = tokenize(normalize_block(s.text));
       const shingles = new Set<string>();
       for (let i = 0; i + SHINGLE <= w.length; i++) shingles.add(w.slice(i, i + SHINGLE).join(' '));
-      if (shingles.size) secs.push({ doc: rel, anchor: s.anchor, label: new Set(tokenize(`${s.heading} ${docLabel}`)), words: new Set(w), shingles, docSize });
+      if (shingles.size) secs.push({ doc: rel, anchor: s.anchor, label: new Set(tokenize(`${s.heading} ${doc_label}`)), words: new Set(w), shingles, docSize: doc_size });
     }
   }
 
@@ -101,7 +101,7 @@ export async function findDuplicates(docsPath: string, config: PluginConfig): Pr
   const clusters = new Map<number, Sec[]>();
   secs.forEach((s, i) => (clusters.get(find(i)) ?? clusters.set(find(i), []).get(find(i))!).push(s));
   const born = new Map<string, number | undefined>();
-  const age = (d: string): number | undefined => (born.has(d) ? born.get(d) : (born.set(d, firstCommit(docsPath, d)), born.get(d)));
+  const age = (d: string): number | undefined => (born.has(d) ? born.get(d) : (born.set(d, first_commit(docs_path, d)), born.get(d)));
 
   const out = new Map<string, Duplicate[]>();
   for (const members of clusters.values()) {

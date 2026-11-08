@@ -3,10 +3,10 @@ import { execFileSync } from 'child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { loadPluginConfig } from '../../../src/utils/config';
+import { load_plugin_config } from '../../../src/utils/config';
 import { triage } from '../../../src/core/reconcile/triage';
-import { checkDocReferences, buildRepoIndex, type RelatedRepo } from '../../../src/core/reconcile/references';
-import { discoverOutside } from '../../../src/core/reconcile/outside';
+import { check_doc_references, build_repo_index, type RelatedRepo } from '../../../src/core/reconcile/references';
+import { discover_outside } from '../../../src/core/reconcile/outside';
 
 let base: string;
 let proj: string;
@@ -34,7 +34,7 @@ describe('related repos: references', () => {
   const resolve = async (body: string, rel: RelatedRepo[] = related()) => {
     put(proj, 'docs/x.md', body);
     gi(proj, 'add', '-A');
-    return checkDocReferences(buildRepoIndex(proj), body, { docFile: join(proj, 'docs/x.md'), docsPath: join(proj, 'docs'), related: rel });
+    return check_doc_references(build_repo_index(proj), body, { docFile: join(proj, 'docs/x.md'), docsPath: join(proj, 'docs'), related: rel });
   };
 
   it('finds refs only a sibling has, with a <name>: where; read-only', async () => {
@@ -63,7 +63,7 @@ describe('related repos: references', () => {
 });
 
 describe('related repos: triage', () => {
-  const run = async (rel: string) => triage({ root: proj, docsPath: join(proj, '.documentation'), rels: [rel], config: await loadPluginConfig(proj) });
+  const run = async (rel: string) => triage({ root: proj, docsPath: join(proj, '.documentation'), rels: [rel], config: await load_plugin_config(proj) });
   const commit = () => { gi(proj, 'add', '-A'); gi(proj, 'commit', '-qm', 'c'); };
 
   it('resolves <name>: sources, warns for a missing checkout, ignores invalid config entries', async () => {
@@ -109,7 +109,7 @@ describe('outside lane', () => {
     put(proj, '.documentation/ops/a.md', '# a\n');
     put(proj, 'loose.md', '# loose\n');
     gi(proj, 'add', '-A'); gi(proj, 'commit', '-qm', 'p');
-    const found = (await discoverOutside(join(proj, '.documentation'), [])).map((d) => d.path);
+    const found = (await discover_outside(join(proj, '.documentation'), [])).map((d) => d.path);
     expect(found.some((p) => p.includes('NOTES') || p.includes('api'))).toBe(false);
     expect(found).toContain('loose.md');
   });

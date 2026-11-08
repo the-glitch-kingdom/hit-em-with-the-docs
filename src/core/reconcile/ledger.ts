@@ -5,7 +5,7 @@
 import { createHash } from 'crypto';
 import { mkdir, readFile, rename, writeFile } from 'fs/promises';
 import { dirname } from 'path';
-import { assertNoSecrets } from './secrets.js';
+import { assert_no_secrets } from './secrets.js';
 
 export interface LedgerEntry {
   path: string;
@@ -28,11 +28,11 @@ export interface Ledger {
   entries: Record<string, LedgerEntry>;
 }
 
-export const hashContent = (content: string): string =>
+export const hash_content = (content: string): string =>
   createHash('sha256').update(content).digest('hex');
 
 /** Missing or corrupt ledger loads as empty: never throws. */
-export async function loadLedger(file: string): Promise<Ledger> {
+export async function load_ledger(file: string): Promise<Ledger> {
   try {
     const raw = JSON.parse(await readFile(file, 'utf-8'));
     if (raw && typeof raw === 'object' && raw.entries && typeof raw.entries === 'object') {
@@ -45,9 +45,9 @@ export async function loadLedger(file: string): Promise<Ledger> {
 }
 
 /** Atomic: write a unique temp file, then rename over the target. */
-export async function saveLedger(file: string, ledger: Ledger): Promise<void> {
+export async function save_ledger(file: string, ledger: Ledger): Promise<void> {
   const text = JSON.stringify(ledger, null, 2) + '\n';
-  assertNoSecrets(text, 'the reconcile ledger');
+  assert_no_secrets(text, 'the reconcile ledger');
   await mkdir(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
   await writeFile(tmp, text, 'utf-8');
@@ -55,14 +55,14 @@ export async function saveLedger(file: string, ledger: Ledger): Promise<void> {
 }
 
 /** Reviewed = has a verdict and the doc is unchanged since. */
-export function isReviewed(entry: LedgerEntry | undefined, currentHash: string): boolean {
+export function is_reviewed(entry: LedgerEntry | undefined, current_hash: string): boolean {
   // A clean doc needs no judgment pass: triage alone settles it, so --next moves past it.
   // A rewrite verdict only records the draft: the doc stays in the queue until the rewrite lands.
-  return !!entry && ((!!entry.verdict && entry.verdict !== 'rewrite') || entry.lane === 'clean') && entry.content_hash === currentHash;
+  return !!entry && ((!!entry.verdict && entry.verdict !== 'rewrite') || entry.lane === 'clean') && entry.content_hash === current_hash;
 }
 
 /** Record a doc's current state; a changed hash drops the old verdict. */
-export function recordEntry(
+export function record_entry(
   ledger: Ledger,
   entry: Partial<LedgerEntry> & Pick<LedgerEntry, 'path' | 'lane' | 'content_hash'>
 ): LedgerEntry {
@@ -85,7 +85,7 @@ export interface LedgerStatus {
 }
 
 /** `docs` = every in-scope doc with its current content hash. */
-export function ledgerStatus(
+export function ledger_status(
   ledger: Ledger,
   docs: { path: string; hash: string }[],
   next = 10
@@ -94,7 +94,7 @@ export function ledgerStatus(
   for (const d of docs) {
     const e = ledger.entries[d.path];
     if (e) s.byLane[e.lane] = (s.byLane[e.lane] ?? 0) + 1;
-    if (isReviewed(e, d.hash)) {
+    if (is_reviewed(e, d.hash)) {
       s.reviewed++;
       s.byVerdict[e!.verdict!] = (s.byVerdict[e!.verdict!] ?? 0) + 1;
     } else if (s.nextUnreviewed.length < next) s.nextUnreviewed.push(d.path);

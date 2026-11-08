@@ -1,11 +1,11 @@
 import type { Domain, DomainDefinition } from '../../core/domains/constants.js';
-import { formatDate } from '../../core/metadata/generator.js';
+import { format_date } from '../../core/metadata/generator.js';
 
 /**
  * Generate initial domain REGISTRY.md content
  */
-export function generateDomainRegistry(domain: Domain, def: DomainDefinition): string {
-  const now = formatDate(new Date());
+export function generate_domain_registry(domain: Domain, def: DomainDefinition): string {
+  const now = format_date(new Date());
 
   return `---
 title: ${def.name} Registry

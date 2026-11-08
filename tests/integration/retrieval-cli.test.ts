@@ -20,13 +20,13 @@ const fm = (title: string, extra = '', tier = 'guide') =>
   `---\ntitle: ${title}\ntier: ${tier}\ndomains: [api]\nstatus: active\nversion: 1.0.0\nlast_updated: '2026-01-01'\n${extra}---\n\n${GOOD}.\n`;
 
 // Rule names of RETRIEVAL_* issues, via the built auditor (the CLI does not print issues).
-const retrievalRules = (): string[] =>
+const retrieval_rules = (): string[] =>
   JSON.parse(
     execFileSync(
       'node',
       [
         '-e',
-        `import('${join(REPO, 'dist/core/audit/auditor.js')}').then(async m=>{const r=await m.auditDocumentation({docsPath:process.argv[1],silent:true});console.log(JSON.stringify(r.issues.filter(i=>i.rule&&i.rule.startsWith('RETRIEVAL_')).map(i=>i.rule+'|'+i.file)))})`,
+        `import('${join(REPO, 'dist/core/audit/auditor.js')}').then(async m=>{const r=await m.audit_documentation({docsPath:process.argv[1],silent:true});console.log(JSON.stringify(r.issues.filter(i=>i.rule&&i.rule.startsWith('RETRIEVAL_')).map(i=>i.rule+'|'+i.file)))})`,
         docs,
       ],
       { encoding: 'utf8', cwd: root }
@@ -57,7 +57,7 @@ describe('retrieval end to end (built CLI)', () => {
     expect(existsSync(out)).toBe(true);
     const data = matter(await readFile(out, 'utf8')).data;
     expect(data.purpose).toBeUndefined();
-    expect(retrievalRules().some((x) => x.startsWith('RETRIEVAL_MISSING_PURPOSE|'))).toBe(true);
+    expect(retrieval_rules().some((x) => x.startsWith('RETRIEVAL_MISSING_PURPOSE|'))).toBe(true);
   });
 
   it('plain-string symptoms pass audit on every tier; a bad object entry still errors', async () => {
@@ -80,7 +80,7 @@ describe('retrieval end to end (built CLI)', () => {
   it('retrieval warnings do not change audit exit codes, even with --strict', async () => {
     await writeFile(join(docs, 'api', 'a.md'), fm('Plain doc')); // no purpose -> warning only
     hewtd('maintain', '--quick', '-p', docs);
-    expect(retrievalRules().length).toBeGreaterThan(0);
+    expect(retrieval_rules().length).toBeGreaterThan(0);
     expect(hewtd('audit', '-p', docs).status).toBe(0);
     expect(hewtd('audit', '--strict', '-p', docs).status).toBe(0);
   });
@@ -93,7 +93,7 @@ describe('retrieval end to end (built CLI)', () => {
     const audit = JSON.parse(
       execFileSync(
         'node',
-        ['-e', `import('${join(REPO, 'dist/core/audit/auditor.js')}').then(async m=>{const r=await m.auditDocumentation({docsPath:process.argv[1],silent:true});console.log(JSON.stringify(r.issues.filter(i=>i.rule==='RETRIEVAL_MISSING_PURPOSE')))})`, docs],
+        ['-e', `import('${join(REPO, 'dist/core/audit/auditor.js')}').then(async m=>{const r=await m.audit_documentation({docsPath:process.argv[1],silent:true});console.log(JSON.stringify(r.issues.filter(i=>i.rule==='RETRIEVAL_MISSING_PURPOSE')))})`, docs],
         { encoding: 'utf8', cwd: root }
       ).trim().split('\n').pop()!
     );
@@ -110,9 +110,9 @@ describe('retrieval end to end (built CLI)', () => {
     expect(after.data.summary).toBeUndefined();
     expect(after.content).toBe(before.content);
     const { purpose: _p, ...rest } = after.data;
-    const { summary: _s, ...beforeRest } = before.data;
-    expect(rest).toEqual(beforeRest);
-    expect(retrievalRules().some((x) => x.startsWith('RETRIEVAL_MISSING_PURPOSE|'))).toBe(false);
+    const { summary: _s, ...before_rest } = before.data;
+    expect(rest).toEqual(before_rest);
+    expect(retrieval_rules().some((x) => x.startsWith('RETRIEVAL_MISSING_PURPOSE|'))).toBe(false);
   });
 
   it('maintain writes a health report with exact retrieval coverage numbers', async () => {
@@ -138,12 +138,12 @@ describe('retrieval end to end (built CLI)', () => {
     expect(hewtd('report', 'links', '-p', docs).status).toBe(0);
 
     expect(existsSync(join(docs, 'reports'))).toBe(false);
-    const reportsDir = join(root, '.hewtd/reports');
-    const reports = readdirSync(reportsDir);
+    const reports_dir = join(root, '.hewtd/reports');
+    const reports = readdirSync(reports_dir);
     for (const prefix of ['maintenance', 'health', 'audit', 'link']) {
       expect(reports.some((f) => f.startsWith(prefix)), prefix).toBe(true);
     }
-    const generated = [join(docs, 'INDEX.md'), join(docs, 'api', 'INDEX.md'), ...reports.map((f) => join(reportsDir, f))];
+    const generated = [join(docs, 'INDEX.md'), join(docs, 'api', 'INDEX.md'), ...reports.map((f) => join(reports_dir, f))];
     for (const f of generated.filter(existsSync)) {
       expect(await readFile(f, 'utf8'), f).toMatch(/^generated: true$/m);
     }

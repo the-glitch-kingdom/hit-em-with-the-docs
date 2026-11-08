@@ -2,12 +2,12 @@ import { describe, it, expect } from 'vitest';
 import {
   TIERS,
   TIER_DEFINITIONS,
-  classifyTier,
-  getTierDefinition,
-  isValidTier,
-  getTierDisplayName,
+  classify_tier,
+  get_tier_definition,
+  is_valid_tier,
+  get_tier_display_name,
   LIFECYCLE_TRACKED_TIERS,
-  isLifecycleTrackedTier,
+  is_lifecycle_tracked_tier,
 } from '../../../src/core/domains/classifier.js';
 
 describe('Tier Classifier', () => {
@@ -51,7 +51,7 @@ describe('Tier Classifier', () => {
 
   describe('classifyTier', () => {
     it('should classify guide content', () => {
-      const guideContent = `
+      const guide_content = `
 # How to Setup Authentication
 
 ## Overview
@@ -71,13 +71,13 @@ Next, configure your settings.
 Finally, test everything works.
 `;
 
-      const result = classifyTier(guideContent);
+      const result = classify_tier(guide_content);
       expect(result.tier).toBe('guide');
       expect(result.confidence).toBeGreaterThan(0.5);
     });
 
     it('should classify standard content', () => {
-      const standardContent = `
+      const standard_content = `
 # API Design Standards
 
 ## Rules
@@ -98,12 +98,12 @@ All endpoints SHOULD follow kebab-case naming.
 Follow these best practices for consistent API design.
 `;
 
-      const result = classifyTier(standardContent);
+      const result = classify_tier(standard_content);
       expect(['standard', 'guide']).toContain(result.tier);
     });
 
     it('should classify example content', () => {
-      const exampleContent = `
+      const example_content = `
 # React Component Example
 
 ## Code
@@ -124,12 +124,12 @@ export function Button({ label }: Props) {
 Renders a button with the label.
 `;
 
-      const result = classifyTier(exampleContent);
+      const result = classify_tier(example_content);
       expect(['example', 'guide']).toContain(result.tier);
     });
 
     it('should classify reference content', () => {
-      const referenceContent = `
+      const reference_content = `
 # API Reference
 
 ## Endpoints
@@ -163,13 +163,13 @@ Renders a button with the label.
 Returns a user by ID.
 `;
 
-      const result = classifyTier(referenceContent);
+      const result = classify_tier(reference_content);
       expect(['reference', 'admin']).toContain(result.tier);
     });
 
     it('should return confidence between 0 and 1', () => {
       const content = 'Some random content';
-      const result = classifyTier(content);
+      const result = classify_tier(content);
 
       expect(result.confidence).toBeGreaterThanOrEqual(0);
       expect(result.confidence).toBeLessThanOrEqual(1);
@@ -177,7 +177,7 @@ Returns a user by ID.
 
     it('should return scores for all tiers', () => {
       const content = 'Some content here';
-      const result = classifyTier(content);
+      const result = classify_tier(content);
 
       for (const tier of TIERS) {
         expect(result.scores).toHaveProperty(tier);
@@ -187,38 +187,38 @@ Returns a user by ID.
 
   describe('getTierDefinition', () => {
     it('should return the correct definition', () => {
-      const guideDef = getTierDefinition('guide');
-      expect(guideDef.id).toBe('guide');
-      expect(guideDef.name).toBe('Guide');
+      const guide_def = get_tier_definition('guide');
+      expect(guide_def.id).toBe('guide');
+      expect(guide_def.name).toBe('Guide');
     });
   });
 
   describe('isValidTier', () => {
     it('should return true for valid tiers', () => {
-      expect(isValidTier('guide')).toBe(true);
-      expect(isValidTier('standard')).toBe(true);
-      expect(isValidTier('admin')).toBe(true);
-      expect(isValidTier('plan')).toBe(true);
-      expect(isValidTier('fact')).toBe(true);
-      expect(isValidTier('incident-narrative')).toBe(true);
-      expect(isValidTier('incident-facts')).toBe(true);
+      expect(is_valid_tier('guide')).toBe(true);
+      expect(is_valid_tier('standard')).toBe(true);
+      expect(is_valid_tier('admin')).toBe(true);
+      expect(is_valid_tier('plan')).toBe(true);
+      expect(is_valid_tier('fact')).toBe(true);
+      expect(is_valid_tier('incident-narrative')).toBe(true);
+      expect(is_valid_tier('incident-facts')).toBe(true);
     });
 
     it('should return false for invalid tiers', () => {
-      expect(isValidTier('invalid')).toBe(false);
-      expect(isValidTier('')).toBe(false);
-      expect(isValidTier('GUIDE')).toBe(false);
-      expect(isValidTier('incident')).toBe(false); // must be incident-narrative or incident-facts
-      expect(isValidTier('playbook-symptoms')).toBe(false); // symptoms is a field, not a tier
+      expect(is_valid_tier('invalid')).toBe(false);
+      expect(is_valid_tier('')).toBe(false);
+      expect(is_valid_tier('GUIDE')).toBe(false);
+      expect(is_valid_tier('incident')).toBe(false); // must be incident-narrative or incident-facts
+      expect(is_valid_tier('playbook-symptoms')).toBe(false); // symptoms is a field, not a tier
     });
   });
 
   describe('getTierDisplayName', () => {
     it('should return display names', () => {
-      expect(getTierDisplayName('guide')).toBe('Guide');
-      expect(getTierDisplayName('standard')).toBe('Standard');
-      expect(getTierDisplayName('admin')).toBe('Admin');
-      expect(getTierDisplayName('plan')).toBe('Plan');
+      expect(get_tier_display_name('guide')).toBe('Guide');
+      expect(get_tier_display_name('standard')).toBe('Standard');
+      expect(get_tier_display_name('admin')).toBe('Admin');
+      expect(get_tier_display_name('plan')).toBe('Plan');
     });
   });
 
@@ -240,16 +240,16 @@ Returns a user by ID.
     });
 
     it('isLifecycleTrackedTier returns true only for lifecycle tiers', () => {
-      expect(isLifecycleTrackedTier('plan')).toBe(true);
-      expect(isLifecycleTrackedTier('fact')).toBe(true);
-      expect(isLifecycleTrackedTier('incident-narrative')).toBe(true);
-      expect(isLifecycleTrackedTier('incident-facts')).toBe(true);
-      expect(isLifecycleTrackedTier('guide')).toBe(false);
-      expect(isLifecycleTrackedTier('admin')).toBe(false);
-      expect(isLifecycleTrackedTier(undefined)).toBe(false);
-      expect(isLifecycleTrackedTier(null)).toBe(false);
-      expect(isLifecycleTrackedTier('')).toBe(false);
-      expect(isLifecycleTrackedTier('FACT')).toBe(false);
+      expect(is_lifecycle_tracked_tier('plan')).toBe(true);
+      expect(is_lifecycle_tracked_tier('fact')).toBe(true);
+      expect(is_lifecycle_tracked_tier('incident-narrative')).toBe(true);
+      expect(is_lifecycle_tracked_tier('incident-facts')).toBe(true);
+      expect(is_lifecycle_tracked_tier('guide')).toBe(false);
+      expect(is_lifecycle_tracked_tier('admin')).toBe(false);
+      expect(is_lifecycle_tracked_tier(undefined)).toBe(false);
+      expect(is_lifecycle_tracked_tier(null)).toBe(false);
+      expect(is_lifecycle_tracked_tier('')).toBe(false);
+      expect(is_lifecycle_tracked_tier('FACT')).toBe(false);
     });
   });
 
@@ -265,7 +265,7 @@ Returns a user by ID.
     });
 
     it('classifyTier scores fact-shaped content into the fact tier', () => {
-      const factContent = `
+      const fact_content = `
 # Alloy reads env only at entrypoint
 
 ## Claim
@@ -280,7 +280,7 @@ Updating Vault tokens via .env requires a container restart, not a config reload
 ## Provenance
 Confidence: high. Last verified: 2026-05-14.
 `;
-      const result = classifyTier(factContent);
+      const result = classify_tier(fact_content);
       expect(result.tier).toBe('fact');
     });
   });
@@ -297,7 +297,7 @@ Confidence: high. Last verified: 2026-05-14.
     });
 
     it('classifyTier scores postmortem-shaped content into incident-narrative', () => {
-      const postmortemContent = `
+      const postmortem_content = `
 # Postmortem: Vault Down on Auth-Staging
 
 ## Timeline
@@ -318,7 +318,7 @@ Restarted Alloy container.
 - Alloy can produce false-positive metric outages
 - On-call playbook should check Alloy before assuming Vault outage
 `;
-      const result = classifyTier(postmortemContent);
+      const result = classify_tier(postmortem_content);
       expect(result.tier).toBe('incident-narrative');
     });
   });
@@ -336,7 +336,7 @@ Restarted Alloy container.
     });
 
     it('classifyTier scores plan-shaped content into the plan tier', () => {
-      const planContent = `
+      const plan_content = `
 # Task Plan: Migrate to Postgres
 
 ## Goal
@@ -358,7 +358,7 @@ Three phases.
 ## Status
 Phase 1 in progress
 `;
-      const result = classifyTier(planContent);
+      const result = classify_tier(plan_content);
       // Plan-shaped content should win the classification
       expect(result.tier).toBe('plan');
     });

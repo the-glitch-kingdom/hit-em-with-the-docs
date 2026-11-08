@@ -8,9 +8,9 @@
 
 import { readFile, writeFile } from 'fs/promises';
 import { basename, dirname, join, relative } from 'path';
-import { parseFrontmatter } from '../../utils/frontmatter.js';
-import { buildLinkGraph } from './tracker.js';
-import { isOutOfOverviewScope } from './clusters.js';
+import { parse_frontmatter } from '../../utils/frontmatter.js';
+import { build_link_graph } from './tracker.js';
+import { is_out_of_overview_scope } from './clusters.js';
 
 export interface BacklinkChange {
   /** Member path relative to the docs root. */
@@ -21,34 +21,34 @@ export interface BacklinkChange {
 
 const FRONTMATTER = /^---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/;
 
-export async function addOverviewBacklinks(docsPath: string, opts: { dryRun?: boolean } = {}): Promise<BacklinkChange[]> {
-  const graph = await buildLinkGraph(docsPath);
+export async function add_overview_backlinks(docs_path: string, opts: { dryRun?: boolean } = {}): Promise<BacklinkChange[]> {
+  const graph = await build_link_graph(docs_path);
   const read = new Map<string, { raw: string; data: Record<string, unknown> }>();
   const load = async (id: string) => {
     if (!read.has(id)) {
-      const raw = await readFile(join(docsPath, id), 'utf-8');
+      const raw = await readFile(join(docs_path, id), 'utf-8');
       let data: Record<string, unknown> = {};
-      try { data = parseFrontmatter<Record<string, unknown>>(raw).data; } catch { /* plain doc */ }
+      try { data = parse_frontmatter<Record<string, unknown>>(raw).data; } catch { /* plain doc */ }
       read.set(id, { raw, data });
     }
     return read.get(id)!;
   };
-  const isGenerated = (id: string, d: Record<string, unknown>) =>
+  const is_generated = (id: string, d: Record<string, unknown>) =>
     d.generated === true || ['INDEX.md', 'REGISTRY.md'].includes(basename(id));
 
   const linked = new Set(graph.edges.map((e) => `${e.source}\0${e.target}`));
   const wanted = new Map<string, Set<string>>(); // member -> overviews
-  const overviewIds = new Set<string>();
+  const overview_ids = new Set<string>();
   for (const n of graph.nodes) {
     const { data } = await load(n.id);
-    if (data.kind === 'overview' && !isOutOfOverviewScope(n.id, data)) overviewIds.add(n.id);
+    if (data.kind === 'overview' && !is_out_of_overview_scope(n.id, data)) overview_ids.add(n.id);
   }
 
   for (const e of graph.edges) {
-    if (!overviewIds.has(e.source) || e.source === e.target) continue;
+    if (!overview_ids.has(e.source) || e.source === e.target) continue;
     if (linked.has(`${e.target}\0${e.source}`)) continue;
     const m = await load(e.target);
-    if (isGenerated(e.target, m.data) || isOutOfOverviewScope(e.target, m.data)) continue;
+    if (is_generated(e.target, m.data) || is_out_of_overview_scope(e.target, m.data)) continue;
     // Text check too: a path the link parser can't read (spaces, parens) must not be re-inserted every run.
     if (m.raw.includes(`](${relative(dirname(e.target), e.source).split('\\').join('/')})`)) continue;
     (wanted.get(e.target) ?? wanted.set(e.target, new Set()).get(e.target)!).add(e.source);
@@ -78,7 +78,7 @@ export async function addOverviewBacklinks(docsPath: string, opts: { dryRun?: bo
     } else {
       next = fm + block + '\n\n' + body;
     }
-    if (!opts.dryRun) await writeFile(join(docsPath, file), next);
+    if (!opts.dryRun) await writeFile(join(docs_path, file), next);
     changes.push({ file, overviews });
   }
   return changes;

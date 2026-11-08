@@ -83,10 +83,10 @@ async function main() {
   try {
     const registry = await import('../dist/core/domains/registry.js');
     // Seed the lazy registry with THIS project's root: the hook's cwd comes from the
-    // payload and is not necessarily process.cwd(), which is what getRegistry()
+    // payload and is not necessarily process.cwd(), which is what get_registry()
     // defaults to. Getting that wrong would read another project's custom domains.
-    registry.getRegistry(cwd);
-    domains = registry.getAllDomains();
+    registry.get_registry(cwd);
+    domains = registry.get_all_domains();
   } catch {
     domains = undefined;
   }

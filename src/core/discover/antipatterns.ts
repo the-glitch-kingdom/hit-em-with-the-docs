@@ -167,16 +167,16 @@ const ANTI_PATTERN_DEFINITIONS: AntiPatternDefinition[] = [
 /**
  * Discover anti-patterns in codebase
  */
-export async function discoverAntiPatterns(
+export async function discover_anti_patterns(
   options: AntiPatternDiscoveryOptions
 ): Promise<DiscoveredAntiPattern[]> {
-  const { rootPath, silent = false } = options;
+  const { rootPath: root_path, silent = false } = options;
 
   const discovered: DiscoveredAntiPattern[] = [];
 
   if (!silent) {
     logger.header('Anti-Pattern Discovery');
-    logger.info(`Scanning: ${rootPath}`);
+    logger.info(`Scanning: ${root_path}`);
   }
 
   // Find all source files
@@ -185,7 +185,7 @@ export async function discoverAntiPatterns(
 
   for (const pattern of patterns) {
     const matches = await glob(pattern, {
-      cwd: rootPath,
+      cwd: root_path,
       absolute: true,
       ignore: ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**'],
     });
@@ -202,27 +202,27 @@ export async function discoverAntiPatterns(
   for (const definition of ANTI_PATTERN_DEFINITIONS) {
     if (definition.patterns.length === 0) continue;
 
-    const antiPattern = await scanForAntiPattern(files, rootPath, definition);
-    if (antiPattern.locations.length > 0) {
-      discovered.push(antiPattern);
+    const anti_pattern = await scan_for_anti_pattern(files, root_path, definition);
+    if (anti_pattern.locations.length > 0) {
+      discovered.push(anti_pattern);
     }
   }
 
   // Check for long functions
-  const longFunctions = await findLongFunctions(files, rootPath);
-  if (longFunctions.locations.length > 0) {
-    discovered.push(longFunctions);
+  const long_functions = await find_long_functions(files, root_path);
+  if (long_functions.locations.length > 0) {
+    discovered.push(long_functions);
   }
 
   // Check for god objects
-  const godObjects = await findGodObjects(files, rootPath);
-  if (godObjects.locations.length > 0) {
-    discovered.push(godObjects);
+  const god_objects = await find_god_objects(files, root_path);
+  if (god_objects.locations.length > 0) {
+    discovered.push(god_objects);
   }
 
   // Sort by severity
-  const severityOrder = { high: 0, medium: 1, low: 2 };
-  discovered.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+  const severity_order = { high: 0, medium: 1, low: 2 };
+  discovered.sort((a, b) => severity_order[a.severity] - severity_order[b.severity]);
 
   if (!silent) {
     logger.newline();
@@ -249,9 +249,9 @@ export async function discoverAntiPatterns(
 /**
  * Scan for a specific anti-pattern
  */
-async function scanForAntiPattern(
+async function scan_for_anti_pattern(
   files: string[],
-  rootPath: string,
+  root_path: string,
   definition: AntiPatternDefinition
 ): Promise<DiscoveredAntiPattern> {
   const locations: AntiPatternLocation[] = [];
@@ -276,19 +276,19 @@ async function scanForAntiPattern(
             continue;
           }
 
-          const beforeMatch = content.slice(0, match.index);
-          const lineNumber = (beforeMatch.match(/\n/g) ?? []).length + 1;
-          const codeLine = lines[lineNumber - 1] ?? '';
+          const before_match = content.slice(0, match.index);
+          const line_number = (before_match.match(/\n/g) ?? []).length + 1;
+          const code_line = lines[line_number - 1] ?? '';
 
           // Skip if in comments
-          if (codeLine.trim().startsWith('//') || codeLine.trim().startsWith('*')) {
+          if (code_line.trim().startsWith('//') || code_line.trim().startsWith('*')) {
             continue;
           }
 
           locations.push({
-            file: relative(rootPath, file),
-            line: lineNumber,
-            code: codeLine.trim().slice(0, 100),
+            file: relative(root_path, file),
+            line: line_number,
+            code: code_line.trim().slice(0, 100),
           });
 
           // Limit locations per anti-pattern
@@ -315,9 +315,9 @@ async function scanForAntiPattern(
 /**
  * Find long functions (> 50 lines)
  */
-async function findLongFunctions(
+async function find_long_functions(
   files: string[],
-  rootPath: string
+  root_path: string
 ): Promise<DiscoveredAntiPattern> {
   const locations: AntiPatternLocation[] = [];
   const threshold = 50;
@@ -328,39 +328,39 @@ async function findLongFunctions(
       const lines = content.split('\n');
 
       // Simple heuristic: count lines between function declarations and closing braces
-      const functionPattern = /(?:function\s+\w+|(?:async\s+)?(?:const|let|var)\s+\w+\s*=\s*(?:async\s*)?\([^)]*\)\s*=>|(?:async\s+)?\w+\s*\([^)]*\)\s*{)/g;
+      const function_pattern = /(?:function\s+\w+|(?:async\s+)?(?:const|let|var)\s+\w+\s*=\s*(?:async\s*)?\([^)]*\)\s*=>|(?:async\s+)?\w+\s*\([^)]*\)\s*{)/g;
 
       let match;
-      while ((match = functionPattern.exec(content)) !== null) {
-        const startLine = (content.slice(0, match.index).match(/\n/g) ?? []).length + 1;
+      while ((match = function_pattern.exec(content)) !== null) {
+        const start_line = (content.slice(0, match.index).match(/\n/g) ?? []).length + 1;
 
         // Count function length (simple brace counting)
-        let braceCount = 0;
+        let brace_count = 0;
         let started = false;
-        let endLine = startLine;
+        let end_line = start_line;
 
-        for (let i = startLine - 1; i < lines.length; i++) {
+        for (let i = start_line - 1; i < lines.length; i++) {
           const line = lines[i] ?? '';
 
           if (line.includes('{')) {
-            braceCount += (line.match(/{/g) ?? []).length;
+            brace_count += (line.match(/{/g) ?? []).length;
             started = true;
           }
           if (line.includes('}')) {
-            braceCount -= (line.match(/}/g) ?? []).length;
+            brace_count -= (line.match(/}/g) ?? []).length;
           }
 
-          if (started && braceCount === 0) {
-            endLine = i + 1;
+          if (started && brace_count === 0) {
+            end_line = i + 1;
             break;
           }
         }
 
-        const length = endLine - startLine;
+        const length = end_line - start_line;
         if (length > threshold) {
           locations.push({
-            file: relative(rootPath, file),
-            line: startLine,
+            file: relative(root_path, file),
+            line: start_line,
             code: `Function spans ${length} lines`,
           });
 
@@ -385,9 +385,9 @@ async function findLongFunctions(
 /**
  * Find god objects (classes > 500 lines)
  */
-async function findGodObjects(
+async function find_god_objects(
   files: string[],
-  rootPath: string
+  root_path: string
 ): Promise<DiscoveredAntiPattern> {
   const locations: AntiPatternLocation[] = [];
   const threshold = 500;
@@ -398,41 +398,41 @@ async function findGodObjects(
       const lines = content.split('\n');
 
       // Find class declarations
-      const classPattern = /class\s+(\w+)/g;
+      const class_pattern = /class\s+(\w+)/g;
 
       let match;
-      while ((match = classPattern.exec(content)) !== null) {
-        const className = match[1];
-        const startLine = (content.slice(0, match.index).match(/\n/g) ?? []).length + 1;
+      while ((match = class_pattern.exec(content)) !== null) {
+        const class_name = match[1];
+        const start_line = (content.slice(0, match.index).match(/\n/g) ?? []).length + 1;
 
         // Count class length
-        let braceCount = 0;
+        let brace_count = 0;
         let started = false;
-        let endLine = startLine;
+        let end_line = start_line;
 
-        for (let i = startLine - 1; i < lines.length; i++) {
+        for (let i = start_line - 1; i < lines.length; i++) {
           const line = lines[i] ?? '';
 
           if (line.includes('{')) {
-            braceCount += (line.match(/{/g) ?? []).length;
+            brace_count += (line.match(/{/g) ?? []).length;
             started = true;
           }
           if (line.includes('}')) {
-            braceCount -= (line.match(/}/g) ?? []).length;
+            brace_count -= (line.match(/}/g) ?? []).length;
           }
 
-          if (started && braceCount === 0) {
-            endLine = i + 1;
+          if (started && brace_count === 0) {
+            end_line = i + 1;
             break;
           }
         }
 
-        const length = endLine - startLine;
+        const length = end_line - start_line;
         if (length > threshold) {
           locations.push({
-            file: relative(rootPath, file),
-            line: startLine,
-            code: `Class ${className} spans ${length} lines`,
+            file: relative(root_path, file),
+            line: start_line,
+            code: `Class ${class_name} spans ${length} lines`,
           });
 
           if (locations.length >= 10) break;

@@ -1,8 +1,8 @@
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
-import { resolveReportsDir } from '../utils/config.js';
-import { pathExists } from '../utils/glob.js';
-import { formatDate } from '../core/metadata/generator.js';
+import { resolve_reports_dir } from '../utils/config.js';
+import { path_exists } from '../utils/glob.js';
+import { format_date } from '../core/metadata/generator.js';
 import type { MaintainResult } from '../core/maintain/orchestrator.js';
 
 export interface HealthReportOptions {
@@ -14,23 +14,23 @@ export interface HealthReportOptions {
 /**
  * Generate a health report
  */
-export async function generateHealthReport(
+export async function generate_health_report(
   options: HealthReportOptions
 ): Promise<string> {
   const { result, format = 'markdown' } = options;
 
   if (format === 'json') {
-    return generateJsonReport(result);
+    return generate_json_report(result);
   }
 
-  return generateMarkdownReport(result);
+  return generate_markdown_report(result);
 }
 
 /**
  * Generate markdown health report
  */
-function generateMarkdownReport(result: MaintainResult): string {
-  const now = formatDate(new Date());
+function generate_markdown_report(result: MaintainResult): string {
+  const now = format_date(new Date());
   const timestamp = new Date().toISOString();
 
   return `---
@@ -52,10 +52,10 @@ generated: true
 
 | Metric | Value | Status |
 |--------|-------|--------|
-| Health Score | ${result.healthScore.toFixed(1)}% | ${getStatusEmoji(result.healthScore)} |
+| Health Score | ${result.healthScore.toFixed(1)}% | ${get_status_emoji(result.healthScore)} |
 | Domain Health | ${result.domainHealth.healthy ? 'Healthy' : 'Issues'} | ${result.domainHealth.healthy ? '✅' : '⚠️'} |
 | Files Analyzed | ${result.metadataSync?.totalFiles ?? 0} | ℹ️ |
-| Valid Files | ${result.metadataSync?.validFiles ?? 0} | ${getStatusEmoji((result.metadataSync?.validFiles ?? 0) / (result.metadataSync?.totalFiles ?? 1) * 100)} |
+| Valid Files | ${result.metadataSync?.validFiles ?? 0} | ${get_status_emoji((result.metadataSync?.validFiles ?? 0) / (result.metadataSync?.totalFiles ?? 1) * 100)} |
 | Broken Links | ${result.linkCheck?.brokenLinks.length ?? 'N/A'} | ${(result.linkCheck?.brokenLinks.length ?? 0) === 0 ? '✅' : '⚠️'} |
 
 ## Health Score Breakdown
@@ -70,9 +70,9 @@ Components:
 └── Naming Compliance: ${result.audit?.stats.namingCompliance.toFixed(1) ?? 'N/A'}/100 (weight: 20%)
 \`\`\`
 
-${renderCoverage(result)}## Recommendations
+${render_coverage(result)}## Recommendations
 
-${generateRecommendations(result)}
+${generate_recommendations(result)}
 
 ---
 
@@ -83,7 +83,7 @@ ${generateRecommendations(result)}
 /** Percentage of `n` in `total`, 0 when the tree is empty. */
 const pct = (n: number, total: number): string => (total === 0 ? '0.0' : ((n / total) * 100).toFixed(1));
 
-function renderCoverage(result: MaintainResult): string {
+function render_coverage(result: MaintainResult): string {
   const c = result.retrievalCoverage;
   if (!c) return '';
   const row = (label: string, n: number): string => `| ${label} | ${n}/${c.total} | ${pct(n, c.total)}% |`;
@@ -96,11 +96,11 @@ Generated files, drafts, reports, archive and plan docs are excluded.
 ${row('Non-weak purpose', c.withPurpose)}
 ${row('Symptoms', c.withSymptoms)}
 ${row('Unique title', c.withUniqueTitle)}
-${renderOverviews(result)}
+${render_overviews(result)}
 `;
 }
 
-function renderOverviews(result: MaintainResult): string {
+function render_overviews(result: MaintainResult): string {
   const o = result.overviewCoverage;
   if (!o) return '';
   const rows = o.missing.map((m) => `| ${m.id} | ${m.size} | ${m.generatedOnlyHub ? 'yes' : 'no'} |`).join('\n');
@@ -112,7 +112,7 @@ ${rows ? `\n| Cluster missing an overview | Docs | Generated-only hub |\n|---|--
 /**
  * Generate JSON health report
  */
-function generateJsonReport(result: MaintainResult): string {
+function generate_json_report(result: MaintainResult): string {
   return JSON.stringify({
     timestamp: new Date().toISOString(),
     healthScore: result.healthScore,
@@ -150,7 +150,7 @@ function generateJsonReport(result: MaintainResult): string {
 /**
  * Get status emoji based on score
  */
-function getStatusEmoji(score: number): string {
+function get_status_emoji(score: number): string {
   if (score >= 90) return '✅';
   if (score >= 70) return '🟡';
   if (score >= 50) return '⚠️';
@@ -160,7 +160,7 @@ function getStatusEmoji(score: number): string {
 /**
  * Generate recommendations based on results
  */
-function generateRecommendations(result: MaintainResult): string {
+function generate_recommendations(result: MaintainResult): string {
   const recommendations: string[] = [];
 
   // Domain health recommendations
@@ -178,9 +178,9 @@ function generateRecommendations(result: MaintainResult): string {
 
   // Metadata recommendations
   if (result.metadataSync) {
-    const invalidFiles = result.metadataSync.totalFiles - result.metadataSync.validFiles;
-    if (invalidFiles > 0) {
-      recommendations.push(`- **Fix metadata in ${invalidFiles} files:** Run \`npx hit-em-with-the-docs metadata-sync --fix\``);
+    const invalid_files = result.metadataSync.totalFiles - result.metadataSync.validFiles;
+    if (invalid_files > 0) {
+      recommendations.push(`- **Fix metadata in ${invalid_files} files:** Run \`npx hit-em-with-the-docs metadata-sync --fix\``);
     }
     if (result.metadataSync.stats.avgCompleteness < 80) {
       recommendations.push(`- **Improve metadata completeness:** Current average is ${result.metadataSync.stats.avgCompleteness.toFixed(1)}%`);
@@ -213,24 +213,24 @@ function generateRecommendations(result: MaintainResult): string {
 /**
  * Save health report to file
  */
-export async function saveHealthReport(
-  docsPath: string,
+export async function save_health_report(
+  docs_path: string,
   result: MaintainResult,
   format: 'markdown' | 'json' = 'markdown'
 ): Promise<string> {
-  const reportsDir = await resolveReportsDir(docsPath);
+  const reports_dir = await resolve_reports_dir(docs_path);
 
-  if (!(await pathExists(reportsDir))) {
-    await mkdir(reportsDir, { recursive: true });
+  if (!(await path_exists(reports_dir))) {
+    await mkdir(reports_dir, { recursive: true });
   }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const ext = format === 'json' ? 'json' : 'md';
-  const fileName = `health-${timestamp}.${ext}`;
-  const filePath = join(reportsDir, fileName);
+  const file_name = `health-${timestamp}.${ext}`;
+  const file_path = join(reports_dir, file_name);
 
-  const content = await generateHealthReport({ docsPath, result, format });
-  await writeFile(filePath, content, 'utf-8');
+  const content = await generate_health_report({ docsPath: docs_path, result, format });
+  await writeFile(file_path, content, 'utf-8');
 
-  return filePath;
+  return file_path;
 }

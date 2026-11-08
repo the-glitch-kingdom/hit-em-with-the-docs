@@ -1,19 +1,19 @@
 import { dirname, join } from 'path';
 import { writeFile, mkdir } from 'fs/promises';
 import { logger } from '../../utils/logger.js';
-import { pathExists, findMarkdownFiles } from '../../utils/glob.js';
-import { collectRetrievalDocs, retrievalCoverage, type RetrievalCoverage } from '../audit/retrieval.js';
-import { findClusters } from '../links/clusters.js';
-import { addOverviewBacklinks, type BacklinkChange } from '../links/backlinks.js';
-import { syncMetadata, type SyncResult } from '../metadata/sync.js';
-import { checkLinks, type LinkCheckResult } from '../links/checker.js';
-import { auditDocumentation, type AuditResult } from '../audit/auditor.js';
-import { getAllDomains } from '../domains/registry.js';
-import { formatDate } from '../metadata/generator.js';
-import { loadPluginConfig, resolveReportsDir } from '../../utils/config.js';
+import { path_exists, find_markdown_files } from '../../utils/glob.js';
+import { collect_retrieval_docs, retrieval_coverage, type RetrievalCoverage } from '../audit/retrieval.js';
+import { find_clusters } from '../links/clusters.js';
+import { add_overview_backlinks, type BacklinkChange } from '../links/backlinks.js';
+import { sync_metadata, type SyncResult } from '../metadata/sync.js';
+import { check_links, type LinkCheckResult } from '../links/checker.js';
+import { audit_documentation, type AuditResult } from '../audit/auditor.js';
+import { get_all_domains } from '../domains/registry.js';
+import { format_date } from '../metadata/generator.js';
+import { load_plugin_config, resolve_reports_dir } from '../../utils/config.js';
 import {
-  regenerateIndexes,
-  generateKbIndexes,
+  regenerate_indexes,
+  generate_kb_indexes,
   type RegenerateResult,
 } from '../../generators/regenerate.js';
 
@@ -57,9 +57,9 @@ export interface DomainHealthResult {
 /**
  * Run full maintenance on documentation
  */
-export async function runMaintenance(options: MaintainOptions): Promise<MaintainResult> {
+export async function run_maintenance(options: MaintainOptions): Promise<MaintainResult> {
   const {
-    docsPath,
+    docsPath: docs_path,
     quick = false,
     fix = false,
     silent = false,
@@ -78,12 +78,12 @@ export async function runMaintenance(options: MaintainOptions): Promise<Maintain
     errors: [],
   };
 
-  const startTime = Date.now();
+  const start_time = Date.now();
 
   if (!silent) {
     logger.header('Documentation Maintenance');
     logger.info(`Mode: ${quick ? 'Quick' : 'Full'}${fix ? ' (Auto-fix)' : ''}`);
-    logger.info(`Path: ${docsPath}`);
+    logger.info(`Path: ${docs_path}`);
   }
 
   // Step 0: Domain Health Check
@@ -91,7 +91,7 @@ export async function runMaintenance(options: MaintainOptions): Promise<Maintain
     logger.subheader('Step 0: Domain Health Check');
   }
 
-  result.domainHealth = await checkDomainHealth(docsPath);
+  result.domainHealth = await check_domain_health(docs_path);
 
   if (!silent) {
     if (result.domainHealth.healthy) {
@@ -113,9 +113,9 @@ export async function runMaintenance(options: MaintainOptions): Promise<Maintain
   // Overview back-links (#51): body edits, so only written under --fix; always listed.
   // Runs before metadata sync so word_count/read-time and the indexes see the edit in the same run.
   try {
-    const cfg = await loadPluginConfig(dirname(docsPath));
+    const cfg = await load_plugin_config(dirname(docs_path));
     if (cfg.overview.backlinks) {
-      result.overviewBacklinks = await addOverviewBacklinks(docsPath, { dryRun: !fix });
+      result.overviewBacklinks = await add_overview_backlinks(docs_path, { dryRun: !fix });
     }
   } catch (error) {
     result.errors.push(`Overview back-links failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -127,8 +127,8 @@ export async function runMaintenance(options: MaintainOptions): Promise<Maintain
   }
 
   try {
-    result.metadataSync = await syncMetadata({
-      docsPath,
+    result.metadataSync = await sync_metadata({
+      docsPath: docs_path,
       dryRun: !fix,
       fix,
       silent,
@@ -151,7 +151,7 @@ export async function runMaintenance(options: MaintainOptions): Promise<Maintain
   }
 
   try {
-    result.indexRegeneration = await regenerateIndexes({ docsPath, silent });
+    result.indexRegeneration = await regenerate_indexes({ docsPath: docs_path, silent });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     result.errors.push(`Index regeneration failed: ${message}`);
@@ -166,7 +166,7 @@ export async function runMaintenance(options: MaintainOptions): Promise<Maintain
   // inputs reported different broken-link counts, and a generator fix appeared not to work
   // until you ran maintain twice. Generated output has to exist before anything validates it.
   try {
-    await maybeGenerateKbIndexes(docsPath, silent, result);
+    await maybe_generate_kb_indexes(docs_path, silent, result);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     result.errors.push(`Knowledge-base index generation failed: ${message}`);
@@ -179,8 +179,8 @@ export async function runMaintenance(options: MaintainOptions): Promise<Maintain
     }
 
     try {
-      result.linkCheck = await checkLinks({
-        docsPath,
+      result.linkCheck = await check_links({
+        docsPath: docs_path,
         silent,
       });
     } catch (error) {
@@ -197,8 +197,8 @@ export async function runMaintenance(options: MaintainOptions): Promise<Maintain
   }
 
   try {
-    result.audit = await auditDocumentation({
-      docsPath,
+    result.audit = await audit_documentation({
+      docsPath: docs_path,
       silent,
     });
   } catch (error) {
@@ -208,17 +208,17 @@ export async function runMaintenance(options: MaintainOptions): Promise<Maintain
 
   // Retrieval coverage (#50): shown in the health report only, not part of the score.
   try {
-    const docs = await collectRetrievalDocs(docsPath, await findMarkdownFiles(docsPath));
-    const cfg = await loadPluginConfig(dirname(docsPath));
-    result.retrievalCoverage = retrievalCoverage(docs, cfg.retrieval);
+    const docs = await collect_retrieval_docs(docs_path, await find_markdown_files(docs_path));
+    const cfg = await load_plugin_config(dirname(docs_path));
+    result.retrievalCoverage = retrieval_coverage(docs, cfg.retrieval);
   } catch (error) {
     result.errors.push(`Retrieval coverage failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   // Overview coverage (#51): clusters with and without an overview.
   try {
-    const cfg = await loadPluginConfig(dirname(docsPath));
-    const clusters = await findClusters(docsPath, cfg.overview);
+    const cfg = await load_plugin_config(dirname(docs_path));
+    const clusters = await find_clusters(docs_path, cfg.overview);
     const missing = clusters.filter((c) => !c.overview);
     result.overviewCoverage = {
       withOverview: clusters.length - missing.length,
@@ -230,7 +230,7 @@ export async function runMaintenance(options: MaintainOptions): Promise<Maintain
   }
 
   // Calculate overall health score
-  result.healthScore = calculateHealthScore(result);
+  result.healthScore = calculate_health_score(result);
 
   // Generate report
   if (!silent) {
@@ -238,7 +238,7 @@ export async function runMaintenance(options: MaintainOptions): Promise<Maintain
   }
 
   try {
-    result.reportPath = await generateMaintenanceReport(docsPath, result, startTime);
+    result.reportPath = await generate_maintenance_report(docs_path, result, start_time);
     if (!silent) {
       logger.success(`Report saved: ${result.reportPath}`);
     }
@@ -249,7 +249,7 @@ export async function runMaintenance(options: MaintainOptions): Promise<Maintain
 
   // Summary
   if (!silent) {
-    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+    const duration = ((Date.now() - start_time) / 1000).toFixed(1);
     logger.newline();
     logger.header('Maintenance Summary');
     logger.info(`Duration: ${duration}s`);
@@ -283,7 +283,7 @@ export async function runMaintenance(options: MaintainOptions): Promise<Maintain
 /**
  * Check domain health (folders, index files, registry files)
  */
-async function checkDomainHealth(docsPath: string): Promise<DomainHealthResult> {
+async function check_domain_health(docs_path: string): Promise<DomainHealthResult> {
   const result: DomainHealthResult = {
     healthy: true,
     presentDomains: [],
@@ -292,27 +292,27 @@ async function checkDomainHealth(docsPath: string): Promise<DomainHealthResult> 
     missingRegistries: [],
   };
 
-  for (const domain of getAllDomains()) {
-    const domainPath = join(docsPath, domain);
-    const indexPath = join(domainPath, 'INDEX.md');
-    const registryPath = join(domainPath, 'REGISTRY.md');
+  for (const domain of get_all_domains()) {
+    const domain_path = join(docs_path, domain);
+    const index_path = join(domain_path, 'INDEX.md');
+    const registry_path = join(domain_path, 'REGISTRY.md');
 
-    const domainExists = await pathExists(domainPath);
-    const indexExists = await pathExists(indexPath);
-    const registryExists = await pathExists(registryPath);
+    const domain_exists = await path_exists(domain_path);
+    const index_exists = await path_exists(index_path);
+    const registry_exists = await path_exists(registry_path);
 
-    if (!domainExists) {
+    if (!domain_exists) {
       result.missingDomains.push(domain);
       result.healthy = false;
     } else {
       result.presentDomains.push(domain);
 
-      if (!indexExists) {
+      if (!index_exists) {
         result.missingIndexes.push(domain);
         result.healthy = false;
       }
 
-      if (!registryExists) {
+      if (!registry_exists) {
         result.missingRegistries.push(domain);
         result.healthy = false;
       }
@@ -325,28 +325,28 @@ async function checkDomainHealth(docsPath: string): Promise<DomainHealthResult> 
 /**
  * Calculate overall health score
  */
-function calculateHealthScore(result: MaintainResult): number {
+function calculate_health_score(result: MaintainResult): number {
   let score = 100;
 
   // Domain health penalty
   if (!result.domainHealth.healthy) {
-    const missingCount =
+    const missing_count =
       result.domainHealth.missingDomains.length +
       result.domainHealth.missingIndexes.length +
       result.domainHealth.missingRegistries.length;
-    score -= missingCount * 2;
+    score -= missing_count * 2;
   }
 
   // Metadata compliance
   if (result.metadataSync) {
-    const complianceRate = result.metadataSync.validFiles / result.metadataSync.totalFiles;
-    score = score * 0.7 + complianceRate * 30;
+    const compliance_rate = result.metadataSync.validFiles / result.metadataSync.totalFiles;
+    score = score * 0.7 + compliance_rate * 30;
   }
 
   // Link health
   if (result.linkCheck) {
-    const brokenRate = result.linkCheck.brokenLinks.length / Math.max(result.linkCheck.totalLinks, 1);
-    score -= brokenRate * 20;
+    const broken_rate = result.linkCheck.brokenLinks.length / Math.max(result.linkCheck.totalLinks, 1);
+    score -= broken_rate * 20;
   }
 
   // Audit score
@@ -360,14 +360,14 @@ function calculateHealthScore(result: MaintainResult): number {
 /**
  * Generate maintenance report
  */
-async function generateMaintenanceReport(
-  docsPath: string,
+async function generate_maintenance_report(
+  docs_path: string,
   result: MaintainResult,
-  startTime: number
+  start_time: number
 ): Promise<string> {
-  const now = formatDate(new Date());
+  const now = format_date(new Date());
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+  const duration = ((Date.now() - start_time) / 1000).toFixed(1);
 
   let content = `---
 title: Maintenance Report - ${now}
@@ -476,14 +476,14 @@ generated: true
 
 `;
 
-    const errorIssues = result.audit.issues.filter((i) => i.severity === 'error');
-    if (errorIssues.length > 0) {
+    const error_issues = result.audit.issues.filter((i) => i.severity === 'error');
+    if (error_issues.length > 0) {
       content += `### Critical Issues\n\n`;
-      for (const issue of errorIssues.slice(0, 10)) {
+      for (const issue of error_issues.slice(0, 10)) {
         content += `- **${issue.file}**: ${issue.message}\n`;
       }
-      if (errorIssues.length > 10) {
-        content += `\n*...and ${errorIssues.length - 10} more errors*\n`;
+      if (error_issues.length > 10) {
+        content += `\n*...and ${error_issues.length - 10} more errors*\n`;
       }
       content += '\n';
     }
@@ -505,15 +505,15 @@ generated: true
 `;
 
   // Save report
-  const reportsDir = await resolveReportsDir(docsPath);
-  if (!(await pathExists(reportsDir))) {
-    await mkdir(reportsDir, { recursive: true });
+  const reports_dir = await resolve_reports_dir(docs_path);
+  if (!(await path_exists(reports_dir))) {
+    await mkdir(reports_dir, { recursive: true });
   }
 
-  const reportPath = join(reportsDir, `maintenance-${timestamp}.md`);
-  await writeFile(reportPath, content, 'utf-8');
+  const report_path = join(reports_dir, `maintenance-${timestamp}.md`);
+  await writeFile(report_path, content, 'utf-8');
 
-  return reportPath;
+  return report_path;
 }
 
 /**
@@ -521,12 +521,12 @@ generated: true
  * No-op (silent) when the vault root doesn't exist — backward-compat hard
  * requirement: a 2.2.0-era project tree must observe zero behavior change.
  */
-async function maybeGenerateKbIndexes(
-  docsPath: string,
+async function maybe_generate_kb_indexes(
+  docs_path: string,
   silent: boolean,
   result: MaintainResult
 ): Promise<void> {
-  const kb = await generateKbIndexes(docsPath);
+  const kb = await generate_kb_indexes(docs_path);
   if (!kb) return;
 
   if (!silent) {
@@ -544,24 +544,24 @@ async function maybeGenerateKbIndexes(
 /**
  * Quick health check without full maintenance
  */
-export async function quickHealthCheck(docsPath: string): Promise<{
+export async function quick_health_check(docs_path: string): Promise<{
   healthy: boolean;
   score: number;
   issues: string[];
 }> {
-  const domainHealth = await checkDomainHealth(docsPath);
+  const domain_health = await check_domain_health(docs_path);
   const issues: string[] = [];
 
-  if (!domainHealth.healthy) {
-    if (domainHealth.missingDomains.length > 0) {
-      issues.push(`Missing domains: ${domainHealth.missingDomains.join(', ')}`);
+  if (!domain_health.healthy) {
+    if (domain_health.missingDomains.length > 0) {
+      issues.push(`Missing domains: ${domain_health.missingDomains.join(', ')}`);
     }
-    if (domainHealth.missingIndexes.length > 0) {
-      issues.push(`Missing INDEX.md in: ${domainHealth.missingIndexes.join(', ')}`);
+    if (domain_health.missingIndexes.length > 0) {
+      issues.push(`Missing INDEX.md in: ${domain_health.missingIndexes.join(', ')}`);
     }
   }
 
-  const score = domainHealth.healthy ? 100 : 100 - issues.length * 10;
+  const score = domain_health.healthy ? 100 : 100 - issues.length * 10;
 
   return {
     healthy: issues.length === 0,

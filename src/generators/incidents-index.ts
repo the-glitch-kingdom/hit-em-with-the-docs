@@ -15,28 +15,28 @@
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import type { CiterIndex, IncidentRef } from '../core/knowledge-base/citers.js';
-import { formatMarkdownTable } from './table.js';
+import { format_markdown_table } from './table.js';
 
 export interface GenerateIncidentsIndexOptions {
   vaultRoot: string;
   index: CiterIndex;
 }
 
-export async function generateIncidentsIndex(
+export async function generate_incidents_index(
   options: GenerateIncidentsIndexOptions
 ): Promise<string> {
-  const { vaultRoot, index } = options;
+  const { vaultRoot: vault_root, index } = options;
 
-  const incidentsDir = join(vaultRoot, 'incidents');
-  await mkdir(incidentsDir, { recursive: true });
-  const indexPath = join(incidentsDir, 'INDEX.md');
+  const incidents_dir = join(vault_root, 'incidents');
+  await mkdir(incidents_dir, { recursive: true });
+  const index_path = join(incidents_dir, 'INDEX.md');
 
-  const content = renderIncidentsIndex(index);
-  await writeFile(indexPath, content, 'utf-8');
-  return indexPath;
+  const content = render_incidents_index(index);
+  await writeFile(index_path, content, 'utf-8');
+  return index_path;
 }
 
-export function renderIncidentsIndex(index: CiterIndex): string {
+export function render_incidents_index(index: CiterIndex): string {
   const lines: string[] = [];
   lines.push('---');
   lines.push('title: Incidents Index');
@@ -61,18 +61,18 @@ export function renderIncidentsIndex(index: CiterIndex): string {
   if (index.incidents.size === 0) {
     lines.push('_No incidents yet. Create one with the `templates/knowledge-base/incident-narrative.template.md` template._');
     lines.push('');
-    return ensureTrailingNewline(lines.join('\n'));
+    return ensure_trailing_newline(lines.join('\n'));
   }
 
   lines.push(`**Total incidents:** ${index.incidents.size}`);
   lines.push('');
 
-  const sorted = [...index.incidents.values()].sort(compareIncidents);
+  const sorted = [...index.incidents.values()].sort(compare_incidents);
 
   const rows = sorted.map((inc) => [
     inc.date ?? '—',
     `\`${inc.id}\``,
-    escapeMd(inc.title),
+    escape_md(inc.title),
     inc.severity ?? '—',
     inc.resolution_status ?? '—',
     inc.components.length > 0 ? inc.components.join(', ') : '—',
@@ -80,17 +80,17 @@ export function renderIncidentsIndex(index: CiterIndex): string {
   ]);
 
   lines.push(
-    formatMarkdownTable(
+    format_markdown_table(
       ['Date', 'ID', 'Title', 'Severity', 'Resolution', 'Components', 'Facts produced'],
       rows
     )
   );
   lines.push('');
 
-  return ensureTrailingNewline(lines.join('\n'));
+  return ensure_trailing_newline(lines.join('\n'));
 }
 
-function compareIncidents(a: IncidentRef, b: IncidentRef): number {
+function compare_incidents(a: IncidentRef, b: IncidentRef): number {
   // Date desc, then id asc as tiebreaker.
   const da = a.date ?? '0000-00-00';
   const db = b.date ?? '0000-00-00';
@@ -98,10 +98,10 @@ function compareIncidents(a: IncidentRef, b: IncidentRef): number {
   return a.id.localeCompare(b.id);
 }
 
-function escapeMd(s: string): string {
+function escape_md(s: string): string {
   return s.replace(/\|/g, '\\|');
 }
 
-function ensureTrailingNewline(s: string): string {
+function ensure_trailing_newline(s: string): string {
   return s.endsWith('\n') ? s : s + '\n';
 }

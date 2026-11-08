@@ -113,41 +113,41 @@ export interface BuildCiterIndexOptions {
   playbookGlobs: string[];
 }
 
-const isString = (v: unknown): v is string => typeof v === 'string';
-const isStringArray = (v: unknown): v is string[] =>
-  Array.isArray(v) && v.every(isString);
+const is_string = (v: unknown): v is string => typeof v === 'string';
+const is_string_array = (v: unknown): v is string[] =>
+  Array.isArray(v) && v.every(is_string);
 
 /**
  * Walk the corpus and build a citer index. Designed to be cheap on no-vault
  * trees: if the vault root doesn't exist, returns an empty index without
  * scanning playbooks for symptoms (no point — no facts to cite).
  */
-export async function buildCiterIndex(
+export async function build_citer_index(
   options: BuildCiterIndexOptions
 ): Promise<CiterIndex> {
-  const { projectRoot, vaultRoot, playbookGlobs } = options;
+  const { projectRoot: project_root, vaultRoot: vault_root, playbookGlobs: playbook_globs } = options;
 
   const facts = new Map<string, FactRef>();
   const incidents = new Map<string, IncidentRef>();
   const citers = new Map<string, PlaybookCitation[]>();
 
   // ----- Facts -----
-  const factFiles = await glob(join(vaultRoot, 'facts/*.md'), {
+  const fact_files = await glob(join(vault_root, 'facts/*.md'), {
     nodir: true,
     absolute: true,
   });
-  for (const factPath of factFiles) {
-    const ref = await readFactRef(factPath, projectRoot);
+  for (const fact_path of fact_files) {
+    const ref = await read_fact_ref(fact_path, project_root);
     if (ref) facts.set(ref.id, ref);
   }
 
   // ----- Incidents -----
-  const narrativeFiles = await glob(
-    join(vaultRoot, 'incidents/*/narrative.md'),
+  const narrative_files = await glob(
+    join(vault_root, 'incidents/*/narrative.md'),
     { nodir: true, absolute: true }
   );
-  for (const narrativePath of narrativeFiles) {
-    const ref = await readIncidentRef(narrativePath, projectRoot);
+  for (const narrative_path of narrative_files) {
+    const ref = await read_incident_ref(narrative_path, project_root);
     if (ref) incidents.set(ref.id, ref);
   }
 
@@ -159,21 +159,21 @@ export async function buildCiterIndex(
   // ----- Playbook citations -----
   // Cheap pre-filter: read each candidate file and skip if frontmatter has
   // no `symptoms` key. Avoids paying for full YAML parse on every doc.
-  const playbookCandidates = new Set<string>();
-  for (const pattern of playbookGlobs) {
+  const playbook_candidates = new Set<string>();
+  for (const pattern of playbook_globs) {
     const matches = await glob(pattern, { nodir: true, absolute: true });
-    for (const m of matches) playbookCandidates.add(m);
+    for (const m of matches) playbook_candidates.add(m);
   }
 
-  for (const playbookPath of playbookCandidates) {
-    const cits = await extractPlaybookCitations(playbookPath, projectRoot);
+  for (const playbook_path of playbook_candidates) {
+    const cits = await extract_playbook_citations(playbook_path, project_root);
     for (const c of cits) {
       // Each citation has a list of fact ids implicit in the symptoms entry.
-      const factIds = c.factIds;
-      for (const factId of factIds) {
-        const existing = citers.get(factId) ?? [];
+      const fact_ids = c.factIds;
+      for (const fact_id of fact_ids) {
+        const existing = citers.get(fact_id) ?? [];
         existing.push(c.citation);
-        citers.set(factId, existing);
+        citers.set(fact_id, existing);
       }
     }
   }
@@ -181,25 +181,25 @@ export async function buildCiterIndex(
   return { facts, incidents, citers };
 }
 
-async function readFactRef(
+async function read_fact_ref(
   path: string,
-  projectRoot: string
+  project_root: string
 ): Promise<FactRef | null> {
   try {
     const content = await readFile(path, 'utf-8');
     const { data } = matter(content);
-    if (data.tier !== 'fact' || !isString(data.id)) return null;
+    if (data.tier !== 'fact' || !is_string(data.id)) return null;
 
-    const tags = isStringArray(data.tags) ? data.tags : [];
-    const lastVerified = normalizeDate(data.last_verified);
+    const tags = is_string_array(data.tags) ? data.tags : [];
+    const last_verified = normalize_date(data.last_verified);
 
     return {
       id: data.id,
       path,
-      relPath: relative(projectRoot, path),
-      title: isString(data.title) ? data.title : data.id,
-      confidence: isString(data.confidence) ? data.confidence : undefined,
-      lastVerified,
+      relPath: relative(project_root, path),
+      title: is_string(data.title) ? data.title : data.id,
+      confidence: is_string(data.confidence) ? data.confidence : undefined,
+      lastVerified: last_verified,
       tags,
     };
   } catch {
@@ -207,30 +207,30 @@ async function readFactRef(
   }
 }
 
-async function readIncidentRef(
-  narrativePath: string,
-  projectRoot: string
+async function read_incident_ref(
+  narrative_path: string,
+  project_root: string
 ): Promise<IncidentRef | null> {
   try {
-    const narrativeContent = await readFile(narrativePath, 'utf-8');
-    const { data: narrative } = matter(narrativeContent);
-    if (narrative.tier !== 'incident-narrative' || !isString(narrative.id)) {
+    const narrative_content = await readFile(narrative_path, 'utf-8');
+    const { data: narrative } = matter(narrative_content);
+    if (narrative.tier !== 'incident-narrative' || !is_string(narrative.id)) {
       return null;
     }
 
-    const folderPath = resolve(narrativePath, '..');
-    const factsMdPath = join(folderPath, 'facts.md');
+    const folder_path = resolve(narrative_path, '..');
+    const facts_md_path = join(folder_path, 'facts.md');
 
     let produced: string[] = [];
     let strengthened: string[] = [];
     let weakened: string[] = [];
     try {
-      const factsContent = await readFile(factsMdPath, 'utf-8');
-      const { data: facts } = matter(factsContent);
+      const facts_content = await readFile(facts_md_path, 'utf-8');
+      const { data: facts } = matter(facts_content);
       if (facts.tier === 'incident-facts') {
-        if (isStringArray(facts.produced)) produced = facts.produced;
-        if (isStringArray(facts.strengthened)) strengthened = facts.strengthened;
-        if (isStringArray(facts.weakened)) weakened = facts.weakened;
+        if (is_string_array(facts.produced)) produced = facts.produced;
+        if (is_string_array(facts.strengthened)) strengthened = facts.strengthened;
+        if (is_string_array(facts.weakened)) weakened = facts.weakened;
       }
     } catch {
       // facts.md missing — incident has no produced/strengthened/weakened edges
@@ -238,15 +238,15 @@ async function readIncidentRef(
 
     return {
       id: narrative.id,
-      folderPath,
-      relFolderPath: relative(projectRoot, folderPath),
-      title: isString(narrative.title) ? narrative.title : narrative.id,
-      date: normalizeDate(narrative.date),
-      severity: isString(narrative.severity) ? narrative.severity : undefined,
-      resolution_status: isString(narrative.resolution_status)
+      folderPath: folder_path,
+      relFolderPath: relative(project_root, folder_path),
+      title: is_string(narrative.title) ? narrative.title : narrative.id,
+      date: normalize_date(narrative.date),
+      severity: is_string(narrative.severity) ? narrative.severity : undefined,
+      resolution_status: is_string(narrative.resolution_status)
         ? narrative.resolution_status
         : undefined,
-      components: isStringArray(narrative.components) ? narrative.components : [],
+      components: is_string_array(narrative.components) ? narrative.components : [],
       produced,
       strengthened,
       weakened,
@@ -261,33 +261,33 @@ interface PlaybookCitationWithFacts {
   factIds: string[];
 }
 
-async function extractPlaybookCitations(
-  playbookPath: string,
-  projectRoot: string
+async function extract_playbook_citations(
+  playbook_path: string,
+  project_root: string
 ): Promise<PlaybookCitationWithFacts[]> {
   try {
-    const content = await readFile(playbookPath, 'utf-8');
+    const content = await readFile(playbook_path, 'utf-8');
     const { data } = matter(content);
     if (!Array.isArray(data.symptoms) || data.symptoms.length === 0) {
       return [];
     }
 
-    const title = isString(data.title) ? data.title : playbookPath;
+    const title = is_string(data.title) ? data.title : playbook_path;
     const results: PlaybookCitationWithFacts[] = [];
 
     for (const sym of data.symptoms) {
       const s = sym as Record<string, unknown>;
-      if (!isString(s.target) || !isStringArray(s.cites)) continue;
+      if (!is_string(s.target) || !is_string_array(s.cites)) continue;
 
       let kind: PlaybookCitation['kind'];
       let key: string | string[];
-      if (isString(s.alert_name)) {
+      if (is_string(s.alert_name)) {
         kind = 'alert_name';
         key = s.alert_name;
-      } else if (isStringArray(s.user_phrase) || isString(s.user_phrase)) {
+      } else if (is_string_array(s.user_phrase) || is_string(s.user_phrase)) {
         kind = 'user_phrase';
         key = s.user_phrase as string | string[];
-      } else if (isString(s.error_pattern)) {
+      } else if (is_string(s.error_pattern)) {
         kind = 'error_pattern';
         key = s.error_pattern;
       } else {
@@ -296,13 +296,13 @@ async function extractPlaybookCitations(
 
       results.push({
         citation: {
-          relPath: relative(projectRoot, playbookPath),
-          path: playbookPath,
+          relPath: relative(project_root, playbook_path),
+          path: playbook_path,
           title,
           target: s.target,
           kind,
           key,
-          severity: isString(s.severity) ? s.severity : undefined,
+          severity: is_string(s.severity) ? s.severity : undefined,
         },
         factIds: s.cites,
       });
@@ -314,7 +314,7 @@ async function extractPlaybookCitations(
   }
 }
 
-function normalizeDate(value: unknown): string | undefined {
+function normalize_date(value: unknown): string | undefined {
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
     return value;
   }
@@ -328,30 +328,30 @@ function normalizeDate(value: unknown): string | undefined {
  * Public lookup: typed structure for one fact id. Matches the shape the
  * `hewtd find-citers` CLI command prints.
  */
-export function findCitersInIndex(
+export function find_citers_in_index(
   index: CiterIndex,
-  factId: string
+  fact_id: string
 ): FindCitersResult {
   // Dedup citers by playbook relPath — multiple symptoms entries in the same
   // playbook citing the same fact count as ONE citer.
-  const citerSet = new Set<string>();
-  for (const c of index.citers.get(factId) ?? []) {
-    citerSet.add(c.relPath);
+  const citer_set = new Set<string>();
+  for (const c of index.citers.get(fact_id) ?? []) {
+    citer_set.add(c.relPath);
   }
 
   const incidents_produced_in: string[] = [];
   const incidents_strengthened_by: string[] = [];
   const incidents_weakened_by: string[] = [];
   for (const inc of index.incidents.values()) {
-    if (inc.produced.includes(factId)) incidents_produced_in.push(inc.id);
-    if (inc.strengthened.includes(factId)) incidents_strengthened_by.push(inc.id);
-    if (inc.weakened.includes(factId)) incidents_weakened_by.push(inc.id);
+    if (inc.produced.includes(fact_id)) incidents_produced_in.push(inc.id);
+    if (inc.strengthened.includes(fact_id)) incidents_strengthened_by.push(inc.id);
+    if (inc.weakened.includes(fact_id)) incidents_weakened_by.push(inc.id);
   }
 
   return {
-    fact_id: factId,
-    fact_exists: index.facts.has(factId),
-    citers: [...citerSet].sort(),
+    fact_id: fact_id,
+    fact_exists: index.facts.has(fact_id),
+    citers: [...citer_set].sort(),
     incidents_produced_in: incidents_produced_in.sort(),
     incidents_strengthened_by: incidents_strengthened_by.sort(),
     incidents_weakened_by: incidents_weakened_by.sort(),
@@ -361,8 +361,8 @@ export function findCitersInIndex(
 /**
  * Count distinct citers for a fact id. Used by the facts-index generator.
  */
-export function citerCount(index: CiterIndex, factId: string): number {
-  const list = index.citers.get(factId);
+export function citer_count(index: CiterIndex, fact_id: string): number {
+  const list = index.citers.get(fact_id);
   if (!list) return 0;
   // Distinct by playbook relPath (multiple symptoms in the same playbook
   // citing the same fact count once).

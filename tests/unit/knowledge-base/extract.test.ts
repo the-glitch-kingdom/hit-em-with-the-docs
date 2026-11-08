@@ -2,23 +2,23 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { extractFacts } from '../../../src/core/knowledge-base/extract.js';
+import { extract_facts } from '../../../src/core/knowledge-base/extract.js';
 
 describe('extractFacts (2.3.0)', () => {
-  let tmpProject: string;
-  let vaultRoot: string;
-  let incidentFolder: string;
+  let tmp_project: string;
+  let vault_root: string;
+  let incident_folder: string;
 
   beforeEach(async () => {
-    tmpProject = await mkdtemp(join(tmpdir(), 'hewtd-extract-'));
-    vaultRoot = join(tmpProject, '.documentation/knowledge-base');
-    incidentFolder = join(vaultRoot, 'incidents/2026-05-14-test');
+    tmp_project = await mkdtemp(join(tmpdir(), 'hewtd-extract-'));
+    vault_root = join(tmp_project, '.documentation/knowledge-base');
+    incident_folder = join(vault_root, 'incidents/2026-05-14-test');
 
-    await mkdir(join(vaultRoot, 'facts'), { recursive: true });
-    await mkdir(incidentFolder, { recursive: true });
+    await mkdir(join(vault_root, 'facts'), { recursive: true });
+    await mkdir(incident_folder, { recursive: true });
 
     await writeFile(
-      join(incidentFolder, 'narrative.md'),
+      join(incident_folder, 'narrative.md'),
       `---
 title: Test Incident
 tier: incident-narrative
@@ -38,7 +38,7 @@ components: [test]
     );
 
     await writeFile(
-      join(incidentFolder, 'facts.md'),
+      join(incident_folder, 'facts.md'),
       `---
 title: Facts from test
 tier: incident-facts
@@ -56,14 +56,14 @@ produced: []
   });
 
   afterEach(async () => {
-    await rm(tmpProject, { recursive: true, force: true });
+    await rm(tmp_project, { recursive: true, force: true });
   });
 
   it('writes accepted fact specs to <vault>/facts/ with provenance auto-populated', async () => {
-    const result = await extractFacts({
-      incidentFolder,
-      vaultRoot,
-      projectRoot: tmpProject,
+    const result = await extract_facts({
+      incidentFolder: incident_folder,
+      vaultRoot: vault_root,
+      projectRoot: tmp_project,
       accept: [
         {
           id: 'test-fact-one',
@@ -88,24 +88,24 @@ produced: []
     expect(result.extractedFacts[1]!.action).toBe('created');
 
     // Verify file contents
-    const factOne = await readFile(result.extractedFacts[0]!.factPath, 'utf-8');
-    expect(factOne).toContain('tier: fact');
-    expect(factOne).toContain('id: test-fact-one');
-    expect(factOne).toContain('confidence: high');
-    expect(factOne).toContain('verify_command:');
-    expect(factOne).toContain('## Claim');
-    expect(factOne).toContain('A specific claim');
-    expect(factOne).toContain('## How to verify');
-    expect(factOne).toContain('## Consequences');
+    const fact_one = await readFile(result.extractedFacts[0]!.factPath, 'utf-8');
+    expect(fact_one).toContain('tier: fact');
+    expect(fact_one).toContain('id: test-fact-one');
+    expect(fact_one).toContain('confidence: high');
+    expect(fact_one).toContain('verify_command:');
+    expect(fact_one).toContain('## Claim');
+    expect(fact_one).toContain('A specific claim');
+    expect(fact_one).toContain('## How to verify');
+    expect(fact_one).toContain('## Consequences');
     // Provenance points to the incident folder
-    expect(factOne).toContain('.documentation/knowledge-base/incidents/2026-05-14-test/');
+    expect(fact_one).toContain('.documentation/knowledge-base/incidents/2026-05-14-test/');
   });
 
   it('updates the incident facts.md produced: list', async () => {
-    await extractFacts({
-      incidentFolder,
-      vaultRoot,
-      projectRoot: tmpProject,
+    await extract_facts({
+      incidentFolder: incident_folder,
+      vaultRoot: vault_root,
+      projectRoot: tmp_project,
       accept: [
         {
           id: 'test-fact-one',
@@ -116,17 +116,17 @@ produced: []
       ],
     });
 
-    const factsMd = await readFile(join(incidentFolder, 'facts.md'), 'utf-8');
-    expect(factsMd).toContain('produced:');
-    expect(factsMd).toContain('test-fact-one');
+    const facts_md = await readFile(join(incident_folder, 'facts.md'), 'utf-8');
+    expect(facts_md).toContain('produced:');
+    expect(facts_md).toContain('test-fact-one');
   });
 
   it('is idempotent — already-existing facts are not overwritten', async () => {
     // First pass: create the fact
-    await extractFacts({
-      incidentFolder,
-      vaultRoot,
-      projectRoot: tmpProject,
+    await extract_facts({
+      incidentFolder: incident_folder,
+      vaultRoot: vault_root,
+      projectRoot: tmp_project,
       accept: [
         {
           id: 'test-fact-one',
@@ -137,13 +137,13 @@ produced: []
       ],
     });
 
-    const original = await readFile(join(vaultRoot, 'facts/test-fact-one.md'), 'utf-8');
+    const original = await readFile(join(vault_root, 'facts/test-fact-one.md'), 'utf-8');
 
     // Second pass: same id but different content
-    const result = await extractFacts({
-      incidentFolder,
-      vaultRoot,
-      projectRoot: tmpProject,
+    const result = await extract_facts({
+      incidentFolder: incident_folder,
+      vaultRoot: vault_root,
+      projectRoot: tmp_project,
       accept: [
         {
           id: 'test-fact-one',
@@ -156,15 +156,15 @@ produced: []
 
     expect(result.extractedFacts[0]!.action).toBe('already_exists');
 
-    const after = await readFile(join(vaultRoot, 'facts/test-fact-one.md'), 'utf-8');
+    const after = await readFile(join(vault_root, 'facts/test-fact-one.md'), 'utf-8');
     expect(after).toBe(original); // unchanged
   });
 
   it('dry-run does not write files', async () => {
-    const result = await extractFacts({
-      incidentFolder,
-      vaultRoot,
-      projectRoot: tmpProject,
+    const result = await extract_facts({
+      incidentFolder: incident_folder,
+      vaultRoot: vault_root,
+      projectRoot: tmp_project,
       accept: [
         {
           id: 'dry-test',
@@ -188,8 +188,8 @@ produced: []
   });
 
   it('writes purpose and symptoms into fact frontmatter when given', async () => {
-    const r = await extractFacts({
-      incidentFolder, vaultRoot, projectRoot: tmpProject,
+    const r = await extract_facts({
+      incidentFolder: incident_folder, vaultRoot: vault_root, projectRoot: tmp_project,
       accept: [{ id: 'f-one', title: 'F one', confidence: 'high', claim: 'c',
         purpose: 'Why does X fail?', symptoms: ['x fails on boot', 'ERR_X'] }],
     });

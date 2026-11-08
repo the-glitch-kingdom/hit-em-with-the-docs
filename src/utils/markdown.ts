@@ -22,7 +22,7 @@ export interface MarkdownHeading {
  * Extract all links from markdown content
  */
 /** A tab counts as four columns when measuring block indentation. */
-function indentWidth(line: string): number {
+function indent_width(line: string): number {
   let width = 0;
   for (const ch of line) {
     if (ch === ' ') width += 1;
@@ -33,7 +33,7 @@ function indentWidth(line: string): number {
 }
 
 /** `- item`, `* item`, `+ item`, `1. item`, `2) item`. */
-function isListItem(line: string): boolean {
+function is_list_item(line: string): boolean {
   return /^\s*(?:[-*+]|\d+[.)])\s+/.test(line);
 }
 
@@ -46,7 +46,7 @@ interface Fence {
  * A fence opener: three or more backticks or tildes, indented at most three
  * columns. At four it is indented code, not a fence.
  */
-function openingFence(line: string): Fence | null {
+function opening_fence(line: string): Fence | null {
   const m = /^ {0,3}(`{3,}|~{3,})/.exec(line);
   const run = m?.[1];
   if (!run) return null;
@@ -58,16 +58,16 @@ function openingFence(line: string): Fence | null {
  * A fence closes only on the same marker, at least as long as the opener, with
  * nothing after it. `````` inside a ``` block is content, not a close.
  */
-function closesFence(line: string, fence: Fence): boolean {
+function closes_fence(line: string, fence: Fence): boolean {
   return new RegExp(`^ {0,3}\\${fence.marker}{${fence.length},}\\s*$`).test(line);
 }
 
-export function extractLinks(content: string): MarkdownLink[] {
+export function extract_links(content: string): MarkdownLink[] {
   const links: MarkdownLink[] = [];
   const lines = content.split('\n');
 
   // Match markdown links: [text](url) or [text](url "title")
-  const linkRegex = /\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g;
+  const link_regex = /\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g;
 
   // Link-shaped text inside code is an EXAMPLE, not a link. Reporting it as broken
   // trains people to ignore the broken-link count (#20). Three shapes of code:
@@ -76,31 +76,31 @@ export function extractLinks(content: string): MarkdownLink[] {
   // Spans are blanked with spaces rather than removed, so `startIndex` and
   // `lineNumber` stay accurate for every real link sharing the line.
   let fence: Fence | null = null;
-  let inIndentedCode = false;
-  let inList = false;
-  let prevBlank = true; // start of document counts as a blank line
+  let in_indented_code = false;
+  let in_list = false;
+  let prev_blank = true; // start of document counts as a blank line
 
-  lines.forEach((rawLine, lineIndex) => {
+  lines.forEach((raw_line, line_index) => {
     if (fence) {
-      if (closesFence(rawLine, fence)) fence = null;
+      if (closes_fence(raw_line, fence)) fence = null;
       return; // fence body and its delimiters hold no links
     }
 
-    const opener = openingFence(rawLine);
+    const opener = opening_fence(raw_line);
     if (opener) {
       fence = opener;
-      inIndentedCode = false;
+      in_indented_code = false;
       return;
     }
 
-    const blank = rawLine.trim() === '';
+    const blank = raw_line.trim() === '';
     if (blank) {
-      prevBlank = true;
+      prev_blank = true;
       return; // a blank line neither opens nor closes a list
     }
 
-    const indent = indentWidth(rawLine);
-    const listItem = isListItem(rawLine);
+    const indent = indent_width(raw_line);
+    const list_item = is_list_item(raw_line);
 
     // An indented code block needs four columns AND a preceding blank line — it
     // cannot interrupt a paragraph. Once open it runs until a line dedents.
@@ -110,48 +110,48 @@ export function extractLinks(content: string): MarkdownLink[] {
     // paragraph of the parent item — and treating it as code silently drops
     // every link in it. That failure is worse than the one being fixed: #20
     // reported links that were not broken, this would hide links that are.
-    if (indent >= 4 && !listItem && !inList && (prevBlank || inIndentedCode)) {
-      inIndentedCode = true;
-      prevBlank = false;
+    if (indent >= 4 && !list_item && !in_list && (prev_blank || in_indented_code)) {
+      in_indented_code = true;
+      prev_blank = false;
       return;
     }
 
     if (indent < 4) {
-      inIndentedCode = false;
+      in_indented_code = false;
       // A flush-left line that is not a list item ends the list block.
-      inList = listItem;
-    } else if (listItem) {
-      inList = true;
+      in_list = list_item;
+    } else if (list_item) {
+      in_list = true;
     }
-    prevBlank = false;
+    prev_blank = false;
 
     // Blank out inline code spans (`...`, ``...``), preserving offsets.
-    const line = rawLine.replace(/(`+)(?:(?!\1)[\s\S])*?\1/g, (m) => ' '.repeat(m.length));
+    const line = raw_line.replace(/(`+)(?:(?!\1)[\s\S])*?\1/g, (m) => ' '.repeat(m.length));
 
-    linkRegex.lastIndex = 0;
+    link_regex.lastIndex = 0;
     let match: RegExpExecArray | null;
-    while ((match = linkRegex.exec(line)) !== null) {
-      const [fullMatch, text, url, title] = match;
-      const urlStr = url ?? '';
-      const isInternal = !urlStr.startsWith('http://') &&
-                        !urlStr.startsWith('https://') &&
-                        !urlStr.startsWith('mailto:') &&
-                        !urlStr.startsWith('#');
+    while ((match = link_regex.exec(line)) !== null) {
+      const [full_match, text, url, title] = match;
+      const url_str = url ?? '';
+      const is_internal = !url_str.startsWith('http://') &&
+                        !url_str.startsWith('https://') &&
+                        !url_str.startsWith('mailto:') &&
+                        !url_str.startsWith('#');
 
       const link: MarkdownLink = {
         text: text ?? '',
-        url: urlStr,
-        isInternal,
-        lineNumber: lineIndex + 1,
+        url: url_str,
+        isInternal: is_internal,
+        lineNumber: line_index + 1,
         startIndex: match.index,
-        endIndex: match.index + (fullMatch?.length ?? 0),
+        endIndex: match.index + (full_match?.length ?? 0),
       };
       if (title) {
         link.title = title;
       }
       links.push(link);
     }
-    linkRegex.lastIndex = 0;
+    link_regex.lastIndex = 0;
   });
 
   return links;
@@ -160,27 +160,27 @@ export function extractLinks(content: string): MarkdownLink[] {
 /**
  * Extract only internal links
  */
-export function extractInternalLinks(content: string): MarkdownLink[] {
-  return extractLinks(content).filter((link) => link.isInternal);
+export function extract_internal_links(content: string): MarkdownLink[] {
+  return extract_links(content).filter((link) => link.isInternal);
 }
 
 /**
  * Extract all headings from markdown content
  */
-export function extractHeadings(content: string): MarkdownHeading[] {
+export function extract_headings(content: string): MarkdownHeading[] {
   const headings: MarkdownHeading[] = [];
   const lines = content.split('\n');
 
   // Match ATX headings: # Heading
-  const headingRegex = /^(#{1,6})\s+(.+)$/;
+  const heading_regex = /^(#{1,6})\s+(.+)$/;
 
-  lines.forEach((line, lineIndex) => {
-    const match = line.match(headingRegex);
+  lines.forEach((line, line_index) => {
+    const match = line.match(heading_regex);
     if (match) {
       headings.push({
         level: match[1]?.length ?? 1,
         text: (match[2] ?? '').trim(),
-        lineNumber: lineIndex + 1,
+        lineNumber: line_index + 1,
       });
     }
   });
@@ -191,8 +191,8 @@ export function extractHeadings(content: string): MarkdownHeading[] {
 /**
  * Get the title (first h1) from markdown content
  */
-export function extractTitle(content: string): string | null {
-  const headings = extractHeadings(content);
+export function extract_title(content: string): string | null {
+  const headings = extract_headings(content);
   const h1 = headings.find((h) => h.level === 1);
   return h1?.text ?? null;
 }
@@ -200,7 +200,7 @@ export function extractTitle(content: string): string | null {
 /**
  * Count words in markdown content (excluding code blocks and frontmatter)
  */
-export function countWords(content: string): number {
+export function count_words(content: string): number {
   // Remove frontmatter
   let text = content.replace(/^---[\s\S]*?---\n*/m, '');
 
@@ -219,23 +219,23 @@ export function countWords(content: string): number {
 /**
  * Calculate estimated read time in minutes
  */
-export function calculateReadTime(content: string, wordsPerMinute: number = 200): number {
-  const wordCount = countWords(content);
-  return Math.ceil(wordCount / wordsPerMinute);
+export function calculate_read_time(content: string, words_per_minute: number = 200): number {
+  const word_count = count_words(content);
+  return Math.ceil(word_count / words_per_minute);
 }
 
 /**
  * Format read time as string
  */
-export function formatReadTime(content: string): string {
-  const minutes = calculateReadTime(content);
+export function format_read_time(content: string): string {
+  const minutes = calculate_read_time(content);
   return `${minutes} minute${minutes === 1 ? '' : 's'}`;
 }
 
 /**
  * Generate a markdown link
  */
-export function createLink(text: string, url: string, title?: string): string {
+export function create_link(text: string, url: string, title?: string): string {
   if (title) {
     return `[${text}](${url} "${title}")`;
   }
@@ -245,7 +245,7 @@ export function createLink(text: string, url: string, title?: string): string {
 /**
  * Generate a markdown heading
  */
-export function createHeading(text: string, level: number = 1): string {
+export function create_heading(text: string, level: number = 1): string {
   const hashes = '#'.repeat(Math.min(Math.max(level, 1), 6));
   return `${hashes} ${text}`;
 }
@@ -253,18 +253,18 @@ export function createHeading(text: string, level: number = 1): string {
 /**
  * Generate a markdown table
  */
-export function createTable(headers: string[], rows: string[][]): string {
-  const headerRow = `| ${headers.join(' | ')} |`;
-  const separatorRow = `| ${headers.map(() => '---').join(' | ')} |`;
-  const dataRows = rows.map((row) => `| ${row.join(' | ')} |`);
+export function create_table(headers: string[], rows: string[][]): string {
+  const header_row = `| ${headers.join(' | ')} |`;
+  const separator_row = `| ${headers.map(() => '---').join(' | ')} |`;
+  const data_rows = rows.map((row) => `| ${row.join(' | ')} |`);
 
-  return [headerRow, separatorRow, ...dataRows].join('\n');
+  return [header_row, separator_row, ...data_rows].join('\n');
 }
 
 /**
  * Generate a markdown list
  */
-export function createList(items: string[], ordered: boolean = false): string {
+export function create_list(items: string[], ordered: boolean = false): string {
   return items
     .map((item, index) => (ordered ? `${index + 1}. ${item}` : `- ${item}`))
     .join('\n');
@@ -273,7 +273,7 @@ export function createList(items: string[], ordered: boolean = false): string {
 /**
  * Generate a markdown checkbox list
  */
-export function createCheckboxList(
+export function create_checkbox_list(
   items: { text: string; checked: boolean }[]
 ): string {
   return items
@@ -284,21 +284,21 @@ export function createCheckboxList(
 /**
  * Wrap text in a code block
  */
-export function createCodeBlock(code: string, language: string = ''): string {
+export function create_code_block(code: string, language: string = ''): string {
   return `\`\`\`${language}\n${code}\n\`\`\``;
 }
 
 /**
  * Create an inline code span
  */
-export function createInlineCode(code: string): string {
+export function create_inline_code(code: string): string {
   return `\`${code}\``;
 }
 
 /**
  * Create a blockquote
  */
-export function createBlockquote(text: string): string {
+export function create_blockquote(text: string): string {
   return text
     .split('\n')
     .map((line) => `> ${line}`)
@@ -320,7 +320,7 @@ export function slugify(text: string): string {
 /**
  * Extract first paragraph as excerpt
  */
-export function extractExcerpt(content: string, maxLength: number = 200): string {
+export function extract_excerpt(content: string, max_length: number = 200): string {
   // Remove frontmatter
   let text = content.replace(/^---[\s\S]*?---\n*/m, '');
 
@@ -329,12 +329,12 @@ export function extractExcerpt(content: string, maxLength: number = 200): string
 
   // Get first paragraph
   const paragraphs = text.split(/\n\n+/).filter((p) => p.trim().length > 0);
-  const firstParagraph = paragraphs[0] ?? '';
+  const first_paragraph = paragraphs[0] ?? '';
 
   // Truncate if needed
-  if (firstParagraph.length <= maxLength) {
-    return firstParagraph.trim();
+  if (first_paragraph.length <= max_length) {
+    return first_paragraph.trim();
   }
 
-  return firstParagraph.slice(0, maxLength).trim() + '...';
+  return first_paragraph.slice(0, max_length).trim() + '...';
 }

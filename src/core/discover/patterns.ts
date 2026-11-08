@@ -260,11 +260,11 @@ const PATTERN_DEFINITIONS: PatternDefinition[] = [
 /**
  * Discover patterns in codebase
  */
-export async function discoverPatterns(
+export async function discover_patterns(
   options: PatternDiscoveryOptions
 ): Promise<DiscoveredPattern[]> {
   const {
-    rootPath,
+    rootPath: root_path,
     language,
     category,
     silent = false,
@@ -274,18 +274,18 @@ export async function discoverPatterns(
 
   if (!silent) {
     logger.header('Pattern Discovery');
-    logger.info(`Scanning: ${rootPath}`);
+    logger.info(`Scanning: ${root_path}`);
   }
 
   // Determine file extensions to scan
-  const extensions = getExtensionsForLanguage(language);
+  const extensions = get_extensions_for_language(language);
   const patterns = extensions.map((ext) => `**/*${ext}`);
 
   // Find all source files
   let files: string[] = [];
   for (const pattern of patterns) {
     const matches = await glob(pattern, {
-      cwd: rootPath,
+      cwd: root_path,
       absolute: true,
       ignore: ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**'],
     });
@@ -312,7 +312,7 @@ export async function discoverPatterns(
 
   // Scan for patterns
   for (const definition of definitions) {
-    const pattern = await scanForPattern(files, rootPath, definition);
+    const pattern = await scan_for_pattern(files, root_path, definition);
     if (pattern.occurrences > 0) {
       discovered.push(pattern);
     }
@@ -335,13 +335,13 @@ export async function discoverPatterns(
 /**
  * Scan files for a specific pattern
  */
-async function scanForPattern(
+async function scan_for_pattern(
   files: string[],
-  rootPath: string,
+  root_path: string,
   definition: PatternDefinition
 ): Promise<DiscoveredPattern> {
   const examples: PatternExample[] = [];
-  let totalOccurrences = 0;
+  let total_occurrences = 0;
 
   for (const file of files) {
     // Check file pattern filter
@@ -363,21 +363,21 @@ async function scanForPattern(
 
         let match;
         while ((match = pattern.exec(content)) !== null) {
-          totalOccurrences++;
+          total_occurrences++;
 
           // Only capture first 5 examples
           if (examples.length < 5) {
             // Find line number
-            const beforeMatch = content.slice(0, match.index);
-            const lineNumber = (beforeMatch.match(/\n/g) ?? []).length + 1;
+            const before_match = content.slice(0, match.index);
+            const line_number = (before_match.match(/\n/g) ?? []).length + 1;
 
             // Get line content
-            const codeLine = lines[lineNumber - 1] ?? '';
+            const code_line = lines[line_number - 1] ?? '';
 
             examples.push({
-              file: relative(rootPath, file),
-              line: lineNumber,
-              code: codeLine.trim().slice(0, 100),
+              file: relative(root_path, file),
+              line: line_number,
+              code: code_line.trim().slice(0, 100),
             });
           }
         }
@@ -391,7 +391,7 @@ async function scanForPattern(
     name: definition.name,
     category: definition.category,
     description: definition.description,
-    occurrences: totalOccurrences,
+    occurrences: total_occurrences,
     examples,
   };
 }
@@ -399,8 +399,8 @@ async function scanForPattern(
 /**
  * Get file extensions for a language
  */
-function getExtensionsForLanguage(language?: string): string[] {
-  const extensionMap: Record<string, string[]> = {
+function get_extensions_for_language(language?: string): string[] {
+  const extension_map: Record<string, string[]> = {
     typescript: ['.ts', '.tsx'],
     javascript: ['.js', '.jsx', '.mjs'],
     python: ['.py'],
@@ -412,8 +412,8 @@ function getExtensionsForLanguage(language?: string): string[] {
     php: ['.php'],
   };
 
-  if (language && extensionMap[language]) {
-    return extensionMap[language]!;
+  if (language && extension_map[language]) {
+    return extension_map[language]!;
   }
 
   // Default: TypeScript and JavaScript
@@ -423,7 +423,7 @@ function getExtensionsForLanguage(language?: string): string[] {
 /**
  * Generate documentation suggestion for a pattern
  */
-export function generatePatternDocumentation(pattern: DiscoveredPattern): string {
+export function generate_pattern_documentation(pattern: DiscoveredPattern): string {
   let doc = `# ${pattern.name}
 
 ## Overview

@@ -1,8 +1,8 @@
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
-import { resolveReportsDir } from '../utils/config.js';
-import { pathExists } from '../utils/glob.js';
-import { formatDate } from '../core/metadata/generator.js';
+import { resolve_reports_dir } from '../utils/config.js';
+import { path_exists } from '../utils/glob.js';
+import { format_date } from '../core/metadata/generator.js';
 import type { LinkCheckResult } from '../core/links/checker.js';
 
 export interface LinkReportOptions {
@@ -14,23 +14,23 @@ export interface LinkReportOptions {
 /**
  * Generate a link report
  */
-export async function generateLinkReport(
+export async function generate_link_report(
   options: LinkReportOptions
 ): Promise<string> {
   const { result, format = 'markdown' } = options;
 
   if (format === 'json') {
-    return generateJsonReport(result);
+    return generate_json_report(result);
   }
 
-  return generateMarkdownReport(result);
+  return generate_markdown_report(result);
 }
 
 /**
  * Generate markdown link report
  */
-function generateMarkdownReport(result: LinkCheckResult): string {
-  const now = formatDate(new Date());
+function generate_markdown_report(result: LinkCheckResult): string {
+  const now = format_date(new Date());
   const timestamp = new Date().toISOString();
 
   let content = `---
@@ -151,7 +151,7 @@ Total Links: ${result.totalLinks}
 /**
  * Generate JSON link report
  */
-function generateJsonReport(result: LinkCheckResult): string {
+function generate_json_report(result: LinkCheckResult): string {
   return JSON.stringify({
     timestamp: new Date().toISOString(),
     summary: {
@@ -172,24 +172,24 @@ function generateJsonReport(result: LinkCheckResult): string {
 /**
  * Save link report to file
  */
-export async function saveLinkReport(
-  docsPath: string,
+export async function save_link_report(
+  docs_path: string,
   result: LinkCheckResult,
   format: 'markdown' | 'json' = 'markdown'
 ): Promise<string> {
-  const reportsDir = await resolveReportsDir(docsPath);
+  const reports_dir = await resolve_reports_dir(docs_path);
 
-  if (!(await pathExists(reportsDir))) {
-    await mkdir(reportsDir, { recursive: true });
+  if (!(await path_exists(reports_dir))) {
+    await mkdir(reports_dir, { recursive: true });
   }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const ext = format === 'json' ? 'json' : 'md';
-  const fileName = `links-${timestamp}.${ext}`;
-  const filePath = join(reportsDir, fileName);
+  const file_name = `links-${timestamp}.${ext}`;
+  const file_path = join(reports_dir, file_name);
 
-  const content = await generateLinkReport({ docsPath, result, format });
-  await writeFile(filePath, content, 'utf-8');
+  const content = await generate_link_report({ docsPath: docs_path, result, format });
+  await writeFile(file_path, content, 'utf-8');
 
-  return filePath;
+  return file_path;
 }

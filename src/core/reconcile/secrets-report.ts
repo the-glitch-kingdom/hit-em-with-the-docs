@@ -8,7 +8,7 @@ import { mkdir, readFile, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import type { SecretsConfig } from '../../utils/config.js';
 import type { Ledger } from './ledger.js';
-import { assertNoSecrets, findSecrets, fingerprint, mask, type SecretFinding } from './secrets.js';
+import { assert_no_secrets, find_secrets, fingerprint, mask, type SecretFinding } from './secrets.js';
 
 export interface ReportEntry {
   rule: string; file: string; line?: number; masked: string; fingerprint: string;
@@ -16,7 +16,7 @@ export interface ReportEntry {
 }
 
 /** Stream `git log --all -p` for one path and report which wanted values ever appeared. Nothing but the path is passed to git. */
-export async function valuesInHistory(cwd: string, path: string, values: string[]): Promise<Set<string>> {
+export async function values_in_history(cwd: string, path: string, values: string[]): Promise<Set<string>> {
   const hit = new Set<string>();
   if (!values.length) return hit;
   const keep = Math.max(...values.map((v) => v.length));
@@ -35,7 +35,7 @@ export async function valuesInHistory(cwd: string, path: string, values: string[
   return hit;
 }
 
-async function readEnv(root: string): Promise<Map<string, string>> {
+async function read_env(root: string): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   try {
     for (const l of (await readFile(join(root, '.env.hewtd'), 'utf-8')).split('\n')) {
@@ -56,12 +56,12 @@ const STEPS = [
   'Reindex any search tool built from the docs.',
 ];
 
-export async function buildSecretsReport(opts: {
+export async function build_secrets_report(opts: {
   root: string; docsPath: string; findings: SecretFinding[]; ledger?: Ledger; cfg: SecretsConfig; date?: string;
 }): Promise<{ entries: ReportEntry[]; text: string }> {
-  const { root, docsPath, cfg } = opts;
+  const { root, docsPath: docs_path, cfg } = opts;
   const entries: ReportEntry[] = [];
-  const locate = (file: string): string | undefined => [join(docsPath, file), join(root, file)].find((p) => existsSync(p));
+  const locate = (file: string): string | undefined => [join(docs_path, file), join(root, file)].find((p) => existsSync(p));
   const wanted = new Map<string, Map<string, ReportEntry>>(); // repo path -> value -> entry (values stay in memory)
   const want = (path: string, value: string, e: ReportEntry): void => {
     if (!wanted.has(path)) wanted.set(path, new Map());
@@ -69,11 +69,11 @@ export async function buildSecretsReport(opts: {
   };
   const rel = (abs: string): string => abs.slice(root.length + 1);
 
-  const byFile = new Map<string, SecretFinding[]>();
-  for (const f of opts.findings) byFile.set(f.file, [...(byFile.get(f.file) ?? []), f]);
-  for (const [file, fs] of byFile) {
+  const by_file = new Map<string, SecretFinding[]>();
+  for (const f of opts.findings) by_file.set(f.file, [...(by_file.get(f.file) ?? []), f]);
+  for (const [file, fs] of by_file) {
     const abs = locate(file);
-    const raws = abs ? findSecrets(await readFile(abs, 'utf-8'), file, cfg) : [];
+    const raws = abs ? find_secrets(await readFile(abs, 'utf-8'), file, cfg) : [];
     for (const f of fs) {
       const e: ReportEntry = { rule: f.rule, file: f.file, line: f.line, masked: f.masked, fingerprint: f.fingerprint, kind: f.kind, status: 'pending' };
       entries.push(e);
@@ -81,7 +81,7 @@ export async function buildSecretsReport(opts: {
       if (raw && abs && f.kind === 'secret') want(rel(abs), raw.value, e);
     }
   }
-  const env = await readEnv(root);
+  const env = await read_env(root);
   for (const le of Object.values(opts.ledger?.entries ?? {})) {
     for (const name of le.env_names ?? []) {
       const v = env.get(name);
@@ -92,7 +92,7 @@ export async function buildSecretsReport(opts: {
     }
   }
   for (const [path, vals] of wanted) {
-    const hit = await valuesInHistory(root, path, [...vals.keys()]);
+    const hit = await values_in_history(root, path, [...vals.keys()]);
     for (const [v, e] of vals) e.inHistory = hit.has(v);
   }
 
@@ -112,11 +112,11 @@ export async function buildSecretsReport(opts: {
     L.push('');
   }
   const text = L.join('\n');
-  assertNoSecrets(text, 'the secrets report', cfg);
+  assert_no_secrets(text, 'the secrets report', cfg);
   return { entries, text };
 }
 
-export async function writeSecretsReport(root: string, text: string, date = new Date().toISOString().slice(0, 10)): Promise<string> {
+export async function write_secrets_report(root: string, text: string, date = new Date().toISOString().slice(0, 10)): Promise<string> {
   const file = join(root, '.hewtd/reconcile', `secrets-report-${date}.md`);
   await mkdir(dirname(file), { recursive: true });
   await writeFile(file, text);

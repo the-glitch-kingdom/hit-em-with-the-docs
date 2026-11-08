@@ -7,22 +7,22 @@ import { execFileSync } from 'child_process';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, statSync, writeFileSync } from 'fs';
 import { mkdir, readFile, stat, writeFile } from 'fs/promises';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
-import { parseFrontmatter, setFrontmatter, setFrontmatterKeys } from '../../utils/frontmatter.js';
-import { formatDate } from '../metadata/generator.js';
-import { archiveDoc } from '../archive/manage.js';
-import { regenerateIndexes } from '../../generators/regenerate.js';
-import { getAllDomains } from '../domains/registry.js';
-import { hashContent, recordEntry, saveLedger, type Ledger } from './ledger.js';
-import { gitRoot } from './triage.js';
-import { assertNoSecrets, findSecrets } from './secrets.js';
-import { loadPluginConfig } from '../../utils/config.js';
-import { applyOutsideEntry, outsideKey } from './outside.js';
-import { headingAnchors, sectionOf } from '../links/anchors.js';
-import { missingTokens } from './noloss.js';
-import { memberState } from './overview.js';
-import { buildPhrases } from './phrases.js';
-import { symptomText } from './gaps.js';
-import { envNames, parseReview, reviewDir, type ReviewEntry } from './review.js';
+import { parse_frontmatter, set_frontmatter, set_frontmatter_keys } from '../../utils/frontmatter.js';
+import { format_date } from '../metadata/generator.js';
+import { archive_doc } from '../archive/manage.js';
+import { regenerate_indexes } from '../../generators/regenerate.js';
+import { get_all_domains } from '../domains/registry.js';
+import { hash_content, record_entry, save_ledger, type Ledger } from './ledger.js';
+import { git_root } from './triage.js';
+import { assert_no_secrets, find_secrets } from './secrets.js';
+import { load_plugin_config } from '../../utils/config.js';
+import { apply_outside_entry, outside_key } from './outside.js';
+import { heading_anchors, section_of } from '../links/anchors.js';
+import { missing_tokens } from './noloss.js';
+import { member_state } from './overview.js';
+import { build_phrases } from './phrases.js';
+import { symptom_text } from './gaps.js';
+import { env_names, parse_review, review_dir, type ReviewEntry } from './review.js';
 
 export interface ApplyOutcome {
   path: string;
@@ -38,7 +38,7 @@ export interface ApplyResult {
 
 const ENV = '.env.hewtd';
 
-function parseEnv(text: string): Map<string, string> {
+function parse_env(text: string): Map<string, string> {
   const m = new Map<string, string>();
   for (const l of text.split('\n')) {
     const k = /^([A-Za-z_]\w*)=(.*)$/.exec(l);
@@ -54,7 +54,7 @@ function parseEnv(text: string): Map<string, string> {
 }
 
 /** Make sure .env.hewtd is git-ignored (append to the root .gitignore if not); returns the .gitignore path if it changed. */
-function ensureIgnored(top: string): string | undefined {
+function ensure_ignored(top: string): string | undefined {
   const ignored = () => { try { git(top, ['check-ignore', '-q', ENV]); return true; } catch { return false; } };
   if (ignored()) return undefined;
   const gi = join(top, '.gitignore');
@@ -75,19 +75,19 @@ function ensureIgnored(top: string): string | undefined {
  * Values are re-read from the doc here, never from the review. Returns the new doc text,
  * the env names, and what to touch/roll back.
  */
-function moveSecrets(top: string, raw: string, e: ReviewEntry, cfg: Parameters<typeof findSecrets>[2]) {
-  const raws = findSecrets(raw, e.path, cfg).filter((r) => r.finding.kind === 'secret');
+function move_secrets(top: string, raw: string, e: ReviewEntry, cfg: Parameters<typeof find_secrets>[2]) {
+  const raws = find_secrets(raw, e.path, cfg).filter((r) => r.finding.kind === 'secret');
   if (!raws.length) throw new Error('no secrets found in the doc');
-  const envPath = join(top, ENV);
-  const existing = existsSync(envPath) ? readFileSync(envPath, 'utf-8') : '';
-  const env = parseEnv(existing);
+  const env_path = join(top, ENV);
+  const existing = existsSync(env_path) ? readFileSync(env_path, 'utf-8') : '';
+  const env = parse_env(existing);
   const proposed = new Map((e.secrets ?? []).map((s) => [s.fingerprint, s.env]));
-  const fresh = envNames(raw, e.path, raws.filter((r) => !proposed.has(r.finding.fingerprint)), new Set(env.keys()));
+  const fresh = env_names(raw, e.path, raws.filter((r) => !proposed.has(r.finding.fingerprint)), new Set(env.keys()));
   const lines: string[] = [];
   const names: string[] = [];
-  const lineStarts = [0];
-  for (let i = 0; i < raw.length; i++) if (raw[i] === '\n') lineStarts.push(i + 1);
-  const fmEnd = raw.startsWith('---') ? raw.indexOf('\n---', 3) : -1;
+  const line_starts = [0];
+  for (let i = 0; i < raw.length; i++) if (raw[i] === '\n') line_starts.push(i + 1);
+  const fm_end = raw.startsWith('---') ? raw.indexOf('\n---', 3) : -1;
   const edits: { at: number; len: number; text: string; line: number }[] = [];
   for (const { finding: f, value } of raws) {
     const name = proposed.get(f.fingerprint) ?? fresh.get(f.fingerprint)!;
@@ -96,7 +96,7 @@ function moveSecrets(top: string, raw: string, e: ReviewEntry, cfg: Parameters<t
     if (!env.has(name)) { env.set(name, value); lines.push(`${name}=${/^[\w./+=:@-]+$/.test(value) ? value : JSON.stringify(value)}`); }
     names.push(name);
     // Replace only where the finding is, never other occurrences of the same text in prose.
-    const at = lineStarts[f.line - 1]! + f.col - 1;
+    const at = line_starts[f.line - 1]! + f.col - 1;
     if (raw.slice(at, at + value.length) !== value) throw new Error(`finding at line ${f.line} moved; re-run triage`);
     edits.push({ at, len: value.length, text: `<secret: ${name}, see ${ENV}>`, line: f.line - 1 });
   }
@@ -110,23 +110,23 @@ function moveSecrets(top: string, raw: string, e: ReviewEntry, cfg: Parameters<t
     next = next.split(value).join(`<secret: ${name}, see ${ENV}>`);
   }
   // In YAML frontmatter the pointer (': ', ', ') must sit inside a quoted scalar, or the doc stops parsing.
-  const fmLines = new Set(edits.filter((ed) => fmEnd > 0 && ed.at < fmEnd).map((ed) => ed.line));
-  if (fmLines.size) {
+  const fm_lines = new Set(edits.filter((ed) => fm_end > 0 && ed.at < fm_end).map((ed) => ed.line));
+  if (fm_lines.size) {
     const ls = next.split('\n');
-    for (const i of fmLines) {
+    for (const i of fm_lines) {
       const m = /^(\s*(?:-\s+)?(?:[^:#\s][^:#]*?:\s+)?)(.*)$/.exec(ls[i]!);
       if (m && !/^["']/.test(m[2]!)) ls[i] = m[1]! + JSON.stringify(m[2]!);
     }
     next = ls.join('\n');
-    try { parseFrontmatter(next); } catch { throw new Error('frontmatter would not parse after the move; move this value by hand'); }
+    try { parse_frontmatter(next); } catch { throw new Error('frontmatter would not parse after the move; move this value by hand'); }
   }
-  if (findSecrets(next, e.path, cfg).some((r) => r.finding.kind === 'secret')) throw new Error('doc still holds a secret after the move');
-  const gi = ensureIgnored(top);
+  if (find_secrets(next, e.path, cfg).some((r) => r.finding.kind === 'secret')) throw new Error('doc still holds a secret after the move');
+  const gi = ensure_ignored(top);
   if (lines.length) {
-    writeFileSync(envPath, `${existing}${existing && !existing.endsWith('\n') ? '\n' : ''}${lines.join('\n')}\n`, { mode: 0o600 });
-    chmodSync(envPath, 0o600);
+    writeFileSync(env_path, `${existing}${existing && !existing.endsWith('\n') ? '\n' : ''}${lines.join('\n')}\n`, { mode: 0o600 });
+    chmodSync(env_path, 0o600);
   }
-  return { next, names: [...new Set(names)], gi, envPath };
+  return { next, names: [...new Set(names)], gi, envPath: env_path };
 }
 
 const exists = (p: string) => stat(p).then(() => true, () => false);
@@ -137,7 +137,7 @@ const git = (cwd: string, args: string[]) => execFileSync('git', args, { cwd, en
  * untracked and ignored files under the docs tree), with their contents, so a rollback
  * returns to the pre-apply state rather than to HEAD.
  */
-function snapshot(top: string, docsRel: string): Map<string, Buffer> {
+function snapshot(top: string, docs_rel: string): Map<string, Buffer> {
   const snap = new Map<string, Buffer>();
   const paths = (args: string[]): string[] => {
     // not git(): its trim() would eat the leading space of the first ' M path' entry
@@ -152,7 +152,7 @@ function snapshot(top: string, docsRel: string): Map<string, Buffer> {
     return out;
   };
   // The secret verdict appends to .env.hewtd and may edit .gitignore, so both come back on rollback.
-  const rels = [...new Set([...paths(['--untracked-files=no']), ...paths(['--untracked-files=all', '--ignored', '--', docsRel]), ENV, '.gitignore'])];
+  const rels = [...new Set([...paths(['--untracked-files=no']), ...paths(['--untracked-files=all', '--ignored', '--', docs_rel]), ENV, '.gitignore'])];
   for (const r of rels) {
     try { if (statSync(join(top, r)).isFile()) snap.set(r, readFileSync(join(top, r))); } catch { /* deleted in the worktree */ }
   }
@@ -162,11 +162,11 @@ function snapshot(top: string, docsRel: string): Map<string, Buffer> {
 /** Undo a failed batch: touched paths back to their pre-apply state, batch-created files removed. */
 function rollback(top: string, abs: string[], snap: Map<string, Buffer>): void {
   const rels = abs.map((p) => relative(top, p));
-  const inHead = new Set(git(top, ['ls-tree', '-r', '--name-only', '-z', 'HEAD', '--', ...rels]).split('\0').filter(Boolean));
-  const tracked = rels.filter((r) => inHead.has(r));
-  const created = rels.filter((r) => !inHead.has(r) && !snap.has(r));
+  const in_head = new Set(git(top, ['ls-tree', '-r', '--name-only', '-z', 'HEAD', '--', ...rels]).split('\0').filter(Boolean));
+  const tracked = rels.filter((r) => in_head.has(r));
+  const created = rels.filter((r) => !in_head.has(r) && !snap.has(r));
   if (tracked.length) git(top, ['restore', '--staged', '--worktree', '--source=HEAD', '--', ...tracked]);
-  const unstage = rels.filter((r) => !inHead.has(r));
+  const unstage = rels.filter((r) => !in_head.has(r));
   if (unstage.length) git(top, ['rm', '-q', '--cached', '-f', '--ignore-unmatch', '--', ...unstage]);
   // Uncommitted edits and pre-existing untracked/ignored files the batch overwrote come back as they were.
   for (const r of rels) { const b = snap.get(r); if (b) { mkdirSync(dirname(join(top, r)), { recursive: true }); writeFileSync(join(top, r), b); } }
@@ -178,13 +178,13 @@ function rollback(top: string, abs: string[], snap: Map<string, Buffer>): void {
 }
 
 /** Build the new file content for a verify/fields/unverifiable entry. */
-function editDoc(raw: string, e: ReviewEntry, today: string): string {
+function edit_doc(raw: string, e: ReviewEntry, today: string): string {
   const { last_verified: _ignored, ...fm } = e.frontmatter ?? {};
   const changes: Record<string, unknown> = { ...fm };
   if (e.sources) changes.sources = e.sources;
   if (e.verdict === 'verify') changes.last_verified = today;
   if (e.verdict === 'unverifiable') changes.confidence = 'low';
-  const next = setFrontmatterKeys(raw, changes);
+  const next = set_frontmatter_keys(raw, changes);
   if (!e.patch?.length) return next;
   const cut = next.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/)?.[0].length ?? 0;
   let body = next.slice(cut);
@@ -196,48 +196,48 @@ function editDoc(raw: string, e: ReviewEntry, today: string): string {
 }
 
 /** phrases: add new user_phrase entries to symptoms (cap and duplicates re-checked); returns null when nothing is left to add. */
-function phrasesDoc(raw: string, e: ReviewEntry, cfg: Awaited<ReturnType<typeof loadPluginConfig>>): string | null {
-  const { data } = parseFrontmatter<Record<string, unknown>>(raw);
+function phrases_doc(raw: string, e: ReviewEntry, cfg: Awaited<ReturnType<typeof load_plugin_config>>): string | null {
+  const { data } = parse_frontmatter<Record<string, unknown>>(raw);
   const symptoms: unknown[] = Array.isArray(data.symptoms) ? [...data.symptoms] : [];
-  const add = buildPhrases((e.phrases ?? []).map((query) => ({ query })), symptomText(data), cfg.reconcile.secrets, cfg.reconcile.gaps.max_phrases_per_doc).accepted.map((a) => a.query);
+  const add = build_phrases((e.phrases ?? []).map((query) => ({ query })), symptom_text(data), cfg.reconcile.secrets, cfg.reconcile.gaps.max_phrases_per_doc).accepted.map((a) => a.query);
   if (!add.length) return null;
   const i = symptoms.findIndex((s) => s && typeof s === 'object');
   if (i >= 0) {
     const s = symptoms[i] as Record<string, unknown>;
     symptoms[i] = { ...s, user_phrase: [...(Array.isArray(s.user_phrase) ? s.user_phrase : s.user_phrase ? [s.user_phrase] : []), ...add] };
   } else symptoms.push(...add);
-  return setFrontmatterKeys(raw, { symptoms });
+  return set_frontmatter_keys(raw, { symptoms });
 }
 
 /** point: check the owner section and the no-loss rule, then write the one-line pointer into the copy. */
-function pointDoc(o: { raw: string; e: ReviewEntry; abs: string; ownerAbs: string; ownerRaw: string; today: string }): string {
-  const { raw, e, abs, ownerAbs, ownerRaw, today } = o;
+function point_doc(o: { raw: string; e: ReviewEntry; abs: string; ownerAbs: string; ownerRaw: string; today: string }): string {
+  const { raw, e, abs, ownerAbs: owner_abs, ownerRaw: owner_raw, today } = o;
   const { summary, target } = e.pointer ?? { summary: '', target: '' };
   const anchor = target.split('#')[1] ?? '';
   const old = e.remove?.old ?? '';
   if (!old || !summary.trim() || /[\r\n]/.test(summary) || !anchor) throw new Error('point needs remove.old, a one-line pointer.summary and a target with #anchor');
-  if (ownerAbs === abs) throw new Error('a doc cannot point at itself');
-  const owner = parseFrontmatter<Record<string, unknown>>(ownerRaw);
-  if (!headingAnchors(owner.content).has(anchor)) throw new Error(`anchor #${anchor} not found in ${target.split('#')[0]}`);
-  const section = sectionOf(owner.content, anchor) ?? '';
-  const missing = missingTokens(old, section, summary);
+  if (owner_abs === abs) throw new Error('a doc cannot point at itself');
+  const owner = parse_frontmatter<Record<string, unknown>>(owner_raw);
+  if (!heading_anchors(owner.content).has(anchor)) throw new Error(`anchor #${anchor} not found in ${target.split('#')[0]}`);
+  const section = section_of(owner.content, anchor) ?? '';
+  const missing = missing_tokens(old, section, summary);
   if (missing.length) throw new Error(`no-loss check failed, missing: ${missing.join(', ')}`);
   const heading = (section.split('\n')[0] ?? '').replace(/^#+\s*/, '').replace(/\s*\{#[^}]*\}\s*$/, '').trim() || anchor;
-  const title = typeof owner.data.title === 'string' && owner.data.title ? owner.data.title : ownerAbs.split('/').pop()!;
-  const rel = relative(dirname(abs), ownerAbs).split('\\').join('/');
+  const title = typeof owner.data.title === 'string' && owner.data.title ? owner.data.title : owner_abs.split('/').pop()!;
+  const rel = relative(dirname(abs), owner_abs).split('\\').join('/');
   const line = `${summary.trim()} Details: [${title}: ${heading}](${rel}#${anchor})`;
-  return editDoc(raw, { path: e.path, content_hash: e.content_hash, verdict: 'point', patch: [{ old, new: line }] }, today);
+  return edit_doc(raw, { path: e.path, content_hash: e.content_hash, verdict: 'point', patch: [{ old, new: line }] }, today);
 }
 
 /** overview: every member current and reconciled (or explicitly marked), then the new doc with kind: overview and no last_validated. */
-async function overviewDoc(e: ReviewEntry, docsPath: string, ledger: Ledger): Promise<string> {
+async function overview_doc(e: ReviewEntry, docs_path: string, ledger: Ledger): Promise<string> {
   if (!e.path.endsWith('.md') || !e.members?.length || !e.draft?.trim()) throw new Error('overview needs a .md path, members and a draft');
   const stale: string[] = [], open: string[] = [];
   for (const m of e.members) {
     let hash: string;
-    try { hash = hashContent(await readFile(join(docsPath, m.path), 'utf-8')); } catch { stale.push(m.path); continue; }
+    try { hash = hash_content(await readFile(join(docs_path, m.path), 'utf-8')); } catch { stale.push(m.path); continue; }
     if (hash !== m.content_hash) { stale.push(m.path); continue; }
-    const st = memberState(ledger, m.path, hash);
+    const st = member_state(ledger, m.path, hash);
     if (st !== 'reconciled') open.push(m.path);
     if (st === 'secret') throw new Error(`member is in the secret lane: ${m.path}`);
   }
@@ -248,10 +248,10 @@ async function overviewDoc(e: ReviewEntry, docsPath: string, ledger: Ledger): Pr
     if (unmarked.length) throw new Error(`draft must mark these links "(unreviewed)": ${unmarked.join(', ')}`);
   }
   const { last_verified: _v, last_validated: _l, ...fm } = e.frontmatter ?? {};
-  return setFrontmatter(e.draft!, { ...fm, kind: 'overview', ...(e.sources && { sources: e.sources }) });
+  return set_frontmatter(e.draft!, { ...fm, kind: 'overview', ...(e.sources && { sources: e.sources }) });
 }
 
-export async function applyReviews(opts: {
+export async function apply_reviews(opts: {
   root: string;
   docsPath: string;
   files: string[];
@@ -259,19 +259,19 @@ export async function applyReviews(opts: {
   ledgerFile: string;
   today?: string;
 }): Promise<ApplyResult> {
-  const { root, docsPath, ledger } = opts;
-  const today = opts.today ?? formatDate(new Date());
-  const cfg = await loadPluginConfig(root);
-  const secretsCfg = cfg.reconcile.secrets;
-  const reviews = await Promise.all(opts.files.map((f) => parseReview(f)));
-  const top0 = gitRoot(root);
-  const snap = top0 ? snapshot(top0, relative(top0, docsPath) || '.') : new Map<string, Buffer>();
+  const { root, docsPath: docs_path, ledger } = opts;
+  const today = opts.today ?? format_date(new Date());
+  const cfg = await load_plugin_config(root);
+  const secrets_cfg = cfg.reconcile.secrets;
+  const reviews = await Promise.all(opts.files.map((f) => parse_review(f)));
+  const top0 = git_root(root);
+  const snap = top0 ? snapshot(top0, relative(top0, docs_path) || '.') : new Map<string, Buffer>();
 
   // Merge shards; the same doc in two files is a hard error before anything is written.
   const owner = new Map<string, string>();
   for (const r of reviews) {
     for (const { entry } of r.entries) {
-      const key = entry.outside ? outsideKey(entry.path) : entry.path;
+      const key = entry.outside ? outside_key(entry.path) : entry.path;
       const prev = owner.get(key);
       if (prev) throw new Error(prev === r.file ? `${entry.path} appears twice in ${r.file}` : `${entry.path} appears in both ${prev} and ${r.file}`);
       owner.set(key, r.file);
@@ -282,20 +282,20 @@ export async function applyReviews(opts: {
   const touched = new Set<string>(); // repo-relative via absolute paths
   const domains = new Set<string>();
   const applied: { entry: ReviewEntry; file: string; abs: string; outside?: boolean; envNames?: string[] }[] = [];
-  let envPath: string | undefined; // set once .env.hewtd was written, so a rollback restores it
-  const known = new Set<string>(getAllDomains());
+  let env_path: string | undefined; // set once .env.hewtd was written, so a rollback restores it
+  const known = new Set<string>(get_all_domains());
 
   // A merge-then-point pair applies merge first: points run after every other entry.
   const queue = reviews.flatMap((r) => r.entries.map((x) => ({ ...x, r })));
   queue.sort((a, b) => Number(a.entry.verdict === 'point') - Number(b.entry.verdict === 'point'));
-  const mergedIds = new Set<string>();
-  const overviewMembers = new Map<string, Record<string, string>>();
+  const merged_ids = new Set<string>();
+  const overview_members = new Map<string, Record<string, string>>();
   const pointers = new Map<string, { target: string; section_hash: string }>();
-  const relatedRoots = (await loadPluginConfig(root)).reconcile.related_repos.map((x) => resolve(root, x.path));
+  const related_roots = (await load_plugin_config(root)).reconcile.related_repos.map((x) => resolve(root, x.path));
   {
       for (const { entry: e, accepted, r } of queue) {
-      const reviewRef = relative(root, r.file).split('\\').join('/');
-      const abs = join(docsPath, e.path);
+      const review_ref = relative(root, r.file).split('\\').join('/');
+      const abs = join(docs_path, e.path);
       // Hard guard: never write outside the project root (related repos are read-only).
       const rel = relative(root, abs);
       if (rel === '..' || rel.startsWith('../') || rel.startsWith('..\\') || isAbsolute(rel)) {
@@ -303,23 +303,23 @@ export async function applyReviews(opts: {
         continue;
       }
       if (e.outside) {
-        const key = outsideKey(e.path);
-        if (ledger.entries[key]?.verdict && ledger.entries[key]?.review_file === reviewRef) { outcomes.push({ path: e.path, status: 'already-applied' }); continue; }
+        const key = outside_key(e.path);
+        if (ledger.entries[key]?.verdict && ledger.entries[key]?.review_file === review_ref) { outcomes.push({ path: e.path, status: 'already-applied' }); continue; }
         if (!accepted) { outcomes.push({ path: e.path, status: 'rejected' }); continue; }
         if (!e.verdict) { outcomes.push({ path: e.path, status: 'skipped', detail: 'no verdict' }); continue; }
-        const o = await applyOutsideEntry({ docsPath, entry: e });
+        const o = await apply_outside_entry({ docsPath: docs_path, entry: e });
         if (o.status !== 'applied') { outcomes.push({ path: e.path, status: o.status, ...(o.detail && { detail: o.detail }) }); continue; }
         o.touched.forEach((t) => touched.add(t));
         if (o.domain) domains.add(o.domain);
-        applied.push({ entry: e, file: reviewRef, abs, outside: true });
+        applied.push({ entry: e, file: review_ref, abs, outside: true });
         outcomes.push({ path: e.path, status: 'applied' });
         continue;
       }
       if (e.verdict === 'integrate' || e.verdict === 'delete') { outcomes.push({ path: e.path, status: 'error', detail: `"${e.verdict}" is only valid for outside entries` }); continue; }
       const led = ledger.entries[e.path];
-      const done = !!led?.verdict && led.review_file === reviewRef;
+      const done = !!led?.verdict && led.review_file === review_ref;
       const present = await exists(abs);
-      if (done && (!present || hashContent(await readFile(abs, 'utf-8')) === led.content_hash)) {
+      if (done && (!present || hash_content(await readFile(abs, 'utf-8')) === led.content_hash)) {
         outcomes.push({ path: e.path, status: 'already-applied' });
         continue;
       }
@@ -329,74 +329,74 @@ export async function applyReviews(opts: {
       if (!present && e.verdict !== 'overview') { outcomes.push({ path: e.path, status: 'error', detail: 'file not found' }); continue; }
       const raw = present ? await readFile(abs, 'utf-8') : ''; // a new overview is hashed as empty
 
-      if (hashContent(raw) !== e.content_hash) {
+      if (hash_content(raw) !== e.content_hash) {
         outcomes.push({ path: e.path, status: 'stale', detail: 'doc changed since the review was written' });
         continue;
       }
-      let envNamesFor: string[] | undefined;
+      let env_names_for: string[] | undefined;
       try {
         // Nothing the review proposes to write may carry a secret.
-        assertNoSecrets([...(e.patch ?? []).map((p) => p.new), e.draft ?? '', e.pointer?.summary ?? '', ...(e.phrases ?? []), JSON.stringify(e.frontmatter ?? {})].join('\n'), e.path, secretsCfg);
+        assert_no_secrets([...(e.patch ?? []).map((p) => p.new), e.draft ?? '', e.pointer?.summary ?? '', ...(e.phrases ?? []), JSON.stringify(e.frontmatter ?? {})].join('\n'), e.path, secrets_cfg);
         if (e.verdict === 'merge') {
-          const body = parseFrontmatter(raw).content;
-          if (!e.section || !headingAnchors(body).has(e.section)) throw new Error(`section #${e.section ?? ''} not found in ${e.path}`);
+          const body = parse_frontmatter(raw).content;
+          if (!e.section || !heading_anchors(body).has(e.section)) throw new Error(`section #${e.section ?? ''} not found in ${e.path}`);
           if (!e.patch?.length) throw new Error('merge needs a patch');
-          const next = editDoc(raw, e, today);
-          if (!headingAnchors(parseFrontmatter(next).content).has(e.section)) throw new Error(`section #${e.section} gone after the merge`);
+          const next = edit_doc(raw, e, today);
+          if (!heading_anchors(parse_frontmatter(next).content).has(e.section)) throw new Error(`section #${e.section} gone after the merge`);
           // A merge only adds to the owner: whatever a patch replaces must still be there afterwards.
-          const lost = [...new Set(e.patch.flatMap((pt) => missingTokens(pt.old, parseFrontmatter(next).content, '')))];
+          const lost = [...new Set(e.patch.flatMap((pt) => missing_tokens(pt.old, parse_frontmatter(next).content, '')))];
           if (lost.length) throw new Error(`merge would drop owner text; missing: ${lost.join(', ')}`);
           await writeFile(abs, next, 'utf-8');
           touched.add(abs);
-          mergedIds.add(e.id ?? e.path);
+          merged_ids.add(e.id ?? e.path);
         } else if (e.verdict === 'overview') {
-          await writeFile(abs, await overviewDoc(e, docsPath, ledger), 'utf-8');
+          await writeFile(abs, await overview_doc(e, docs_path, ledger), 'utf-8');
           touched.add(abs);
-          overviewMembers.set(e.path, Object.fromEntries((e.members ?? []).map((m) => [m.path, m.content_hash])));
+          overview_members.set(e.path, Object.fromEntries((e.members ?? []).map((m) => [m.path, m.content_hash])));
         } else if (e.verdict === 'point') {
           const target = e.pointer?.target ?? '';
-          const ownerAbs = resolve(docsPath, target.split('#')[0] ?? '');
-          const inDocs = !relative(docsPath, ownerAbs).startsWith('..');
+          const owner_abs = resolve(docs_path, target.split('#')[0] ?? '');
+          const in_docs = !relative(docs_path, owner_abs).startsWith('..');
           // Outside the docs tree only a related repo's doc is allowed, and it is only ever read.
-          if (!inDocs && !relatedRoots.some((rr) => !relative(rr, ownerAbs).startsWith('..'))) throw new Error('pointer target is outside the docs tree and not in a related repo');
-          if (!(await exists(ownerAbs))) throw new Error(`pointer target not found: ${target}`);
+          if (!in_docs && !related_roots.some((rr) => !relative(rr, owner_abs).startsWith('..'))) throw new Error('pointer target is outside the docs tree and not in a related repo');
+          if (!(await exists(owner_abs))) throw new Error(`pointer target not found: ${target}`);
           if (e.depends_on_merge) {
-            if (!mergedIds.has(e.depends_on_merge)) throw new Error(`merge "${e.depends_on_merge}" was not applied`);
-            if (ownerAbs !== join(docsPath, [...applied].find((a) => (a.entry.id ?? a.entry.path) === e.depends_on_merge)!.entry.path)) throw new Error('pointer target is not the merged doc');
+            if (!merged_ids.has(e.depends_on_merge)) throw new Error(`merge "${e.depends_on_merge}" was not applied`);
+            if (owner_abs !== join(docs_path, [...applied].find((a) => (a.entry.id ?? a.entry.path) === e.depends_on_merge)!.entry.path)) throw new Error('pointer target is not the merged doc');
           }
-          const ownerRaw = await readFile(ownerAbs, 'utf-8');
-          if (!e.depends_on_merge && hashContent(ownerRaw) !== e.target_hash) throw new Error('owner doc changed since the review was written (or target_hash missing)');
-          await writeFile(abs, pointDoc({ raw, e, abs, ownerAbs, ownerRaw, today }), 'utf-8');
-          pointers.set(e.path, { target, section_hash: hashContent(sectionOf(parseFrontmatter<Record<string, unknown>>(ownerRaw).content, target.split('#')[1] ?? '') ?? '') });
+          const owner_raw = await readFile(owner_abs, 'utf-8');
+          if (!e.depends_on_merge && hash_content(owner_raw) !== e.target_hash) throw new Error('owner doc changed since the review was written (or target_hash missing)');
+          await writeFile(abs, point_doc({ raw, e, abs, ownerAbs: owner_abs, ownerRaw: owner_raw, today }), 'utf-8');
+          pointers.set(e.path, { target, section_hash: hash_content(section_of(parse_frontmatter<Record<string, unknown>>(owner_raw).content, target.split('#')[1] ?? '') ?? '') });
           touched.add(abs);
         } else if (e.verdict === 'phrases') {
-          const next = phrasesDoc(raw, e, cfg);
+          const next = phrases_doc(raw, e, cfg);
           if (next === null) { outcomes.push({ path: e.path, status: 'skipped', detail: 'no new phrases to add' }); continue; }
           await writeFile(abs, next, 'utf-8');
           touched.add(abs);
         } else if (e.verdict === 'archive') {
-          const res = await archiveDoc({ projectRoot: root, docsPath, file: e.path, today, ...(e.reason && { reason: e.reason }) });
+          const res = await archive_doc({ projectRoot: root, docsPath: docs_path, file: e.path, today, ...(e.reason && { reason: e.reason }) });
           if (!res.ok) throw new Error(res.errors.join('; '));
           touched.add(abs);
-          touched.add(join(docsPath, res.to ?? ''));
+          touched.add(join(docs_path, res.to ?? ''));
         } else if (e.verdict === 'secret') {
           if (!top0) throw new Error('the secret verdict needs a git repo');
-          const m = moveSecrets(top0, raw, e, secretsCfg);
+          const m = move_secrets(top0, raw, e, secrets_cfg);
           if (m.gi) touched.add(m.gi);
-          envPath = m.envPath;
+          env_path = m.envPath;
           await writeFile(abs, m.next, 'utf-8');
           touched.add(abs);
-          envNamesFor = m.names;
+          env_names_for = m.names;
         } else if (e.verdict === 'rewrite') {
-          const draft = join(reviewDir(root), 'drafts', e.path);
+          const draft = join(review_dir(root), 'drafts', e.path);
           await mkdir(dirname(draft), { recursive: true });
           await writeFile(draft, e.draft ?? '', 'utf-8');
         } else {
-          await writeFile(abs, editDoc(raw, e, today), 'utf-8');
+          await writeFile(abs, edit_doc(raw, e, today), 'utf-8');
           touched.add(abs);
         }
         if (e.verdict !== 'rewrite') domains.add(e.path.split('/')[0] ?? '');
-        applied.push({ entry: e, file: reviewRef, abs, ...(envNamesFor && { envNames: envNamesFor }) });
+        applied.push({ entry: e, file: review_ref, abs, ...(env_names_for && { envNames: env_names_for }) });
         outcomes.push({ path: e.path, status: 'applied' });
       } catch (err) {
         outcomes.push({ path: e.path, status: 'error', detail: (err as Error).message });
@@ -407,12 +407,12 @@ export async function applyReviews(opts: {
   const result: ApplyResult = { outcomes, touched: [] };
   if (!applied.length) return result;
 
-  const top = gitRoot(root);
+  const top = git_root(root);
   let commit: string | undefined;
   try {
     if (domains.size) {
-      const reg = await regenerateIndexes({
-        docsPath, silent: true,
+      const reg = await regenerate_indexes({
+        docsPath: docs_path, silent: true,
         domains: [...domains].filter((d) => known.has(d)) as never,
       });
       reg.filesWritten.forEach((f) => touched.add(f));
@@ -427,7 +427,7 @@ export async function applyReviews(opts: {
       if (gone.length) git(top, ['rm', '-q', '--cached', '--ignore-unmatch', '--', ...gone]);
       // Last line of defence: the staged diff may not add a secret.
       const added = git(top, ['diff', '--cached', '-U0', '--no-color', '--', ...paths]).split('\n').filter((l) => l.startsWith('+') && !l.startsWith('+++')).join('\n');
-      assertNoSecrets(added, 'the staged diff', secretsCfg);
+      assert_no_secrets(added, 'the staged diff', secrets_cfg);
       const first = reviews[0]!;
       if (git(top, ['status', '--porcelain', '--', ...paths])) git(top, ['commit', '-q', '--only', '-m', `docs(reconcile): ${first.scope || 'docs'} batch ${first.batch}`, '--', ...paths]);
       commit = git(top, ['rev-parse', '--short', 'HEAD']);
@@ -435,7 +435,7 @@ export async function applyReviews(opts: {
   } catch (err) {
     let msg = (err as Error).message;
     if (top) {
-      try { rollback(top, [...touched, ...(envPath ? [envPath] : [])], snap); } catch (rbErr) { msg += `; rollback also failed: ${(rbErr as Error).message}`; }
+      try { rollback(top, [...touched, ...(env_path ? [env_path] : [])], snap); } catch (rb_err) { msg += `; rollback also failed: ${(rb_err as Error).message}`; }
     }
     const failed = new Set(applied.map((a) => a.entry.path));
     return { outcomes: outcomes.map((o) => (failed.has(o.path) && o.status === 'applied' ? { ...o, status: 'error' as const, detail: `rolled back: ${msg}` } : o)), touched: [] };
@@ -444,15 +444,15 @@ export async function applyReviews(opts: {
   for (const a of applied) {
     const dest = a.entry.verdict === 'archive' || a.outside ? undefined : a.abs;
     const raw = dest ? await readFile(dest, 'utf-8') : undefined;
-    const key = a.outside ? outsideKey(a.entry.path) : a.entry.path;
+    const key = a.outside ? outside_key(a.entry.path) : a.entry.path;
     const prev = ledger.entries[key];
-    const rec = recordEntry(ledger, {
+    const rec = record_entry(ledger, {
       path: key,
       lane: prev?.lane ?? a.entry.lane ?? 'check',
-      content_hash: raw !== undefined ? hashContent(raw) : a.entry.content_hash,
+      content_hash: raw !== undefined ? hash_content(raw) : a.entry.content_hash,
     });
-    Object.assign(rec, { verdict: a.entry.verdict ?? '', reviewed_on: today, review_file: a.file, ...(a.envNames && { env_names: a.envNames }), ...(pointers.has(a.entry.path) && { pointer: pointers.get(a.entry.path)! }), ...(overviewMembers.has(a.entry.path) && { members: overviewMembers.get(a.entry.path)! }), ...(commit && { applied_commit: commit }) });
+    Object.assign(rec, { verdict: a.entry.verdict ?? '', reviewed_on: today, review_file: a.file, ...(a.envNames && { env_names: a.envNames }), ...(pointers.has(a.entry.path) && { pointer: pointers.get(a.entry.path)! }), ...(overview_members.has(a.entry.path) && { members: overview_members.get(a.entry.path)! }), ...(commit && { applied_commit: commit }) });
   }
-  await saveLedger(opts.ledgerFile, ledger);
+  await save_ledger(opts.ledgerFile, ledger);
   return { ...result, ...(commit && { commit }), touched: [...touched] };
 }

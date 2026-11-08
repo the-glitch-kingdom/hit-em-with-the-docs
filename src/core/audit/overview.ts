@@ -3,8 +3,8 @@
  * RETRIEVAL_* rules, so neither the exit code nor `audit --strict` changes.
  */
 
-import { buildLinkGraph } from '../links/tracker.js';
-import { findClusters } from '../links/clusters.js';
+import { build_link_graph } from '../links/tracker.js';
+import { find_clusters } from '../links/clusters.js';
 import type { OverviewConfig } from '../../utils/config.js';
 import { KB_ERROR_CODES } from '../metadata/errors.js';
 import type { AuditIssue } from './auditor.js';
@@ -12,26 +12,26 @@ import type { AuditIssue } from './auditor.js';
 const O = KB_ERROR_CODES;
 const TEMPLATE = '`templates/overview.template.md`';
 
-export async function checkOverview(docsPath: string, cfg: OverviewConfig): Promise<AuditIssue[]> {
+export async function check_overview(docs_path: string, cfg: OverviewConfig): Promise<AuditIssue[]> {
   const on = (c: string): boolean => !cfg.disabled.includes(c);
-  const wantMissing = on(O.OVERVIEW_MISSING);
-  const wantStale = on(O.OVERVIEW_STALE_LINKS);
-  if (!wantMissing && !wantStale) return [];
+  const want_missing = on(O.OVERVIEW_MISSING);
+  const want_stale = on(O.OVERVIEW_STALE_LINKS);
+  if (!want_missing && !want_stale) return [];
 
-  const clusters = await findClusters(docsPath, cfg);
+  const clusters = await find_clusters(docs_path, cfg);
   const issues: AuditIssue[] = [];
-  const out = wantStale && clusters.some((c) => c.kindOverview)
+  const out = want_stale && clusters.some((c) => c.kindOverview)
     ? new Map<string, Set<string>>()
     : null;
   if (out) {
-    for (const e of (await buildLinkGraph(docsPath)).edges) {
+    for (const e of (await build_link_graph(docs_path)).edges) {
       (out.get(e.source) ?? out.set(e.source, new Set()).get(e.source)!).add(e.target);
     }
   }
 
   for (const c of clusters) {
     if (!c.overview) {
-      if (!wantMissing) continue;
+      if (!want_missing) continue;
       issues.push({
         file: c.top,
         rule: O.OVERVIEW_MISSING,

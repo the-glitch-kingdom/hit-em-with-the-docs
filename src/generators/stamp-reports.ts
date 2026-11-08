@@ -1,12 +1,12 @@
 import { readdir, readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
-import { resolveReportsDir } from '../utils/config.js';
+import { resolve_reports_dir } from '../utils/config.js';
 
 /** File names the report generators write (timestamped markdown only). */
 const REPORT_NAME = /^(maintenance|health|audit|links)-.+\.md$/;
 
 /** `generated: true` inserted into the frontmatter block (one is added if missing). */
-export function stampGenerated(content: string): string | null {
+export function stamp_generated(content: string): string | null {
   const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/);
   if (!m) return `---\ngenerated: true\n---\n\n${content}`;
   if (/^generated\s*:/m.test(m[1]!)) return null;
@@ -15,8 +15,8 @@ export function stampGenerated(content: string): string | null {
 }
 
 /** Stamp unstamped generator-named reports in the reports dir; returns the files touched. */
-export async function stampReports(docsPath: string, dryRun = false): Promise<string[]> {
-  const dir = await resolveReportsDir(docsPath);
+export async function stamp_reports(docs_path: string, dry_run = false): Promise<string[]> {
+  const dir = await resolve_reports_dir(docs_path);
   let names: string[];
   try {
     names = (await readdir(dir)).filter((n) => REPORT_NAME.test(n)).sort();
@@ -26,9 +26,9 @@ export async function stampReports(docsPath: string, dryRun = false): Promise<st
   const touched: string[] = [];
   for (const name of names) {
     const file = join(dir, name);
-    const next = stampGenerated(await readFile(file, 'utf-8'));
+    const next = stamp_generated(await readFile(file, 'utf-8'));
     if (next === null) continue;
-    if (!dryRun) await writeFile(file, next, 'utf-8');
+    if (!dry_run) await writeFile(file, next, 'utf-8');
     touched.push(file);
   }
   return touched;

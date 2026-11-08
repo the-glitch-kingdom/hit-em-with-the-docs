@@ -1,10 +1,10 @@
 import { type Domain } from '../core/domains/constants.js';
 import {
-  getAllDomains,
-  getDomainDefinition,
-  getDomainsByCategory,
+  get_all_domains,
+  get_domain_definition,
+  get_domains_by_category,
 } from '../core/domains/registry.js';
-import { formatDate } from '../core/metadata/generator.js';
+import { format_date } from '../core/metadata/generator.js';
 import type { IndexEntry } from './index-generator.js';
 
 const COMMON_TASKS: [string, Domain][] = [
@@ -20,11 +20,11 @@ const COMMON_TASKS: [string, Domain][] = [
 /**
  * Generate the root REGISTRY.md content (quick reference)
  */
-export function generateRootRegistry(
+export function generate_root_registry(
   /** Domains whose folder exists — only these are linked (#45). */
-  present: Domain[] = getAllDomains()
+  present: Domain[] = get_all_domains()
 ): string {
-  const now = formatDate(new Date());
+  const now = format_date(new Date());
 
   let content = `---
 title: Documentation Registry
@@ -48,7 +48,7 @@ purpose: Quick reference for all documentation domains
 `;
 
   for (const domain of present) {
-    const def = getDomainDefinition(domain);
+    const def = get_domain_definition(domain);
     const keywords = def.keywords.slice(0, 3).join(', ');
     content += `| [${def.name}](${domain}/) | ${def.category} | ${def.loadPriority}/10 | ${keywords} |\n`;
   }
@@ -59,13 +59,13 @@ purpose: Quick reference for all documentation domains
   const categories = ['core', 'development', 'features', 'advanced'] as const;
 
   for (const category of categories) {
-    const categoryDomains = getDomainsByCategory(category).filter((d) => present.includes(d));
-    if (categoryDomains.length === 0) continue;
+    const category_domains = get_domains_by_category(category).filter((d) => present.includes(d));
+    if (category_domains.length === 0) continue;
 
     content += `### ${capitalize(category)}\n\n`;
 
-    for (const domain of categoryDomains) {
-      const def = getDomainDefinition(domain);
+    for (const domain of category_domains) {
+      const def = get_domain_definition(domain);
       content += `- **[${def.name}](${domain}/)** - ${def.description}\n`;
     }
     content += `\n`;
@@ -90,12 +90,12 @@ purpose: Quick reference for all documentation domains
 /**
  * Generate domain-specific REGISTRY.md content
  */
-export function generateDomainRegistryContent(
+export function generate_domain_registry_content(
   domain: Domain,
   entries: IndexEntry[] = []
 ): string {
-  const def = getDomainDefinition(domain);
-  const now = formatDate(new Date());
+  const def = get_domain_definition(domain);
+  const now = format_date(new Date());
 
   let content = `---
 title: ${def.name} Registry
@@ -124,22 +124,22 @@ purpose: Quick reference for ${domain} documentation
 
   if (entries.length > 0) {
     // Quick links to most important docs
-    const activeEntries = entries.filter((e) => e.status === 'active');
-    const recentEntries = [...entries]
+    const active_entries = entries.filter((e) => e.status === 'active');
+    const recent_entries = [...entries]
       .sort((a, b) => b.lastUpdated.localeCompare(a.lastUpdated))
       .slice(0, 5);
 
-    if (activeEntries.length > 0) {
+    if (active_entries.length > 0) {
       content += `## Active Documents\n\n`;
-      for (const entry of activeEntries.slice(0, 10)) {
+      for (const entry of active_entries.slice(0, 10)) {
         content += `- [${entry.title}](${entry.path})\n`;
       }
       content += `\n`;
     }
 
-    if (recentEntries.length > 0) {
+    if (recent_entries.length > 0) {
       content += `## Recently Updated\n\n`;
-      for (const entry of recentEntries) {
+      for (const entry of recent_entries) {
         content += `- [${entry.title}](${entry.path}) - ${entry.lastUpdated}\n`;
       }
       content += `\n`;
@@ -147,11 +147,11 @@ purpose: Quick reference for ${domain} documentation
 
     // By status
     content += `## By Status\n\n`;
-    const byStatus = groupByStatus(entries);
+    const by_status = group_by_status(entries);
     content += `| Status | Count |\n`;
     content += `|--------|-------|\n`;
-    for (const [status, statusEntries] of Object.entries(byStatus)) {
-      content += `| ${status} | ${statusEntries.length} |\n`;
+    for (const [status, status_entries] of Object.entries(by_status)) {
+      content += `| ${status} | ${status_entries.length} |\n`;
     }
     content += `\n`;
   } else {
@@ -177,7 +177,7 @@ purpose: Quick reference for ${domain} documentation
 /**
  * Group entries by status
  */
-function groupByStatus(entries: IndexEntry[]): Record<string, IndexEntry[]> {
+function group_by_status(entries: IndexEntry[]): Record<string, IndexEntry[]> {
   const grouped: Record<string, IndexEntry[]> = {
     active: [],
     draft: [],

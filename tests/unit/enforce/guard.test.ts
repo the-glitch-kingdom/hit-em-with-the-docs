@@ -9,9 +9,9 @@
 import { describe, it, expect } from 'vitest';
 import { evaluate, DEFAULT_ENFORCEMENT } from '../../../src/core/enforce/guard.js';
 
-const docsDir = '.documentation';
+const docs_dir = '.documentation';
 const ev = (input: Parameters<typeof evaluate>[0], policy = DEFAULT_ENFORCEMENT) =>
-  evaluate({ docsDir, ...input }, policy);
+  evaluate({ docsDir: docs_dir, ...input }, policy);
 
 describe('guard — only denies indexes hewtd actually generates', () => {
   // hewtd writes `<docs>/INDEX.md` and `<docs>/<domain>/INDEX.md` and nothing else
@@ -44,12 +44,12 @@ describe('guard — only denies indexes hewtd actually generates', () => {
   });
 
   it('uses the supplied domain list, so a slash-containing custom domain still denies', () => {
-    const filePath = '.documentation/features/tiers/INDEX.md';
+    const file_path = '.documentation/features/tiers/INDEX.md';
     // Default (no list): one segment below the root is generated, deeper is not.
-    expect(ev({ toolName: 'Edit', filePath }).action).toBe('allow');
+    expect(ev({ toolName: 'Edit', filePath: file_path }).action).toBe('allow');
     // Declared as a domain by this project => hewtd does generate it => deny.
     expect(
-      evaluate({ docsDir, toolName: 'Edit', filePath, domains: ['features/tiers'] }).action
+      evaluate({ docsDir: docs_dir, toolName: 'Edit', filePath: file_path, domains: ['features/tiers'] }).action
     ).toBe('deny');
   });
 

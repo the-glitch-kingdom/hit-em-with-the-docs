@@ -35,7 +35,7 @@ export const LIFECYCLE_TRACKED_TIERS = [
 ] as const satisfies readonly Tier[];
 export type LifecycleTrackedTier = (typeof LIFECYCLE_TRACKED_TIERS)[number];
 
-export function isLifecycleTrackedTier(tier: unknown): tier is LifecycleTrackedTier {
+export function is_lifecycle_tracked_tier(tier: unknown): tier is LifecycleTrackedTier {
   return (
     typeof tier === 'string' &&
     (LIFECYCLE_TRACKED_TIERS as readonly string[]).includes(tier)
@@ -207,7 +207,7 @@ export interface TierClassificationResult {
 /**
  * Classify document content into a tier
  */
-export function classifyTier(content: string): TierClassificationResult {
+export function classify_tier(content: string): TierClassificationResult {
   const scores: Record<Tier, number> = {
     guide: 0,
     standard: 0,
@@ -221,10 +221,10 @@ export function classifyTier(content: string): TierClassificationResult {
   };
 
   const reasoning: string[] = [];
-  const lowerContent = content.toLowerCase();
+  const lower_content = content.toLowerCase();
 
   // Calculate content size in KB
-  const sizeKB = Buffer.byteLength(content, 'utf8') / 1024;
+  const size_kb = Buffer.byteLength(content, 'utf8') / 1024;
 
   // Score based on indicators
   for (const tier of TIERS) {
@@ -232,8 +232,8 @@ export function classifyTier(content: string): TierClassificationResult {
 
     // Check indicators
     for (const indicator of def.indicators) {
-      const regex = new RegExp(`\\b${escapeRegExp(indicator)}\\b`, 'gi');
-      const matches = lowerContent.match(regex);
+      const regex = new RegExp(`\\b${escape_reg_exp(indicator)}\\b`, 'gi');
+      const matches = lower_content.match(regex);
       if (matches) {
         scores[tier] += matches.length * 2;
         if (matches.length >= 3) {
@@ -252,29 +252,29 @@ export function classifyTier(content: string): TierClassificationResult {
     }
 
     // Size-based scoring
-    if (sizeKB >= def.sizeRange.min && sizeKB <= def.sizeRange.max) {
+    if (size_kb >= def.sizeRange.min && size_kb <= def.sizeRange.max) {
       scores[tier] += 10;
-      reasoning.push(`Size ${sizeKB.toFixed(1)}KB matches ${tier} range`);
+      reasoning.push(`Size ${size_kb.toFixed(1)}KB matches ${tier} range`);
     }
   }
 
   // Additional heuristics
 
   // Code block ratio indicates example or reference
-  const codeBlockCount = (content.match(/```/g) ?? []).length / 2;
+  const code_block_count = (content.match(/```/g) ?? []).length / 2;
   const lines = content.split('\n').length;
-  const codeRatio = codeBlockCount / (lines / 50);
+  const code_ratio = code_block_count / (lines / 50);
 
-  if (codeRatio > 0.5) {
+  if (code_ratio > 0.5) {
     scores.example += 15;
     reasoning.push('High code block ratio suggests example');
   }
 
   // Bullet/numbered list ratio indicates guide or standard
-  const listItems = (content.match(/^[\s]*[-*\d.]+\s/gm) ?? []).length;
-  const listRatio = listItems / lines;
+  const list_items = (content.match(/^[\s]*[-*\d.]+\s/gm) ?? []).length;
+  const list_ratio = list_items / lines;
 
-  if (listRatio > 0.3) {
+  if (list_ratio > 0.3) {
     scores.guide += 10;
     scores.standard += 8;
     reasoning.push('High list ratio suggests guide or standard');
@@ -295,29 +295,29 @@ export function classifyTier(content: string): TierClassificationResult {
   }
 
   // Find the winning tier
-  let maxScore = 0;
-  let winningTier: Tier = 'guide';
+  let max_score = 0;
+  let winning_tier: Tier = 'guide';
 
   for (const tier of TIERS) {
-    if (scores[tier] > maxScore) {
-      maxScore = scores[tier];
-      winningTier = tier;
+    if (scores[tier] > max_score) {
+      max_score = scores[tier];
+      winning_tier = tier;
     }
   }
 
   // Calculate confidence based on score difference
-  const sortedScores = Object.values(scores).sort((a, b) => b - a);
-  const topScore = sortedScores[0] ?? 0;
-  const secondScore = sortedScores[1] ?? 0;
-  const scoreDiff = topScore - secondScore;
+  const sorted_scores = Object.values(scores).sort((a, b) => b - a);
+  const top_score = sorted_scores[0] ?? 0;
+  const second_score = sorted_scores[1] ?? 0;
+  const score_diff = top_score - second_score;
 
   let confidence = 0.5;
-  if (topScore > 0) {
-    confidence = Math.min(0.5 + (scoreDiff / topScore) * 0.3 + (topScore / 100) * 0.2, 0.95);
+  if (top_score > 0) {
+    confidence = Math.min(0.5 + (score_diff / top_score) * 0.3 + (top_score / 100) * 0.2, 0.95);
   }
 
   return {
-    tier: winningTier,
+    tier: winning_tier,
     confidence,
     scores,
     reasoning,
@@ -327,27 +327,27 @@ export function classifyTier(content: string): TierClassificationResult {
 /**
  * Get tier definition by ID
  */
-export function getTierDefinition(tier: Tier): TierDefinition {
+export function get_tier_definition(tier: Tier): TierDefinition {
   return TIER_DEFINITIONS[tier];
 }
 
 /**
  * Check if a string is a valid tier
  */
-export function isValidTier(value: string): value is Tier {
+export function is_valid_tier(value: string): value is Tier {
   return TIERS.includes(value as Tier);
 }
 
 /**
  * Get tier display name
  */
-export function getTierDisplayName(tier: Tier): string {
+export function get_tier_display_name(tier: Tier): string {
   return TIER_DEFINITIONS[tier].name;
 }
 
 /**
  * Escape special regex characters
  */
-function escapeRegExp(string: string): string {
+function escape_reg_exp(string: string): string {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

@@ -63,22 +63,22 @@ describe('project config from a subdirectory', () => {
 
     expect(run(a, 'index').status).toBe(0);
     expect(run(sub, 'index').status).toBe(0);
-    const fromRoot = await generated(a);
-    expect(fromRoot.index).toContain('gamma-ops');
-    expect(await generated(b)).toEqual(fromRoot);
+    const from_root = await generated(a);
+    expect(from_root.index).toContain('gamma-ops');
+    expect(await generated(b)).toEqual(from_root);
 
     expect(run(a, 'integrate', 'incoming.md', '-a').status).toBe(0);
     expect(run(sub, 'integrate', '../../../incoming.md', '-a').status).toBe(0);
-    const afterRoot = await generated(a);
-    expect(afterRoot.index).toContain('gamma-ops');
-    expect(await generated(b)).toEqual(afterRoot);
+    const after_root = await generated(a);
+    expect(after_root.index).toContain('gamma-ops');
+    expect(await generated(b)).toEqual(after_root);
   });
 
   it('a fact command from a subdirectory finds the project root config', async () => {
     const root = await project();
-    const fromRoot = run(root, 'find-citers', 'nope');
-    const fromSub = run(join(root, 'deep/er/dir'), 'find-citers', 'nope');
-    expect(fromSub.status).toBe(fromRoot.status);
-    expect(fromSub.stdout + fromSub.stderr).toBe(fromRoot.stdout + fromRoot.stderr);
+    const from_root = run(root, 'find-citers', 'nope');
+    const from_sub = run(join(root, 'deep/er/dir'), 'find-citers', 'nope');
+    expect(from_sub.status).toBe(from_root.status);
+    expect(from_sub.stdout + from_sub.stderr).toBe(from_root.stdout + from_root.stderr);
   });
 });

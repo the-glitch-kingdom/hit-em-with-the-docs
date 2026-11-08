@@ -1,23 +1,23 @@
 import { readFile } from 'fs/promises';
 import { relative, basename, join } from 'path';
-import { findMarkdownFiles } from '../../utils/glob.js';
-import { listDomainDocFiles } from '../../generators/regenerate.js';
-import { parseFrontmatter } from '../../utils/frontmatter.js';
+import { find_markdown_files } from '../../utils/glob.js';
+import { list_domain_doc_files } from '../../generators/regenerate.js';
+import { parse_frontmatter } from '../../utils/frontmatter.js';
 import { logger } from '../../utils/logger.js';
 import {
-  validatePartialMetadata,
-  validateKnowledgeBaseFields,
-  getMissingRequiredFields,
+  validate_partial_metadata,
+  validate_knowledge_base_fields,
+  get_missing_required_fields,
   type PartialDocumentMetadata,
 } from '../metadata/schema.js';
 import { KB_ERROR_SEVERITY, type KbErrorCode } from '../metadata/errors.js';
-import { detectDomainFromPath } from '../domains/detector.js';
-import { isValidTier, TIERS } from '../domains/classifier.js';
-import { isValidDomain, getAllDomains } from '../domains/registry.js';
-import { loadPluginConfig } from '../../utils/config.js';
-import { collectRetrievalDocs, checkRetrieval } from './retrieval.js';
-import { checkOverview } from './overview.js';
-import { checkNamingConvention, checkFilePlacement } from './rules.js';
+import { detect_domain_from_path } from '../domains/detector.js';
+import { is_valid_tier, TIERS } from '../domains/classifier.js';
+import { is_valid_domain, get_all_domains } from '../domains/registry.js';
+import { load_plugin_config } from '../../utils/config.js';
+import { collect_retrieval_docs, check_retrieval } from './retrieval.js';
+import { check_overview } from './overview.js';
+import { check_naming_convention, check_file_placement } from './rules.js';
 
 export interface AuditOptions {
   docsPath: string;
@@ -77,15 +77,15 @@ export interface DomainAuditStats {
  * Audit documentation for compliance and issues
  */
 /** Issues that should count toward CI failure: advisory RETRIEVAL_* (#50) and OVERVIEW_* (#51) warnings never do. */
-export function countActionableIssues(issues: { rule: string }[]): number {
+export function count_actionable_issues(issues: { rule: string }[]): number {
   return issues.filter((i) => !/^(RETRIEVAL|OVERVIEW|LINK_BROKEN_ANCHOR)(_|$)/.test(i.rule)).length;
 }
 
-export async function auditDocumentation(options: AuditOptions): Promise<AuditResult> {
+export async function audit_documentation(options: AuditOptions): Promise<AuditResult> {
   const {
-    docsPath,
+    docsPath: docs_path,
     domain,
-    issuesOnly = false,
+    issuesOnly: issues_only = false,
     silent = false,
   } = options;
 
@@ -109,12 +109,12 @@ export async function auditDocumentation(options: AuditOptions): Promise<AuditRe
   }
 
   // Find all markdown files
-  let files = await findMarkdownFiles(docsPath);
+  let files = await find_markdown_files(docs_path);
 
   // Filter by domain if specified
   if (domain) {
     files = files.filter((f) => {
-      const rel = relative(docsPath, f);
+      const rel = relative(docs_path, f);
       return rel.startsWith(domain + '/') || rel.startsWith(domain + '\\');
     });
   }
@@ -131,54 +131,54 @@ export async function auditDocumentation(options: AuditOptions): Promise<AuditRe
     logger.info(`Auditing ${files.length} files...`);
   }
 
-  let metadataCompliant = 0;
-  let namingCompliant = 0;
-  let placementCompliant = 0;
-  const tagCounts = new Map<string, number>();
+  let metadata_compliant = 0;
+  let naming_compliant = 0;
+  let placement_compliant = 0;
+  const tag_counts = new Map<string, number>();
 
   for (const file of files) {
-    const fileIssues = await auditFile(file, docsPath);
+    const file_issues = await audit_file(file, docs_path);
 
     // Track per-file results
-    const hasErrors = fileIssues.some((i) => i.severity === 'error');
+    const has_errors = file_issues.some((i) => i.severity === 'error');
 
-    if (hasErrors) {
+    if (has_errors) {
       result.failedFiles++;
     } else {
       result.passedFiles++;
     }
 
     // Add issues
-    if (!issuesOnly || fileIssues.length > 0) {
-      result.issues.push(...fileIssues);
+    if (!issues_only || file_issues.length > 0) {
+      result.issues.push(...file_issues);
     }
 
     // Update compliance stats
-    const hasMetadataIssue = fileIssues.some((i) => i.rule.startsWith('metadata'));
-    const hasNamingIssue = fileIssues.some((i) => i.rule === 'naming-convention');
-    const hasPlacementIssue = fileIssues.some((i) => i.rule === 'placement');
+    const has_metadata_issue = file_issues.some((i) => i.rule.startsWith('metadata'));
+    const has_naming_issue = file_issues.some((i) => i.rule === 'naming-convention');
+    const has_placement_issue = file_issues.some((i) => i.rule === 'placement');
 
-    if (!hasMetadataIssue) metadataCompliant++;
-    if (!hasNamingIssue) namingCompliant++;
-    if (!hasPlacementIssue) placementCompliant++;
+    if (!has_metadata_issue) metadata_compliant++;
+    if (!has_naming_issue) naming_compliant++;
+    if (!has_placement_issue) placement_compliant++;
 
     // Track tags for consistency check
     try {
       const content = await readFile(file, 'utf-8');
-      const { data } = parseFrontmatter<PartialDocumentMetadata>(content);
+      const { data } = parse_frontmatter<PartialDocumentMetadata>(content);
       if (data.tags) {
         for (const tag of data.tags) {
-          tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
+          tag_counts.set(tag, (tag_counts.get(tag) ?? 0) + 1);
         }
       }
 
       // Track by domain
-      const fileDomain = data.domains?.[0] ?? detectDomainFromPath(file, docsPath).domain ?? 'unknown';
-      if (!result.stats.byDomain[fileDomain]) {
-        result.stats.byDomain[fileDomain] = { files: 0, issues: 0, healthScore: 0 };
+      const file_domain = data.domains?.[0] ?? detect_domain_from_path(file, docs_path).domain ?? 'unknown';
+      if (!result.stats.byDomain[file_domain]) {
+        result.stats.byDomain[file_domain] = { files: 0, issues: 0, healthScore: 0 };
       }
-      result.stats.byDomain[fileDomain]!.files++;
-      result.stats.byDomain[fileDomain]!.issues += fileIssues.length;
+      result.stats.byDomain[file_domain]!.files++;
+      result.stats.byDomain[file_domain]!.issues += file_issues.length;
     } catch {
       // Ignore read errors
     }
@@ -190,32 +190,32 @@ export async function auditDocumentation(options: AuditOptions): Promise<AuditRe
   // going stale between maintain runs. Drift issues are error-severity so
   // `audit --strict` gates CI on them; they do not change `failedFiles`, so
   // a plain `audit` exit code is unaffected (existing behavior preserved).
-  const driftIssues = await checkIndexDrift(docsPath, domain);
-  result.issues.push(...driftIssues);
+  const drift_issues = await check_index_drift(docs_path, domain);
+  result.issues.push(...drift_issues);
 
   // Retrieval readiness (#50): advisory warnings. Deliberately carry no `code`
   // so `audit --strict` (which fails on any coded issue) is unaffected.
-  const pluginCfg = await loadPluginConfig(options.projectRoot);
-  const retrievalCfg = pluginCfg.retrieval;
-  const retrievalDocs = await collectRetrievalDocs(docsPath, files);
-  result.issues.push(...checkRetrieval(retrievalDocs, retrievalCfg));
-  result.issues.push(...(await checkOverview(docsPath, pluginCfg.overview)));
+  const plugin_cfg = await load_plugin_config(options.projectRoot);
+  const retrieval_cfg = plugin_cfg.retrieval;
+  const retrieval_docs = await collect_retrieval_docs(docs_path, files);
+  result.issues.push(...check_retrieval(retrieval_docs, retrieval_cfg));
+  result.issues.push(...(await check_overview(docs_path, plugin_cfg.overview)));
 
   // Calculate stats
-  result.stats.metadataCompliance = (metadataCompliant / files.length) * 100 || 0;
-  result.stats.namingCompliance = (namingCompliant / files.length) * 100 || 0;
-  result.stats.placementCompliance = (placementCompliant / files.length) * 100 || 0;
+  result.stats.metadataCompliance = (metadata_compliant / files.length) * 100 || 0;
+  result.stats.namingCompliance = (naming_compliant / files.length) * 100 || 0;
+  result.stats.placementCompliance = (placement_compliant / files.length) * 100 || 0;
 
   // Tag consistency: percentage of tags used more than once
-  const tagsUsedMultiple = [...tagCounts.values()].filter((c) => c > 1).length;
-  result.stats.tagConsistency = tagCounts.size > 0
-    ? (tagsUsedMultiple / tagCounts.size) * 100
+  const tags_used_multiple = [...tag_counts.values()].filter((c) => c > 1).length;
+  result.stats.tagConsistency = tag_counts.size > 0
+    ? (tags_used_multiple / tag_counts.size) * 100
     : 100;
 
   // Calculate per-domain health scores
   for (const stats of Object.values(result.stats.byDomain)) {
-    const avgIssuesPerFile = stats.issues / stats.files;
-    stats.healthScore = Math.max(0, 100 - avgIssuesPerFile * 10);
+    const avg_issues_per_file = stats.issues / stats.files;
+    stats.healthScore = Math.max(0, 100 - avg_issues_per_file * 10);
   }
 
   // Calculate overall health score
@@ -243,33 +243,33 @@ export async function auditDocumentation(options: AuditOptions): Promise<AuditRe
 /**
  * Audit a single file
  */
-async function auditFile(filePath: string, docsPath: string): Promise<AuditIssue[]> {
+async function audit_file(file_path: string, docs_path: string): Promise<AuditIssue[]> {
   const issues: AuditIssue[] = [];
-  const relPath = relative(docsPath, filePath);
+  const rel_path = relative(docs_path, file_path);
 
   try {
-    const content = await readFile(filePath, 'utf-8');
-    const { data } = parseFrontmatter<PartialDocumentMetadata>(content);
+    const content = await readFile(file_path, 'utf-8');
+    const { data } = parse_frontmatter<PartialDocumentMetadata>(content);
 
     // Check metadata presence
-    const missingRequired = getMissingRequiredFields(data as Record<string, unknown>);
-    if (missingRequired.length > 0) {
+    const missing_required = get_missing_required_fields(data as Record<string, unknown>);
+    if (missing_required.length > 0) {
       issues.push({
-        file: relPath,
+        file: rel_path,
         rule: 'metadata-required',
         severity: 'error',
-        message: `Missing required fields: ${missingRequired.join(', ')}`,
+        message: `Missing required fields: ${missing_required.join(', ')}`,
         fixable: true,
         suggestion: 'Run with --fix to auto-generate missing metadata',
       });
     }
 
     // Check metadata validity
-    const validation = validatePartialMetadata(data);
+    const validation = validate_partial_metadata(data);
     if (!validation.valid) {
       for (const error of validation.errors) {
         issues.push({
-          file: relPath,
+          file: rel_path,
           rule: 'metadata-invalid',
           severity: 'error',
           message: error,
@@ -279,9 +279,9 @@ async function auditFile(filePath: string, docsPath: string): Promise<AuditIssue
     }
 
     // Check tier validity
-    if (data.tier && !isValidTier(data.tier)) {
+    if (data.tier && !is_valid_tier(data.tier)) {
       issues.push({
-        file: relPath,
+        file: rel_path,
         rule: 'metadata-tier',
         severity: 'error',
         message: `Invalid tier: ${data.tier}`,
@@ -293,11 +293,11 @@ async function auditFile(filePath: string, docsPath: string): Promise<AuditIssue
     // Knowledge-base primitive validation (fact / incident-narrative /
     // incident-facts / symptoms). Runs after the partial-schema check so
     // we don't double-report missing universal fields.
-    const kbErrors = validateKnowledgeBaseFields(data as Record<string, unknown>);
-    for (const err of kbErrors) {
+    const kb_errors = validate_knowledge_base_fields(data as Record<string, unknown>);
+    for (const err of kb_errors) {
       const severity = KB_ERROR_SEVERITY[err.code];
       issues.push({
-        file: relPath,
+        file: rel_path,
         rule: `metadata-${err.code.toLowerCase().replace(/_/g, '-')}`,
         severity,
         message: err.message,
@@ -309,9 +309,9 @@ async function auditFile(filePath: string, docsPath: string): Promise<AuditIssue
     // Check domain validity
     if (data.domains) {
       for (const d of data.domains) {
-        if (!isValidDomain(d)) {
+        if (!is_valid_domain(d)) {
           issues.push({
-            file: relPath,
+            file: rel_path,
             rule: 'metadata-domain',
             severity: 'warning',
             message: `Unknown domain: ${d}`,
@@ -323,48 +323,48 @@ async function auditFile(filePath: string, docsPath: string): Promise<AuditIssue
     }
 
     // Check naming convention
-    const namingResult = checkNamingConvention(filePath);
-    if (!namingResult.valid) {
-      const namingIssue: AuditIssue = {
-        file: relPath,
+    const naming_result = check_naming_convention(file_path);
+    if (!naming_result.valid) {
+      const naming_issue: AuditIssue = {
+        file: rel_path,
         rule: 'naming-convention',
         severity: 'warning',
-        message: namingResult.message ?? 'Naming convention violation',
+        message: naming_result.message ?? 'Naming convention violation',
         fixable: false,
       };
-      if (namingResult.suggestion) {
-        namingIssue.suggestion = namingResult.suggestion;
+      if (naming_result.suggestion) {
+        naming_issue.suggestion = naming_result.suggestion;
       }
-      issues.push(namingIssue);
+      issues.push(naming_issue);
     }
 
     // Check file placement
-    const placementResult = checkFilePlacement(filePath, docsPath, data.domains?.[0]);
-    if (!placementResult.valid) {
-      const placementIssue: AuditIssue = {
-        file: relPath,
+    const placement_result = check_file_placement(file_path, docs_path, data.domains?.[0]);
+    if (!placement_result.valid) {
+      const placement_issue: AuditIssue = {
+        file: rel_path,
         rule: 'placement',
         severity: 'warning',
-        message: placementResult.message ?? 'File may be in wrong domain',
+        message: placement_result.message ?? 'File may be in wrong domain',
         fixable: false,
       };
-      if (placementResult.suggestion) {
-        placementIssue.suggestion = placementResult.suggestion;
+      if (placement_result.suggestion) {
+        placement_issue.suggestion = placement_result.suggestion;
       }
-      issues.push(placementIssue);
+      issues.push(placement_issue);
     }
 
     // Check for stale content
     if (data.last_updated) {
-      const lastUpdated = new Date(data.last_updated);
-      const daysSinceUpdate = (Date.now() - lastUpdated.getTime()) / (1000 * 60 * 60 * 24);
+      const last_updated = new Date(data.last_updated);
+      const days_since_update = (Date.now() - last_updated.getTime()) / (1000 * 60 * 60 * 24);
 
-      if (daysSinceUpdate > 365) {
+      if (days_since_update > 365) {
         issues.push({
-          file: relPath,
+          file: rel_path,
           rule: 'stale-content',
           severity: 'info',
-          message: `Document not updated in ${Math.floor(daysSinceUpdate)} days`,
+          message: `Document not updated in ${Math.floor(days_since_update)} days`,
           fixable: false,
           suggestion: 'Consider reviewing and updating this document',
         });
@@ -377,19 +377,19 @@ async function auditFile(filePath: string, docsPath: string): Promise<AuditIssue
     // makes `status: deprecated` actionable.
     if (data.status === 'deprecated') {
       issues.push({
-        file: relPath,
+        file: rel_path,
         rule: 'deprecated-not-archived',
         severity: 'info',
         message: 'Document is marked deprecated but still in an active domain folder',
         fixable: false,
-        suggestion: `Retire it with \`hewtd archive ${relPath}\` (or restore it to active)`,
+        suggestion: `Retire it with \`hewtd archive ${rel_path}\` (or restore it to active)`,
       });
     }
 
     // Check for empty tags
     if (data.tags && data.tags.length === 0 && data.status === 'active') {
       issues.push({
-        file: relPath,
+        file: rel_path,
         rule: 'missing-tags',
         severity: 'info',
         message: 'Active document has no tags',
@@ -401,7 +401,7 @@ async function auditFile(filePath: string, docsPath: string): Promise<AuditIssue
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     issues.push({
-      file: relPath,
+      file: rel_path,
       rule: 'read-error',
       severity: 'error',
       message: `Could not read file: ${message}`,
@@ -421,47 +421,47 @@ async function auditFile(filePath: string, docsPath: string): Promise<AuditIssue
  * drifted domain yields one error-severity, fixable issue; running
  * `hewtd index` or `hewtd maintain` clears it.
  */
-async function checkIndexDrift(
-  docsPath: string,
-  domainFilter?: string
+async function check_index_drift(
+  docs_path: string,
+  domain_filter?: string
 ): Promise<AuditIssue[]> {
   const issues: AuditIssue[] = [];
-  const domains = domainFilter ? [domainFilter] : getAllDomains();
+  const domains = domain_filter ? [domain_filter] : get_all_domains();
   const suggestion = 'Run `hewtd index` (or `hewtd maintain`) to regenerate it';
 
   for (const domain of domains) {
-    const docFiles = await listDomainDocFiles(docsPath, domain);
-    if (docFiles.length === 0) continue;
+    const doc_files = await list_domain_doc_files(docs_path, domain);
+    if (doc_files.length === 0) continue;
 
-    let indexContent: string | null = null;
+    let index_content: string | null = null;
     try {
-      indexContent = await readFile(join(docsPath, domain, 'INDEX.md'), 'utf-8');
+      index_content = await readFile(join(docs_path, domain, 'INDEX.md'), 'utf-8');
     } catch {
-      indexContent = null;
+      index_content = null;
     }
 
-    if (indexContent === null) {
+    if (index_content === null) {
       issues.push({
         file: `${domain}/INDEX.md`,
         rule: 'index-drift',
         severity: 'error',
-        message: `INDEX.md is missing but ${docFiles.length} document(s) exist in ${domain}/`,
+        message: `INDEX.md is missing but ${doc_files.length} document(s) exist in ${domain}/`,
         fixable: true,
         suggestion,
       });
       continue;
     }
 
-    const content = indexContent;
-    const unlisted = docFiles.filter((f) => !content.includes(f));
+    const content = index_content;
+    const unlisted = doc_files.filter((f) => !content.includes(f));
     if (unlisted.length > 0) {
       issues.push({
         file: `${domain}/INDEX.md`,
         rule: 'index-drift',
         severity: 'error',
         message:
-          `INDEX.md lists ${docFiles.length - unlisted.length} of ` +
-          `${docFiles.length} document(s) in ${domain}/ — unlisted: ${unlisted.join(', ')}`,
+          `INDEX.md lists ${doc_files.length - unlisted.length} of ` +
+          `${doc_files.length} document(s) in ${domain}/ — unlisted: ${unlisted.join(', ')}`,
         fixable: true,
         suggestion,
       });
@@ -474,12 +474,12 @@ async function checkIndexDrift(
 /**
  * Get audit summary for a domain
  */
-export async function getAuditSummaryForDomain(
-  docsPath: string,
+export async function get_audit_summary_for_domain(
+  docs_path: string,
   domain: string
 ): Promise<DomainAuditStats> {
-  const result = await auditDocumentation({
-    docsPath,
+  const result = await audit_documentation({
+    docsPath: docs_path,
     domain,
     silent: true,
   });

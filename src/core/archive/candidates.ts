@@ -11,9 +11,9 @@
 import { execFileSync } from 'child_process';
 import { readFile } from 'fs/promises';
 import { join, relative } from 'path';
-import { findMarkdownFiles } from '../../utils/glob.js';
-import { parseFrontmatter } from '../../utils/frontmatter.js';
-import { buildLinkGraph } from '../links/tracker.js';
+import { find_markdown_files } from '../../utils/glob.js';
+import { parse_frontmatter } from '../../utils/frontmatter.js';
+import { build_link_graph } from '../links/tracker.js';
 import type { ArchiveConfig } from '../../utils/config.js';
 
 export interface ArchiveCandidate {
@@ -33,16 +33,16 @@ export interface ArchiveCandidate {
  * Days since the file was last modified, via git (`%cs` = committer date).
  * Returns null when not in a git repo or the file is untracked (no history).
  */
-export function gitLastTouchedDays(
-  projectRoot: string,
-  fileAbs: string,
+export function git_last_touched_days(
+  project_root: string,
+  file_abs: string,
   today: Date
 ): number | null {
   try {
     const out = execFileSync(
       'git',
-      ['log', '-1', '--format=%cs', '--', fileAbs],
-      { cwd: projectRoot, stdio: ['ignore', 'pipe', 'ignore'] }
+      ['log', '-1', '--format=%cs', '--', file_abs],
+      { cwd: project_root, stdio: ['ignore', 'pipe', 'ignore'] }
     )
       .toString()
       .trim();
@@ -56,7 +56,7 @@ export function gitLastTouchedDays(
 }
 
 /** Days since `last_updated` frontmatter (fallback recency signal). */
-function lastUpdatedDays(value: unknown, today: Date): number | null {
+function last_updated_days(value: unknown, today: Date): number | null {
   if (!value) return null;
   const then = new Date(String(value));
   if (Number.isNaN(then.getTime())) return null;
@@ -71,29 +71,29 @@ export interface FindCandidatesInput {
   today?: Date;
 }
 
-export async function findArchiveCandidates(
+export async function find_archive_candidates(
   input: FindCandidatesInput
 ): Promise<ArchiveCandidate[]> {
-  const { docsPath, projectRoot, config } = input;
+  const { docsPath: docs_path, projectRoot: project_root, config } = input;
   const today = input.today ?? new Date();
 
   // Inbound-degree map (archive/ already excluded by findMarkdownFiles).
-  const graph = await buildLinkGraph(docsPath);
-  const inDegree = new Map<string, number>();
-  for (const n of graph.nodes) inDegree.set(n.path.replace(/\\/g, '/'), n.inDegree);
+  const graph = await build_link_graph(docs_path);
+  const in_degree = new Map<string, number>();
+  for (const n of graph.nodes) in_degree.set(n.path.replace(/\\/g, '/'), n.inDegree);
 
-  const files = await findMarkdownFiles(docsPath);
+  const files = await find_markdown_files(docs_path);
   const candidates: ArchiveCandidate[] = [];
 
-  for (const fileAbs of files) {
-    const rel = relative(docsPath, fileAbs).replace(/\\/g, '/');
+  for (const file_abs of files) {
+    const rel = relative(docs_path, file_abs).replace(/\\/g, '/');
     let raw: string;
     try {
-      raw = await readFile(fileAbs, 'utf-8');
+      raw = await readFile(file_abs, 'utf-8');
     } catch {
       continue;
     }
-    const { data } = parseFrontmatter<Record<string, unknown>>(raw);
+    const { data } = parse_frontmatter<Record<string, unknown>>(raw);
 
     const reasons: string[] = [];
     let score = 0;
@@ -112,32 +112,32 @@ export async function findArchiveCandidates(
       reasons.push(`superseded_by: ${String(data.superseded_by)}`);
     }
 
-    const orphaned = (inDegree.get(rel) ?? 0) === 0;
+    const orphaned = (in_degree.get(rel) ?? 0) === 0;
 
     // Recency: prefer git-last-touched; fall back to last_updated.
-    let ageDays = gitLastTouchedDays(projectRoot, fileAbs, today);
+    let age_days = git_last_touched_days(project_root, file_abs, today);
     let degraded = false;
-    if (ageDays === null) {
-      ageDays = lastUpdatedDays(data.last_updated, today);
+    if (age_days === null) {
+      age_days = last_updated_days(data.last_updated, today);
       degraded = true;
     }
-    const stale = ageDays !== null && ageDays > config.candidate_after_days;
+    const stale = age_days !== null && age_days > config.candidate_after_days;
 
     // Age only contributes when orphaned (unless require_orphaned disabled).
-    const ageQualifies = stale && (orphaned || !config.require_orphaned);
-    if (ageQualifies) {
+    const age_qualifies = stale && (orphaned || !config.require_orphaned);
+    if (age_qualifies) {
       if (orphaned) {
         score += 30;
         reasons.push('orphaned (no inbound links)');
       }
       score += 10;
       reasons.push(
-        `not modified in ${ageDays}d${degraded ? ' (via last_updated — git unavailable)' : ''}`
+        `not modified in ${age_days}d${degraded ? ' (via last_updated — git unavailable)' : ''}`
       );
     }
 
-    const isCandidate = deprecated || superseded || ageQualifies;
-    if (isCandidate) {
+    const is_candidate = deprecated || superseded || age_qualifies;
+    if (is_candidate) {
       candidates.push({
         file: rel,
         score,
@@ -152,6 +152,6 @@ export async function findArchiveCandidates(
 }
 
 /** Convenience: resolve absolute docs path for a candidate (test/CLI helper). */
-export function candidateAbsPath(docsPath: string, candidate: ArchiveCandidate): string {
-  return join(docsPath, candidate.file);
+export function candidate_abs_path(docs_path: string, candidate: ArchiveCandidate): string {
+  return join(docs_path, candidate.file);
 }

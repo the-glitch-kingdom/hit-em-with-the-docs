@@ -10,31 +10,31 @@ import { logger } from '../utils/logger.js';
 
 const require_ = createRequire(import.meta.url);
 const pkg = require_('../../package.json') as { version: string };
-import { createScaffold, scaffoldExists } from '../generators/scaffold.js';
-import { syncMetadata } from '../core/metadata/sync.js';
-import { checkLinks } from '../core/links/checker.js';
-import { auditDocumentation } from '../core/audit/auditor.js';
-import { integrateDocument } from '../core/integrate/integrator.js';
-import { runMaintenance } from '../core/maintain/orchestrator.js';
-import { discoverPatterns } from '../core/discover/patterns.js';
-import { discoverAntiPatterns } from '../core/discover/antipatterns.js';
-import { discoverStandards } from '../core/discover/standards.js';
-import { analyzeDependencies } from '../core/discover/dependencies.js';
-import { saveHealthReport } from '../reports/health-report.js';
-import { saveAuditReport } from '../reports/audit-report.js';
-import { saveLinkReport } from '../reports/link-report.js';
+import { create_scaffold, scaffold_exists } from '../generators/scaffold.js';
+import { sync_metadata } from '../core/metadata/sync.js';
+import { check_links } from '../core/links/checker.js';
+import { audit_documentation } from '../core/audit/auditor.js';
+import { integrate_document } from '../core/integrate/integrator.js';
+import { run_maintenance } from '../core/maintain/orchestrator.js';
+import { discover_patterns } from '../core/discover/patterns.js';
+import { discover_anti_patterns } from '../core/discover/antipatterns.js';
+import { discover_standards } from '../core/discover/standards.js';
+import { analyze_dependencies } from '../core/discover/dependencies.js';
+import { save_health_report } from '../reports/health-report.js';
+import { save_audit_report } from '../reports/audit-report.js';
+import { save_link_report } from '../reports/link-report.js';
 import { type Domain } from '../core/domains/constants.js';
 import {
-  getAllDomains,
-  getRegistry,
-  getDomainDefinition,
-  isValidDomain,
+  get_all_domains,
+  get_registry,
+  get_domain_definition,
+  is_valid_domain,
 } from '../core/domains/registry.js';
-import { regenerateIndexes, generateKbIndexes } from '../generators/regenerate.js';
-import { stampReports } from '../generators/stamp-reports.js';
-import { writeRawConfig } from '../utils/config.js';
-import { getStatusValues } from '../core/metadata/status-registry.js';
-import { resolveDocsPath } from '../utils/docs-root.js';
+import { regenerate_indexes, generate_kb_indexes } from '../generators/regenerate.js';
+import { stamp_reports } from '../generators/stamp-reports.js';
+import { write_raw_config } from '../utils/config.js';
+import { get_status_values } from '../core/metadata/status-registry.js';
+import { resolve_docs_path } from '../utils/docs-root.js';
 
 const program = new Command();
 
@@ -44,13 +44,13 @@ program
   .version(pkg.version);
 
 // Project root of the resolved docs path: the git root holding it, else its parent.
-let projectRootDir = process.cwd();
-function findProjectRoot(docsPath: string): string {
-  let dir = dirname(docsPath);
+let project_root_dir = process.cwd();
+function find_project_root(docs_path: string): string {
+  let dir = dirname(docs_path);
   for (;;) {
     if (existsSync(join(dir, '.git'))) return dir;
     const parent = dirname(dir);
-    if (parent === dir) return dirname(docsPath);
+    if (parent === dir) return dirname(docs_path);
     dir = parent;
   }
 }
@@ -59,18 +59,18 @@ function findProjectRoot(docsPath: string): string {
 // and loads the project's config (domains, statuses) from that project, not from the cwd.
 program.hook('preAction', (_this, action) => {
   if (action.name() === 'init') return;
-  let docsPath: string | undefined;
+  let docs_path: string | undefined;
   for (const key of ['path', 'docsPath']) {
     if (action.getOptionValueSource(key) === undefined) continue;
     if (action.getOptionValueSource(key) === 'default') {
-      action.setOptionValue(key, resolveDocsPath(process.cwd(), String(action.getOptionValue(key)), false));
+      action.setOptionValue(key, resolve_docs_path(process.cwd(), String(action.getOptionValue(key)), false));
     }
-    docsPath = resolve(process.cwd(), String(action.getOptionValue(key)));
+    docs_path = resolve(process.cwd(), String(action.getOptionValue(key)));
   }
-  docsPath ??= resolveDocsPath(process.cwd(), '.documentation', false);
-  projectRootDir = findProjectRoot(docsPath);
-  getRegistry(projectRootDir);
-  getStatusValues(projectRootDir);
+  docs_path ??= resolve_docs_path(process.cwd(), '.documentation', false);
+  project_root_dir = find_project_root(docs_path);
+  get_registry(project_root_dir);
+  get_status_values(project_root_dir);
 });
 
 registerUpdateCommands(program, {
@@ -86,16 +86,16 @@ program
   .option('-p, --path <path>', 'Path to create documentation', '.documentation')
   .option('-f, --force', 'Overwrite existing files', false)
   .action(async (options) => {
-    const docsPath = resolve(process.cwd(), options.path);
+    const docs_path = resolve(process.cwd(), options.path);
 
-    const existed = await scaffoldExists(docsPath);
+    const existed = await scaffold_exists(docs_path);
     if (existed && !options.force) {
       logger.warn('Documentation structure already exists. Use --force to overwrite.');
       process.exit(1);
     }
 
-    const result = await createScaffold({
-      rootPath: docsPath,
+    const result = await create_scaffold({
+      rootPath: docs_path,
       overwrite: options.force,
     });
 
@@ -107,17 +107,17 @@ program
     // New installs only: keep reports out of the searched docs tree. A re-init (--force) keeps
     // where reports already go, and an unreadable config is never overwritten.
     if (!existed) {
-      const projectRoot = dirname(docsPath);
+      const project_root = dirname(docs_path);
       let raw: Record<string, unknown> | null = {};
       try {
-        raw = JSON.parse(await readFile(join(projectRoot, '.claude/hit-em-with-the-docs.json'), 'utf-8'));
+        raw = JSON.parse(await readFile(join(project_root, '.claude/hit-em-with-the-docs.json'), 'utf-8'));
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code !== 'ENOENT') raw = null;
       }
       if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
         logger.warn('Could not parse .claude/hit-em-with-the-docs.json; left it alone (reports_dir not set).');
       } else if (raw.reports_dir === undefined) {
-        await writeRawConfig(projectRoot, { ...raw, reports_dir: '.hewtd/reports' });
+        await write_raw_config(project_root, { ...raw, reports_dir: '.hewtd/reports' });
       }
     }
   });
@@ -130,10 +130,10 @@ program
   .option('-q, --quick', 'Quick mode (skip link checking)', false)
   .option('-f, --fix', 'Auto-fix issues', false)
   .action(async (options) => {
-    const docsPath = resolve(process.cwd(), options.path);
+    const docs_path = resolve(process.cwd(), options.path);
 
-    const result = await runMaintenance({
-      docsPath,
+    const result = await run_maintenance({
+      docsPath: docs_path,
       quick: options.quick,
       fix: options.fix,
     });
@@ -154,13 +154,13 @@ program
   .option('--dry-run', 'Preview what would change without writing anything', false)
   .option('--no-graph', 'Skip the .hewtd/graph.json export (fast refresh for hooks)')
   .action(async (options) => {
-    const docsPath = resolve(process.cwd(), options.path);
+    const docs_path = resolve(process.cwd(), options.path);
 
     let domains: Domain[] | undefined;
     if (options.domain) {
-      if (!isValidDomain(options.domain)) {
+      if (!is_valid_domain(options.domain)) {
         logger.error(`Unknown domain: ${options.domain}`);
-        logger.info(`Valid domains: ${getAllDomains().join(', ')}`);
+        logger.info(`Valid domains: ${get_all_domains().join(', ')}`);
         process.exit(1);
       }
       domains = [options.domain];
@@ -171,28 +171,28 @@ program
     // Count what each domain's INDEX.md lists TODAY, so a dry run can show the
     // delta rather than just the new totals. The 2.7.1 recursive walk can add
     // hundreds of rows on first run; users deserve to see that before it lands.
-    const listedBefore: Record<string, number> = {};
+    const listed_before: Record<string, number> = {};
     if (options.dryRun) {
-      for (const domain of getAllDomains()) {
-        listedBefore[domain] = await countIndexedDocRows(
-          join(docsPath, domain, 'INDEX.md')
+      for (const domain of get_all_domains()) {
+        listed_before[domain] = await count_indexed_doc_rows(
+          join(docs_path, domain, 'INDEX.md')
         );
       }
     }
 
-    const result = await regenerateIndexes({
-      docsPath,
+    const result = await regenerate_indexes({
+      docsPath: docs_path,
       ...(domains ? { domains } : {}),
       silent: true,
       dryRun: options.dryRun,
     });
 
     let added = 0;
-    for (const domain of getAllDomains()) {
+    for (const domain of get_all_domains()) {
       const count = result.documentCounts[domain] ?? 0;
       let suffix = '';
       if (options.dryRun) {
-        const delta = count - (listedBefore[domain] ?? 0);
+        const delta = count - (listed_before[domain] ?? 0);
         added += Math.max(0, delta);
         suffix = delta > 0 ? `  (+${delta} not currently listed)` : '';
       }
@@ -203,8 +203,8 @@ program
     logger.newline();
 
     // Upgrade step: KB indexes and pre-2.13 reports also get rebuilt/stamped here.
-    const kb = await generateKbIndexes(docsPath, options.dryRun);
-    const stamped = await stampReports(docsPath, options.dryRun);
+    const kb = await generate_kb_indexes(docs_path, options.dryRun);
+    const stamped = await stamp_reports(docs_path, options.dryRun);
     if (kb) {
       logger.info(
         `Knowledge base: ${kb.facts} facts, ${kb.incidents} incidents${options.dryRun ? ' (would rebuild indexes)' : ' (indexes rebuilt)'}`
@@ -215,7 +215,7 @@ program
       if (options.dryRun) for (const f of stamped) logger.info(`  ${f}`);
     }
 
-    if (options.graph !== false) await exportGraph(docsPath, options.dryRun);
+    if (options.graph !== false) await export_graph(docs_path, options.dryRun);
 
     if (!options.dryRun) {
       logger.success(
@@ -238,13 +238,13 @@ program
   });
 
 /** Write .hewtd/graph.json (#65). Never fails the caller: the export is a side product. */
-async function exportGraph(docsPath: string, dryRun: boolean): Promise<void> {
+async function export_graph(docs_path: string, dry_run: boolean): Promise<void> {
   try {
-    const { loadPluginConfig } = await import('../utils/config.js');
-    const { projectRootOf } = await import('../core/reconcile/outside.js');
-    const { writeGraph } = await import('../core/graph/export.js');
-    const root = projectRootOf(docsPath);
-    const r = await writeGraph({ root, docsPath, config: await loadPluginConfig(root), dryRun });
+    const { load_plugin_config: load_plugin_config } = await import('../utils/config.js');
+    const { project_root_of: project_root_of } = await import('../core/reconcile/outside.js');
+    const { write_graph: write_graph } = await import('../core/graph/export.js');
+    const root = project_root_of(docs_path);
+    const r = await write_graph({ root, docsPath: docs_path, config: await load_plugin_config(root), dryRun: dry_run });
     if (r.status === 'no-git') logger.info('Graph export skipped: not a git checkout.');
     else if (r.status === 'written') logger.info('Graph export written: .hewtd/graph.json');
     else if (r.status === 'would-write') logger.info('Would update .hewtd/graph.json');
@@ -255,9 +255,9 @@ async function exportGraph(docsPath: string, dryRun: boolean): Promise<void> {
 }
 
 /** How many document rows a generated INDEX.md currently lists (0 if absent). */
-async function countIndexedDocRows(indexPath: string): Promise<number> {
+async function count_indexed_doc_rows(index_path: string): Promise<number> {
   try {
-    const content = await readFile(indexPath, 'utf-8');
+    const content = await readFile(index_path, 'utf-8');
     return content
       .split('\n')
       .filter((line) => /^\|\s*\[[^\]]*\]\([^)]+\.md\)/.test(line)).length;
@@ -275,10 +275,10 @@ program
   .option('--dry-run', 'Preview changes without writing', false)
   .option('-f, --fix', 'Auto-fix missing metadata', false)
   .action(async (options) => {
-    const docsPath = resolve(process.cwd(), options.path);
+    const docs_path = resolve(process.cwd(), options.path);
 
-    const result = await syncMetadata({
-      docsPath,
+    const result = await sync_metadata({
+      docsPath: docs_path,
       domain: options.domain,
       dryRun: options.dryRun,
       fix: options.fix,
@@ -297,16 +297,16 @@ program
   .option('-d, --domain <domain>', 'Specific domain to check')
   .option('-r, --report', 'Generate detailed report', false)
   .action(async (options) => {
-    const docsPath = resolve(process.cwd(), options.path);
+    const docs_path = resolve(process.cwd(), options.path);
 
-    const result = await checkLinks({
-      docsPath,
+    const result = await check_links({
+      docsPath: docs_path,
       domain: options.domain,
     });
 
     if (options.report) {
-      const reportPath = await saveLinkReport(docsPath, result);
-      logger.success(`Report saved: ${reportPath}`);
+      const report_path = await save_link_report(docs_path, result);
+      logger.success(`Report saved: ${report_path}`);
     }
 
     if (result.brokenLinks.length > 0) {
@@ -328,18 +328,18 @@ program
     false
   )
   .action(async (options) => {
-    const docsPath = resolve(process.cwd(), options.path);
+    const docs_path = resolve(process.cwd(), options.path);
 
-    const result = await auditDocumentation({
-      docsPath,
+    const result = await audit_documentation({
+      docsPath: docs_path,
       domain: options.domain,
       issuesOnly: options.issuesOnly,
       strict: options.strict,
     });
 
     if (options.report) {
-      const reportPath = await saveAuditReport(docsPath, result);
-      logger.success(`Report saved: ${reportPath}`);
+      const report_path = await save_audit_report(docs_path, result);
+      logger.success(`Report saved: ${report_path}`);
     }
 
     // Strict mode escalates: exit non-zero on any error-severity issue OR any
@@ -351,10 +351,10 @@ program
     // Normal mode: exit non-zero only on per-file errors (existing behavior
     // preserved from pre-2.3.0).
     if (options.strict) {
-      const hasViolation = result.issues.some(
+      const has_violation = result.issues.some(
         (i) => i.severity === 'error' || i.code !== undefined
       );
-      if (hasViolation) {
+      if (has_violation) {
         logger.error('Strict mode: violations detected, exiting non-zero');
         process.exit(1);
       }
@@ -373,12 +373,12 @@ program
   .option('-f, --force', 'Force integration even with duplicates', false)
   .option('-d, --domain <domain>', "Target domain (default: the doc's first declared domain, else detected)")
   .action(async (file, options) => {
-    const docsPath = resolve(process.cwd(), options.path);
-    const filePath = resolve(process.cwd(), file);
+    const docs_path = resolve(process.cwd(), options.path);
+    const file_path = resolve(process.cwd(), file);
 
-    const result = await integrateDocument({
-      filePath,
-      docsPath,
+    const result = await integrate_document({
+      filePath: file_path,
+      docsPath: docs_path,
       auto: options.auto,
       dryRun: options.dryRun,
       force: options.force,
@@ -403,10 +403,10 @@ discover
   .option('-l, --language <lang>', 'Filter by language')
   .option('-c, --category <cat>', 'Filter by category')
   .action(async (options) => {
-    const rootPath = resolve(process.cwd(), options.root);
+    const root_path = resolve(process.cwd(), options.root);
 
-    await discoverPatterns({
-      rootPath,
+    await discover_patterns({
+      rootPath: root_path,
       language: options.language,
       category: options.category,
     });
@@ -417,10 +417,10 @@ discover
   .description('Detect anti-patterns in codebase')
   .option('-r, --root <path>', 'Root path to scan', '.')
   .action(async (options) => {
-    const rootPath = resolve(process.cwd(), options.root);
+    const root_path = resolve(process.cwd(), options.root);
 
-    await discoverAntiPatterns({
-      rootPath,
+    await discover_anti_patterns({
+      rootPath: root_path,
     });
   });
 
@@ -429,10 +429,10 @@ discover
   .description('Extract implicit standards from codebase')
   .option('-r, --root <path>', 'Root path to scan', '.')
   .action(async (options) => {
-    const rootPath = resolve(process.cwd(), options.root);
+    const root_path = resolve(process.cwd(), options.root);
 
-    await discoverStandards({
-      rootPath,
+    await discover_standards({
+      rootPath: root_path,
     });
   });
 
@@ -441,10 +441,10 @@ discover
   .description('Analyze project dependencies')
   .option('-r, --root <path>', 'Root path to scan', '.')
   .action(async (options) => {
-    const rootPath = resolve(process.cwd(), options.root);
+    const root_path = resolve(process.cwd(), options.root);
 
-    await analyzeDependencies({
-      rootPath,
+    await analyze_dependencies({
+      rootPath: root_path,
     });
   });
 
@@ -455,25 +455,25 @@ program
   .option('-p, --path <path>', 'Documentation path', '.documentation')
   .option('-f, --format <format>', 'Output format (markdown, json)', 'markdown')
   .action(async (type, options) => {
-    const docsPath = resolve(process.cwd(), options.path);
+    const docs_path = resolve(process.cwd(), options.path);
 
     switch (type) {
       case 'health': {
-        const result = await runMaintenance({ docsPath, quick: true, silent: true });
-        const reportPath = await saveHealthReport(docsPath, result, options.format);
-        logger.success(`Health report saved: ${reportPath}`);
+        const result = await run_maintenance({ docsPath: docs_path, quick: true, silent: true });
+        const report_path = await save_health_report(docs_path, result, options.format);
+        logger.success(`Health report saved: ${report_path}`);
         break;
       }
       case 'audit': {
-        const result = await auditDocumentation({ docsPath, silent: true });
-        const reportPath = await saveAuditReport(docsPath, result, options.format);
-        logger.success(`Audit report saved: ${reportPath}`);
+        const result = await audit_documentation({ docsPath: docs_path, silent: true });
+        const report_path = await save_audit_report(docs_path, result, options.format);
+        logger.success(`Audit report saved: ${report_path}`);
         break;
       }
       case 'links': {
-        const result = await checkLinks({ docsPath, silent: true });
-        const reportPath = await saveLinkReport(docsPath, result, options.format);
-        logger.success(`Link report saved: ${reportPath}`);
+        const result = await check_links({ docsPath: docs_path, silent: true });
+        const report_path = await save_link_report(docs_path, result, options.format);
+        logger.success(`Link report saved: ${report_path}`);
         break;
       }
       default:
@@ -491,8 +491,8 @@ program
     logger.header('Documentation Domains');
 
     const headers = ['Domain', 'Category', 'Priority', 'Description'];
-    const rows = getAllDomains().map((d) => {
-      const def = getDomainDefinition(d);
+    const rows = get_all_domains().map((d) => {
+      const def = get_domain_definition(d);
       return [d, def.category, `${def.loadPriority}/10`, def.description];
     });
 
@@ -510,8 +510,8 @@ domain
   .description('List built-in and custom domains')
   .option('--json', 'Output as JSON', false)
   .action(async (options) => {
-    const { listDomains } = await import('../core/domains/manage.js');
-    const result = listDomains(projectRootDir);
+    const { list_domains: list_domains } = await import('../core/domains/manage.js');
+    const result = list_domains(project_root_dir);
 
     if (options.json) {
       logger.info(JSON.stringify(result, null, 2));
@@ -561,16 +561,16 @@ domain
   .option('--load-priority <n>', 'Load priority 1-10', '5')
   .option('--dry-run', 'Preview without writing', false)
   .action(async (id, options) => {
-    const { addDomain } = await import('../core/domains/manage.js');
-    const docsPath = resolve(process.cwd(), options.path);
+    const { add_domain: add_domain } = await import('../core/domains/manage.js');
+    const docs_path = resolve(process.cwd(), options.path);
 
-    const titleCase = (s: string) =>
+    const title_case = (s: string) =>
       s.replace(/[-_]/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase());
 
     const spec = {
       id,
-      name: options.name ?? titleCase(id),
-      description: options.description ?? `${titleCase(id)} documentation`,
+      name: options.name ?? title_case(id),
+      description: options.description ?? `${title_case(id)} documentation`,
       keywords: options.keywords
         ? String(options.keywords)
             .split(',')
@@ -581,9 +581,9 @@ domain
       category: options.category,
     };
 
-    const result = await addDomain({
-      projectRoot: dirname(docsPath),
-      docsPath,
+    const result = await add_domain({
+      projectRoot: dirname(docs_path),
+      docsPath: docs_path,
       spec,
       dryRun: options.dryRun,
     });
@@ -615,12 +615,12 @@ domain
   .option('-p, --path <path>', 'Documentation path', '.documentation')
   .option('--dry-run', 'Preview without writing', false)
   .action(async (id, options) => {
-    const { removeDomain } = await import('../core/domains/manage.js');
-    const docsPath = resolve(process.cwd(), options.path);
+    const { remove_domain: remove_domain } = await import('../core/domains/manage.js');
+    const docs_path = resolve(process.cwd(), options.path);
 
-    const result = await removeDomain({
-      projectRoot: dirname(docsPath),
-      docsPath,
+    const result = await remove_domain({
+      projectRoot: dirname(docs_path),
+      docsPath: docs_path,
       id,
       dryRun: options.dryRun,
     });
@@ -656,11 +656,11 @@ program
   .option('--force', 'Archive even if active docs still link to it', false)
   .option('--dry-run', 'Preview without moving anything', false)
   .action(async (file, options) => {
-    const { archiveDoc } = await import('../core/archive/manage.js');
-    const docsPath = resolve(process.cwd(), options.path);
-    const result = await archiveDoc({
-      projectRoot: dirname(docsPath),
-      docsPath,
+    const { archive_doc: archive_doc } = await import('../core/archive/manage.js');
+    const docs_path = resolve(process.cwd(), options.path);
+    const result = await archive_doc({
+      projectRoot: dirname(docs_path),
+      docsPath: docs_path,
       file,
       reason: options.reason,
       force: options.force,
@@ -701,11 +701,11 @@ program
   .option('-p, --path <path>', 'Documentation path', '.documentation')
   .option('--dry-run', 'Preview without moving anything', false)
   .action(async (file, options) => {
-    const { unarchiveDoc } = await import('../core/archive/manage.js');
-    const docsPath = resolve(process.cwd(), options.path);
-    const result = await unarchiveDoc({
-      projectRoot: dirname(docsPath),
-      docsPath,
+    const { unarchive_doc: unarchive_doc } = await import('../core/archive/manage.js');
+    const docs_path = resolve(process.cwd(), options.path);
+    const result = await unarchive_doc({
+      projectRoot: dirname(docs_path),
+      docsPath: docs_path,
       file,
       dryRun: options.dryRun,
     });
@@ -731,14 +731,14 @@ program
   .option('-p, --path <path>', 'Documentation path', '.documentation')
   .option('--json', 'Output as JSON', false)
   .action(async (options) => {
-    const { loadPluginConfig } = await import('../utils/config.js');
-    const { findArchiveCandidates } = await import('../core/archive/candidates.js');
-    const docsPath = resolve(process.cwd(), options.path);
-    const config = await loadPluginConfig(dirname(docsPath));
+    const { load_plugin_config: load_plugin_config } = await import('../utils/config.js');
+    const { find_archive_candidates: find_archive_candidates } = await import('../core/archive/candidates.js');
+    const docs_path = resolve(process.cwd(), options.path);
+    const config = await load_plugin_config(dirname(docs_path));
 
-    const candidates = await findArchiveCandidates({
-      docsPath,
-      projectRoot: dirname(docsPath),
+    const candidates = await find_archive_candidates({
+      docsPath: docs_path,
+      projectRoot: dirname(docs_path),
       config: config.archive,
     });
 
@@ -767,21 +767,21 @@ program
   .command('find-citers <fact-id>')
   .description('Find all playbooks and incidents that cite a fact')
   .option('--json', 'Output as JSON', false)
-  .action(async (factId, options) => {
-    const projectRoot = projectRootDir;
-    const { loadPluginConfig, resolveVaultRoot, resolvePlaybookGlobs } = await import(
+  .action(async (fact_id, options) => {
+    const project_root = project_root_dir;
+    const { load_plugin_config: load_plugin_config, resolve_vault_root: resolve_vault_root, resolve_playbook_globs: resolve_playbook_globs } = await import(
       '../utils/config.js'
     );
-    const { buildCiterIndex, findCitersInIndex } = await import(
+    const { build_citer_index: build_citer_index, find_citers_in_index: find_citers_in_index } = await import(
       '../core/knowledge-base/citers.js'
     );
 
-    const config = await loadPluginConfig(projectRoot);
-    const vaultRoot = resolveVaultRoot(projectRoot, config);
-    const playbookGlobs = resolvePlaybookGlobs(projectRoot, config);
+    const config = await load_plugin_config(project_root);
+    const vault_root = resolve_vault_root(project_root, config);
+    const playbook_globs = resolve_playbook_globs(project_root, config);
 
-    const index = await buildCiterIndex({ projectRoot, vaultRoot, playbookGlobs });
-    const result = findCitersInIndex(index, factId);
+    const index = await build_citer_index({ projectRoot: project_root, vaultRoot: vault_root, playbookGlobs: playbook_globs });
+    const result = find_citers_in_index(index, fact_id);
 
     if (options.json) {
       logger.info(JSON.stringify(result, null, 2));
@@ -789,7 +789,7 @@ program
       return;
     }
 
-    logger.header(`Citers for fact: ${factId}`);
+    logger.header(`Citers for fact: ${fact_id}`);
     if (!result.fact_exists) {
       logger.error(`Fact not found in vault.`);
       logger.info('Did you mean another fact id? Run `hewtd audit-facts` to see all known facts.');
@@ -812,27 +812,27 @@ program
   .option('--window <days>', 'Override audit_window_days', undefined)
   .option('--json', 'Output as JSON', false)
   .action(async (options) => {
-    const projectRoot = projectRootDir;
-    const { loadPluginConfig, resolveVaultRoot, resolvePlaybookGlobs } = await import(
+    const project_root = project_root_dir;
+    const { load_plugin_config: load_plugin_config, resolve_vault_root: resolve_vault_root, resolve_playbook_globs: resolve_playbook_globs } = await import(
       '../utils/config.js'
     );
-    const { buildCiterIndex } = await import('../core/knowledge-base/citers.js');
-    const { auditFacts, runFactVerify } = await import('../core/knowledge-base/audit.js');
+    const { build_citer_index: build_citer_index } = await import('../core/knowledge-base/citers.js');
+    const { audit_facts: audit_facts, run_fact_verify: run_fact_verify } = await import('../core/knowledge-base/audit.js');
 
-    const config = await loadPluginConfig(projectRoot);
-    const vaultRoot = resolveVaultRoot(projectRoot, config);
-    const playbookGlobs = resolvePlaybookGlobs(projectRoot, config);
+    const config = await load_plugin_config(project_root);
+    const vault_root = resolve_vault_root(project_root, config);
+    const playbook_globs = resolve_playbook_globs(project_root, config);
     const window = options.window
       ? parseInt(options.window, 10)
       : config.vault.audit_window_days;
 
-    const index = await buildCiterIndex({ projectRoot, vaultRoot, playbookGlobs });
+    const index = await build_citer_index({ projectRoot: project_root, vaultRoot: vault_root, playbookGlobs: playbook_globs });
 
     // --run-verify-all path (#39): one command for a periodic re-check.
     if (options.runVerifyAll) {
       const results = [];
       for (const fact of [...index.facts.values()].sort((a, b) => a.id.localeCompare(b.id))) {
-        const r = await runFactVerify({ fact, vaultRoot });
+        const r = await run_fact_verify({ fact, vaultRoot: vault_root });
         if (r.executed) results.push(r);
       }
       const failed = results.filter((r) => !r.updated);
@@ -852,14 +852,14 @@ program
 
     // --run-verify path
     if (options.runVerify) {
-      const factId = options.runVerify;
-      const fact = index.facts.get(factId);
+      const fact_id = options.runVerify;
+      const fact = index.facts.get(fact_id);
       if (!fact) {
-        logger.error(`Fact not found: ${factId}`);
+        logger.error(`Fact not found: ${fact_id}`);
         process.exit(1);
       }
-      logger.header(`Running verify command for: ${factId}`);
-      const result = await runFactVerify({ fact: fact!, vaultRoot });
+      logger.header(`Running verify command for: ${fact_id}`);
+      const result = await run_fact_verify({ fact: fact!, vaultRoot: vault_root });
       if (options.json) {
         logger.info(JSON.stringify(result, null, 2));
       } else {
@@ -876,7 +876,7 @@ program
     }
 
     // List stale path
-    const audit = auditFacts({ index, auditWindowDays: window });
+    const audit = audit_facts({ index, auditWindowDays: window });
 
     if (options.json) {
       logger.info(JSON.stringify(audit, null, 2));
@@ -916,30 +916,30 @@ program
   .option('--user-phrase <phrase>', 'Target the symptom entry with this user_phrase')
   .option('--error-pattern <pattern>', 'Target the symptom entry with this error_pattern')
   .option('--dry-run', 'Preview the change without writing', false)
-  .action(async (factId, options) => {
+  .action(async (fact_id, options) => {
     if (!options.file) {
       logger.error('--file <path> is required');
       process.exit(1);
     }
-    const playbookPath = resolve(process.cwd(), options.file);
+    const playbook_path = resolve(process.cwd(), options.file);
     const { cite } = await import('../core/knowledge-base/cite.js');
 
-    const symptomMatch: NonNullable<Parameters<typeof cite>[0]['symptomMatch']> = {};
-    if (options.alertName) symptomMatch.alert_name = options.alertName;
-    if (options.userPhrase) symptomMatch.user_phrase = options.userPhrase;
-    if (options.errorPattern) symptomMatch.error_pattern = options.errorPattern;
+    const symptom_match: NonNullable<Parameters<typeof cite>[0]['symptomMatch']> = {};
+    if (options.alertName) symptom_match.alert_name = options.alertName;
+    if (options.userPhrase) symptom_match.user_phrase = options.userPhrase;
+    if (options.errorPattern) symptom_match.error_pattern = options.errorPattern;
 
-    const citeOpts: Parameters<typeof cite>[0] = {
-      playbookPath,
-      factId,
+    const cite_opts: Parameters<typeof cite>[0] = {
+      playbookPath: playbook_path,
+      factId: fact_id,
       dryRun: options.dryRun,
     };
-    if (Object.keys(symptomMatch).length > 0) {
-      citeOpts.symptomMatch = symptomMatch;
+    if (Object.keys(symptom_match).length > 0) {
+      cite_opts.symptomMatch = symptom_match;
     }
-    const result = await cite(citeOpts);
+    const result = await cite(cite_opts);
 
-    logger.header(`hewtd cite: ${factId}`);
+    logger.header(`hewtd cite: ${fact_id}`);
     logger.info(`Playbook: ${result.playbookPath}`);
     logger.info(`Action:   ${result.action}`);
     logger.info(`Symptom:  index ${result.symptomIndex}`);
@@ -955,18 +955,18 @@ program
   .description('Convert a legacy flat-file incident into the folder form (narrative.md + facts.md). Always writes to <vault-root>/incidents/<slug>/.')
   .option('--dry-run', 'Preview the migration without writing', false)
   .option('--force', 'Migrate even if a folder already exists at the canonical or legacy location (overwrites)', false)
-  .action(async (flatFile, options) => {
-    const projectRoot = projectRootDir;
-    const flatFilePath = resolve(process.cwd(), flatFile);
-    const { migrateIncident } = await import('../core/knowledge-base/migrate.js');
-    const { loadPluginConfig, resolveVaultRoot } = await import('../utils/config.js');
+  .action(async (flat_file, options) => {
+    const project_root = project_root_dir;
+    const flat_file_path = resolve(process.cwd(), flat_file);
+    const { migrate_incident: migrate_incident } = await import('../core/knowledge-base/migrate.js');
+    const { load_plugin_config: load_plugin_config, resolve_vault_root: resolve_vault_root } = await import('../utils/config.js');
 
-    const config = await loadPluginConfig(projectRoot);
-    const vaultRoot = resolveVaultRoot(projectRoot, config);
+    const config = await load_plugin_config(project_root);
+    const vault_root = resolve_vault_root(project_root, config);
 
-    const result = await migrateIncident({
-      flatFilePath,
-      vaultRoot,
+    const result = await migrate_incident({
+      flatFilePath: flat_file_path,
+      vaultRoot: vault_root,
       dryRun: options.dryRun,
       force: options.force,
     });
@@ -1004,20 +1004,20 @@ program
   .description('Relocate incident folders written by buggy 2.3.0 migrate-incident into the canonical <vault>/incidents/ parent, and rewrite any provenance: refs in fact files. Idempotent.')
   .option('--dry-run', 'Report what would be moved without writing', false)
   .action(async (options) => {
-    const projectRoot = projectRootDir;
-    const { fixLegacyLayout } = await import(
+    const project_root = project_root_dir;
+    const { fix_legacy_layout: fix_legacy_layout } = await import(
       '../core/knowledge-base/fix-legacy-layout.js'
     );
-    const { loadPluginConfig, resolveVaultRoot } = await import(
+    const { load_plugin_config: load_plugin_config, resolve_vault_root: resolve_vault_root } = await import(
       '../utils/config.js'
     );
 
-    const config = await loadPluginConfig(projectRoot);
-    const vaultRoot = resolveVaultRoot(projectRoot, config);
+    const config = await load_plugin_config(project_root);
+    const vault_root = resolve_vault_root(project_root, config);
 
-    const result = await fixLegacyLayout({
-      vaultRoot,
-      projectRoot,
+    const result = await fix_legacy_layout({
+      vaultRoot: vault_root,
+      projectRoot: project_root,
       dryRun: options.dryRun,
     });
 
@@ -1069,8 +1069,8 @@ program
   .option('-p, --docs-path <path>', 'Documentation path', '.documentation')
   .option('--apply', 'Write the changes', false)
   .action(async (options) => {
-    const { fixRetrievalFields } = await import('../core/metadata/fix-retrieval-fields.js');
-    const result = await fixRetrievalFields({
+    const { fix_retrieval_fields: fix_retrieval_fields } = await import('../core/metadata/fix-retrieval-fields.js');
+    const result = await fix_retrieval_fields({
       docsPath: resolve(process.cwd(), options.docsPath),
       apply: options.apply,
     });
@@ -1095,7 +1095,7 @@ program
     undefined
   )
   .option('--dry-run', 'Preview without writing', false)
-  .action(async (incidentFolderArg, options) => {
+  .action(async (incident_folder_arg, options) => {
     if (!options.accept) {
       logger.error(
         '--accept <json> is required. This CLI is the WRITER; use the /hit-em-with-the-docs:extract-facts slash command for the LLM-driven proposer.'
@@ -1114,21 +1114,21 @@ program
       process.exit(1);
     }
 
-    const projectRoot = projectRootDir;
-    const incidentFolder = resolve(process.cwd(), incidentFolderArg);
-    const { loadPluginConfig, resolveVaultRoot } = await import('../utils/config.js');
-    const { extractFacts } = await import('../core/knowledge-base/extract.js');
+    const project_root = project_root_dir;
+    const incident_folder = resolve(process.cwd(), incident_folder_arg);
+    const { load_plugin_config: load_plugin_config, resolve_vault_root: resolve_vault_root } = await import('../utils/config.js');
+    const { extract_facts: extract_facts } = await import('../core/knowledge-base/extract.js');
 
-    const config = await loadPluginConfig(projectRoot);
-    const vaultRoot = resolveVaultRoot(projectRoot, config);
+    const config = await load_plugin_config(project_root);
+    const vault_root = resolve_vault_root(project_root, config);
 
     // Trust the caller's JSON shape — the slash command produced it after
     // the user accepted proposals. Runtime errors surface naturally.
-    const result = await extractFacts({
-      incidentFolder,
-      vaultRoot,
-      projectRoot,
-      accept: accept as Parameters<typeof extractFacts>[0]['accept'],
+    const result = await extract_facts({
+      incidentFolder: incident_folder,
+      vaultRoot: vault_root,
+      projectRoot: project_root,
+      accept: accept as Parameters<typeof extract_facts>[0]['accept'],
       dryRun: options.dryRun,
     });
 
@@ -1162,20 +1162,20 @@ program
   .option('--apply <files...>', 'Apply the accepted entries of review files (serial, one commit per batch)')
   .option('--gaps <file>', 'Classify missed search queries (gaps.v1 file or one question per line) into user_phrase proposals, new-doc candidates and open questions; writes only .hewtd/reconcile/gaps-report-<date>.md', undefined)
   .action(async (scope: string[], options) => {
-    const { loadPluginConfig } = await import('../utils/config.js');
-    const { loadLedger, ledgerStatus, hashContent } = await import('../core/reconcile/ledger.js');
+    const { load_plugin_config: load_plugin_config } = await import('../utils/config.js');
+    const { load_ledger: load_ledger, ledger_status: ledger_status, hash_content: hash_content } = await import('../core/reconcile/ledger.js');
     const { glob } = await import('../utils/glob.js');
-    const { projectRootOf } = await import('../core/reconcile/outside.js');
-    const docsPath = resolve(process.cwd(), options.docsPath);
+    const { project_root_of: project_root_of } = await import('../core/reconcile/outside.js');
+    const docs_path = resolve(process.cwd(), options.docsPath);
     // State (ledger, review files, config) lives at the project root, so a run from a subdirectory shares it.
-    const root = projectRootOf(docsPath);
-    const config = await loadPluginConfig(root);
-    const ledgerFile = resolve(root, config.reconcile.ledger_path);
+    const root = project_root_of(docs_path);
+    const config = await load_plugin_config(root);
+    const ledger_file = resolve(root, config.reconcile.ledger_path);
     if (options.apply) {
       try {
-        const { applyReviews } = await import('../core/reconcile/apply.js');
-        const res = await applyReviews({
-          root, docsPath, ledger: await loadLedger(ledgerFile), ledgerFile,
+        const { apply_reviews: apply_reviews } = await import('../core/reconcile/apply.js');
+        const res = await apply_reviews({
+          root, docsPath: docs_path, ledger: await load_ledger(ledger_file), ledgerFile: ledger_file,
           files: (options.apply as string[]).map((f) => resolve(root, f)),
         });
         logger.header('hewtd reconcile --apply');
@@ -1184,15 +1184,15 @@ program
         const n = (st: string) => res.outcomes.filter((o) => o.status === st).length;
         logger.info(`applied ${n('applied')}, stale ${n('stale')}, rejected ${n('rejected')}, error ${n('error')}`);
         if (n('error')) process.exitCode = 1;
-        if (n('applied')) await exportGraph(docsPath, false); // a rolled-back batch has no 'applied' outcome
-        const after = await loadLedger(ledgerFile);
+        if (n('applied')) await export_graph(docs_path, false); // a rolled-back batch has no 'applied' outcome
+        const after = await load_ledger(ledger_file);
         if (res.outcomes.some((o) => o.status === 'applied' && after.entries[o.path]?.env_names?.length)) {
-          const { buildSecretsReport, writeSecretsReport } = await import('../core/reconcile/secrets-report.js');
+          const { build_secrets_report: build_secrets_report, write_secrets_report: write_secrets_report } = await import('../core/reconcile/secrets-report.js');
           // Re-scan, so findings still pending stay in the report instead of being overwritten by the moved ones.
-          const { scanSecrets } = await import('../core/reconcile/triage.js');
-          const pending = await scanSecrets({ root, docsPath, config });
-          const rep = await buildSecretsReport({ root, docsPath, findings: pending, ledger: after, cfg: config.reconcile.secrets });
-          logger.info(`  secrets report with next steps (rotate, then purge): ${relative(root, await writeSecretsReport(root, rep.text))}`);
+          const { scan_secrets: scan_secrets } = await import('../core/reconcile/triage.js');
+          const pending = await scan_secrets({ root, docsPath: docs_path, config });
+          const rep = await build_secrets_report({ root, docsPath: docs_path, findings: pending, ledger: after, cfg: config.reconcile.secrets });
+          logger.info(`  secrets report with next steps (rotate, then purge): ${relative(root, await write_secrets_report(root, rep.text))}`);
         }
       } catch (e) {
         logger.error((e as Error).message);
@@ -1202,16 +1202,16 @@ program
     }
     if (options.secrets) {
       try {
-        const { scanSecrets } = await import('../core/reconcile/triage.js');
-        const found = await scanSecrets({ root, docsPath, config, scope });
-        const { buildSecretsReport, writeSecretsReport } = await import('../core/reconcile/secrets-report.js');
-        const report = await buildSecretsReport({ root, docsPath, findings: found, ledger: await loadLedger(ledgerFile), cfg: config.reconcile.secrets });
-        const reportFile = relative(root, await writeSecretsReport(root, report.text));
+        const { scan_secrets: scan_secrets } = await import('../core/reconcile/triage.js');
+        const found = await scan_secrets({ root, docsPath: docs_path, config, scope });
+        const { build_secrets_report: build_secrets_report, write_secrets_report: write_secrets_report } = await import('../core/reconcile/secrets-report.js');
+        const report = await build_secrets_report({ root, docsPath: docs_path, findings: found, ledger: await load_ledger(ledger_file), cfg: config.reconcile.secrets });
+        const report_file = relative(root, await write_secrets_report(root, report.text));
         if (options.json) { console.log(JSON.stringify(found, null, 2)); return; }
         logger.header('hewtd reconcile --secrets');
         for (const f of found) logger.info(`  [${f.kind}] ${f.rule} ${f.file}:${f.line} ${f.masked} (${f.fingerprint.slice(0, 12)})`);
         logger.info(`  ${found.length} finding(s)`);
-        logger.info(`  report with next steps: ${reportFile}`);
+        logger.info(`  report with next steps: ${report_file}`);
       } catch (e) {
         logger.error((e as Error).message);
         process.exitCode = 1;
@@ -1220,19 +1220,19 @@ program
     }
     if (options.gaps) {
       try {
-        const { readFile } = await import('fs/promises');
-        const { parseGaps, classifyGaps } = await import('../core/reconcile/gaps.js');
-        const { renderGapsReport, writeGapsReport } = await import('../core/reconcile/gaps-report.js');
-        const read = parseGaps(await readFile(resolve(process.cwd(), options.gaps), 'utf-8'), { docsRoot: docsPath, repoRoot: root });
-        const res = await classifyGaps(read.gaps, { root, docsRoot: docsPath, config });
-        const reportFile = relative(root, await writeGapsReport(root, renderGapsReport(res, config.reconcile.secrets)));
-        const reviewFile = options.writeReview ? await (await import('../core/reconcile/review.js')).writeGapsReview({ root, docsPath, proposals: res.proposals, batch: options.batch }) : undefined;
-        if (options.json) { console.log(JSON.stringify({ ...res, errors: read.errors, report: reportFile, ...(reviewFile && { review: relative(root, reviewFile) }) }, null, 2)); return; }
+        const { readFile: read_file } = await import('fs/promises');
+        const { parse_gaps: parse_gaps, classify_gaps: classify_gaps } = await import('../core/reconcile/gaps.js');
+        const { render_gaps_report: render_gaps_report, write_gaps_report: write_gaps_report } = await import('../core/reconcile/gaps-report.js');
+        const read = parse_gaps(await read_file(resolve(process.cwd(), options.gaps), 'utf-8'), { docsRoot: docs_path, repoRoot: root });
+        const res = await classify_gaps(read.gaps, { root, docsRoot: docs_path, config });
+        const report_file = relative(root, await write_gaps_report(root, render_gaps_report(res, config.reconcile.secrets)));
+        const review_file = options.writeReview ? await (await import('../core/reconcile/review.js')).write_gaps_review({ root, docsPath: docs_path, proposals: res.proposals, batch: options.batch }) : undefined;
+        if (options.json) { console.log(JSON.stringify({ ...res, errors: read.errors, report: report_file, ...(review_file && { review: relative(root, review_file) }) }, null, 2)); return; }
         logger.header('hewtd reconcile --gaps');
         for (const e of read.errors) logger.warn(`  ${e}`);
         logger.info(`  ${res.proposals.length} doc(s) with phrase proposals (${res.proposals.reduce((n, p) => n + p.accepted.length, 0)} phrases), ${res.candidates.length} new-doc candidate(s), ${res.questions.length} open question(s), ${res.dropped.length} dropped`);
-        logger.info(`  report: ${reportFile}`);
-        if (reviewFile) logger.info(`  wrote ${relative(root, reviewFile)}`);
+        logger.info(`  report: ${report_file}`);
+        if (review_file) logger.info(`  wrote ${relative(root, review_file)}`);
       } catch (e) {
         logger.error((e as Error).message);
         process.exitCode = 1;
@@ -1241,8 +1241,8 @@ program
     }
     if (options.overview && options.writeReview) {
       try {
-        const { writeOverviewReview } = await import('../core/reconcile/overview.js');
-        logger.info(`  wrote ${relative(root, await writeOverviewReview({ root, docsPath, membersFile: resolve(root, options.overview), batch: options.batch }))}`);
+        const { write_overview_review: write_overview_review } = await import('../core/reconcile/overview.js');
+        logger.info(`  wrote ${relative(root, await write_overview_review({ root, docsPath: docs_path, membersFile: resolve(root, options.overview), batch: options.batch }))}`);
       } catch (e) {
         logger.error((e as Error).message);
         process.exitCode = 1;
@@ -1251,12 +1251,12 @@ program
     }
     if (options.overview) {
       try {
-        const { seedOverview, writeMembersFile } = await import('../core/reconcile/overview.js');
-        const seed = await seedOverview({
-          docsPath, config, ledger: await loadLedger(ledgerFile), question: options.overview,
+        const { seed_overview: seed_overview, write_members_file: write_members_file } = await import('../core/reconcile/overview.js');
+        const seed = await seed_overview({
+          docsPath: docs_path, config, ledger: await load_ledger(ledger_file), question: options.overview,
           limit: options.limit ? parseInt(options.limit, 10) || undefined : undefined,
         });
-        const file = relative(root, await writeMembersFile(root, seed));
+        const file = relative(root, await write_members_file(root, seed));
         if (options.json) { console.log(JSON.stringify({ ...seed, file }, null, 2)); return; }
         logger.header('hewtd reconcile --overview');
         for (const m of seed.members) logger.info(`  [${m.state}] ${m.path} (${m.via})`);
@@ -1271,9 +1271,9 @@ program
     }
     if (options.outside) {
       try {
-        const { discoverOutside, writeOutsideReview } = await import('../core/reconcile/outside.js');
-        const docs = await discoverOutside(docsPath, (await loadPluginConfig(projectRootOf(docsPath))).reconcile.keep_in_place);
-        if (options.writeReview) logger.info(`  wrote ${relative(root, await writeOutsideReview({ docsPath, root, docs, batch: options.batch }))}`);
+        const { discover_outside: discover_outside, write_outside_review: write_outside_review } = await import('../core/reconcile/outside.js');
+        const docs = await discover_outside(docs_path, (await load_plugin_config(project_root_of(docs_path))).reconcile.keep_in_place);
+        if (options.writeReview) logger.info(`  wrote ${relative(root, await write_outside_review({ docsPath: docs_path, root, docs, batch: options.batch }))}`);
         if (options.json) { console.log(JSON.stringify(docs, null, 2)); return; }
         logger.header('hewtd reconcile --outside');
         for (const d of docs) logger.info(`  [${d.cls}] ${d.path} - ${d.reason}`);
@@ -1284,25 +1284,25 @@ program
       return;
     }
     if (!options.status) {
-      const { resolveScope, dirtyInScope, triage } = await import('../core/reconcile/triage.js');
-      const { saveLedger } = await import('../core/reconcile/ledger.js');
+      const { resolve_scope: resolve_scope, dirty_in_scope: dirty_in_scope, triage } = await import('../core/reconcile/triage.js');
+      const { save_ledger: save_ledger } = await import('../core/reconcile/ledger.js');
       try {
         if (options.serial && options.team) throw new Error('--serial and --team are mutually exclusive');
-        const ledger = await loadLedger(ledgerFile);
+        const ledger = await load_ledger(ledger_file);
         const next = options.next ? parseInt(options.next, 10) || undefined : undefined;
-        const rels = await resolveScope(docsPath, scope, { ...(next && { next }), ledger });
-        const dirty = dirtyInScope(docsPath, rels);
+        const rels = await resolve_scope(docs_path, scope, { ...(next && { next }), ledger });
+        const dirty = dirty_in_scope(docs_path, rels);
         if (dirty.length) {
           throw new Error(`Refusing to start: uncommitted changes in scope (commit or stash first):\n${dirty.map((d) => `  ${d}`).join('\n')}`);
         }
         const result = await triage({
-          root, docsPath, rels, config, ledger,
+          root, docsPath: docs_path, rels, config, ledger,
           ...((options.serial && { mode: 'serial' }) || (options.team && { mode: 'team' }) || {}),
         });
-        await saveLedger(ledgerFile, ledger);
+        await save_ledger(ledger_file, ledger);
         if (options.writeReview) {
-          const { writeReviewSkeletons } = await import('../core/reconcile/review.js');
-          const files = await writeReviewSkeletons({ root, docsPath, triage: result, scope: scope.join(' ') || `next ${options.next}`, batch: options.batch });
+          const { write_review_skeletons: write_review_skeletons } = await import('../core/reconcile/review.js');
+          const files = await write_review_skeletons({ root, docsPath: docs_path, triage: result, scope: scope.join(' ') || `next ${options.next}`, batch: options.batch });
           files.forEach((f) => logger.info(`  wrote ${relative(root, f)}`));
         }
         if (options.json) {
@@ -1325,12 +1325,12 @@ program
       }
       return;
     }
-    const files = (await glob('**/*.md', { cwd: docsPath, ignore: ['archive/**', '**/INDEX.md', '**/REGISTRY.md'] })).sort();
+    const files = (await glob('**/*.md', { cwd: docs_path, ignore: ['archive/**', '**/INDEX.md', '**/REGISTRY.md'] })).sort();
     const docs = await Promise.all(
-      files.map(async (f) => ({ path: f, hash: hashContent(await readFile(join(docsPath, f), 'utf-8')) }))
+      files.map(async (f) => ({ path: f, hash: hash_content(await readFile(join(docs_path, f), 'utf-8')) }))
     );
-    const ledger = await loadLedger(ledgerFile);
-    const st = ledgerStatus(ledger, docs, parseInt(options.next ?? '10', 10) || 10);
+    const ledger = await load_ledger(ledger_file);
+    const st = ledger_status(ledger, docs, parseInt(options.next ?? '10', 10) || 10);
     logger.header('hewtd reconcile --status');
     logger.info(`  reviewed ${st.reviewed} of ${st.total}`);
     for (const [k, v] of Object.entries(st.byLane)) logger.info(`  lane ${k}: ${v}`);
@@ -1349,16 +1349,16 @@ program
   .option('--staged', 'Scan only the lines the staged diff adds under the docs root (exit 1 on a secret); used by the pre-commit hook', false)
   .action(async (options) => {
     try {
-      const { loadPluginConfig } = await import('../utils/config.js');
-      const { projectRootOf } = await import('../core/reconcile/outside.js');
-      const { addBaseline, loadBaseline, saveBaseline, scanFile, BASELINE_PATH } = await import('../core/reconcile/secrets.js');
-      const docsPath = resolve(process.cwd(), options.docsPath);
-      const root = projectRootOf(docsPath);
-      const config = await loadPluginConfig(root);
+      const { load_plugin_config: load_plugin_config } = await import('../utils/config.js');
+      const { project_root_of: project_root_of } = await import('../core/reconcile/outside.js');
+      const { add_baseline: add_baseline, load_baseline: load_baseline, save_baseline: save_baseline, scan_file: scan_file, BASELINE_PATH } = await import('../core/reconcile/secrets.js');
+      const docs_path = resolve(process.cwd(), options.docsPath);
+      const root = project_root_of(docs_path);
+      const config = await load_plugin_config(root);
       const cfg = config.reconcile.secrets;
       if (options.staged) {
-        const { scanStaged } = await import('../core/reconcile/hooks.js');
-        const hits = scanStaged(root, docsPath, cfg);
+        const { scan_staged: scan_staged } = await import('../core/reconcile/hooks.js');
+        const hits = scan_staged(root, docs_path, cfg);
         if (!hits.length) return;
         logger.error(`commit refused: ${hits.length} added line(s) contain a secret (masked, first4…length):`);
         for (const f of hits.slice(0, 20)) logger.info(`  ${f.file}:${f.line} ${f.rule} ${f.masked} (${f.fingerprint.slice(0, 12)})`);
@@ -1372,25 +1372,25 @@ program
         if (!m) throw new Error('--baseline-add expects <file:line>');
         const file = relative(root, resolve(process.cwd(), m[1]!)).split('\\').join('/');
         const text = await readFile(join(root, file), 'utf-8');
-        const added = await addBaseline(root, file, text, parseInt(m[2]!, 10), options.reason ?? '', cfg);
+        const added = await add_baseline(root, file, text, parseInt(m[2]!, 10), options.reason ?? '', cfg);
         logger.header('hewtd secrets --baseline-add');
         for (const a of added) logger.info(`  baselined ${a.rule} ${a.file} ${a.masked} (${a.fingerprint.slice(0, 12)})`);
         if (!added.length) logger.info('  already baselined');
         // Hint only: .gitignore is the user's call.
-        const { spawnSync } = await import('child_process');
-        if (spawnSync('git', ['check-ignore', '-q', BASELINE_PATH], { cwd: root }).status === 0) {
+        const { spawnSync: spawn_sync } = await import('child_process');
+        if (spawn_sync('git', ['check-ignore', '-q', BASELINE_PATH], { cwd: root }).status === 0) {
           logger.warn(`  ${BASELINE_PATH} is gitignored; to share it: git add -f ${BASELINE_PATH} (or add "!${BASELINE_PATH}" to .gitignore)`);
         }
       }
       if (options.baselinePrune) {
-        const { scanSecrets } = await import('../core/reconcile/triage.js');
-        const entries = await loadBaseline(root);
+        const { scan_secrets: scan_secrets } = await import('../core/reconcile/triage.js');
+        const entries = await load_baseline(root);
         // Scan with the baseline off, so a still-present value shows up.
         const bare = { ...config, reconcile: { ...config.reconcile, secrets: { ...cfg, allow: cfg.allow.filter((a) => !entries.some((e) => e.fingerprint === a.fingerprint)) } } };
-        const seen = new Set((await scanSecrets({ root, docsPath, config: bare })).map((f) => f.fingerprint));
-        for (const e of entries) for (const f of await scanFile(join(root, e.file), e.file, bare.reconcile.secrets)) seen.add(f.fingerprint);
+        const seen = new Set((await scan_secrets({ root, docsPath: docs_path, config: bare })).map((f) => f.fingerprint));
+        for (const e of entries) for (const f of await scan_file(join(root, e.file), e.file, bare.reconcile.secrets)) seen.add(f.fingerprint);
         const kept = entries.filter((e) => seen.has(e.fingerprint));
-        if (kept.length !== entries.length) await saveBaseline(root, kept);
+        if (kept.length !== entries.length) await save_baseline(root, kept);
         logger.header('hewtd secrets --baseline-prune');
         logger.info(`  removed ${entries.length - kept.length}, kept ${kept.length}`);
       }
@@ -1408,10 +1408,10 @@ program
   .action(async (action, options) => {
     try {
       if (action !== 'install' && action !== 'uninstall') throw new Error('expected install or uninstall');
-      const { projectRootOf } = await import('../core/reconcile/outside.js');
-      const { installHook, uninstallHook } = await import('../core/reconcile/hooks.js');
-      const root = projectRootOf(resolve(process.cwd(), options.docsPath));
-      const r = await (action === 'install' ? installHook : uninstallHook)(root);
+      const { project_root_of: project_root_of } = await import('../core/reconcile/outside.js');
+      const { install_hook: install_hook, uninstall_hook: uninstall_hook } = await import('../core/reconcile/hooks.js');
+      const root = project_root_of(resolve(process.cwd(), options.docsPath));
+      const r = await (action === 'install' ? install_hook : uninstall_hook)(root);
       logger.info(`${r.changed ? action + 'ed' : 'unchanged'}: ${relative(root, r.path)}`);
     } catch (e) {
       logger.error((e as Error).message);
@@ -1425,24 +1425,24 @@ program
   .description('Search documentation')
   .option('-p, --path <path>', 'Documentation path', '.documentation')
   .action(async (query, options) => {
-    const docsPath = resolve(process.cwd(), options.path);
-    const { findMarkdownFiles } = await import('../utils/glob.js');
-    const { readFile } = await import('fs/promises');
+    const docs_path = resolve(process.cwd(), options.path);
+    const { find_markdown_files: find_markdown_files } = await import('../utils/glob.js');
+    const { readFile: read_file } = await import('fs/promises');
     const { relative } = await import('path');
 
     logger.header(`Search: "${query}"`);
 
-    const files = await findMarkdownFiles(docsPath);
+    const files = await find_markdown_files(docs_path);
     const results: { file: string; matches: number }[] = [];
-    const searchRegex = new RegExp(query, 'gi');
+    const search_regex = new RegExp(query, 'gi');
 
     for (const file of files) {
       try {
-        const content = await readFile(file, 'utf-8');
-        const matches = content.match(searchRegex);
+        const content = await read_file(file, 'utf-8');
+        const matches = content.match(search_regex);
         if (matches) {
           results.push({
-            file: relative(docsPath, file),
+            file: relative(docs_path, file),
             matches: matches.length,
           });
         }

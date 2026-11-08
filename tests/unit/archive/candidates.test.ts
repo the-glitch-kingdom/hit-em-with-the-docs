@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { findArchiveCandidates } from '../../../src/core/archive/candidates.js';
+import { find_archive_candidates } from '../../../src/core/archive/candidates.js';
 import type { ArchiveConfig } from '../../../src/utils/config.js';
 
 const CONFIG: ArchiveConfig = {
@@ -22,23 +22,23 @@ function doc(fields: Record<string, string>, body = '# Doc\n'): string {
 }
 
 describe('findArchiveCandidates', () => {
-  let tmpDir: string;
-  let docsPath: string;
+  let tmp_dir: string;
+  let docs_path: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'hewtd-cand-'));
-    docsPath = join(tmpDir, '.documentation');
-    await mkdir(join(docsPath, 'api'), { recursive: true });
+    tmp_dir = await mkdtemp(join(tmpdir(), 'hewtd-cand-'));
+    docs_path = join(tmp_dir, '.documentation');
+    await mkdir(join(docs_path, 'api'), { recursive: true });
   });
   afterEach(async () => {
-    await rm(tmpDir, { recursive: true, force: true });
+    await rm(tmp_dir, { recursive: true, force: true });
   });
 
   const write = (rel: string, content: string) =>
-    writeFile(join(docsPath, rel), content, 'utf-8');
+    writeFile(join(docs_path, rel), content, 'utf-8');
 
   async function run(config = CONFIG) {
-    return findArchiveCandidates({ docsPath, projectRoot: tmpDir, config, today: TODAY });
+    return find_archive_candidates({ docsPath: docs_path, projectRoot: tmp_dir, config, today: TODAY });
   }
 
   it('flags a status: deprecated doc (strong signal, alone)', async () => {

@@ -15,23 +15,23 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, mkdir, writeFile, readdir, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { runMaintenance } from '../../src/core/maintain/orchestrator.js';
-import { auditDocumentation } from '../../src/core/audit/auditor.js';
-import { regenerateIndexes } from '../../src/generators/regenerate.js';
+import { run_maintenance } from '../../src/core/maintain/orchestrator.js';
+import { audit_documentation } from '../../src/core/audit/auditor.js';
+import { regenerate_indexes } from '../../src/generators/regenerate.js';
 
 describe('Backward compatibility — no-vault project (2.3.0 regression test)', () => {
-  let tmpRoot: string;
-  let docsPath: string;
+  let tmp_root: string;
+  let docs_path: string;
 
   beforeEach(async () => {
-    tmpRoot = await mkdtemp(join(tmpdir(), 'hewtd-backcompat-'));
-    docsPath = join(tmpRoot, '.documentation');
+    tmp_root = await mkdtemp(join(tmpdir(), 'hewtd-backcompat-'));
+    docs_path = join(tmp_root, '.documentation');
 
     // Build a minimal pre-2.3.0 doc tree: one guide, no knowledge-base/,
     // no symptoms: blocks anywhere.
-    await mkdir(join(docsPath, 'security'), { recursive: true });
+    await mkdir(join(docs_path, 'security'), { recursive: true });
     await writeFile(
-      join(docsPath, 'security', 'auth-guide.md'),
+      join(docs_path, 'security', 'auth-guide.md'),
       `---
 title: "Authentication Guide"
 tier: guide
@@ -54,83 +54,83 @@ Body content for the guide.
     // a real `hewtd init`-built tree (which always ships index files). Without
     // this the tree has a document but no INDEX.md, which the 2.5.0 drift
     // audit rule correctly flags — that's a fixture gap, not a regression.
-    await regenerateIndexes({ docsPath, silent: true });
+    await regenerate_indexes({ docsPath: docs_path, silent: true });
   });
 
   afterEach(async () => {
-    await rm(tmpRoot, { recursive: true, force: true });
+    await rm(tmp_root, { recursive: true, force: true });
   });
 
   it('hewtd maintain does not create a knowledge-base/ subtree', async () => {
-    await runMaintenance({ docsPath, silent: true });
+    await run_maintenance({ docsPath: docs_path, silent: true });
 
-    const docsContents = await readdir(docsPath);
-    expect(docsContents).not.toContain('knowledge-base');
+    const docs_contents = await readdir(docs_path);
+    expect(docs_contents).not.toContain('knowledge-base');
   });
 
   it('hewtd maintain does not create facts/INDEX.md, incidents/INDEX.md, or symptoms/INDEX.md', async () => {
-    await runMaintenance({ docsPath, silent: true });
+    await run_maintenance({ docsPath: docs_path, silent: true });
 
-    const vaultPath = join(docsPath, 'knowledge-base');
-    let vaultExists = true;
+    const vault_path = join(docs_path, 'knowledge-base');
+    let vault_exists = true;
     try {
-      await readdir(vaultPath);
+      await readdir(vault_path);
     } catch {
-      vaultExists = false;
+      vault_exists = false;
     }
-    expect(vaultExists).toBe(false);
+    expect(vault_exists).toBe(false);
   });
 
   it('audit emits no KB-coded errors on a pre-2.3.0 doc tree', async () => {
-    const result = await auditDocumentation({ docsPath, silent: true });
-    const kbIssues = result.issues.filter((i) => i.code !== undefined);
-    expect(kbIssues).toEqual([]);
+    const result = await audit_documentation({ docsPath: docs_path, silent: true });
+    const kb_issues = result.issues.filter((i) => i.code !== undefined);
+    expect(kb_issues).toEqual([]);
   });
 
   it('maintain completes without errors on a no-vault tree', async () => {
-    const result = await runMaintenance({ docsPath, silent: true });
+    const result = await run_maintenance({ docsPath: docs_path, silent: true });
     // Some pre-existing maintain errors are possible (missing INDEX.md for
     // domains, etc.) — those are not 2.3.0's concern. What we assert is that
     // NO error in the result.errors list mentions knowledge-base.
-    const kbErrors = result.errors.filter((e) =>
+    const kb_errors = result.errors.filter((e) =>
       e.toLowerCase().includes('knowledge-base')
     );
-    expect(kbErrors).toEqual([]);
+    expect(kb_errors).toEqual([]);
   });
 
   it('strict audit still passes on a pre-2.3.0 tree (no KB violations to escalate)', async () => {
-    const result = await auditDocumentation({
-      docsPath,
+    const result = await audit_documentation({
+      docsPath: docs_path,
       silent: true,
       strict: true,
     });
-    const kbIssues = result.issues.filter((i) => i.code !== undefined);
-    const errorIssues = result.issues.filter((i) => i.severity === 'error');
+    const kb_issues = result.issues.filter((i) => i.code !== undefined);
+    const error_issues = result.issues.filter((i) => i.severity === 'error');
 
     // The CLI's strict-mode predicate: exit non-zero on any error OR any
     // KB-coded issue. With a clean pre-2.3.0 tree, both lists are empty.
-    expect(kbIssues).toEqual([]);
-    expect(errorIssues).toEqual([]);
+    expect(kb_issues).toEqual([]);
+    expect(error_issues).toEqual([]);
   });
 });
 
 describe('Backward compatibility — KB-adopting project (2.3.0 active path)', () => {
-  let tmpRoot: string;
-  let docsPath: string;
-  let vaultPath: string;
+  let tmp_root: string;
+  let docs_path: string;
+  let vault_path: string;
 
   beforeEach(async () => {
-    tmpRoot = await mkdtemp(join(tmpdir(), 'hewtd-kb-active-'));
-    docsPath = join(tmpRoot, '.documentation');
-    vaultPath = join(docsPath, 'knowledge-base');
+    tmp_root = await mkdtemp(join(tmpdir(), 'hewtd-kb-active-'));
+    docs_path = join(tmp_root, '.documentation');
+    vault_path = join(docs_path, 'knowledge-base');
 
     // Tree with the KB subtree present + one fact + one incident.
-    await mkdir(join(vaultPath, 'facts'), { recursive: true });
-    await mkdir(join(vaultPath, 'incidents', '2026-05-14-test'), {
+    await mkdir(join(vault_path, 'facts'), { recursive: true });
+    await mkdir(join(vault_path, 'incidents', '2026-05-14-test'), {
       recursive: true,
     });
     await writeFile(
-      join(vaultPath, 'facts', 'test-fact.md'),
+      join(vault_path, 'facts', 'test-fact.md'),
       `---
 title: Test fact
 tier: fact
@@ -153,7 +153,7 @@ A test claim.
       'utf-8'
     );
     await writeFile(
-      join(vaultPath, 'incidents', '2026-05-14-test', 'narrative.md'),
+      join(vault_path, 'incidents', '2026-05-14-test', 'narrative.md'),
       `---
 title: Test incident
 tier: incident-narrative
@@ -172,7 +172,7 @@ components: [test]
       'utf-8'
     );
     await writeFile(
-      join(vaultPath, 'incidents', '2026-05-14-test', 'facts.md'),
+      join(vault_path, 'incidents', '2026-05-14-test', 'facts.md'),
       `---
 title: Facts from 2026-05-14 test
 tier: incident-facts
@@ -190,37 +190,37 @@ produced: [test-fact]
   });
 
   afterEach(async () => {
-    await rm(tmpRoot, { recursive: true, force: true });
+    await rm(tmp_root, { recursive: true, force: true });
   });
 
   it('hewtd maintain DOES generate KB indexes when a vault root exists', async () => {
-    await runMaintenance({ docsPath, silent: true });
+    await run_maintenance({ docsPath: docs_path, silent: true });
 
-    const factsIndex = join(vaultPath, 'facts', 'INDEX.md');
-    const incidentsIndex = join(vaultPath, 'incidents', 'INDEX.md');
-    const symptomsIndex = join(vaultPath, 'symptoms', 'INDEX.md');
+    const facts_index = join(vault_path, 'facts', 'INDEX.md');
+    const incidents_index = join(vault_path, 'incidents', 'INDEX.md');
+    const symptoms_index = join(vault_path, 'symptoms', 'INDEX.md');
 
-    let factsExists = true;
-    let incidentsExists = true;
-    let symptomsExists = true;
+    let facts_exists = true;
+    let incidents_exists = true;
+    let symptoms_exists = true;
     try {
-      await readdir(factsIndex);
+      await readdir(facts_index);
     } catch (e: any) {
-      factsExists = e.code !== 'ENOENT';
+      facts_exists = e.code !== 'ENOENT';
     }
     try {
-      await readdir(incidentsIndex);
+      await readdir(incidents_index);
     } catch (e: any) {
-      incidentsExists = e.code !== 'ENOENT';
+      incidents_exists = e.code !== 'ENOENT';
     }
     try {
-      await readdir(symptomsIndex);
+      await readdir(symptoms_index);
     } catch (e: any) {
-      symptomsExists = e.code !== 'ENOENT';
+      symptoms_exists = e.code !== 'ENOENT';
     }
 
-    expect(factsExists).toBe(true);
-    expect(incidentsExists).toBe(true);
-    expect(symptomsExists).toBe(true);
+    expect(facts_exists).toBe(true);
+    expect(incidents_exists).toBe(true);
+    expect(symptoms_exists).toBe(true);
   });
 });

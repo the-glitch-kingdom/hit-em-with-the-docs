@@ -13,7 +13,7 @@ const git = (...a: string[]) => spawnSync('git', a, { cwd: root, encoding: 'utf8
 const put = (rel: string, text: string) => { mkdirSync(join(root, rel, '..'), { recursive: true }); writeFileSync(join(root, rel), text); };
 const read = (rel: string) => readFileSync(join(root, rel), 'utf-8');
 const tree = (dir: string): string[] => readdirSync(join(root, dir), { recursive: true }).map(String).sort();
-const sourcesOf = (rel: string): string[] => {
+const sources_of = (rel: string): string[] => {
   const m = read(rel).match(/^sources:\n((?:  - .*\n)+)/m);
   return m ? m[1]!.trim().split('\n').map((l) => l.trim().replace(/^- /, '').replace(/^['"]|['"]$/g, '')) : [];
 };
@@ -80,7 +80,7 @@ describe('#61 integrate sources', () => {
   it('writes resolving sources, never last_verified; a fresh doc triages to check', () => {
     const r = integrate('fresh.md', 'See `src/f1.ts` and `src/missing.ts`.');
     expect(r.status).toBe(0);
-    expect(sourcesOf(landed('fresh.md'))).toEqual(['src/f1.ts']);
+    expect(sources_of(landed('fresh.md'))).toEqual(['src/f1.ts']);
     expect(read(landed('fresh.md'))).not.toContain('last_verified');
     git('add', '-A'); git('commit', '-qm', 'doc');
     const rc = hewtd('reconcile', 'api', '--json'); const t = JSON.parse(rc.stdout || rc.stderr);
@@ -91,7 +91,7 @@ describe('#61 integrate sources', () => {
     const refs = Array.from({ length: 60 }, (_, i) => `\`src/f${i}.ts\``);
     const body = refs.join(' ') + ' `src/f40.ts#v40` `src/f40.ts:3` `src/f40.ts` `src/f41.ts:9`';
     expect(integrate('big.md', body).status).toBe(0);
-    const s = sourcesOf(landed('big.md'));
+    const s = sources_of(landed('big.md'));
     expect(s).toHaveLength(10);
     expect(s.slice(0, 2)).toEqual(['src/f40.ts', 'src/f41.ts']);
     expect(s.every((x) => /^src\/f\d+\.ts$/.test(x))).toBe(true);
@@ -101,12 +101,12 @@ describe('#61 integrate sources', () => {
   it('keeps hand-written sources and never removes one', () => {
     put('inbox/hand.md', `---\ntitle: hand\ndomains:\n  - api\nsources:\n  - docs/by-hand.md\n  - src/f2.ts\n---\n\n# hand\n\nSee \`src/f3.ts\`.\n`);
     expect(hewtd('integrate', 'inbox/hand.md', '-a', '-d', 'api').status).toBe(0);
-    expect(sourcesOf(landed('hand.md'))).toEqual(['docs/by-hand.md', 'src/f2.ts', 'src/f3.ts']);
+    expect(sources_of(landed('hand.md'))).toEqual(['docs/by-hand.md', 'src/f2.ts', 'src/f3.ts']);
   });
 
   it('sources values are not searchable', () => {
     integrate('only-in-sources.md', 'See `src/f7.ts`.');
-    expect(sourcesOf(landed('only-in-sources.md'))).toEqual(['src/f7.ts']);
+    expect(sources_of(landed('only-in-sources.md'))).toEqual(['src/f7.ts']);
     const body = read(landed('only-in-sources.md'));
     // the body also names the path, so rewrite it: the path must survive only in frontmatter
     put(landed('only-in-sources.md'), body.replace('See `src/f7.ts`.', 'See the seven file.'));

@@ -274,6 +274,7 @@ Verdicts: `verify`, `rewrite`, `archive`, `unverifiable`, `fields`, `secret`,
 - `rewrite` drafts are written to `.hewtd/reconcile/drafts/`, outside the tree.
   Rewrite entries alone do not produce a commit.
 - Touched domains have their indexes regenerated.
+- When at least one entry was applied, `.hewtd/graph.json` is rebuilt (2.20.0; see [graph-export.md](./graph-export.md)). Rolled-back batches leave it as it was. `graph_export: false` disables it.
 - **All or nothing.** Files are staged with `git add -A -f` (so a gitignored
   `archive/` still commits). If anything fails after the first write (index
   regeneration, stage, commit) every touched file returns to its pre-apply

@@ -203,6 +203,7 @@ Details: `docs/retrieval-fields.md`.
 ## Where to dig deeper
 
 - `docs/reconcile.md` — reconciling existing docs with the code
+- `docs/graph-export.md` — the `.hewtd/graph.json` doc-to-code export (2.20.0; written by `hewtd index` and `reconcile --apply`, `graph_export: false` disables)
 - `docs/retrieval-fields.md` — the retrieval standard, warning codes, config
 
 - **Reference docs:** `docs/plan-tier-frontmatter.md`, `docs/knowledge-base-primitives.md`

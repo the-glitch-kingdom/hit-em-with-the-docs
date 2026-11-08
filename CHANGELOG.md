@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.20.0] — 2026-11-07
+
+Doc-to-code graph export (#65).
+
+- `hewtd index` and `reconcile --apply` (when something was applied) write `.hewtd/graph.json`:
+  schema v1 (`schemas/graph.v1.schema.json`), per-doc refs with `resolved` true/false/null,
+  `body_changed` and `code_changed` dates, verdict, `last_verified`, owner/pointer/duplicate
+  data and a symbol index. No timestamp; `source_commit` instead; byte-identical when unchanged.
+- `graph_export: false` turns it off. Skipped outside git. Secret-guarded. hewtd never reads it back.
+- `.hewtd/graph-cache.json` caches body-change dates.
+- Cost: `index` runs a full triage for the export, so it takes seconds on large trees.
+- `TriageDoc.refs` and `resolveDocs` expose resolved references.
+- Docs: `docs/graph-export.md`.
+
 ## [2.19.0] — 2026-11-07
 
 Write-time guards (#61). Ships 2.17.0 and 2.18.0 too.

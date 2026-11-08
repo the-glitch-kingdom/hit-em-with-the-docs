@@ -1,6 +1,6 @@
 {
   "name": "@theglitchking/hit-em-with-the-docs",
-  "version": "2.19.0",
+  "version": "2.20.0",
   "description": "Self-managing documentation system with hierarchical structure, intelligent automation, pattern discovery, and agent orchestration",
   "type": "module",
   "main": "dist/cli/index.js",
@@ -32,7 +32,8 @@
     "README.md",
     "LICENSE",
     "MIGRATION.md",
-    "docs"
+    "docs",
+    "schemas"
   ],
   "scripts": {
     "build": "tsc",
@@ -57,6 +58,7 @@
     "documentation",
     "github-action",
     "docs",
+    "schemas",
     "markdown",
     "automation",
     "cli",

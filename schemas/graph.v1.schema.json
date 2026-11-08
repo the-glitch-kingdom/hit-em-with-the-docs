@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/the-glitch-kingdom/hit-em-with-the-docs/schemas/graph.v1.schema.json",
+  "title": "hewtd graph export v1 (.hewtd/graph.json)",
+  "type": "object",
+  "required": ["version", "source_commit", "docs", "symbols"],
+  "properties": {
+    "version": { "const": 1 },
+    "source_commit": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" },
+    "docs": { "type": "object", "additionalProperties": { "$ref": "#/$defs/doc" } },
+    "symbols": { "type": "object", "additionalProperties": { "$ref": "#/$defs/symbol" } }
+  },
+  "$defs": {
+    "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "anchorRef": { "type": "string", "pattern": "^[^#]+#.+$" },
+    "doc": {
+      "type": "object",
+      "required": ["body_changed", "verdict", "last_verified", "refs", "owner_of", "points_to", "duplicates"],
+      "properties": {
+        "body_changed": { "oneOf": [{ "$ref": "#/$defs/date" }, { "type": "null" }] },
+        "verdict": { "enum": ["verified", "fields-only", "check", "stale", "archive-candidate", "secret", "unreviewed"] },
+        "last_verified": { "oneOf": [{ "$ref": "#/$defs/date" }, { "type": "null" }] },
+        "refs": { "type": "array", "items": { "$ref": "#/$defs/ref" } },
+        "owner_of": { "type": "array", "items": { "$ref": "#/$defs/anchorRef" } },
+        "points_to": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["from", "to"],
+            "properties": {
+              "from": { "oneOf": [{ "type": "string", "pattern": "^#.+$" }, { "type": "null" }] },
+              "to": { "$ref": "#/$defs/anchorRef" }
+            }
+          }
+        },
+        "duplicates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["section", "owner"],
+            "properties": {
+              "section": { "type": "string", "pattern": "^#.+$" },
+              "owner": { "$ref": "#/$defs/anchorRef" }
+            }
+          }
+        }
+      }
+    },
+    "ref": {
+      "type": "object",
+      "required": ["kind", "target", "resolved"],
+      "properties": {
+        "kind": { "enum": ["file", "symbol", "env", "command", "table", "column", "doc"] },
+        "target": { "type": "string" },
+        "file": { "type": "string" },
+        "repo": { "type": "string" },
+        "resolved": { "type": ["boolean", "null"] },
+        "code_changed": { "$ref": "#/$defs/date" }
+      }
+    },
+    "symbol": {
+      "type": "object",
+      "required": ["file", "cited_by"],
+      "properties": {
+        "file": { "type": "string" },
+        "cited_by": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

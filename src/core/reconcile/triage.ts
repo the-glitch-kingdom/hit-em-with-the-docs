@@ -32,6 +32,8 @@ export interface TriageDoc {
   lane: Lane;
   reasons: string[];
   missing: string[];
+  /** every reference the resolver found in the body (additive; `missing` also holds gone `sources`) */
+  refs: Pick<ResolvedReference, 'kind' | 'ref' | 'status' | 'where'>[];
   /** Doc bytes + bytes of the cited files the judgment pass must read. */
   bytes: number;
   staleCommits?: number;
@@ -117,7 +119,7 @@ export async function scanSecrets(opts: { root: string; docsPath: string; config
 
 const posix = (p: string): string => p.split('\\').join('/');
 
-async function mdFiles(dir: string): Promise<string[]> {
+export async function mdFiles(dir: string): Promise<string[]> {
   const out: string[] = [];
   const walk = async (d: string): Promise<void> => {
     for (const e of await readdir(d, { withFileTypes: true })) {
@@ -356,7 +358,7 @@ export async function triage(opts: {
         delete led.verdict;
       }
     }
-    docs.push({ path: d.rel, lane, reasons, missing, bytes, ...(staleCommits !== undefined && { staleCommits }), ...(owner && { owner }), ...(copies && { duplicates: copies }), ...(ownFindings.length && { findings: ownFindings }), ...(blocked.size && { blocked_files: [...blocked.keys()].sort() }) });
+    docs.push({ path: d.rel, lane, reasons, missing, refs: resolved.map(({ kind, ref, status, where }) => ({ kind, ref, status, ...(where !== undefined && { where }) })), bytes, ...(staleCommits !== undefined && { staleCommits }), ...(owner && { owner }), ...(copies && { duplicates: copies }), ...(ownFindings.length && { findings: ownFindings }), ...(blocked.size && { blocked_files: [...blocked.keys()].sort() }) });
 
     if (opts.ledger) recordEntry(opts.ledger, { path: d.rel, lane, content_hash: hashContent(d.raw) });
   }
@@ -382,6 +384,13 @@ export async function triage(opts: {
     schemaFiles: idx.schemaFiles,
     peripheral,
   };
+}
+
+/** Read-only resolution of some docs for the graph export: no ledger, no dirty-tree check (that lives in the CLI). */
+export async function resolveDocs(opts: { root: string; docsPath: string; rels: string[]; config: PluginConfig; ledger?: Ledger }): Promise<TriageDoc[]> {
+  // A copy, so the ledger-driven reasons (pointer target / member changed) fire without recording anything.
+  const { ledger, ...rest } = opts;
+  return (await triage({ ...rest, ...(ledger && { ledger: structuredClone(ledger) }) })).docs;
 }
 
 /**

@@ -66,6 +66,10 @@ Everything *else* in the vault folder — a `README.md`, say — is an ordinary
 document and is indexed normally. The exclusion is scoped to the three
 generator-owned subtrees, not to the whole vault.
 
+## The graph export
+
+Since 2.20.0 `hewtd index` also writes `.hewtd/graph.json`, a versioned doc-to-code map for other tools. It adds seconds on a large tree; `graph_export: false` turns it off. See [graph-export.md](./graph-export.md).
+
 ## Indexes are generated, never hand-edited
 
 `hewtd index` and `hewtd maintain` **rewrite the root and domain indexes from

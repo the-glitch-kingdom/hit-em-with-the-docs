@@ -2,11 +2,11 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFileSync } from 'child_process';
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { join, relative } from 'path';
 import { loadPluginConfig } from '../../../src/utils/config';
 import { findDuplicates } from '../../../src/core/reconcile/duplicates';
 import { hashContent } from '../../../src/core/reconcile/ledger';
-import { triage } from '../../../src/core/reconcile/triage';
+import { mdFiles, triage } from '../../../src/core/reconcile/triage';
 import { buildGraph, serializeGraph } from '../../../src/core/graph/export';
 
 let dir: string;
@@ -33,7 +33,9 @@ beforeAll(() => {
   put('ops/missing.md', fm() + 'See `src/a.ts` and `src/nope.ts`.\n');
   put('procedures/release.md', `---\ntitle: Release procedure\npurpose: How to cut and tag a release\n---\n# Release procedure\n\n${steps}\n`);
   put('guides/admin.md', `---\ntitle: Admin\n---\n# Admin\n\n${filler}\n\n## Cutting a release\n\n${steps}\n`);
-  put('ops/plan.md', '---\ntitle: P\ntier: plan\n---\nSee `src/ghost.ts`.\n');
+  put('plans/plan.md', '---\ntitle: P\ntier: plan\n---\nSee `src/ghost.ts`.\n');
+  put('drafts/d.md', '---\ntitle: D\n---\nDraft.\n');
+  put('ops/gen.md', '---\ntitle: G\ngenerated: true\n---\nGenerated.\n');
   put('.hewtd/reconcile.json', JSON.stringify({ version: 1, entries: {
     'ops/verified.md': { path: 'ops/verified.md', lane: 'clean', verdict: 'verify', content_hash: hashContent(verifiedRaw) },
     'ops/missing.md': { path: 'ops/missing.md', lane: 'check', verdict: 'point', content_hash: 'x', pointer: { target: 'procedures/release.md#release-procedure', section_hash: 'h' } },
@@ -50,15 +52,18 @@ describe('buildGraph', () => {
     const g = await buildGraph({ root: dir, docsPath: docs, config });
     expect(g.version).toBe(1);
     expect(g.source_commit).toMatch(/^[0-9a-f]{40}$/);
-    expect(Object.keys(g.docs)).toEqual(['guides/admin.md', 'ops/missing.md', 'ops/verified.md', 'procedures/release.md']); // plan tier excluded, sorted
+    expect(Object.keys(g.docs)).toEqual(['drafts/d.md', 'guides/admin.md', 'ops/gen.md', 'ops/missing.md', 'ops/verified.md', 'plans/plan.md', 'procedures/release.md']); // triage's set, sorted
+    expect(g.docs['plans/plan.md']!.refs).toEqual([{ kind: 'file', target: 'src/ghost.ts', resolved: false }]);
+    expect(g.symbols.widgetRetry).toMatchObject({ file: 'src/a.ts', file_kind: 'definition' });
+    expect(g.docs['ops/verified.md']!.refs[1]).toMatchObject({ file_kind: 'definition' });
 
     const v = g.docs['ops/verified.md']!;
     expect(v).toMatchObject({ verdict: 'verified', last_verified: '2026-01-01', body_changed: '2026-02-01' });
     expect(v.refs).toEqual([
       { kind: 'file', target: 'src/a.ts', resolved: true, code_changed: '2026-04-01' },
-      { kind: 'symbol', target: 'widgetRetry', file: 'src/a.ts', resolved: true, code_changed: '2026-04-01' },
+      { kind: 'symbol', target: 'widgetRetry', file: 'src/a.ts', file_kind: 'definition', resolved: true, code_changed: '2026-04-01' },
     ]);
-    expect(g.symbols['widgetRetry']).toEqual({ file: 'src/a.ts', cited_by: ['ops/verified.md'] });
+    expect(g.symbols['widgetRetry']).toEqual({ file: 'src/a.ts', file_kind: 'definition', cited_by: ['ops/verified.md'] });
 
     // every triage `missing` is a resolved:false ref; every resolved file ref has code_changed
     const t = (await triage({ root: dir, docsPath: docs, rels: Object.keys(g.docs), config })).docs;
@@ -71,6 +76,14 @@ describe('buildGraph', () => {
     const dup = (await findDuplicates(docs, config)).get('guides/admin.md')![0]!;
     expect(g.docs['guides/admin.md']!.duplicates).toEqual([{ section: `#${dup.section}`, owner: `${dup.owner}#${dup.section}` }]);
     expect(g.docs['procedures/release.md']!.owner_of).toEqual(['procedures/release.md#release-procedure']);
+  });
+
+  it('exports exactly the docs triage judges', async () => {
+    const config = await loadPluginConfig(dir);
+    const rels = (await mdFiles(docs)).map((f) => relative(docs, f));
+    const judged = (await triage({ root: dir, docsPath: docs, rels, config })).docs.map((d) => d.path).sort();
+    expect(Object.keys((await buildGraph({ root: dir, docsPath: docs, config })).docs).sort()).toEqual(judged);
+    expect(judged).toEqual(expect.arrayContaining(['drafts/d.md', 'ops/gen.md', 'plans/plan.md']));
   });
 
   it('serializes deterministically with sorted keys and a trailing newline', async () => {

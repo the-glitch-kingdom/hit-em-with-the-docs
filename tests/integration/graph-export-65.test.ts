@@ -47,6 +47,15 @@ describe('graph export on index and apply', () => {
     expect(statSync(GRAPH()).mtimeMs).toBe(m);
   });
 
+  it('index --no-graph skips the export and says nothing about it', () => {
+    const r = hewtd(['index', '--no-graph']);
+    expect(r.status).toBe(0);
+    expect(existsSync(GRAPH())).toBe(false);
+    expect(r.stdout + r.stderr).not.toMatch(/graph/i);
+    expect(hewtd(['index']).status).toBe(0);
+    expect(existsSync(GRAPH())).toBe(true);
+  });
+
   it('--dry-run writes nothing; graph_export:false writes nothing', () => {
     expect(hewtd(['index', '--dry-run']).stdout).toMatch(/Would update \.hewtd\/graph\.json/);
     expect(existsSync(GRAPH())).toBe(false);

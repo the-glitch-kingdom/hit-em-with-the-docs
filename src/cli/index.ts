@@ -152,6 +152,7 @@ program
     'Restrict domain INDEX/REGISTRY writes to one domain (root indexes still refreshed)'
   )
   .option('--dry-run', 'Preview what would change without writing anything', false)
+  .option('--no-graph', 'Skip the .hewtd/graph.json export (fast refresh for hooks)')
   .action(async (options) => {
     const docsPath = resolve(process.cwd(), options.path);
 
@@ -214,7 +215,7 @@ program
       if (options.dryRun) for (const f of stamped) logger.info(`  ${f}`);
     }
 
-    await exportGraph(docsPath, options.dryRun);
+    if (options.graph !== false) await exportGraph(docsPath, options.dryRun);
 
     if (!options.dryRun) {
       logger.success(

@@ -72,11 +72,13 @@ hewtd reconcile --secrets [scope] [--json]
   not a placeholder, path, URL, code expression or `@file`). A kv key named
   like a secret (`password=`) reports as `generic-secret`. Turn the new rules
   off with `disabled_rules` ids `approle-id` and `vault-kv-value`.
-- **Not secrets (2.22.0)**: `generic-secret` ignores code-shaped values (dotted
-  identifier chains such as `self.token`, calls such as `get(`, `{name}` template
-  slots) and email-shaped values; a secret-named key holding an email still gives
-  an email finding (personal, never blocking). Any value starting with `<` is a
-  placeholder, so pointer records like `<secret: NAME, see .env.hewtd>` are clean.
+- **Not secrets (2.22.0)**: `generic-secret` ignores values built from words, not
+  random characters: dotted identifier chains such as `self.vault_token` or
+  `settings.VAULT_TOKEN`, calls such as `get_secret(`, `{name}` template slots
+  around weak text, email values (`admin@company.io`, still reported as a
+  `personal` finding that never blocks) and pointer records (`<NAME from Vault: ...>`
+  with a closing `>` on the line). A value with random characters is still a
+  secret, even with a `.`, `(`, `{x}`, `<` or `@` in it.
 - **Scope**: with a scope, only those docs. With none, the docs root, `archive/`,
   tracked `*.md` outside the docs root and all of `.hewtd/`. Archive, outside and
   `.hewtd/` hits are reported, never judged.
@@ -433,7 +435,7 @@ accepted entry. Links from other outside files are not repointed.
   reported error and rerun the same review file.
 - **Config ignored from a subdirectory**: fixed in 2.16.0; config is read from
   the docs path's project root, not the current directory.
-- **Docs in the secret lane for code like `self.token` or `settings.X`**: fixed in 2.22.0; code references, `{name}` slots, emails and `<...>` pointer records are no longer findings.
+- **Docs in the secret lane for code like `self.token` or `settings.X`**: fixed in 2.22.0; word-made code references, `{name}` slots, email values and `<NAME ...>` pointer records are no longer `generic-secret` findings (emails stay non-blocking `personal` findings).
 - **False positive flagged as a secret**: add it to `reconcile.secrets.allow`
   (by `fingerprint` from the report, the full hash or any prefix of at least 12 hex
   chars as shown there, or a `pattern`) with a `reason`.

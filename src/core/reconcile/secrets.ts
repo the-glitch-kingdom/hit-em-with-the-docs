@@ -37,7 +37,7 @@ export const entropy = (s: string): number => {
 // where the value is free text; known-shape keys like sk_test_ are real credentials.
 export function isPlaceholder(v: string, weak: boolean): boolean {
   const l = v.toLowerCase();
-  if (/^your[_-]|^<|<[^>]*>|\$\{|^\$[a-z_]|x{3,}|\*{3,}|\.{3}|…|example|changeme|change_me|dummy|placeholder|redacted/.test(l)) return true;
+  if (/^your[_-]|<[^>]*>|\$\{|^\$[a-z_]|x{3,}|\*{3,}|\.{3}|…|example|changeme|change_me|dummy|placeholder|redacted/.test(l)) return true;
   if (new Set(l).size <= 2) return true;
   return weak && /password|passwd|secret|(^|[^a-z])test([^a-z]|$)/.test(l);
 }
@@ -50,9 +50,31 @@ const jwtOk = (v: string): boolean => {
 const NAME = 'SECRET|TOKEN|PASSWORD|PASSWD|API_?KEY|PRIVATE_?KEY|ACCESS_?KEY|SECRET_?ID|ROLE_?ID|CLIENT_?SECRET';
 const NAME_RE = new RegExp(`(?:${NAME})`, 'i');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-// Code, not a credential: a dotted identifier chain (self.x, settings.X, os.environ.get), a call, or a {name} template slot.
-const looksLikeCode = (v: string) => /^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+$/.test(v) || /\w\(/.test(v) || /\{[A-Za-z_]\w*\}/.test(v);
-const looksLikeEmail = (v: string) => /^[^@\s]{1,64}@[^@\s]{1,255}\.[A-Za-z]{2,}$/.test(v);
+// Exemptions apply only to names made of words (snake, kebab, camel, UPPER; digits only as a separate short part),
+// never to random characters, so a real credential containing a '.', '(', '{x}', '<' or '@' is still found.
+// shortcut: a letters-only random run in clean camel humps would pass; upgrade to a word list if one shows up.
+const WORD = '(?:[a-z]+|[A-Z]+|[A-Z]?[a-z]{2,}(?:[A-Z][a-z]{2,})+|[A-Z][a-z]+)';
+const WORDY = new RegExp(`^_?${WORD}(?:[_-]{1,2}(?:${WORD}|\\d{1,3}))*\\d{0,2}_?$`);
+const wordyChain = (v: string, sep = '.') => v.length > 0 && v.split(sep).every((p) => WORDY.test(p));
+const strong = (v: string) => (UUID.test(v) && new Set(v.replace(/-/g, '')).size > 4) || (v.length >= 16 && entropy(v) >= 3.5);
+// Code, not a credential: a word-made dotted chain (self.x, settings.X), a call of one, or only {name} template slots around weak text.
+const looksLikeCode = (v: string) => {
+  if (wordyChain(v)) return true;
+  const call = /^([A-Za-z_][\w.]*)\(/.exec(v);
+  if (call && wordyChain(call[1]!)) return true;
+  const rest = v.replace(/\{([A-Za-z_][\w.]*)\}/g, (all, n: string) => (wordyChain(n) ? '' : all));
+  return rest !== v && !strong(rest);
+};
+const looksLikeEmail = (v: string) => {
+  const m = /^([^@\s]{1,64})@([^@\s]{1,255}\.[A-Za-z]{2,})$/.exec(v);
+  return !!m && m[1]!.split(/[._+-]/).every((p) => WORDY.test(p) || /^\d{1,4}$/.test(p)) && wordyChain(m[2]!.replace(/-/g, '.'));
+};
+/** `<NAME from Vault: ...>`: a word-made name after '<' with a closing '>' later on the same line. */
+const pointerRecord = (v: string, m: RegExpMatchArray) => {
+  if (!v.startsWith('<') || !WORDY.test(v.slice(1).replace(/>.*$/, ''))) return false;
+  const at = m.index! + m[0].lastIndexOf(v), end = m.input!.indexOf('\n', at);
+  return m.input!.slice(at, end < 0 ? undefined : end).includes('>');
+};
 const looksLikePathOrUrl = (v: string) => /^(\/|\.{1,2}\/|~)/.test(v) || /^[a-z][a-z0-9+.-]*:\/\/[^@]*$/i.test(v);
 
 // Order matters: specific shapes first, so the generic rule skips what they already found.
@@ -77,9 +99,8 @@ const RULES: Rule[] = [
   // Key matched as one bounded token starting at a token boundary, then checked for a secret-ish name in code:
   // the old `[\w.-]*(?:NAME)[\w.-]*` form backtracked quadratically on long lines.
   { id: 'generic-secret', re: /(?<![\w.-])["'`]?([A-Za-z_][\w.-]{0,80})["'`]?[ \t]{0,8}[:=][ \t]{0,8}["'`]?([^\s"'`,;]{1,512})/g, group: 2, weak: true,
-    accept: (v, m) => NAME_RE.test(m[1]!) && !looksLikePathOrUrl(v) && !looksLikeCode(v) && !looksLikeEmail(v) &&
-      // AppRole role/secret ids are uuids, which often fall under the entropy bar: a non-trivial uuid always counts.
-      ((UUID.test(v) && new Set(v.replace(/-/g, '')).size > 4) || (v.length >= 16 && entropy(v) >= 3.5)) },
+    // AppRole role/secret ids are uuids, which often fall under the entropy bar: `strong` counts a non-trivial uuid.
+    accept: (v, m) => NAME_RE.test(m[1]!) && !looksLikePathOrUrl(v) && !looksLikeCode(v) && !looksLikeEmail(v) && !pointerRecord(v, m) && strong(v) },
   // After generic-secret, so a secret-named key keeps that rule; this one also catches ids under plain keys.
   { id: 'approle-id', re: /(?:--role-id|--secret-id|role_id|secret_id|role id|secret id)(?:[ \t]{0,3}[:=][ \t]{0,3}|[ \t]{1,3})["']?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi, group: 1,
     accept: (v) => new Set(v.replace(/-/g, '')).size > 4 },

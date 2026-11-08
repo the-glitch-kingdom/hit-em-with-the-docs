@@ -14,8 +14,10 @@ Fixes from the 2.21.0 field test (#69).
   no longer left out (missing refs show `resolved: false`).
 - `hewtd index --no-graph` skips the export (no file, no export line). `graph_export: false` and
   `--dry-run` are unchanged.
-- Secrets: code references (`self.x`, `settings.X`, calls, `{name}` slots), emails and `<...>` pointer
-  records are no longer findings or secret-lane reasons. A cited code file with only weak hits
+- Secrets: word-made code references (`self.x`, `settings.X`, calls, `{name}` slots), email values under
+  a secret-named key and `<NAME ...>` pointer records are no longer `generic-secret` findings. Random
+  characters never qualify, so a real credential containing `.`, `(`, `{x}`, `<` or `@` is still found.
+  Emails are still reported as `personal` findings, which never block (unchanged). A cited code file with only weak hits
   (`generic-secret`, `url-password`) is withheld (`blocked_files`) without blocking the doc.
 - Secrets recall: `hvs.`/`hvb.` tokens from 16 chars, new rules `approle-id` and `vault-kv-value`.
 - Gaps: `reconcile --gaps` keeps queries up to 200 characters (was 20 words); 3-word minimum kept.

@@ -229,6 +229,9 @@ const BIG_FILE = 512 * 1024;
 const WORD = /\w/;
 /** Not a place a symbol is defined: data and generated files. Used as a last resort for `reference`. */
 const NOT_SOURCE = /(?:\.json|\.lock|[-.]lock\.[\w]+|\.generated\.[\w]+|\.min\.[\w]+)$|(?:^|\/)(?:dist|build)\//;
+/** Test and mock files: a definition there loses to one in source. */
+const TEST_FILE = /(?:^|\/)(?:tests?|__tests__|__mocks__|mocks?|fixtures?|spec)\/|[._-](?:test|spec)\.[\w]+$/;
+const defRank = (f: string): string => `${TEST_FILE.test(f) ? 1 : 0}${f}`;
 const esc = (n: string): string => n.replace(/\$/g, '\\$');
 
 /** First file (in order) containing `name` as a whole word, read in Node; for files too big for `git grep -o`. */
@@ -240,8 +243,8 @@ function hasWord(text: string, name: string): boolean {
 }
 
 /**
- * One `git grep` per chunk (two: SQL is case-insensitive) for lines that define a name; the first defining
- * file in path order wins. Names without one keep their referencing file and are marked `reference`.
+ * One `git grep` per chunk (two: SQL is case-insensitive) for lines that define a name; source beats test/mock
+ * files, then path order. Names without one keep their referencing file and are marked `reference`.
  */
 function definitionPass(idx: RepoIndex, names: string[], files: string[]): void {
   const run = (args: string[]): string => { try { return git(idx.root, args); } catch { return ''; } };
@@ -264,7 +267,7 @@ function definitionPass(idx: RepoIndex, names: string[], files: string[]): void 
           const name = m && nameRes.map(([re]) => re.exec(m[2]!)?.[1]).find((n) => n && want.has(n));
           if (!name) continue;
           const cur = defs.get(name);
-          if (cur === undefined || m![1]! < cur) defs.set(name, m![1]!);
+          if (cur === undefined || defRank(m![1]!) < defRank(cur)) defs.set(name, m![1]!);
         }
       }
     }

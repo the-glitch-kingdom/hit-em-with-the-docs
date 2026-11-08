@@ -40,4 +40,13 @@ describe('symbol definition site (#69)', () => {
     const rs = await checkDocReferences(buildRepoIndex(root), 'Calls `useJsonOnlyName()`.');
     expect(rs[0]).toMatchObject({ where: 'zz.ts', whereKind: 'reference' });
   });
+
+  it('a definition in source beats one in tests or mocks that sorts first', async () => {
+    put('__mocks__/task.ts', 'export class TaskResponse {}\n');
+    put('app/tests/fake.py', 'class TaskResponse:\n    pass\n');
+    put('src/schemas/task.py', 'class TaskResponse:\n    pass\n');
+    execFileSync('git', ['add', '-A'], { cwd: root });
+    const rs = await checkDocReferences(buildRepoIndex(root), 'Returns `TaskResponse`.');
+    expect(rs[0]).toMatchObject({ where: 'src/schemas/task.py', whereKind: 'definition' });
+  });
 });

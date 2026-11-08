@@ -36,6 +36,7 @@ The export covers exactly the docs triage judges (2.22.0): every markdown file u
 
 - `file_kind` is `"definition"` or `"reference"`. It is an additive field on symbol refs in `docs[x].refs[]` and on `symbols[name]`, present only when the symbol resolved. `version` stays `1`.
 - A symbol's `file` is the source file that defines it, found with regex patterns, not a parser: `def`, `class`, `function`, `const`, `let`, `var`, `interface`, `type`, `enum`, `struct`, `fn`, `func`, `name: function(`, `name = (`, SQL `CREATE [OR REPLACE] TABLE|VIEW|FUNCTION|POLICY|TYPE [IF NOT EXISTS] [schema.]name` (case-insensitive) and `__tablename__ = "name"`.
+- When several files define it, a source file beats one under `test/`, `tests/`, `__tests__/`, `__mocks__/`, `mock(s)/`, `fixture(s)/`, `spec/` or named `*.test.*`/`*.spec.*`; then path order decides. The patterns are loose, so a tuple assignment (`Name = (a, b)`) also counts.
 - If no source file defines it, `file` falls back to the first non-JSON, non-generated file that mentions it, then to any file that mentions it. Both fallbacks report `"reference"`.
 - Never a definition site: `.json`, `*.lock`, `*-lock.*`, `*.generated.*`, `*.min.*`, `dist/`, `build/`, markdown, and files over 512KB.
 - Symbols from `related_repos` get the same choice.

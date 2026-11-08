@@ -119,7 +119,7 @@ export async function scanSecrets(opts: { root: string; docsPath: string; config
 
 const posix = (p: string): string => p.split('\\').join('/');
 
-async function mdFiles(dir: string): Promise<string[]> {
+export async function mdFiles(dir: string): Promise<string[]> {
   const out: string[] = [];
   const walk = async (d: string): Promise<void> => {
     for (const e of await readdir(d, { withFileTypes: true })) {

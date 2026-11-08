@@ -26,6 +26,11 @@ tags: [vault, auth]
 object entry (`alert_name`, `user_phrase`, `error_pattern`) still needs
 `target` and `cites`. See `knowledge-base-primitives.md`.
 
+Since 2.21.0, `hewtd reconcile --gaps <file>` proposes `user_phrase` entries from real
+missed search queries (see [reconcile.md](./reconcile.md#search-gaps-2210) and
+[gaps-format.md](./gaps-format.md)). Applied phrases are real reader wording, capped
+per doc by `reconcile.gaps.max_phrases_per_doc`.
+
 ## `sources` (2.19.0)
 
 `sources` is a file-level list of the code a doc was written from, used only to

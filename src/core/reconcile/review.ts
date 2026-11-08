@@ -11,7 +11,7 @@ import { assertNoSecrets, findSecrets, type RawSecret } from './secrets.js';
 import { loadPluginConfig } from '../../utils/config.js';
 import type { Shard, TriageResult } from './triage.js';
 
-export const VERDICTS = ['verify', 'rewrite', 'archive', 'unverifiable', 'fields', 'integrate', 'delete', 'secret', 'merge', 'point', 'overview'] as const;
+export const VERDICTS = ['verify', 'rewrite', 'archive', 'unverifiable', 'fields', 'integrate', 'delete', 'secret', 'merge', 'point', 'overview', 'phrases'] as const;
 export type Verdict = (typeof VERDICTS)[number];
 
 export interface ReviewEntry {
@@ -53,6 +53,8 @@ export interface ReviewEntry {
   members?: { path: string; content_hash: string }[];
   /** overview: allow members that are not reconciled; the draft must mark each link `(unreviewed)`. */
   allow_unreviewed?: boolean;
+  /** phrases: search-gap queries to add to the doc's symptoms as user_phrase. */
+  phrases?: string[];
   lane?: string;
   reasons?: string[];
 }
@@ -180,4 +182,20 @@ export async function writeReviewSkeletons(opts: {
     written.push(file);
   }
   return written;
+}
+
+/** gaps: one unticked `phrases` entry per doc with proposals, as `review-<batch>-gaps.md`. */
+export async function writeGapsReview(opts: { root: string; docsPath: string; proposals: { doc: string; accepted: { query: string }[] }[]; batch?: string }): Promise<string | undefined> {
+  const { root, docsPath, proposals } = opts;
+  if (!proposals.length) return undefined;
+  const dir = reviewDir(root);
+  const batch = opts.batch ?? (await nextBatch(dir));
+  const entries: ReviewEntry[] = [];
+  for (const p of proposals) {
+    entries.push({ path: p.doc, content_hash: hashContent(await readFile(join(docsPath, p.doc), 'utf-8')), verdict: 'phrases', phrases: p.accepted.map((a) => a.query) });
+  }
+  const file = join(dir, `review-${batch}-gaps.md`);
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, renderReview({ batch, shard: 1, scope: 'gaps' }, entries), { encoding: 'utf-8', flag: 'wx' });
+  return file;
 }

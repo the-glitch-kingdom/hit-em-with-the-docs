@@ -1,7 +1,7 @@
 ---
 description: Reconcile existing docs with the code - triage, judge each doc against what it cites, propose fixes for you to accept, apply serially
 allowed-tools: Bash(npx:*), Read, Write, Agent
-argument-hint: "<domain|folder|files...> | --overview \"<question>\" | --next N | --status | --outside  [--serial|--team]"
+argument-hint: "<domain|folder|files...> | --overview \"<question>\" | --gaps <file> | --next N | --status | --outside  [--serial|--team]"
 ---
 
 Arguments: $ARGUMENTS
@@ -126,6 +126,26 @@ If the owner is in a sibling repo (`reconcile.related_repos`), the holder keeps 
 ## 4. Domains
 
 If docs fit no existing domain, add a proposal to the report (name, keywords, which docs). Never create or move folders. If the user wants it, point them at `/hit-em-with-the-docs:domain`.
+
+## 4b. Search gaps (`--gaps <file>`)
+
+Turns queries the search missed into `symptoms.user_phrase` proposals, new-doc candidates and open questions. The file is a `gaps.v1` list. semantic-memory's `gaps --json` emits this format, and a hand-written list works too (a JSON array, or one question per line). Step 0 still runs first.
+
+```bash
+hewtd reconcile --gaps <file> --json
+```
+
+It writes only `.hewtd/reconcile/gaps-report-<date>.md` (masked) and changes no doc. Show the three outcomes, plus any `errors` (for example an unknown `used_doc`):
+
+1. **Phrase proposals**: a query whose `used_doc` is a doc here. Queries are already normalized, near-duplicates merged, capped per doc, and secret-shaped ones dropped.
+2. **New-doc candidates**: no usable doc, but the query names code. Each lists ranked `sources` and a likely domain.
+3. **Open questions**: neither. Report them; nothing to propose.
+
+`dropped` queries are shown by `reason` only. Never paste a dropped query, and never echo a value from a secret-flagged one.
+
+**Phrases.** Write the skeleton with `hewtd reconcile --gaps <file> --write-review` (`review-<batch>-gaps.md`, one unticked `phrases` entry per doc). Let the user accept, edit or drop each phrase. Keep the reader's wording from the real query; do not rewrite it into the author's terms. Tick `accept` only on their say-so, then apply with `hewtd reconcile --apply .hewtd/reconcile/review-<batch>-gaps.md` as in step 6.
+
+**New-doc candidates.** Never auto-created. If the user wants one, read the listed `sources` (skip any in `blocked_files`), draft a doc from what they say, and create it with `hewtd integrate <file>`, which records the sources and blocks secrets. Show the draft first.
 
 ## 5. Present and accept
 

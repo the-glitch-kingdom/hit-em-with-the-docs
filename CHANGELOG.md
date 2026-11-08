@@ -2,7 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
-## [2.20.0] — 2026-11-07
+## [2.21.0] — 2026-11-07
+
+Search gaps to docs (#66). Ships 2.20.0 too.
+
+- `hewtd reconcile --gaps <file> [--json]` reads a `gaps.v1` file (`schemas/gaps.v1.schema.json`,
+  `docs/gaps-format.md`), a bare array, a string array or one question per line, and sorts each query
+  into a `symptoms.user_phrase` proposal (known `used_doc`), a new-doc candidate (code identifier with
+  ranked file sources) or an open question. Writes only `.hewtd/reconcile/gaps-report-<date>.md`.
+- `--write-review` writes `review-<batch>-gaps.md` (verdict `phrases`); `--apply` adds the accepted
+  phrases as `user_phrase` symptoms in one commit. Reruns are no-ops.
+- Phrases are normalized, near-duplicates merged, capped by `reconcile.gaps.max_phrases_per_doc`
+  (default 5); secret-shaped queries are dropped and masked.
+- Slash command `/reconcile` step 4b. Without `--gaps`, reconcile is unchanged.
+
+## [2.20.0] — 2026-11-07 (not published separately; ships in 2.21.0)
 
 Doc-to-code graph export (#65).
 

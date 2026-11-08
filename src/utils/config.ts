@@ -229,6 +229,11 @@ const reconcileConfigSchema = z
     secrets: secretsConfigSchema,
     /** Optional doc search hook (#59): argv template with a `{query}` placeholder; stdout lines are doc paths. */
     search_command: z.string().min(1).optional().catch(undefined),
+    /** `reconcile --gaps` (#66): cap on user_phrase entries per doc, existing ones included. */
+    gaps: z
+      .object({ max_phrases_per_doc: z.number().int().positive().catch(5) })
+      .catch({ max_phrases_per_doc: 5 })
+      .default({}),
     team: z
       .object({
         min_docs: z.number().int().positive().catch(12),
@@ -245,6 +250,7 @@ const reconcileConfigSchema = z
     schema_sources: DEFAULT_RECONCILE_SCHEMA_SOURCES,
     related_repos: [] as Array<{ name: string; path: string }>,
     secrets: { allow: [] as SecretAllow[], disabled_rules: [] as string[] },
+    gaps: { max_phrases_per_doc: 5 },
     team: { min_docs: 12, min_bytes: 250000, max_agents: 4, docs_per_agent: 8 },
   })
   .default({});

@@ -45,6 +45,7 @@
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
+    "lint:naming": "eslint src --ext .ts -c .eslintrc.naming.json",
     "format": "prettier --write \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build:all && npm run test && bash scripts/validate-version.sh",

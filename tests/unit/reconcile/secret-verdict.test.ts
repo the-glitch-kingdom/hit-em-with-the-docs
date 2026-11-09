@@ -121,7 +121,7 @@ describe('secret verdict', () => {
   });
 
   it('a short url password is replaced only where it was found, not in prose (review fix)', async () => {
-    const pw = 'hunter' + '2';
+    const pw = 'hunter' + '42';
     seed(`Connect with postgres://app:${pw}@db/main.\n\nThe ${pw} account is a ${pw} test persona.`);
     const res = await run(entry());
     expect(res.outcomes[0]!.status).toBe('applied');

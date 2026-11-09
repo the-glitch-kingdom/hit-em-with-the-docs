@@ -30,7 +30,8 @@ const DATE_LIKE = /^\d{4}-\d{2}-\d{2}/;
  */
 const FRONTMATTER_ENGINES = {
   yaml: {
-    parse: (text: string): object => yaml.parse(text) as object,
+    // gray-matter leaves a stray \r on the last line of a CRLF block.
+    parse: (text: string): object => yaml.parse(text.replace(/\r\n?/g, '\n')) as object,
     stringify: (data: object): string => render_frontmatter(data as Record<string, unknown>),
   },
 };
@@ -142,7 +143,7 @@ export function with_frontmatter(
 }
 
 /**
- * Change only the given top-level keys: each one's source range (key start to value end) is replaced
+ * Change only the given top-level keys (an `undefined` value removes the key and its lines): each one's source range (key start to value end) is replaced
  * by the key re-rendered, new keys are appended, every other byte of the file stays. Falls back to
  * `setFrontmatter` when the frontmatter is not one YAML map, so a file is never corrupted.
  */
@@ -153,23 +154,45 @@ export function with_frontmatter_keys(raw_text: string, changes: Record<string, 
   const frontmatter = match[1]!;
   const start = raw_text.indexOf('\n') + 1;
   const doc = yaml.parseDocument(frontmatter);
-  if (doc.errors.length || !isMap(doc.contents)) return build_fallback();
+  // An alias (`*name`) can point at a key this rewrites or removes; a full render keeps the values valid instead.
+  if (doc.errors.length || !isMap(doc.contents) || /(^|[\s,[{:])\*[\w-]+/m.test(frontmatter)) return build_fallback();
   const eol = raw_text.includes('\r\n') ? '\r\n' : '\n';
   const render_field = (key: string): string => render_frontmatter({ [key]: changes[key] }, raw_text).replace(/\n$/, '').replace(/\n/g, eol);
   const edits: Array<[number, number, string]> = [];
   let appended = '';
+  let trim_tail = false;
   for (const key of Object.keys(changes)) {
     const pair = doc.contents.items.find((item) => isScalar(item.key) && item.key.value === key);
-    if (!pair) { appended += eol + render_field(key); continue; }
+    if (!pair) { if (changes[key] !== undefined) appended += eol + render_field(key); continue; }
     const kr = (pair.key as Scalar).range!;
     // A key with no value (`k:`) has no value range; end after its colon.
     const end = pair.value && (pair.value as Scalar).range ? (pair.value as Scalar).range![1] : frontmatter.indexOf(':', kr[1]) + 1;
     // A block value's range includes its trailing line break, which belongs to the next line.
-    edits.push([kr[0], frontmatter.slice(0, end).trimEnd().length, render_field(key)]);
+    const value_end = frontmatter.slice(0, end).trimEnd().length;
+    if (changes[key] !== undefined) { edits.push([kr[0], value_end, render_field(key)]); continue; }
+    // Removal: the key's whole line(s) with their line break; as the last line, the break before it goes after the edits.
+    const line_break = frontmatter.indexOf('\n', value_end);
+    edits.push([frontmatter.lastIndexOf('\n', kr[0] - 1) + 1, line_break < 0 ? frontmatter.length : line_break + 1, '']);
+    if (line_break < 0) trim_tail = true;
   }
   let found = frontmatter;
   for (const [a, b, text] of edits.sort((first, later) => later[0] - first[0])) found = found.slice(0, a) + text + found.slice(b);
+  if (trim_tail) found = found.replace(/\r?\n$/, '');
   return raw_text.slice(0, start) + found + appended + raw_text.slice(start + frontmatter.length);
+}
+
+/**
+ * Write `next_data` into an existing doc, touching only the keys that differ from what is there
+ * (compared as JSON); keys missing from `next_data` are removed. Unchanged data returns `raw_text` as is.
+ */
+export function with_frontmatter_data(raw_text: string, next_data: Record<string, unknown>): string {
+  const { data } = parse_frontmatter<Record<string, unknown>>(raw_text);
+  const changes: Record<string, unknown> = {};
+  for (const key of Object.keys(next_data)) {
+    if (next_data[key] !== undefined && JSON.stringify(next_data[key]) !== JSON.stringify(data[key])) changes[key] = next_data[key];
+  }
+  for (const key of Object.keys(data)) if (next_data[key] === undefined) changes[key] = undefined;
+  return Object.keys(changes).length ? with_frontmatter_keys(raw_text, changes) : raw_text;
 }
 
 /**

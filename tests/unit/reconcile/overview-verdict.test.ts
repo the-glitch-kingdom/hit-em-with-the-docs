@@ -78,7 +78,7 @@ describe('overview verdict', () => {
     const { data } = parse_frontmatter<Record<string, unknown>>(readFileSync(join(docs, 'backend/overview-deploy.md'), 'utf-8'));
     expect(data.kind).toBe('overview');
     expect(data.last_validated).toBeUndefined();
-    expect(g('rev-list', '--count', 'HEAD')).toBe('2');
+    expect(g('rev-list', '--count', 'HEAD')).toBe('3');
     const led = await load_ledger(ledger_file);
     expect(led.entries['backend/overview-deploy.md']).toMatchObject({ verdict: 'overview', members: { 'backend/a.md': h('backend/a.md') } });
 

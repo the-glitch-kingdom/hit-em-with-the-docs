@@ -2,7 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
-## [3.0.0] — Unreleased
+## [3.1.0] — 2026-11-08
+
+Fixes from the 3.0.0 field test (#72). No breaking changes; `.hewtd/graph.json` stays `version: 1`.
+
+- Frontmatter: `fix-retrieval-fields --apply`, `maintain --fix` / `metadata-sync`, `archive` / `unarchive` and the
+  outside move rewrite only the keys they own (new `with_frontmatter_data`; `with_frontmatter_keys` removes a key
+  given `undefined`). `parse_frontmatter` normalizes CRLF before parsing.
+- Secrets: a cited `.md` with findings is withheld in `blocked_files` and no longer puts the citing doc in the
+  secret lane. Placeholders made mostly of ascending runs, url passwords under 8 characters or common ones, and regex
+  values with no strong value left once the regex syntax is removed are no longer findings. Random keys with one
+  short run, and random secrets containing `.*` or `\d`, are still found.
+- Graph: runtime expressions (`process.env`, `import.meta.env`, `os.environ`, `window.*`...) are not file, column
+  or symbol refs (a token ending in a file extension, such as `request.ts` or `config.env`, stays a file); named env vars become env refs. Link format change: consumers (semantic-memory) will see fewer refs, so some previously dead refs disappear.
+- Speed: `hewtd index` skips the export when nothing changed and reuses per-doc staleness otherwise; warm unchanged
+  on 900 docs goes from 15.7 s to 0.2 s. Cache in `.hewtd/graph-cache.json`; `HEWTD_TIMING=1` prints stage timings;
+  `scripts/bench-graph.mjs` reproduces the numbers.
+- Reconcile apply makes a `docs(reconcile)` commit for the docs and, only if an index file changed, a separate
+  `docs(index)` commit. The ledger `applied_commit` is the docs commit. A failed index commit keeps the docs commit
+  and warns to run `hewtd index`.
+
+## [3.0.0] — 2026-11-08
 
 Naming standard (docs/naming.md): snake_case code identifiers, one name per concept, one meaning per verb, full
 words. Behaviour, the CLI, `--json` output and every file under `.hewtd/` are unchanged. Only the programmatic
@@ -188,7 +208,7 @@ the gaps/graph JSON schemas keep their names.
 - `npm run lint:naming` (`.eslintrc.naming.json`), a local check; it is not part of CI.
 - `tests/integration/library-api.test.ts` pins the renamed exports.
 
-## [2.22.0] — 2026-11-07
+## [2.22.0] — 2026-11-07 (not published separately; ships in 3.0.0)
 
 Fixes from the 2.21.0 field test (#69).
 

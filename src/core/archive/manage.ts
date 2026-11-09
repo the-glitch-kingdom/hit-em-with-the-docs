@@ -12,7 +12,7 @@
 import { execFileSync } from 'child_process';
 import { mkdir, readFile, writeFile, rename, stat } from 'fs/promises';
 import { dirname, join } from 'path';
-import { parse_frontmatter, with_frontmatter } from '../../utils/frontmatter.js';
+import { parse_frontmatter, with_frontmatter_data } from '../../utils/frontmatter.js';
 import { format_date } from '../metadata/generator.js';
 import { regenerate_indexes } from '../../generators/regenerate.js';
 import { ARCHIVE_DIR } from '../../utils/glob.js';
@@ -158,7 +158,7 @@ export async function archive_doc(
   if (reason) stamped.archived_reason = reason;
 
   const move_method = await move_file(repo_root, from_abs, to_abs);
-  await writeFile(to_abs, with_frontmatter(raw_text, stamped), 'utf-8');
+  await writeFile(to_abs, with_frontmatter_data(raw_text, stamped), 'utf-8');
   if (move_method === 'git') {
     try {
       // eslint-disable-next-line id-denylist -- child_process/glob option name
@@ -239,7 +239,7 @@ export async function unarchive_doc(
   delete restored.archived_reason;
 
   const move_method = await move_file(repo_root, from_abs, to_abs);
-  await writeFile(to_abs, with_frontmatter(raw_text, restored), 'utf-8');
+  await writeFile(to_abs, with_frontmatter_data(raw_text, restored), 'utf-8');
   if (move_method === 'git') {
     try {
       // eslint-disable-next-line id-denylist -- child_process/glob option name

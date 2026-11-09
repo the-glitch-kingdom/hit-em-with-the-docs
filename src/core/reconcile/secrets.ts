@@ -33,12 +33,31 @@ export const compute_entropy = (text: string): number => {
   return entropy;
 };
 
+// Fake keys are made of ascending runs (abc123def456, ABCDEF...1234567890); a random key may hold one short run by
+// chance but never mostly runs. Runs of 3+ must cover at least half of the letters and digits.
+const has_ascending_run = (text: string): boolean => {
+  const alnum = text.replace(/[^a-z0-9]/g, '');
+  let run = 1, covered = 0;
+  for (let i = 1; i <= alnum.length; i++) {
+    if (i < alnum.length && alnum.charCodeAt(i) === alnum.charCodeAt(i - 1) + 1) { run++; continue; }
+    if (run >= 3) covered += run;
+    run = 1;
+  }
+  return alnum.length >= 6 && covered * 2 >= alnum.length;
+};
+const COMMON_PASSWORDS = new Set(['pass', 'password', 'changeme', 'secret', 'admin', 'root', 'postgres', 'user', 'test', 'dev', 'example']);
+// A regex pattern, not a credential: regex syntax (a class with a quantifier, \d \w \s, .* .+, ^...$), and what is
+// left once that syntax is stripped is not itself a strong value (a comma in {32,64} ends the captured value).
+const REGEX_SYNTAX = /\[[^\]]+\](?:[*+?]|\{\d+(?:,\d*)?\}?)?|\\[dwsDWS.]|\.[*+?]|[\^$()|]|\{\d+(?:,\d*)?\}?/g;
+const is_regex_pattern = (value: string) => /\[[^\]]+\](?:[*+?]|\{\d)|\\[dwsDWS]|\.[*+]|^\^.*\$$/.test(value) && !is_strong(value.replace(REGEX_SYNTAX, ''));
+
 // Placeholder filter. `weak` words (test, password, secret) only apply to generic/url rules,
 // where the value is free text; known-shape keys like sk_test_ are real credentials.
 export function is_placeholder(value: string, weak: boolean): boolean {
   const line = value.toLowerCase();
   if (/^your[_-]|<[^>]*>|\$\{|^\$[a-z_]|x{3,}|\*{3,}|\.{3}|…|example|changeme|change_me|dummy|placeholder|redacted/.test(line)) return true;
   if (new Set(line).size <= 2) return true;
+  if (has_ascending_run(line)) return true;
   return weak && /password|passwd|secret|(^|[^a-z])test([^a-z]|$)/.test(line);
 }
 
@@ -95,12 +114,12 @@ const RULES: Rule[] = [
   { id: 'vault-token-legacy', re: /(?<![\w.])s\.[A-Za-z0-9]{24}\b/g, accept: (value) => /\d/.test(value) && compute_entropy(value) >= 3.5 },
   { id: 'jwt', re: /\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}/g, accept: is_valid_jwt },
   // Bounded quantifiers keep every rule linear on long single-line files (minified/base64 markdown).
-  { id: 'url-password', re: /\b[a-z][a-z0-9+.-]{0,30}:\/\/([^\s:@/]{1,256}):([^\s@/]{1,256})@/gi, group: 2, weak: true, accept: (value, match) => value !== match[1] }, // user:user is a local-dev default
+  { id: 'url-password', re: /\b[a-z][a-z0-9+.-]{0,30}:\/\/([^\s:@/]{1,256}):([^\s@/]{1,256})@/gi, group: 2, weak: true, accept: (value, match) => value !== match[1] && value.length >= 8 && !COMMON_PASSWORDS.has(value.toLowerCase()) }, // user:user is a local-dev default
   // Key matched as one bounded token starting at a token boundary, then checked for a secret-ish name in code:
   // the old `[\w.-]*(?:NAME)[\w.-]*` form backtracked quadratically on long lines.
   { id: 'generic-secret', re: /(?<![\w.-])["'`]?([A-Za-z_][\w.-]{0,80})["'`]?[ \t]{0,8}[:=][ \t]{0,8}["'`]?([^\s"'`,;]{1,512})/g, group: 2, weak: true,
     // AppRole role/secret ids are uuids, which often fall under the entropy bar: `strong` counts a non-trivial uuid.
-    accept: (value, match) => NAME_RE.test(match[1]!) && !is_path_or_url(value) && !is_code(value) && !is_email(value) && !build_pointer_record(value, match) && is_strong(value) },
+    accept: (value, match) => NAME_RE.test(match[1]!) && !is_regex_pattern(value) && !is_path_or_url(value) && !is_code(value) && !is_email(value) && !build_pointer_record(value, match) && is_strong(value) },
   // After generic-secret, so a secret-named key keeps that rule; this one also catches ids under plain keys.
   { id: 'approle-id', re: /(?:--role-id|--secret-id|role_id|secret_id|role id|secret id)(?:[ \t]{0,3}[:=][ \t]{0,3}|[ \t]{1,3})["']?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi, group: 1,
     accept: (value) => new Set(value.replace(/-/g, '')).size > 4 },

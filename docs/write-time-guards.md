@@ -79,6 +79,16 @@ cites, so a later `reconcile` has something to check.
 Upgrading hewtd changes no existing doc. Only integrate on a new doc writes
 `sources`. See [`indexing.md`](./indexing.md#no-backfill-61).
 
+## Commands that edit a doc rewrite only their own keys (3.1.0)
+
+`fix-retrieval-fields --apply`, `maintain --fix` / `metadata-sync`, `archive` / `unarchive`,
+the outside-lane move and `reconcile --apply` change only the frontmatter keys they own.
+Bare dates, quoting, comments, flow lists, key order, CRLF and the body stay byte for byte;
+an unchanged doc is not rewritten. They no longer re-render the whole block. Internally
+`with_frontmatter_keys` removes a key when its value is `undefined`, and `with_frontmatter_data`
+diffs a target data object against the file. New-doc writers (integrate, overview draft) still
+write a whole block. `parse_frontmatter` now normalizes CRLF in the block before parsing.
+
 ## Troubleshooting
 
 ### "integrate refused my doc and printed a masked key"
@@ -88,6 +98,9 @@ If the value was real, rotate it.
 
 ### "my commit was blocked by hewtd secrets --staged"
 Same fix as above, then re-stage. To stop the hook, run `hewtd hooks uninstall`.
+
+### "maintain rewrote my dates or quotes"
+Fixed in 3.1.0: only owned keys are rewritten. Upgrade, then `git diff` should show only the keys the command meant to change.
 
 ### "integrate recorded no sources"
 The doc cited nothing that resolves to a tracked file, `integrate.sources_max`

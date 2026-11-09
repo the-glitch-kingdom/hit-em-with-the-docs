@@ -62,7 +62,7 @@ describe('fixRetrievalFields', () => {
     await writeFile(join(dir, 'e.md'), `---\ntitle: E\nlast_updated: 2024-01-05\nsummary: Explains how the nightly export job retries failed uploads\n---\n${body}`);
     await fix_retrieval_fields({ docs_root: dir, apply: true });
     const raw = await readFile(join(dir, 'e.md'), 'utf-8');
-    expect(raw).toContain("last_updated: '2024-01-05'");
+    expect(raw).toContain('last_updated: 2024-01-05\n'); // untouched key keeps its bare date (#72)
     expect(raw).not.toContain('T00:00:00');
     expect(raw.endsWith(`---\n${body}`)).toBe(true);
   });

@@ -42,6 +42,23 @@ const SQL_TABLE_RES = [
   /\b(?:FROM|JOIN|UPDATE|INTO|ALTER\s+TABLE)\s+(?:IF\s+EXISTS\s+)?["`]?([A-Za-z_][\w.]*)["`]?/gi,
 ];
 
+const ENV_ACCESS_RE = /^(?:import\.meta(?:\.env)?|process\.env|os\.environ|os\.getenv|Deno\.env|Bun\.env)(?![\w$])/;
+const ENV_NAME_RE = /^(?:\.(?:get\()?|\[|\()\s*["']?([A-Za-z_]\w*)/;
+
+// `window.location`, `req.body`: a runtime object member, unless the token ends in a file extension (`request.ts`).
+const RUNTIME_OBJECT_RE = /^(?:window|document|globalThis|self|this|navigator|location|console|req|res|request|response|ctx)\.[\w$.]+$/;
+
+/** Env access expression (`process.env.X`, `os.environ`): undefined when the token is not one, null when it names no variable, else the variable. */
+function parse_runtime_expression(token: string): string | null | undefined {
+  if (token.includes('/')) return undefined;
+  const access = ENV_ACCESS_RE.exec(token);
+  if (access) {
+    const name = ENV_NAME_RE.exec(token.slice(access[0].length))?.[1];
+    return name && name !== 'env' && name !== 'get' ? name : null;
+  }
+  return RUNTIME_OBJECT_RE.test(token) && !FILE_EXT.test(token) ? null : undefined;
+}
+
 function is_symbol(token: string): boolean {
   const name = token.replace(/\(\)$/, '');
   if (!SYMBOL_RE.test(name) || name.length < 4 || ENV_RE.test(name)) return false;
@@ -100,6 +117,8 @@ export function extract_references(body: string): Reference[] {
       const token = match[1]!.trim();
       scan_commands(token, line);
       if (/^(?:SELECT|INSERT|UPDATE|DELETE|ALTER)\b/i.test(token)) { scan_sql(token, line); continue; }
+      const runtime = parse_runtime_expression(token);
+      if (runtime !== undefined) { if (runtime) add_reference(runtime, 'env', line); continue; }
       if (ENV_RE.test(token)) add_reference(token, 'env', line);
       else if (is_path(token)) add_reference(token.replace(/:\d+(?::\d+)?$/, ''), 'path', line);
       else if (is_symbol(token)) add_reference(token.replace(/\(\)$/, ''), 'symbol', line);

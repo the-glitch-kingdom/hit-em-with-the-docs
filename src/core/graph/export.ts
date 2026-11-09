@@ -11,6 +11,8 @@ import { compute_content_hash, load_ledger } from '../reconcile/ledger.js';
 import { validate_no_secrets } from '../reconcile/secrets.js';
 import { find_git_top, list_markdown_files, resolve_docs, STALE_COMMITS_BAR, type TriageDoc } from '../reconcile/triage.js';
 import { find_body_changed_dates, find_file_dates } from './dates.js';
+import { compute_fingerprint, compute_graph_hash, is_fingerprint_current, load_staleness_cache, write_cache_fields } from './cache.js';
+import { print_timings, time_stage } from './timing.js';
 import { GRAPH_VERSION, type GraphDoc, type GraphRef, type GraphRefKind, type GraphSymbol, type GraphV1, type GraphVerdict } from './schema.js';
 
 const format_posix_path = (path_text: string): string => path_text.split('\\').join('/');
@@ -30,6 +32,11 @@ function get_verdict(doc: TriageDoc, ledger_verified: boolean, in_ledger: boolea
   return only_stale ? 'stale' : 'check';
 }
 
+function find_head(git_top: string): string | null {
+  // eslint-disable-next-line id-denylist -- child_process option name
+  try { return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: git_top, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return null; /* not a repo, or no commits */ }
+}
+
 export async function build_graph(options: { root: string; docs_root: string; config: PluginConfig; dry_run?: boolean }): Promise<GraphV1> {
   const { root: repo_root, docs_root: docs_root, config } = options;
   const git_top = find_git_top(docs_root) ?? repo_root;
@@ -42,10 +49,12 @@ export async function build_graph(options: { root: string; docs_root: string; co
   }
   const kept = [...raws.keys()];
   const ledger = await load_ledger(resolve(repo_root, config.reconcile.ledger_path));
-  const triaged = new Map((await resolve_docs({ root: repo_root, docs_root: docs_root, rels: kept, config, ledger })).map((doc) => [doc.path, doc]));
-  const body = find_body_changed_dates(git_top, kept.map((doc_path) => ({ path: format_posix_path(relative(git_top, join(docs_root, doc_path))), content: raws.get(doc_path)!.raw_text })), { persist: !options.dry_run });
+  const head = find_head(git_top);
+  const staleness_cache = head ? load_staleness_cache(git_top, head) : undefined;
+  const triaged = new Map((await time_stage('triage (total)', () => resolve_docs({ root: repo_root, docs_root: docs_root, rels: kept, config, ledger, ...(staleness_cache && { staleness_cache }) }))).map((doc) => [doc.path, doc]));
+  const body = time_stage('body dates', () => find_body_changed_dates(git_top, kept.map((doc_path) => ({ path: format_posix_path(relative(git_top, join(docs_root, doc_path))), content: raws.get(doc_path)!.raw_text })), { persist: !options.dry_run }));
 
-  const own_dates = find_file_dates(git_top);
+  const own_dates = time_stage('file dates', () => find_file_dates(git_top));
   const sibling_dates = new Map(config.reconcile.related_repos.map((related_repo) => [related_repo.name, find_file_dates(resolve(repo_root, related_repo.path))]));
   const get_date = (where: string): { repo?: string; file: string; date?: string | undefined } => {
     const match = /^([\w.-]+):(.+)$/.exec(where);
@@ -100,9 +109,8 @@ export async function build_graph(options: { root: string; docs_root: string; co
   for (const [doc, set] of owners) if (docs[doc]) docs[doc]!.owner_of = [...set].sort(compare_strings);
   for (const symbol of Object.values(symbols)) symbol.cited_by.sort(compare_strings);
 
-  let head: string | null = null;
-  // eslint-disable-next-line id-denylist -- child_process option name
-  try { head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: git_top, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { /* not a repo, or no commits */ }
+  if (staleness_cache && !options.dry_run) write_cache_fields(git_top, { staleness: { head: head!, entries: staleness_cache.entries } });
+  print_timings();
   return { version: GRAPH_VERSION, source_commit: head, docs, symbols };
 }
 
@@ -126,13 +134,19 @@ export async function write_graph(options: { root: string; docs_root: string; co
   const git_top = find_git_top(options.docs_root);
   if (!git_top) return { status: 'no-git' };
   const file = join(git_top, '.hewtd', 'graph.json');
+  const had = existsSync(file);
+  // Fast path: same inputs as the run that wrote the current graph.json, and that file is untouched.
+  const doc_hashes = (await list_markdown_files(options.docs_root)).map((abs_path) => ({ path: format_posix_path(relative(options.docs_root, abs_path)), hash: compute_content_hash(readFileSync(abs_path, 'utf-8')) })).sort((a, b) => compare_strings(a.path, b.path));
+  const fingerprint = compute_fingerprint({ git_top, docs_root: options.docs_root, config: options.config, ledger_path: resolve(options.root, options.config.reconcile.ledger_path), docs: doc_hashes });
+  if (had && is_fingerprint_current(git_top, fingerprint, readFileSync(file, 'utf-8'))) return { status: 'unchanged', file };
   const graph_text = render_graph(await build_graph(options));
   validate_no_secrets(graph_text, 'the graph export', options.config.reconcile.secrets);
-  const had = existsSync(file);
-  if (had && readFileSync(file, 'utf-8') === graph_text) return { status: 'unchanged', file };
+  const remember = (): void => { if (fingerprint && !options.dry_run) write_cache_fields(git_top, { fingerprint: { value: fingerprint, graph_hash: compute_graph_hash(graph_text) } }); };
+  if (had && readFileSync(file, 'utf-8') === graph_text) return (remember(), { status: 'unchanged', file });
   if (options.dry_run) return { status: 'would-write', file };
   mkdirSync(join(git_top, '.hewtd'), { recursive: true });
   writeFileSync(file, graph_text);
+  remember();
   let ignored = true;
   // eslint-disable-next-line id-denylist -- child_process option name
   try { execFileSync('git', ['check-ignore', '-q', file], { cwd: git_top, stdio: 'ignore' }); } catch { ignored = false; }

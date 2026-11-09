@@ -3,7 +3,7 @@ import { build_phrases, normalize_query } from '../../../src/core/reconcile/phra
 
 const cfg = { allow: [], disabled_rules: [] };
 // Built at runtime: no secret-shaped literal in the repo.
-const token = 'AK' + 'IA' + 'ABCDEFGHIJKLMNOP';
+const token = 'AK' + 'IA' + 'Q7ZR3LMP9XVB2NCK';
 
 describe('buildPhrases (#66)', () => {
   it('normalizes whitespace and trailing punctuation, keeps casing', () => {

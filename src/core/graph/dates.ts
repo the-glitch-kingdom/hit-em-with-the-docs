@@ -57,9 +57,11 @@ export function find_body_changed_dates(
     return { dates, walked: 0 };
   }
   let old: Cache | null = null;
+  let others: Record<string, unknown> = {}; // fields cache.ts owns: kept on write
   try {
     const cache = JSON.parse(readFileSync(join(repo_root, CACHE), 'utf-8')) as Cache;
     if (cache.head === head && cache.docs) old = cache;
+    others = cache as unknown as Record<string, unknown>;
   } catch { /* no cache */ }
   const next: Cache = { head, docs: {} };
   let walked = 0;
@@ -77,7 +79,7 @@ export function find_body_changed_dates(
   }
   if (options.persist !== false) try {
     mkdirSync(dirname(join(repo_root, CACHE)), { recursive: true });
-    writeFileSync(join(repo_root, CACHE), JSON.stringify(next));
+    writeFileSync(join(repo_root, CACHE), JSON.stringify({ ...others, ...next }));
   } catch { /* cache is best effort */ }
   return { dates, walked };
 }

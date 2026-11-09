@@ -53,11 +53,57 @@ const REGEX_SYNTAX = /\[[^\]]+\](?:[*+?]|\{\d+(?:,\d*)?\}?)|\\[dwsDWS.]|\.[*+?]|
 const is_meta_heavy = (value: string) => (value.match(/[\][{}()*+?.\\^$|]/g)?.length ?? 0) * 4 >= value.length;
 const is_regex_pattern = (value: string) => (is_meta_heavy(value) && !is_random_inner(value.replace(REGEX_SYNTAX, '').replace(/[^A-Za-z0-9_-]/g, ''))) || /\[[^\]]+\](?:[*+?]|\{\d)|\\[dwsDWS]|\.[*+]|^\^.*\$$/.test(value) && !is_strong(value.replace(REGEX_SYNTAX, ''));
 
-// Contents that look like a value: 8+ characters, no spaces, neither made of words nor of ascending runs. No entropy
+// One word test for every exemption (#76): is the token made of words, acronyms and short numbers? Split on non-alphanumerics,
+// then into humps (OpenAIKey -> Open, AI, Key) and judge each hump, never across humps (minLengthRequirement12 is fine).
+// Words need a vowel (y counts), no five consonants in a row and no consonant pair English lacks; random letters fail these far
+// more often than names do. Digits are short and follow a word; short humps (1-2 letters) never make up most of a token.
+// shortcut: letters in clean humps that look like a word pass (no word list); upgrade to one if random values start slipping through.
+// Common vowel-less abbreviations in names (Http, Css, Rtp).
+const VOWELLESS = /^(?:http|https|css|jsx|tsx|cls|rtp|rgb|rgba|tcp|udp|dns|ssl|tls|ssh|src|dst|ctx|cfg|btn|msg|pwd|svg|xml|html|sql|npm|dll|llm|url|rtc|jwt|cidr|ipv|nlp|gpu|cpu|ssr|csrf|xss|grpc|wsl|php|cgi|mvc|rpc|dto|orm|ascii|utf|fn|db|fs|fd|cb|ms|ns|px|pc|cwd|abs|nth|bpm|rsa|pkcs|hmr|ts|js|khr|sync|cmd|ttl|tty|cjs|mjs|cve|cdp|ksuid|bg|fg|vm|nan|tf|gpg|fds|argv|str)$/i;
+// Two consonants in a row that occur in at least 20 English words; a pair outside this list (vk, dz, bz) marks random letters.
+const CONSONANT_PAIRS = new Set('vt kg gv tv bb bc bd bg bh bj bk bl bm bn bp br bs bt cc ch ck cl cm cq cr cs ct db dc dd df dg dh dj dl dm dn dp dr ds dt dv dw ff fl fr fs ft gb gg gh gl gm gn gr gs gt gw hb hd hf hh hl hm hn hp hr hs ht hw js jv kb kd kf kh kl km kn kp kr ks kt kw lb lc ld lf lg lh lk ll lm ln lp lr ls lt lv lw mb md mf mg ml mm mn mp mr ms nb nc nd nf ng nh nj nk nl nm nn np nq nr ns nt nv nw nx nz pb pc pd pf pg ph pl pm pn pp pr ps pt pw rb rc rd rf rg rh rj rk rl rm rn rp rq rr rs rt rv rw sb sc sd sf sg sh sk sl sm sn sp sq sr ss st sw tc td tf tg th tl tm tn tp tr ts tt tw tz wb wd wf wh wk wl wm wn wp wr ws wt xc xh xp xt xx zl zz'.split(' '));
+const HUMP = /[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d+/g;
+export function is_word_like(raw_token: string): boolean {
+  const token = raw_token.replace(/(?<=[A-Z])v(?=\d)/g, ''); // IPv6, CIDRv4: a version after an acronym
+  const pieces = token.split(/[^A-Za-z0-9]+/).filter(Boolean).map((piece) => piece.match(HUMP) ?? []);
+  const humps = pieces.flat();
+  const is_digits = (hump?: string) => !!hump && /^\d/.test(hump);
+  const is_upper = (hump: string) => /^[A-Z]+$/.test(hump);
+  // A word has a vowel (y counts) or is a known abbreviation, no five consonants in a row, and (up to 8 letters, past that
+  // compounds like webhooks or upgraded are common) no consonant pair that English lacks.
+  const is_word = (hump: string, whole_piece: boolean) => {
+    if (VOWELLESS.test(hump)) return true;
+    const lower = hump.toLowerCase(), upper = is_upper(hump);
+    if (upper && whole_piece && pieces.length > 1 && !/[a-z]/.test(token) && hump.length <= 4) return true; // a short abbreviation inside a CONSTANT_NAME
+    if (!/[aeiouy]/.test(lower) || /[bcdfghjklmnpqrstvwxz]{5,}/.test(lower)) return false;
+    if (upper && hump.length < 6 && !/[AEIOU]/.test(hump)) return false; // YTD: a lone Y is no vowel in an acronym
+    if (hump.length >= 3 && !/[bcdfghjklmnpqrstvwxz]/.test(lower)) return false; // all vowels
+    if (hump.length > 2 && !/[aeiou]/.test(lower) && !/^(?:sky|fly|try|cry|dry|gym|spy|shy|sys|sync|lynx|myth|crypt)$/.test(lower)) return false; // y alone is a vowel in few words
+    if (!upper && /[aeiou]{3}/.test(lower.replace(/ueue|eei|eau|iou|eou|uou|ooi|ioi|uoi|oau/g, ''))) return false;
+    if (!upper && hump.length <= 8 && ![...lower.matchAll(/(?=([bcdfghjklmnpqrstvwxz]{2}))/g)].every((pair) => CONSONANT_PAIRS.has(pair[1]!))) return false;
+    return !upper || hump.length < 5 || whole_piece; // a 5+ letter acronym only as a whole piece (ENVIRONMENT), never glued to words
+  };
+  const is_valid = (hump: string, index: number, piece: string[], piece_index: number) => {
+    const [previous, next] = [piece[index - 1], piece[index + 1]];
+    // Digits before letters (Http2Response, acme2go) follow a word and lead into a capitalized word or a 1-2 letter lowercase one;
+    // at the start of a later piece (10x6) they lead into one letter. Anything else (ypap7nhi, 709jequq) reads as random.
+    if (is_digits(hump)) {
+      const next_is_word = !next || is_digits(next) || (/^[A-Z]/.test(next) ? next.length >= 3 || !is_upper(next) : hump.length === 1 && next.length <= 2 && /[aeiouy]/.test(next) && !piece[index + 2]);
+      return hump.length <= 4 && (!next || is_digits(next) || (previous ? previous.length >= 2 && !is_digits(previous) && next_is_word : piece_index > 0 && next.length === 1));
+    }
+    if (hump.length === 1) return piece.length === 1 || (is_upper(hump) && (previous?.length ?? 0) >= 3 && (next?.length ?? 0) >= 3) || is_digits(next) || is_digits(previous) || (index === 0 && (next?.length ?? 0) >= 3); // x, v1, xCoord
+    return (is_upper(hump) && hump.length <= 2) || is_word(hump, piece.length === 1) || piece.length === 1 && hump.length <= 2;
+  };
+  // Noise: short letter humps and digits that follow no word, counted in pieces cut into several humps (separators like '_' are deliberate).
+  const chopped = pieces.filter((piece) => piece.length > 1).flat();
+  const noise = pieces.filter((piece) => piece.length > 1).flatMap((piece) => piece.filter((hump, index) => (is_digits(hump) ? !piece[index - 1] || is_digits(piece[index - 1]) : hump.length <= 2 && !is_upper(hump)))).length;
+  const letters = token.replace(/[^A-Za-z]/g, '').length, letter_humps = humps.filter((hump) => !is_digits(hump)).length;
+  if (!humps.length || (token.length >= 6 && noise * 2 > chopped.length && (chopped.length > 3 || noise === chopped.length)) || (token.length >= 8 && letters * 2 < letter_humps * 5)) return false;
+  return pieces.every((piece, piece_index) => piece.every((hump, index) => is_valid(hump, index, piece, piece_index)));
+}
+// Contents that look like a value: 8+ characters, no spaces, neither word-like nor made of ascending runs. No entropy
 // bar: short random strings often fall under one, and an excuse must never cover random characters.
-// Five consonants in a row (y counts) almost never occur in words, but often in random letters that pass WORDY.
-const has_consonant_run = (text: string) => /[bcdfghjklmnpqrstvwxyz]{5,}/i.test(text);
-const is_random_inner = (inner: string) => inner.length >= 8 && /^\S+$/.test(inner) && (!WORDY.test(inner.replace(/^[_-]+/, '')) || has_consonant_run(inner)) && !has_ascending_run(inner.toLowerCase());
+const is_random_inner = (inner: string) => inner.length >= 8 && /^\S+$/.test(inner) && !is_word_like(inner) && !has_ascending_run(inner.toLowerCase());
 
 // Placeholder filter. `weak` words (test, password, secret) only apply to generic/url rules,
 // where the value is free text; known-shape keys like sk_test_ are real credentials.
@@ -73,7 +119,7 @@ export function is_placeholder(value: string, weak: boolean): boolean {
     const prefix = /^(?:abc123|123456|abcdef|qwerty)/i.exec(value);
     // ...followed by nothing, a short tail, more runs (abc123def456) or a separated word (_your_key); glued letters are a value.
     const tail = prefix ? value.slice(prefix[0].length) : '';
-    if (prefix && (tail.length < 4 || has_ascending_run(tail.toLowerCase()) || (/^[_-]/.test(tail) && WORDY.test(tail.slice(1)) && !has_consonant_run(tail)))) return true;
+    if (prefix && (tail.length < 4 || has_ascending_run(tail.toLowerCase()) || (/^[_-]/.test(tail) && is_word_like(tail.slice(1))))) return true;
   }
   if (new Set(line).size <= 2) return true;
   if (has_ascending_run(line)) return true;
@@ -91,9 +137,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // Exemptions apply only to names made of words (snake, kebab, camel, UPPER; digits only as a separate short part),
 // never to random characters, so a real credential containing a '.', '(', '{x}', '<' or '@' is still found.
 // shortcut: a letters-only random run in clean camel humps would pass; upgrade to a word list if one shows up.
-const WORD = '(?:[a-z]+|[A-Z]+|[A-Z]?[a-z]{2,}(?:[A-Z][a-z]{2,})+|[A-Z][a-z]+)';
-const WORDY = new RegExp(`^_?${WORD}(?:[_-]{1,2}(?:${WORD}|\\d{1,3}))*\\d{0,2}_?$`);
-const is_word_chain = (value: string, sep = '.') => value.length > 0 && value.split(sep).every((segment) => WORDY.test(segment) && !has_consonant_run(segment));
+const is_word_chain = (value: string, sep = '.') => value.length > 0 && value.split(sep).every((segment) => /^[\w-]+$/.test(segment) && is_word_like(segment));
 const is_strong = (value: string) => (UUID.test(value) && new Set(value.replace(/-/g, '')).size > 4) || (value.length >= 16 && compute_entropy(value) >= 3.5);
 // Code, not a credential: a word-made dotted chain (self.x, settings.X), a call of one, or only {name} template slots around weak text.
 const is_code = (value: string) => {
@@ -104,23 +148,20 @@ const is_code = (value: string) => {
   // A token is a word-made name, a word with version digits (sha256, utf8, b64decode) or a short number; never a short random run.
   const tokens = value.split(/[^A-Za-z0-9_$]+/).filter(Boolean);
   // ...and at least one is a real word of 4+ letters: a chain of short random pieces is a value.
-  if (/^[A-Za-z_]\w*(?:\?\.|\.|\(|\[)/.test(value) && tokens.some((token) => token.length >= 4 && WORDY.test(token) && !has_consonant_run(token)) && tokens.every((token) => (WORDY.test(token) && !has_consonant_run(token)) || /^[a-z]+\d{1,4}[a-z]*$/.test(token) || /^[A-Z]+\d{1,4}$/.test(token) || /^\d{1,4}$/.test(token))) return true;
+  if (/^[A-Za-z_]\w*(?:\?\.|\.|\(|\[)/.test(value) && tokens.some((token) => token.length >= 4 && is_word_like(token)) && tokens.every((token) => is_word_like(token) || /^[a-z]+\d{1,4}[a-z]*$/.test(token) || /^[A-Z]+\d{1,4}$/.test(token) || /^\d{1,4}$/.test(token))) return true;
   const rest = value.replace(/\{([A-Za-z_][\w.]*)\}/g, (whole_match, slot: string) => (is_word_chain(slot) ? '' : whole_match));
   return rest !== value && !is_strong(rest);
 };
-// Any well-formed address is an email unless a part looks random: 12+ characters with entropy >= 3.3, 6+ characters
-// with an inner capital that (minus trailing digits) are not word-made, or 8+ characters that are neither word-made
-// nor all digits. shortcut: an all-lowercase random part reads as a word; upgrade to a word list if one shows up.
-const is_random_part = (part: string) => (part.length >= 12 && compute_entropy(part) >= 3.3) || (part.length >= 6 && has_consonant_run(part))
-  || (part.length >= 6 && /[A-Z]/.test(part.slice(1)) && !WORDY.test(part.replace(/\d+$/, '')))
-  || (part.length >= 8 && !/^\d+$/.test(part) && (!WORDY.test(part.replace(/\d+$/, '')) || !!part.match(/[A-Z]?[a-z]+/g)?.some((hump) => hump.length >= 3 && !/[aeiou]/i.test(hump))));
+// Any well-formed address is an email unless a part looks random: 12+ characters with entropy >= 3.3, or 6+ characters
+// that are neither word-like nor all digits.
+const is_random_part = (part: string) => (part.length >= 12 && compute_entropy(part) >= 3.3) || (part.length >= 6 && !/^\d+$/.test(part) && !is_word_like(part));
 const is_email = (value: string) => {
   const match = /^([^@\s]{1,64})@([^@\s]{1,255}\.[A-Za-z]{2,})$/.exec(value);
   return !!match && ![...match[1]!.split(/[._+-]/), ...match[2]!.split(/[.-]/)].some(is_random_part);
 };
 /** `<NAME from Vault: ...>`: a word-made name after '<' with a closing '>' later on the same line. */
 const build_pointer_record = (value: string, match: RegExpMatchArray) => {
-  if (!value.startsWith('<') || !WORDY.test(value.slice(1).replace(/>.*$/, ''))) return false;
+  if (!value.startsWith('<') || !is_word_like(value.slice(1).replace(/>.*$/, ''))) return false;
   const start_index = match.index! + match[0].lastIndexOf(value), end = match.input!.indexOf('\n', start_index);
   return match.input!.slice(start_index, end < 0 ? undefined : end).includes('>');
 };

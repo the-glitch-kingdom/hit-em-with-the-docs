@@ -528,6 +528,7 @@ accepted entry. Links from other outside files are not repointed.
 - **Code, a wrapped placeholder, a regex or an email still in the secret lane**: fixed in 3.1.1, see Literals only above. Upgrade and rerun `hewtd reconcile`.
 - **`generic-secret` flags `openAIApiKey`, `getAPIKey(...)`, `LLMProviderKey`, `minLengthRequirement12` or a `<root-token-...>` placeholder**: fixed in 3.1.2 (the word test works per hump, see Word test). An email-only doc is never in the secret lane.
 - **`generic-secret` flags `datetime.utcnow()`, `settings.qdrant_api_key`, `hsl(var(--x))`, a markdown link or a `$VAR` reference**: fixed in 3.1.4 (structured values may hold one non-English name, see Identifier-shaped code and markup).
+- **`hewtd index` slow after a code commit or a `node_modules/.bin` change (about 18 s on a large tree)**: fixed in 3.1.5; only docs that read the changed paths are re-resolved, see Incremental code changes in `docs/graph-export.md`.
 - **False positive flagged as a secret**: add it to `reconcile.secrets.allow`
   (by `fingerprint` from the report, the full hash or any prefix of at least 12 hex
   chars as shown there, or a `pattern`) with a `reason`.

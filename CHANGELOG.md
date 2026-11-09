@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.1.1] — 2026-11-08
+
+Follow-up to 3.1.0 (#74). No breaking changes; `.hewtd/graph.json` stays `version: 1`.
+
+- Secrets: `generic-secret` reports literal values only. Code expressions (member access, optional chaining, calls,
+  indexing), wrapped placeholders (`[..]`, `<..>`, `${..}`, `{{..}}`, `$(..)`, `%(..)s`), regexes (metacharacters at
+  least 25% of the value) and values starting with `abc123`, `123456`, `abcdef` or `qwerty` are skipped. Any
+  well-formed email is a non-blocking `personal` finding unless a segment looks random, so digit-bearing emails no
+  longer put a doc in the secret lane.
+- Speed: `hewtd index` after a one-doc edit reuses per-doc triage entries (`doc_cache` in `.hewtd/graph-cache.json`)
+  while HEAD and the code are unchanged: 8.2 s to 1.7 s on the large benchmark profile (920 docs). Output equals a
+  cold build. `bench-graph.mjs` gains `BENCH_KEEP=1`.
+
 ## [3.1.0] — 2026-11-08
 
 Fixes from the 3.0.0 field test (#72). No breaking changes; `.hewtd/graph.json` stays `version: 1`.

@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.1.4] — 2026-11-08
+
+Follow-up to 3.1.3 (#80). No breaking changes; `.hewtd/graph.json` stays `version: 1`.
+
+- Secrets: structured values (member access, call, index, CSS functions) may hold one non-English name, so
+  `datetime.utcnow()`, `settings.qdrant_api_key`, `vault_kv.read_secret_version` and `hsl(var(--x))` are no longer
+  `generic-secret`. The exception is a short lowercase name that is called or accessed (`utcnow(`, `hsl(`), or one short
+  part of a name next to common config words (`qdrant` in `qdrant_api_key`); every other token must still read as a word.
+  Markdown links `[text](url)` are skipped when the text and target both read as words (a random query, path or fragment
+  is still reported), and values with `$VAR` references when nothing random remains. Long single-case runs with high
+  entropy now count as random even when they pass the word test.
+
 ## [3.1.3] — 2026-11-08
 
 Follow-up to 3.1.2 (#77). No breaking changes; `.hewtd/graph.json` stays `version: 1`. Speed only, output is byte-identical to a cold build.

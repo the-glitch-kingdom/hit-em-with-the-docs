@@ -149,15 +149,63 @@ const is_bare_identifier = (value: string) => {
   const humps = core.split('_').filter(Boolean).flatMap((piece) => piece.match(/[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+/g) ?? []);
   return humps.length >= 2 && humps.every((hump) => hump.length >= 2 && is_word_like(hump));
 };
+// Structured values (member access, call, index) are vouched for by their structure; what must be ruled out is a random token,
+// and random tokens have scattered digits and short mixed-case humps. Code identifiers are often not English (utcnow, qdrant,
+// hsl), so no word test here: snake/lower, UPPER_SNAKE or camel/Pascal, digits in one group, humps mostly 3+ letters.
+// shortcut: a long lowercase run needs a word test; a short random lowercase token (up to 16 letters) still passes, upgrade if one shows up.
+export function is_identifier_shaped(raw_token: string): boolean {
+  const token = raw_token.replace(/^_+|_+$/g, '');
+  const digit_groups = token.split('_').map((piece) => piece.match(/\d+/g) ?? []);
+  if (token.length > 64 || digit_groups.some((groups) => groups.length > 1 || groups.some((digits) => digits.length > 4)) || digit_groups.flat().length > 2 || !/^[A-Za-z][A-Za-z0-9_]*$/.test(token)) return false;
+  // Mixed case is where random letters hide: at most one acronym (ToJSContext) and no short humps; real words (3+ letters,
+  // not all capitals) make up 60% of the letters. snake_case and UPPER_SNAKE are separated on purpose and skip this.
+  if (/[a-z]/.test(token) && /[A-Z]/.test(token)) {
+    const humps = token.match(/[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+/g) ?? [];
+    const acronyms = humps.filter((hump) => hump.length >= 2 && !/[a-z]/.test(hump)).length;
+    const words = humps.filter((hump) => hump.length >= 3 && /[a-z]/.test(hump)).join('').length;
+    if (acronyms > 1 || humps.filter((hump) => hump.length <= 2 && !/^[A-Z]{2}$/.test(hump)).length * 2 > humps.length || (words + (acronyms ? 3 : 0)) * 5 < token.replace(/[^A-Za-z]/g, '').length * 3 || !humps.every((hump) => hump.length < 4 || is_word_like(hump))) return false;
+  }
+  return !(/^[a-z][a-z0-9]*$/.test(token) && token.length > 16) || is_word_like(token);
+}
+// Code names are rarely all English (utcnow, qdrant, hsl, kv), but random values are made of non-words. Each token (split at
+// punctuation, '_' kept) is word-like as a whole, with at most one exception in the value: a short lowercase name that is called
+// or accessed (utcnow(), hsl(, b64decode(), or one short part of a name beside at most two common config words (qdrant_api_key, vault_kv).
+// A long single-case run is random even when it passes the word test.
+const CONFIG_WORDS = new Set('api key keys id url uri host port token secret secrets client user username password pass name version path endpoint base region index collection db kv vault auth app env model org project bucket account access cluster server service'.split(' '));
+const is_word_token = (token: string) => is_word_like(token) && !(/^(?:[a-z]{13,}|[A-Z]{13,})$/.test(token) && (token.length >= 20 || compute_entropy(token) >= 3.3));
+const is_code_words = (text: string) => {
+  const odd = new Set<string>();
+  for (const match of text.matchAll(/[A-Za-z0-9_]+/g)) {
+    const token = match[0];
+    if (/^\d{1,4}$/.test(token) || is_word_token(token)) continue;
+    const parts = token.split('_').filter(Boolean), words = parts.filter(is_word_token), [part = ''] = parts.filter((piece) => !is_word_token(piece));
+    const is_called = /^[.(]/.test(text.slice(match.index + token.length));
+    const allowed = parts.length - words.length === 1 && (parts.length === 1
+      ? is_called && /^[a-z][a-z0-9]{1,9}$/.test(part)
+      : /^(?:[a-z]{2,6}|[A-Z]{2,6})$/.test(part) && (part.length <= 2 || /[aeiou]/i.test(part)) && words.length <= 2 && words.every((word) => CONFIG_WORDS.has(word.toLowerCase())));
+    if (!allowed) return false;
+    odd.add(part.toLowerCase());
+  }
+  return odd.size <= 1;
+};
+// `[text](target)`: no userinfo in the target, and the text and target together pass is_code_words.
+const is_markdown_link = (value: string) => {
+  const link = /^\[([^\]]+)\]\(([^)\s@]+)\)$/.exec(value);
+  return !!link && is_code_words(`${link[1]} ${link[2]}`);
+};
+// `$NAME` / `${NAME}` references: code when nothing random is left once the references and regex syntax are removed.
+const is_variable_reference = (value: string) => {
+  if (!/\$\{?[A-Za-z_]/.test(value)) return false;
+  const left = value.replace(/\$\{?([A-Za-z_]\w*)\}?/g, (whole_match, name: string) => (is_identifier_shaped(name) ? '' : whole_match)).replace(REGEX_SYNTAX, '').replace(/[^A-Za-z0-9_-]/g, '');
+  return !is_random_inner(left);
+};
 const is_code = (value: string) => {
   if (value.includes('.') ? is_word_chain(value) : is_bare_identifier(value)) return true;
-  // member access, optional chain, call or index on a word-made name: the next token is a word-made name, a quote or ')'
-  // (the value ends at a quote, so the end counts too).
-  // member access, optional chain, call or index: every identifier-like token is a word-made name or short.
-  // A token is a word-made name, a word with version digits (sha256, utf8, b64decode) or a short number; never a short random run.
+  if (is_markdown_link(value) || is_variable_reference(value)) return true;
+  // member access, optional chain, call or index: every token is identifier-shaped or a short number, at least one is 4+ letters,
+  // and the word parts pass is_code_words.
   const tokens = value.split(/[^A-Za-z0-9_$]+/).filter(Boolean);
-  // ...and at least one is a real word of 4+ letters: a chain of short random pieces is a value.
-  if (/^[A-Za-z_]\w*(?:\?\.|\.|\(|\[)/.test(value) && tokens.some((token) => token.length >= 4 && is_word_like(token)) && tokens.every((token) => is_word_like(token) || /^[a-z]+\d{1,4}[a-z]*$/.test(token) || /^[A-Z]+\d{1,4}$/.test(token) || /^\d{1,4}$/.test(token))) return true;
+  if (/^[A-Za-z_]\w*(?:\?\.|\.|\(|\[)/.test(value) && tokens.some((token) => token.length >= 4 && is_identifier_shaped(token)) && tokens.every((token) => is_identifier_shaped(token) || /^\d{1,4}$/.test(token)) && is_code_words(value)) return true;
   const rest = value.replace(/\{([A-Za-z_][\w.]*)\}/g, (whole_match, slot: string) => (is_word_chain(slot) ? '' : whole_match));
   return rest !== value && !is_strong(rest);
 };

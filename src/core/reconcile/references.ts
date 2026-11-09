@@ -352,7 +352,7 @@ export function add_known_symbols(index: RepoIndex, names: Iterable<string>, tab
     writeFileSync(patterns_file, chunk.join('\n') + '\n');
     const want = new Set(chunk);
     try {
-      const code = ['--', '.', ':!*.md', ':!*.mdx'];
+      const code = ['--', '.', ':!*.md', ':!*.mdx', ':(exclude,glob)**/.hewtd/**']; // hewtd's own output is never a symbol source
       const candidates = run_git_in_index(['grep', '-I', '-l', '-w', '-F', '-f', patterns_file, ...code]).split('\n').filter(Boolean).sort();
       const small: string[] = [];
       const big: string[] = [];

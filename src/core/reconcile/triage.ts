@@ -12,10 +12,11 @@ import type { PluginConfig } from '../../utils/config.js';
 import { check_retrieval } from '../audit/retrieval.js';
 import { find_clusters } from '../links/clusters.js';
 import { build_repo_index, extract_references, add_known_symbols, load_sibling_index, resolve_references, type RelatedRepo, type ResolvedReference } from './references.js';
-import { find_body_change, count_sibling_commits, find_staleness_signal } from './staleness.js';
+import { find_body_change, count_sibling_commits, find_staleness_signal, type StalenessSignal } from './staleness.js';
 import { compute_content_hash, is_reviewed, build_ledger_entry, type Ledger } from './ledger.js';
 import { find_section } from '../links/anchors.js';
 import { find_duplicates, type Duplicate } from './duplicates.js';
+import { time_stage } from '../graph/timing.js';
 import { find_secrets, scan_file, type SecretFinding } from './secrets.js';
 
 export type Lane = 'clean' | 'fields-only' | 'check' | 'archive-candidate' | 'secret';
@@ -203,10 +204,12 @@ export async function triage_docs(options: {
   config: PluginConfig;
   mode?: 'serial' | 'team';
   ledger?: Ledger;
+  /** Reused staleness signals (graph export): a hit needs the same doc content and cited files at the same HEAD. */
+  staleness_cache?: { entries: Record<string, StalenessSignal> };
 }): Promise<TriageResult> {
   const { docs_root: docs_root, rels: doc_paths, config } = options;
   const git_top = find_git_top(docs_root) ?? options.root;
-  const index = build_repo_index(git_top, config.reconcile.schema_sources);
+  const index = time_stage('repo index', () => build_repo_index(git_top, config.reconcile.schema_sources));
   const warnings: string[] = [];
   const sibling_repos: RelatedRepo[] = config.reconcile.related_repos.map((related_repo) => ({ name: related_repo.name, root: resolve(options.root, related_repo.path) }));
   for (const sibling_repo of sibling_repos) {
@@ -222,7 +225,7 @@ export async function triage_docs(options: {
     const { data, content } = parse_frontmatter<Record<string, unknown>>(raw_text);
     return { doc_path, raw_text, data, body: content, references: extract_references(content) };
   });
-  add_known_symbols(index, loaded.flatMap((doc) => doc.references.filter((reference) => reference.kind === 'symbol' || reference.kind === 'env').map((reference) => reference.ref)));
+  time_stage('symbol priming', () => add_known_symbols(index, loaded.flatMap((doc) => doc.references.filter((reference) => reference.kind === 'symbol' || reference.kind === 'env').map((reference) => reference.ref))));
 
   const retrieval = check_retrieval(
     loaded.map((doc) => ({ doc_path: doc.doc_path, data: doc.data, body: doc.body })),
@@ -243,14 +246,14 @@ export async function triage_docs(options: {
     }
     return scan_promise;
   };
-  const peripheral = await scan_peripheral(options.root, docs_root, config);
+  const peripheral = await time_stage('peripheral scan', () => scan_peripheral(options.root, docs_root, config));
 
-  const dups = await find_duplicates(docs_root, config);
+  const dups = await time_stage('duplicates', () => find_duplicates(docs_root, config));
   const docs: TriageDoc[] = [];
   let stale_warned = false;
   for (const doc of loaded) {
     const abs_path = join(docs_root, doc.doc_path);
-    const resolved: ResolvedReference[] = await resolve_references(index, doc.references, { doc_file: abs_path, docs_root: docs_root, related: sibling_repos });
+    const resolved: ResolvedReference[] = await time_stage('resolve refs', () => resolve_references(index, doc.references, { doc_file: abs_path, docs_root: docs_root, related: sibling_repos }));
     const sources = Array.isArray(doc.data.sources) ? doc.data.sources.filter((source): source is string => typeof source === 'string') : [];
     // Only path-like sources are checkable; URLs and prose citations are not claims about the repo.
     // `<name>:<path>` names a file in a related repo (read-only); checked there, not in this repo.
@@ -266,7 +269,7 @@ export async function triage_docs(options: {
 
     // Symbol hits are not cited files: a common name living in a data file must not add bytes or staleness.
     let cited = [...new Set([...resolved.filter((result) => result.kind === 'path').map((result) => result.where), ...sources].filter((path_text): path_text is string => !!path_text && index.files.has(path_text)))].sort();
-    const own_findings = find_secrets(doc.raw_text, doc.doc_path, config_item).map((raw_secret) => raw_secret.finding).filter((finding) => finding.kind === 'secret');
+    const own_findings = time_stage('secret scan', () => find_secrets(doc.raw_text, doc.doc_path, config_item)).map((raw_secret) => raw_secret.finding).filter((finding) => finding.kind === 'secret');
     const blocked = new Map<string, SecretFinding[]>();
     const withheld = new Map<string, SecretFinding[]>(); // weak hits in cited code: not read, but the doc keeps its lane
     const add_held_finding = (file_path: string, fs: SecretFinding[]) => {
@@ -274,7 +277,7 @@ export async function triage_docs(options: {
       // A cited doc is judged on its own: withheld here, never the reason this doc is in the secret lane.
       (!/\.(md|mdx)$/i.test(file_path) && fs.some((finding) => !WEAK_RULES.has(finding.rule)) ? blocked : withheld).set(file_path, fs);
     };
-    for (const cited_path of cited) add_held_finding(cited_path, (await scan_cited(join(git_top, cited_path), cited_path)).filter((finding) => finding.kind === 'secret'));
+    for (const cited_path of cited) add_held_finding(cited_path, (await time_stage('cited scan', () => scan_cited(join(git_top, cited_path), cited_path))).filter((finding) => finding.kind === 'secret'));
     cited = cited.filter((cited_path) => !blocked.has(cited_path) && !withheld.has(cited_path));
     let bytes = Buffer.byteLength(doc.raw_text);
     for (const cited_path of cited) {
@@ -298,7 +301,13 @@ export async function triage_docs(options: {
 
     let stale_commits: number | undefined;
     const repo_path = format_posix_path(relative(git_top, abs_path));
-    const staleness_signal = cited.length ? find_staleness_signal(git_top, repo_path, cited) : ({ status: 'none' } as const);
+    const find_signal = (): StalenessSignal => {
+      const entries = options.staleness_cache?.entries;
+      if (!entries) return find_staleness_signal(git_top, repo_path, cited);
+      const key = JSON.stringify([repo_path, compute_content_hash(doc.raw_text), cited]);
+      return (entries[key] ??= find_staleness_signal(git_top, repo_path, cited));
+    };
+    const staleness_signal = cited.length ? time_stage('staleness', find_signal) : ({ status: 'none' } as const);
     if (staleness_signal.status === 'signal') stale_commits = staleness_signal.commits;
     if (rel_cited.size) {
       let since = staleness_signal.status === 'signal' ? staleness_signal.doc_date : undefined;
@@ -398,7 +407,7 @@ export async function triage_docs(options: {
 }
 
 /** Read-only resolution of some docs for the graph export: no ledger, no dirty-tree check (that lives in the CLI). */
-export async function resolve_docs(options: { root: string; docs_root: string; rels: string[]; config: PluginConfig; ledger?: Ledger }): Promise<TriageDoc[]> {
+export async function resolve_docs(options: { root: string; docs_root: string; rels: string[]; config: PluginConfig; ledger?: Ledger; staleness_cache?: { entries: Record<string, StalenessSignal> } }): Promise<TriageDoc[]> {
   // A copy, so the ledger-driven reasons (pointer target / member changed) fire without recording anything.
   const { ledger, ...rest } = options;
   return (await triage_docs({ ...rest, ...(ledger && { ledger: structuredClone(ledger) }) })).docs;

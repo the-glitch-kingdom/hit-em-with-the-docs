@@ -23,8 +23,8 @@ export interface StalenessCache { head: string; entries: Record<string, Stalenes
 export type GraphTriage = Pick<TriageDoc, 'lane' | 'reasons' | 'missing' | 'refs' | 'staleCommits' | 'duplicates'>;
 /** One doc's reusable result, valid while its inputs (content, ledger entry, duplicates, `outside` link-target fingerprints) are the same. */
 export interface DocEntry { hash: string; ledger: string; duplicates: string; unfound: string[]; outside?: Record<string, string>; triage: GraphTriage }
-/** Per-doc entries valid for one code state, plus the markdown mentions that made code-less names `unknown`. */
-export interface DocCache { state: string; entries: Record<string, DocEntry>; mentions: Record<string, string[]> }
+/** Per-doc entries valid for one code state (written at `head`; commits since then are listed by `list_committed_changes`), plus the markdown mentions that made code-less names `unknown`. */
+export interface DocCache { state: string; head?: string; entries: Record<string, DocEntry>; mentions: Record<string, string[]> }
 interface CacheFile { cache_version?: number; fingerprint?: Fingerprint; staleness?: StalenessCache; doc_cache?: DocCache; [key: string]: unknown }
 
 const hash_text = (text: string): string => createHash('sha1').update(text).digest('hex');
@@ -51,6 +51,15 @@ export function write_cache_fields(git_top: string, changes: Pick<CacheFile, 'fi
     mkdirSync(dirname(join(git_top, CACHE_FILE)), { recursive: true });
     writeFileSync(join(git_top, CACHE_FILE), JSON.stringify({ ...existing, ...changes, cache_version: CACHE_VERSION }));
   } catch { /* cache is best effort */ }
+}
+
+/** Paths changed by the commits from `from` to `to`, renames as delete + add; null when `from` is not an ancestor of `to` (amend, rebase, branch switch) or unknown. */
+export function list_committed_changes(git_top: string, from: string, to: string): Set<string> | null {
+  try {
+    if (from === to) return new Set();
+    run_git(git_top, ['merge-base', '--is-ancestor', from, to]);
+    return new Set(run_git(git_top, ['diff', '--name-only', '--no-renames', '-z', from, to]).split('\0').filter(Boolean));
+  } catch { return null; }
 }
 
 /** Staleness signals reusable at this HEAD (empty when the cache is missing, stale or malformed). */
@@ -97,7 +106,8 @@ export function load_doc_cache(git_top: string, state: string | null): DocCache 
 }
 
 /**
- * Everything a doc's entry depends on besides docs: HEAD, the changed non-doc files (path + content), the config, the
+ * Everything a doc's entry depends on besides docs: the last commit that touched anything but a markdown doc under the
+ * docs root (not HEAD: a docs-only commit leaves it unchanged), the changed non-doc files (path + content), the config, the
  * hewtd version. Markdown under the docs root counts only when the git index differs from HEAD for it (their content is the per-doc hash),
  * and our own output and the ledger are left out. Null when it cannot be known (no commits, related repos).
  */
@@ -105,9 +115,11 @@ export function compute_code_state(options: { git_top: string; docs_root: string
   const { git_top, config } = options;
   if (config.reconcile.related_repos.length) return null;
   try {
-    const head = run_git(git_top, ['rev-parse', 'HEAD']).trim();
+    run_git(git_top, ['rev-parse', 'HEAD']); // no commits: unknown
     const docs_prefix = relative(git_top, options.docs_root).split('\\').join('/');
     const ledger_file = relative(git_top, options.ledger_path).split('\\').join('/');
+    const outputs = [GRAPH_FILE, CACHE_FILE, ledger_file].map((file) => `:(exclude,literal)${file}`);
+    const code_head = run_git(git_top, ['log', '-1', '--format=%H', '--', '.', `:(exclude,glob)${docs_prefix ? `${docs_prefix}/` : ''}**/*.md`, ...outputs]).trim();
     const tokens = run_git(git_top, ['status', '--porcelain=v1', '-z', '--untracked-files=all']).split('\0');
     const dirty: string[] = [];
     for (let i = 0; i < tokens.length; i++) {
@@ -125,6 +137,6 @@ export function compute_code_state(options: { git_top: string; docs_root: string
     // triage resolves `npx <bin>` against the gitignored node_modules/.bin
     let bins: string[] = [];
     try { bins = readdirSync(join(git_top, 'node_modules/.bin')).sort(); } catch { /* none */ }
-    return hash_text(JSON.stringify([hewtd_version, head, dirty, config, options.docs_root, bins]));
+    return hash_text(JSON.stringify([hewtd_version, code_head, dirty, config, options.docs_root, bins]));
   } catch { return null; }
 }

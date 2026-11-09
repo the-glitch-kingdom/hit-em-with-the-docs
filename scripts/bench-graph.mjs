@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Benchmark `hewtd index` (with graph export): cold, warm-unchanged, one doc edited, one code file edited.
+// Benchmark `hewtd index` (with graph export): cold, warm-unchanged, one doc edited, docs-only commit, one code file edited.
 // Not part of CI. Usage: node scripts/bench-graph.mjs [path/to/dist/cli/index.js] [docs=900] [code=400] [--profile large]
 // --profile large: ~920 docs, ~3000 code files (a few over 512 KB), ~2400 cited symbols, ~13000 refs, 150 commits (#74).
 // Set HEWTD_TIMING=1 (done here) to print per-stage timings from build_graph.
@@ -50,6 +50,8 @@ try {
   run('warm (unchanged)');
   appendFileSync(join(docs, 'guides', 'doc-0.md'), '\nOne more line.\n');
   run('one doc edited');
+  git('add', '.documentation'); git('commit', '-qm', 'docs only');
+  run('docs-only commit');
   put(code_file(3), 'export function benchUnit3() { return 99999; }\nexport const BENCH_LIMIT_3 = 3;\n');
   run('one code file edited');
 } finally {

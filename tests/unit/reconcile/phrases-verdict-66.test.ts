@@ -77,7 +77,7 @@ describe('phrases verdict (#66)', () => {
     expect((await run([e])).outcomes[0]!.status).toBe('stale');
     writeFileSync(join(docs, 'backend/str.md'), before);
     // the review writer refuses a secret-shaped phrase outright
-    expect(() => render_review({ batch: '1', shard: 1, scope: 'gaps' }, [entry('backend/str.md', [`why does ${'AK' + 'IA' + 'ABCDEFGHIJKLMNOP'} fail login`])])).toThrow(/secret/);
+    expect(() => render_review({ batch: '1', shard: 1, scope: 'gaps' }, [entry('backend/str.md', [`why does ${'AK' + 'IA' + 'Q7ZR3LMP9XVB2NCK'} fail login`])])).toThrow(/secret/);
   });
 
   it('re-enforces the cap and skips phrases already present', async () => {

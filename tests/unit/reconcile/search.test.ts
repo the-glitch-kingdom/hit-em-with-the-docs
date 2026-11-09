@@ -20,7 +20,7 @@ beforeEach(() => {
   put('archive/old.md', '---\ntitle: release rollback stuck\n---\nx\n');
   put('ops/tie1.md', '---\ntitle: Tiebreak\n---\nx\n');
   put('ops/tie2.md', '---\ntitle: Tiebreak\n---\nx\n');
-  put('ops/secret.md', '---\ntitle: release rollback stuck\n---\nkey: AKIA' + 'ABCDEFGHIJKLMNOP\n');
+  put('ops/secret.md', '---\ntitle: release rollback stuck\n---\nkey: AKIA' + 'Q7ZR3LMP9XVB2NCK\n');
 });
 afterEach(() => { rmSync(dir, { recursive: true, force: true }); vi.restoreAllMocks(); });
 

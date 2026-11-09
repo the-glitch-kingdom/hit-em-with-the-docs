@@ -7,7 +7,7 @@ import { classify_gaps } from '../../../src/core/reconcile/gaps.js';
 import { render_gaps_report } from '../../../src/core/reconcile/gaps-report.js';
 import { load_plugin_config } from '../../../src/utils/config.js';
 
-const token = 'AK' + 'IA' + 'ABCDEFGHIJKLMNOP'; // runtime fragments: no secret literal in the repo
+const token = 'AK' + 'IA' + 'Q7ZR3LMP9XVB2NCK'; // runtime fragments: no secret literal in the repo
 let repo: string, docs: string;
 const w = (p: string, t: string): void => { mkdirSync(join(p, '..'), { recursive: true }); writeFileSync(p, t); };
 

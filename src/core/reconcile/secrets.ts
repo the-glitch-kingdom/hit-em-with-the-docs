@@ -49,13 +49,16 @@ const COMMON_PASSWORDS = new Set(['pass', 'password', 'changeme', 'secret', 'adm
 // A regex pattern, not a credential: regex syntax (a class with a quantifier, \d \w \s, .* .+, ^...$), and what is
 // left once that syntax is stripped is not itself a strong value (a comma in {32,64} ends the captured value).
 const REGEX_SYNTAX = /\[[^\]]+\](?:[*+?]|\{\d+(?:,\d*)?\}?)?|\\[dwsDWS.]|\.[*+?]|[\^$()|]|\{\d+(?:,\d*)?\}?/g;
-const is_regex_pattern = (value: string) => /\[[^\]]+\](?:[*+?]|\{\d)|\\[dwsDWS]|\.[*+]|^\^.*\$$/.test(value) && !is_strong(value.replace(REGEX_SYNTAX, ''));
+// Regex metacharacters making up a quarter of the value also mark a pattern (.*/AKIA[0-9A-Z]{16}/.*).
+const is_meta_heavy = (value: string) => (value.match(/[\][{}()*+?.\\^$|]/g)?.length ?? 0) * 4 >= value.length;
+const is_regex_pattern = (value: string) => is_meta_heavy(value) || /\[[^\]]+\](?:[*+?]|\{\d)|\\[dwsDWS]|\.[*+]|^\^.*\$$/.test(value) && !is_strong(value.replace(REGEX_SYNTAX, ''));
 
 // Placeholder filter. `weak` words (test, password, secret) only apply to generic/url rules,
 // where the value is free text; known-shape keys like sk_test_ are real credentials.
 export function is_placeholder(value: string, weak: boolean): boolean {
   const line = value.toLowerCase();
   if (/^your[_-]|<[^>]*>|\$\{|^\$[a-z_]|x{3,}|\*{3,}|\.{3}|…|example|changeme|change_me|dummy|placeholder|redacted/.test(line)) return true;
+  if (/^(?:\[.*\]|<.*>|\$\{.*\}|\{\{.*\}\}|\$\(.*\)|%\(.*\)s)$/.test(line) || /^(?:abc123|123456|abcdef|qwerty)/.test(line)) return true;
   if (new Set(line).size <= 2) return true;
   if (has_ascending_run(line)) return true;
   return weak && /password|passwd|secret|(^|[^a-z])test([^a-z]|$)/.test(line);
@@ -81,12 +84,17 @@ const is_code = (value: string) => {
   if (is_word_chain(value)) return true;
   const call = /^([A-Za-z_][\w.]*)\(/.exec(value);
   if (call && is_word_chain(call[1]!)) return true;
+  // member access, optional chain, call or index on a word-made name: the next token is a word-made name, a quote or ')'
+  // (the value ends at a quote, so the end counts too).
+  const access = /^([A-Za-z_]\w*)(?:\?\.|\.|\(|\[)(?:([A-Za-z_]\w*)|[)"'`]|$)/.exec(value);
+  if (access && WORDY.test(access[1]!) && (access[2] === undefined || WORDY.test(access[2]))) return true;
   const rest = value.replace(/\{([A-Za-z_][\w.]*)\}/g, (whole_match, slot: string) => (is_word_chain(slot) ? '' : whole_match));
   return rest !== value && !is_strong(rest);
 };
+// Any well-formed address is an email unless a part of it looks random (12+ characters with entropy >= 3.3).
 const is_email = (value: string) => {
   const match = /^([^@\s]{1,64})@([^@\s]{1,255}\.[A-Za-z]{2,})$/.exec(value);
-  return !!match && match[1]!.split(/[._+-]/).every((segment) => WORDY.test(segment) || /^\d{1,4}$/.test(segment)) && is_word_chain(match[2]!.replace(/-/g, '.'));
+  return !!match && ![...match[1]!.split(/[._+-]/), ...match[2]!.split(/[.-]/)].some((part) => part.length >= 12 && compute_entropy(part) >= 3.3);
 };
 /** `<NAME from Vault: ...>`: a word-made name after '<' with a closing '>' later on the same line. */
 const build_pointer_record = (value: string, match: RegExpMatchArray) => {

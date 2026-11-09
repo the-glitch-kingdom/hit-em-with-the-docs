@@ -23,7 +23,7 @@ async function cold(): Promise<string> {
   return text;
 }
 /** Writes the graph incrementally and asserts it equals a cold build (planted markers aside); returns the parsed graph. */
-async function check_equal(next_config = config): Promise<{ docs: Record<string, { refs: Array<{ target: string }> }> }> {
+async function check_equal(next_config = config): Promise<{ docs: Record<string, { refs: Array<{ target: string; resolved: boolean | null }> }> }> {
   await write_graph({ root: dir, docs_root: docs, config: next_config });
   const graph = JSON.parse(readFileSync(graph_file(), 'utf-8'));
   const unplanted = structuredClone(graph);
@@ -142,6 +142,34 @@ describe('per-doc reuse equals a cold build', () => {
     put('.documentation/guides/three.md', doc('No mention any more.', 'src/b.ts'));
     const graph = await check_equal();
     expect(is_reused(graph, 'guides/one.md')).toBe(false); // was unknown (mentioned elsewhere), now missing
+  });
+
+  it('a link to a non-kept doc (archive/) follows that file being created and deleted', async () => {
+    put('.documentation/guides/six.md', doc('See [old](../archive/old.md#gone-heading).', 'src/b.ts'));
+    await check_equal();
+    const resolved = async () => (await check_equal()).docs['guides/six.md']!.refs.find((reference) => reference.target.startsWith('../archive'));
+    expect(await resolved()).toMatchObject({ resolved: false });
+    put('.documentation/archive/old.md', '# Old\n\n## Gone heading\n');
+    expect(await resolved()).toMatchObject({ resolved: true });
+    rmSync(join(docs, 'archive/old.md'));
+    expect(await resolved()).toMatchObject({ resolved: false });
+  });
+
+  it('a non-kept link target changing leaves unrelated entries reused', async () => {
+    plant('guides/three.md');
+    put('.documentation/archive/old.md', '# Old\n\n## Gone heading\n');
+    expect(is_reused(await check_equal(), 'guides/three.md')).toBe(true);
+  });
+
+  it('installing and removing a node_modules/.bin tool re-resolves its npx refs', async () => {
+    put('.documentation/guides/seven.md', doc('Run `npx widgetbin-zz` first.', 'src/b.ts'));
+    const status = async () => (await check_equal()).docs['guides/seven.md']!.refs.find((reference) => reference.target.includes('widgetbin-zz'));
+    const before = await status();
+    expect(before).toBeDefined();
+    put('node_modules/.bin/widgetbin-zz', '#!/bin/sh\n');
+    expect(await status()).toMatchObject({ resolved: true });
+    rmSync(join(dir, 'node_modules'), { recursive: true });
+    expect(await status()).toMatchObject({ resolved: before!.resolved });
   });
 
   it('--dry-run writes no cache', async () => {

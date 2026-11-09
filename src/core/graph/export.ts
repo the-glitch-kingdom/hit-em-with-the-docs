@@ -13,7 +13,7 @@ import { find_git_top, list_markdown_files, resolve_docs, STALE_COMMITS_BAR } fr
 import { find_duplicates } from '../reconcile/duplicates.js';
 import { find_md_mentions } from '../reconcile/references.js';
 import { find_body_changed_dates, find_file_dates } from './dates.js';
-import { compute_code_state, compute_fingerprint, compute_graph_hash, is_fingerprint_current, load_doc_cache, load_staleness_cache, write_cache_fields, type DocEntry, type GraphTriage } from './cache.js';
+import { compute_code_state, compute_fingerprint, compute_link_fingerprint, compute_graph_hash, is_fingerprint_current, load_doc_cache, load_staleness_cache, write_cache_fields, type DocEntry, type GraphTriage } from './cache.js';
 import { print_timings, time_stage } from './timing.js';
 import { GRAPH_VERSION, type GraphDoc, type GraphRef, type GraphRefKind, type GraphSymbol, type GraphV1, type GraphVerdict } from './schema.js';
 
@@ -65,6 +65,13 @@ export async function build_graph(options: { root: string; docs_root: string; co
   const changed = new Set<string>(); // absolute paths of docs that are new, edited or gone
   for (const doc_path of kept) if (prior.entries[doc_path]?.hash !== hashes.get(doc_path)) changed.add(join(docs_root, doc_path));
   for (const doc_path of Object.keys(prior.entries)) if (!raws.has(doc_path)) changed.add(join(docs_root, doc_path));
+  /** Absolute targets of a doc's doc-links; null when one cannot be decoded. */
+  const get_link_targets = (doc_path: string, doc_refs: GraphTriage['refs']): string[] | null => {
+    try { return doc_refs.filter((reference) => reference.kind === 'doc-link').map((reference) => resolve(dirname(join(docs_root, doc_path)), decodeURI(reference.ref.split(/[#?]/)[0]!))); } catch { return null; }
+  };
+  // Link targets that are not kept docs (archive/, INDEX.md, dot-dirs, untracked) are fingerprinted per entry instead.
+  const kept_abs = new Set(kept.map((doc_path) => join(docs_root, doc_path)));
+  const compute_outside = (targets: string[]): Record<string, string> => Object.fromEntries(targets.filter((target) => !kept_abs.has(target)).map((target) => [format_posix_path(relative(git_top, target)), compute_link_fingerprint(target)]));
   const points_at_changed = (doc_path: string, entry: DocEntry): boolean => {
     const ledger_entry = ledger.entries[doc_path];
     const sources = raws.get(doc_path)!.data.sources;
@@ -73,13 +80,10 @@ export async function build_graph(options: { root: string; docs_root: string; co
       ...Object.keys(ledger_entry?.members ?? {}).map((member) => join(docs_root, member)),
       ...(ledger_entry?.pointer ? [join(docs_root, ledger_entry.pointer.target.split('#')[0]!)] : []),
     ];
-    for (const reference of entry.triage.refs) {
-      if (reference.kind === 'path') targets.push(resolve(git_top, reference.where ?? reference.ref.replace(/:\d+(?::\d+)?$/, '')));
-      else if (reference.kind === 'doc-link') {
-        try { targets.push(resolve(dirname(join(docs_root, doc_path)), decodeURI(reference.ref.split(/[#?]/)[0]!))); } catch { return true; }
-      }
-    }
-    return targets.some((target) => changed.has(target));
+    for (const reference of entry.triage.refs) if (reference.kind === 'path') targets.push(resolve(git_top, reference.where ?? reference.ref.replace(/:\d+(?::\d+)?$/, '')));
+    const link_targets = get_link_targets(doc_path, entry.triage.refs);
+    if (!link_targets) return true;
+    return [...targets, ...link_targets].some((target) => changed.has(target)) || JSON.stringify(compute_outside(link_targets)) !== JSON.stringify(entry.outside ?? {});
   };
   const reusable = kept.filter((doc_path) => {
     const entry = prior.entries[doc_path];
@@ -95,6 +99,7 @@ export async function build_graph(options: { root: string; docs_root: string; co
   for (const resolved_doc of resolved_docs) {
     const doc_path = resolved_doc.path;
     entries[doc_path] = {
+      outside: compute_outside(get_link_targets(doc_path, resolved_doc.refs) ?? []),
       hash: hashes.get(doc_path)!, ledger: ledger_text(doc_path), duplicates: duplicates_text(doc_path),
       unfound: [...new Set(resolved_doc.refs.filter((item) => (item.kind === 'symbol' || item.kind === 'env') && item.status !== 'ok').map((item) => item.ref))],
       // eslint-disable-next-line id-denylist, @typescript-eslint/naming-convention -- serialized keys (triage/graph JSON)

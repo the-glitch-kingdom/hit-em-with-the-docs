@@ -6,7 +6,7 @@
 import { createHash } from 'crypto';
 import { execFileSync } from 'child_process';
 import { createRequire } from 'module';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { dirname, join, relative } from 'path';
 import type { PluginConfig } from '../../utils/config.js';
 import type { StalenessSignal } from '../reconcile/staleness.js';
@@ -21,13 +21,17 @@ export interface Fingerprint { value: string; graph_hash: string }
 export interface StalenessCache { head: string; entries: Record<string, StalenessSignal> }
 /** What the graph reads from triage for one doc. */
 export type GraphTriage = Pick<TriageDoc, 'lane' | 'reasons' | 'missing' | 'refs' | 'staleCommits' | 'duplicates'>;
-/** One doc's reusable result, valid while its inputs (content, ledger entry, duplicates) are the same. */
-export interface DocEntry { hash: string; ledger: string; duplicates: string; unfound: string[]; triage: GraphTriage }
+/** One doc's reusable result, valid while its inputs (content, ledger entry, duplicates, `outside` link-target fingerprints) are the same. */
+export interface DocEntry { hash: string; ledger: string; duplicates: string; unfound: string[]; outside?: Record<string, string>; triage: GraphTriage }
 /** Per-doc entries valid for one code state, plus the markdown mentions that made code-less names `unknown`. */
 export interface DocCache { state: string; entries: Record<string, DocEntry>; mentions: Record<string, string[]> }
 interface CacheFile { cache_version?: number; fingerprint?: Fingerprint; staleness?: StalenessCache; doc_cache?: DocCache; [key: string]: unknown }
 
 const hash_text = (text: string): string => createHash('sha1').update(text).digest('hex');
+/** What a doc-link's status depends on for a target that is not a kept doc: absent, a directory or a file (anchor mismatches are advisory only, never a status). */
+export function compute_link_fingerprint(abs_path: string): string {
+  try { return statSync(abs_path).isFile() ? 'file' : 'dir'; } catch { return 'absent'; }
+}
 const run_git = (working_dir: string, args: string[]): string =>
   // eslint-disable-next-line id-denylist -- child_process option name
   execFileSync('git', args, { cwd: working_dir, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 256 * 1024 * 1024 });
@@ -118,6 +122,9 @@ export function compute_code_state(options: { git_top: string; docs_root: string
       try { content = hash_text(readFileSync(join(git_top, file), 'utf-8')); } catch { /* deleted */ }
       dirty.push(`${entry}\0${content}`);
     }
-    return hash_text(JSON.stringify([hewtd_version, head, dirty, config, options.docs_root]));
+    // triage resolves `npx <bin>` against the gitignored node_modules/.bin
+    let bins: string[] = [];
+    try { bins = readdirSync(join(git_top, 'node_modules/.bin')).sort(); } catch { /* none */ }
+    return hash_text(JSON.stringify([hewtd_version, head, dirty, config, options.docs_root, bins]));
   } catch { return null; }
 }

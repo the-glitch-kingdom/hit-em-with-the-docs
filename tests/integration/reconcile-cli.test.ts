@@ -97,7 +97,8 @@ describe('hewtd reconcile (built CLI)', () => {
     const dirs_after = readdirSync(docs, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).filter((n) => n !== 'archive');
     expect(dirs_after.sort()).toEqual(dirs_before.sort());
     expect(g('status', '--porcelain')).toBe('');
-    expect(g('log', '-1', '--format=%s')).toMatch(/^docs\(reconcile\):/);
+    expect(g('log', '-1', '--format=%s')).toMatch(/^docs\(index\): refresh after reconcile/);
+    expect(g('log', '-2', '--format=%s').split('\n')[1]).toMatch(/^docs\(reconcile\):/);
 
     // second identical run: nothing changes
     const head = sha();
@@ -212,7 +213,7 @@ describe('hewtd reconcile (built CLI)', () => {
     const a = hewtd(['reconcile', '--apply', f], root);
     expect(a.status).toBe(0);
     expect(existsSync(join(root, 'notes/design.md'))).toBe(false);
-    expect(g('rev-list', '--count', 'HEAD')).toBe(String(Number(head) + 1)); // move + removal in one commit
+    expect(g('rev-list', '--count', 'HEAD')).toBe(String(Number(head) + 2)); // move + removal in one docs commit, then the index refresh
     expect(g('status', '--porcelain')).toBe('');
     const moved = readdirSync(join(docs, 'architecture')).find((n) => /design/.test(n))!;
     expect(readFileSync(join(docs, 'architecture', moved), 'utf-8')).toMatch(/moved_from: notes\/design\.md/);

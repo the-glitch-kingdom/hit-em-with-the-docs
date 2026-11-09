@@ -71,7 +71,7 @@ describe('hewtd reconcile --gaps (built CLI)', () => {
   });
 
   it('secret-shaped query is dropped and masked; no fixture value in any artifact', () => {
-    const token = 'AK' + 'IA' + 'ABCDEFGHIJKLMNOP';
+    const token = 'AK' + 'IA' + 'Q7ZR3LMP9XVB2NCK';
     put('gaps.json', JSON.stringify([{ query: `why does ${token} fail on login`, used_doc: 'backend/release.md' }, { query: 'how do I roll back a deploy', used_doc: 'backend/release.md' }]));
     const { r, out } = gaps_json(['gaps.json', '--write-review']);
     expect(r.stdout).not.toContain(token);

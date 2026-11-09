@@ -105,6 +105,16 @@ hewtd reconcile --secrets [scope] [--json]
     only as one trailing group of up to three (`minLengthRequirement12`,
     `VAULT_TOKEN_FROM_ENVIRONMENT`). A single run of letters, or digits between humps, is a
     value, because generated pronounceable passwords look exactly like that.
+  - **Identifier-shaped code and markup (3.1.4)**: `is_identifier_shaped` in
+    `src/core/reconcile/secrets.ts` replaces the word test for structured values (member
+    access, call, index). `datetime.utcnow()`, `settings.qdrant_api_key` and CSS functions
+    such as `hsl(var(--x))` are skipped when every token is snake_case, UPPER_SNAKE,
+    camelCase or PascalCase, with few digits, even if the identifiers are not English.
+    A markdown link `[text](url-or-path)` is skipped when its text is not random, and a
+    value with `$NAME` or `${NAME}` references is skipped when nothing random remains after
+    removing the references and regex syntax. Random values in the same shapes are still
+    reported. Known limit: a short random all-lowercase token (up to 16 letters) in a
+    structured position passes as an identifier. Bare values keep the 3.1.2 rule.
   - **Word test (3.1.2)**: `is_word_like(token)` in `src/core/reconcile/secrets.ts`
     splits a token on non-alphanumerics, cuts each piece into humps
     (`openAIApiKey` is `open`, `AI`, `Api`, `Key`; `LLMProviderKey` is `LLM`, `Provider`,
@@ -515,6 +525,7 @@ accepted entry. Links from other outside files are not repointed.
 - **Docs in the secret lane for code like `self.token` or `settings.X`**: fixed in 2.22.0; word-made code references, `{name}` slots, email values and `<NAME ...>` pointer records are no longer `generic-secret` findings (emails stay non-blocking `personal` findings).
 - **Code, a wrapped placeholder, a regex or an email still in the secret lane**: fixed in 3.1.1, see Literals only above. Upgrade and rerun `hewtd reconcile`.
 - **`generic-secret` flags `openAIApiKey`, `getAPIKey(...)`, `LLMProviderKey`, `minLengthRequirement12` or a `<root-token-...>` placeholder**: fixed in 3.1.2 (the word test works per hump, see Word test). An email-only doc is never in the secret lane.
+- **`generic-secret` flags `datetime.utcnow()`, `settings.qdrant_api_key`, `hsl(var(--x))`, a markdown link or a `$VAR` reference**: fixed in 3.1.4 (structured values are judged by identifier shape, see Identifier-shaped code and markup).
 - **False positive flagged as a secret**: add it to `reconcile.secrets.allow`
   (by `fingerprint` from the report, the full hash or any prefix of at least 12 hex
   chars as shown there, or a `pattern`) with a `reason`.

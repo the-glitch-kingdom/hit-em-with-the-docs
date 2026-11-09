@@ -50,6 +50,9 @@ hewtd hooks uninstall       # removes exactly that block (byte-exact)
 - 3.1.2: the word test behind those exemptions judges each camelCase or acronym hump on its own (`openAIApiKey`,
   `getAPIKey(`, `LLMProviderKey`, `minLengthRequirement12` are no longer flagged); random values in the same
   positions still block. See the Word test in [reconcile.md](./reconcile.md#secrets-first-2170).
+- 3.1.4: structured code (`datetime.utcnow()`, `settings.qdrant_api_key`), CSS functions (`hsl(var(--x))`), markdown links and
+  `$VAR` references no longer block a write when their tokens are identifier-shaped; random values in the same shapes
+  still do. See [reconcile.md](./reconcile.md#secrets-first-2170).
 - The hook block is `# >>> hewtd secrets >>>` ... `# <<< hewtd secrets <<<` and
   runs `npx --no-install hewtd secrets --staged || exit 1`. It resolves
   `core.hooksPath` or `.git/hooks` and is idempotent. In an existing hook the block

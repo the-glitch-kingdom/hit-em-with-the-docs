@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.1.4] — 2026-11-08
+
+Follow-up to 3.1.3 (#80). No breaking changes; `.hewtd/graph.json` stays `version: 1`.
+
+- Secrets: structured values are judged by identifier shape (`is_identifier_shaped`), not English-likeness, so
+  `datetime.utcnow()`, `settings.qdrant_api_key` and CSS functions such as `hsl(var(--x))` are no longer `generic-secret`.
+  Markdown links `[text](url)` and values with `$VAR` references are skipped when nothing random remains. Random values in
+  the same shapes are still reported. Known limit: a short random all-lowercase token (up to 16 letters) in a structured
+  position passes as an identifier.
+
 ## [3.1.3] — 2026-11-08
 
 Follow-up to 3.1.2 (#77). No breaking changes; `.hewtd/graph.json` stays `version: 1`. Speed only, output is byte-identical to a cold build.

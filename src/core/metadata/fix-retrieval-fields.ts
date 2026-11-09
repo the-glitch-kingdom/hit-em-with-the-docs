@@ -5,7 +5,7 @@
  */
 
 import { readFile, writeFile } from 'fs/promises';
-import { parse_frontmatter, render_frontmatter } from '../../utils/frontmatter.js';
+import { parse_frontmatter, with_frontmatter_data } from '../../utils/frontmatter.js';
 import { list_glob_matches } from '../../utils/glob.js';
 import { dirname } from 'path';
 import { load_plugin_config } from '../../utils/config.js';
@@ -85,9 +85,7 @@ export async function fix_retrieval_fields(options: {
 
     result.changed.push({ file, actions });
     if (options.apply) {
-      // Replace only the frontmatter block; the body is written back byte for byte.
-      const body = raw_text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
-      await writeFile(file, `---\n${render_frontmatter(data, raw_text)}---\n${body}`, 'utf-8');
+      await writeFile(file, with_frontmatter_data(raw_text, data), 'utf-8');
     }
   }
   return result;

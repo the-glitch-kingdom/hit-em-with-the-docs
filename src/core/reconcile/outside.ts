@@ -9,7 +9,7 @@ import { existsSync } from 'fs';
 import { mkdir, readFile, unlink, writeFile } from 'fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'path';
 import { find_markdown_files } from '../../utils/glob.js';
-import { parse_frontmatter, with_frontmatter } from '../../utils/frontmatter.js';
+import { parse_frontmatter, with_frontmatter_data } from '../../utils/frontmatter.js';
 import { integrate_document } from '../integrate/integrator.js';
 import { load_plugin_config } from '../../utils/config.js';
 import { build_glob_regex } from './references.js';
@@ -192,14 +192,15 @@ export async function apply_outside_entry(options: { docs_root: string; entry: R
 
   // Provenance + moved_from; a moved doc was never reconciled or validated.
   const written = await readFile(target, 'utf-8');
-  const { data, content } = parse_frontmatter<Record<string, unknown>>(written);
+  const { data } = parse_frontmatter<Record<string, unknown>>(written);
+  const header = written.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/)?.[0] ?? '';
   const { last_verified: _lv, last_validated: _lval, ...frontmatter } = data;
   // Real last content change from git (still tracked at this point); today only when untracked.
   frontmatter.last_updated = run_git(git_top, ['log', '-1', '--format=%as', '--', repo_path]) || new Date().toISOString().slice(0, 10);
   const provenance = Array.isArray(frontmatter.provenance) ? (frontmatter.provenance as string[]) : [];
   // Links inside the moved doc keep pointing at the same files from the new location.
-  const rebased = with_rewritten_links(content, (link_target) => format_posix_relative_path(dirname(target), resolve(dirname(abs_path), link_target)));
-  await writeFile(target, with_frontmatter(rebased, { ...frontmatter, moved_from: repo_path, provenance: [...provenance, `moved from ${repo_path}${history ? `; ${history}` : ''}`] }), 'utf-8');
+  const rebased = with_rewritten_links(written.slice(header.length), (link_target) => format_posix_relative_path(dirname(target), resolve(dirname(abs_path), link_target)));
+  await writeFile(target, with_frontmatter_data(header + rebased, { ...frontmatter, moved_from: repo_path, provenance: [...provenance, `moved from ${repo_path}${history ? `; ${history}` : ''}`] }), 'utf-8');
 
   const touched = [abs_path, target];
   for (const { file, next } of rewrites) {

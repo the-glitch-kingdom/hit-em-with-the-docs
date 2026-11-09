@@ -86,9 +86,14 @@ export function load_staleness_cache(git_top: string, head: string): StalenessCa
   return cache && cache.head === head && cache.entries && typeof cache.entries === 'object' ? cache : { head, entries: {} };
 }
 
+/** The gitignored `node_modules/.bin` listing, sorted: triage resolves `npx <bin>` against it. */
+function list_bins(git_top: string): string[] {
+  try { return readdirSync(join(git_top, 'node_modules/.bin')).sort(); } catch { return []; }
+}
+
 /**
  * Everything the graph is a function of, hashed: HEAD, the working-tree changes (path + content of each),
- * every doc under the docs root (ignored ones too), the ledger, the config, the hewtd version.
+ * every doc under the docs root (ignored ones too), the ledger, the config, the hewtd version, the `.bin` listing.
  * Null when it cannot be known (no commits, related repos configured): then nothing is skipped.
  */
 export function compute_fingerprint(options: { git_top: string; docs_root: string; config: PluginConfig; ledger_path: string; docs: Array<{ path: string; hash: string }> }): string | null {
@@ -105,7 +110,7 @@ export function compute_fingerprint(options: { git_top: string; docs_root: strin
         return `${entry}\0${content}`;
       });
     const ledger = existsSync(options.ledger_path) ? hash_text(readFileSync(options.ledger_path, 'utf-8')) : '';
-    return hash_text(JSON.stringify([hewtd_version, head, dirty, ledger, config, options.docs_root, options.docs]));
+    return hash_text(JSON.stringify([hewtd_version, head, dirty, ledger, config, options.docs_root, options.docs, list_bins(git_top)]));
   } catch { return null; }
 }
 
@@ -166,8 +171,6 @@ export function compute_code_snapshot(options: { git_top: string; docs_root: str
       try { content = hash_text(readFileSync(join(git_top, file), 'utf-8')); } catch { /* deleted */ }
       dirty[file] = `${status}\0${content}`;
     }
-    let bins: string[] = [];
-    try { bins = readdirSync(join(git_top, 'node_modules/.bin')).sort(); } catch { /* none */ }
-    return { state: hash_text(JSON.stringify([hewtd_version, config, options.docs_root])), head, dirty, bins };
+    return { state: hash_text(JSON.stringify([hewtd_version, config, options.docs_root])), head, dirty, bins: list_bins(git_top) };
   } catch { return null; }
 }

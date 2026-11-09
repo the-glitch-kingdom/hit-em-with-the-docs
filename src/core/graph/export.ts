@@ -65,8 +65,7 @@ export async function build_graph(options: { root: string; docs_root: string; co
   // commits since the cached HEAD name the docs and code files that moved; no known ancestor (amend, rebase, branch switch): full path
   const committed = prior_head && head ? list_committed_changes(git_top, prior_head, head) : null;
   const code_changes = committed && snapshot ? list_code_changes(prior, snapshot, committed) : null;
-  // a changed `.bin` listing re-resolves everything for now
-  const incremental = !!code_changes && code_changes.size <= MAX_CODE_CHANGES && JSON.stringify(prior.bins ?? null) === JSON.stringify(snapshot!.bins);
+  const incremental = !!code_changes && code_changes.size <= MAX_CODE_CHANGES && !!prior.bins;
   if (!incremental) prior = { state: '', entries: {}, mentions: {} };
   if (staleness_cache && committed && prior_head !== head) { // a doc's signal holds unless a commit touched the doc or a file it cites
     const carried = Object.entries(load_staleness_cache(git_top, prior_head!).entries).filter(([key]) => { const [doc_path, , cited] = JSON.parse(key) as [string, string, string[]]; return !committed.has(doc_path) && !cited.some((file) => committed.has(file)); });
@@ -89,6 +88,8 @@ export async function build_graph(options: { root: string; docs_root: string; co
   const moved = incremental ? code_changes! : new Set<string>();
   const dropped_symbols = drop_changed_symbols(git_top, symbol_table, moved);
   for (const file of moved) changed.add(join(git_top, file));
+  const prior_bins = new Set(prior.bins), bins = new Set(snapshot?.bins);
+  const moved_bins = new Set([...prior_bins, ...bins].filter((bin) => prior_bins.has(bin) !== bins.has(bin))); // `npx <bin>` resolves against node_modules/.bin
   const schema_globs = config.reconcile.schema_sources.map(build_glob_regex);
   const package_moved = [...moved].some((file) => file === 'package.json' || file.endsWith('/package.json'));
   const schema_moved = [...moved].some((file) => schema_globs.some((schema_glob) => schema_glob.test(file)));
@@ -96,7 +97,7 @@ export async function build_graph(options: { root: string; docs_root: string; co
     switch (reference.kind) {
       case 'symbol': case 'env': return dropped_symbols.has(reference.ref);
       case 'path': return is_path_ref_affected(reference.ref, moved);
-      case 'command': return reference.ref.startsWith('make ') ? moved.has('Makefile') : package_moved;
+      case 'command': return reference.ref.startsWith('make ') ? moved.has('Makefile') : package_moved || (reference.ref.startsWith('npx ') && moved_bins.has(reference.ref.replace(/^\S+( run)? /, '')));
       case 'table': case 'column': return schema_moved;
       default: return false;
     }

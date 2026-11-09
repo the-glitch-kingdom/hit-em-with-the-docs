@@ -97,6 +97,31 @@ hewtd reconcile --secrets [scope] [--json]
   `.*`, `.+`, `^...$`) when what remains without that syntax is not itself a strong
   value, so `^[A-Za-z0-9]{32}$` is skipped but a random secret containing `.*` is
   not. Real values (`hvs.` tokens, long url passwords) are still found.
+- **Literals only (3.1.1)**: `generic-secret` reports literal values. Each exemption
+  below excuses only words or runs, never random characters: a part counts as random
+  when it is not made of words, or holds five consonants in a row.
+  - **Code**: member access, optional chaining, calls or indexing
+    (`req.headers.authorization?.split(" ")[1]`, `hash(password)`) where every token
+    is a word, a word with version digits (`sha256`, `b64decode`) or a short number,
+    and at least one is a word of 4+ letters.
+  - **Wrapped placeholders**: `[..]`, `<..>`, `${..}`, `{{..}}`, `$(..)` and `%(..)s`,
+    only for the free-text rules (`generic-secret`, `url-password`, `vault-kv-value`),
+    and only when the contents are not random (`[code-from-the-authenticator-app]`
+    is skipped, brackets around a random string are not).
+  - **Regexes**: metacharacters make up at least 25% of the value with nothing random
+    left once the regex syntax is removed, or the 3.1.0 strip rule above applies.
+  - **Placeholder prefixes**: `abc123`, `123456`, `abcdef` or `qwerty` followed by
+    nothing, a short tail, more ascending runs or a separated word (`_your_key`),
+    again for the free-text rules only. Random characters after the prefix are a value.
+  - **Emails**: a well-formed address under a secret-named key is a `personal` finding
+    and never blocks, unless a local segment or domain label looks random (12+
+    characters with entropy of 3.3 or more, 8+ characters not made of words, 6+
+    characters with an inner capital not made of words, or five consonants in a row);
+    then it stays `generic-secret`. Digit-bearing emails such as a name with a year
+    are `personal`, and a doc with only such values is not in the secret lane.
+  - Known limit: a very short random token (3 letters) or a letters-only random run
+    shaped like camelCase can read as a word; measured at under 1% of random samples.
+    The strong rules (`vault-token`, `approle-id`, key prefixes) are never excused.
 - **Allowlist**: `reconcile.secrets.allow` is a list of
   `{ "fingerprint" | "pattern", "file"?, "reason" }`. `reason` is required;
   `file` is an exact path or glob. `reconcile.secrets.disabled_rules` turns
@@ -462,6 +487,7 @@ accepted entry. Links from other outside files are not repointed.
 - **A doc is in the secret lane only because a doc it links to has a secret**: fixed in 3.1.0; the linked `.md` is withheld in `blocked_files` and the citing doc keeps its lane.
 - **Placeholder or short password flagged** (`abc123def456...`, `user:pass@host`, a regex): fixed in 3.1.0, see Placeholders above.
 - **Docs in the secret lane for code like `self.token` or `settings.X`**: fixed in 2.22.0; word-made code references, `{name}` slots, email values and `<NAME ...>` pointer records are no longer `generic-secret` findings (emails stay non-blocking `personal` findings).
+- **Code, a wrapped placeholder, a regex or an email still in the secret lane**: fixed in 3.1.1, see Literals only above. Upgrade and rerun `hewtd reconcile`.
 - **False positive flagged as a secret**: add it to `reconcile.secrets.allow`
   (by `fingerprint` from the report, the full hash or any prefix of at least 12 hex
   chars as shown there, or a `pattern`) with a `reason`.

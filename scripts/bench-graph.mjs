@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Benchmark `hewtd index` (with graph export): cold, warm-unchanged, one doc edited, one code file edited.
-// Not part of CI. Usage: node scripts/bench-graph.mjs [path/to/dist/cli/index.js] [docs=900] [code=400]
+// Not part of CI. Usage: node scripts/bench-graph.mjs [path/to/dist/cli/index.js] [docs=900] [code=400] [--profile large]
+// --profile large: ~920 docs, ~3000 code files (a few over 512 KB), ~2400 cited symbols, ~13000 refs, 150 commits (#74).
 // Set HEWTD_TIMING=1 (done here) to print per-stage timings from build_graph.
 import { execFileSync, spawnSync } from 'child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync, appendFileSync } from 'fs';
@@ -9,9 +10,13 @@ import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const cli = resolve(process.argv[2] ?? join(here, '..', 'dist', 'cli', 'index.js'));
-const doc_count = Number(process.argv[3] ?? 900);
-const code_count = Number(process.argv[4] ?? 400);
+const args = process.argv.slice(2);
+const profile_at = args.indexOf('--profile');
+const large = profile_at >= 0 && args.splice(profile_at, 2)[1] === 'large';
+const cli = resolve(args[0] ?? join(here, '..', 'dist', 'cli', 'index.js'));
+const doc_count = Number(args[1] ?? (large ? 920 : 900));
+const code_count = Number(args[2] ?? (large ? 3000 : 400));
+const symbols_per_doc = large ? 2 : 0; // extra symbol and path refs per doc beyond the three base ones
 const domains = ['guides', 'procedures', 'architecture', 'reference', 'operations', 'testing'];
 
 const dir = mkdtempSync(join(tmpdir(), 'bench-graph-'));
@@ -22,15 +27,16 @@ const code_file = (i) => `src/mod${i % 20}/unit${i}.ts`;
 
 try {
   git('init', '-q');
-  for (let i = 0; i < code_count; i++) put(code_file(i), `export function benchUnit${i}() { return ${i}; }\nexport const BENCH_LIMIT_${i} = ${i};\n`);
+  for (let i = 0; i < code_count; i++) put(code_file(i), `export function benchUnit${i}() { return ${i}; }\nexport const BENCH_LIMIT_${i} = ${i};\n` + (large && i < 6 ? `// ${'filler line for a large file '.repeat(20)}\n`.repeat(1100) : ''));
   for (let i = 0; i < doc_count; i++) {
     const domain = domains[i % domains.length];
     const cites = [i % code_count, (i * 7 + 1) % code_count, (i * 13 + 5) % code_count];
+    const extra = Array.from({ length: symbols_per_doc * 5 }, (_, k) => { const c = (i * 31 + k * 97 + 7) % code_count; return k % 2 ? `\`benchUnit${c}()\`` : `\`BENCH_LIMIT_${c}\``; }).join(', ');
     const body = Array.from({ length: 30 }, (_, line) => `Paragraph ${line} of document ${i} describes subsystem ${i % 37} behaviour number ${line * i}.`).join('\n\n');
-    put(`.documentation/${domain}/doc-${i}.md`, `---\ntitle: Doc ${i}\npurpose: Explains subsystem ${i % 37} for the benchmark tree\nsources: [${code_file(cites[0])}]\nlast_verified: 2026-01-01\n---\n# Doc ${i}\n\nSee \`${code_file(cites[1])}\`, \`benchUnit${cites[2]}()\` and [next](./doc-${(i + 1) % doc_count}.md).\n\nConfig \`BENCH_LIMIT_${cites[0]}\` and \`missing/path-${i}.ts\`.\n\n${body}\n`);
+    put(`.documentation/${domain}/doc-${i}.md`, `---\ntitle: Doc ${i}\npurpose: Explains subsystem ${i % 37} for the benchmark tree\nsources: [${code_file(cites[0])}]\nlast_verified: 2026-01-01\n---\n# Doc ${i}\n\nSee \`${code_file(cites[1])}\`, \`benchUnit${cites[2]}()\` and [next](./doc-${(i + 1) % doc_count}.md).\n\nConfig \`BENCH_LIMIT_${cites[0]}\` and \`missing/path-${i}.ts\`.\n\n${extra ? `Also ${extra}.\n\n` : ''}${body}\n`);
   }
   git('add', '-A'); git('commit', '-qm', 'initial');
-  for (let n = 0; n < 15; n++) { put(code_file(n), `export function benchUnit${n}() { return ${n + 1000}; }\nexport const BENCH_LIMIT_${n} = ${n};\n`); git('add', '-A'); git('commit', '-qm', `c${n}`); }
+  for (let n = large ? 6 : 0; n < (large ? 156 : 15); n++) { put(code_file(n % code_count), `export function benchUnit${n}() { return ${n + 1000}; }\nexport const BENCH_LIMIT_${n} = ${n};\n`); git('add', '-A'); git('commit', '-qm', `c${n}`); }
 
   const run = (label) => {
     const start = Date.now();
@@ -47,5 +53,5 @@ try {
   put(code_file(3), 'export function benchUnit3() { return 99999; }\nexport const BENCH_LIMIT_3 = 3;\n');
   run('one code file edited');
 } finally {
-  rmSync(dir, { recursive: true, force: true });
+  if (process.env.BENCH_KEEP) console.log(`kept ${dir}`); else rmSync(dir, { recursive: true, force: true });
 }

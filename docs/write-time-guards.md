@@ -43,6 +43,10 @@ hewtd hooks uninstall       # removes exactly that block (byte-exact)
 
 - Exit 1 with masked `file:line` findings and the reconcile pointer. Only
   secret-kind findings block; emails do not.
+- 3.1.1: `generic-secret` reports literals only. Code expressions, wrapped placeholders (`<..>`, `${..}`, `{{..}}`),
+  regex-heavy values, `abc123`/`123456`/`qwerty` placeholders and well-formed emails (digit-bearing ones too) no longer
+  block a write, as long as what they excuse is words or runs, never random characters. Rules in
+  [reconcile.md](./reconcile.md#secrets-first-2170).
 - The hook block is `# >>> hewtd secrets >>>` ... `# <<< hewtd secrets <<<` and
   runs `npx --no-install hewtd secrets --staged || exit 1`. It resolves
   `core.hooksPath` or `.git/hooks` and is idempotent. In an existing hook the block

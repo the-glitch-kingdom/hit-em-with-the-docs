@@ -53,12 +53,23 @@ const REGEX_SYNTAX = /\[[^\]]+\](?:[*+?]|\{\d+(?:,\d*)?\}?)?|\\[dwsDWS.]|\.[*+?]
 const is_meta_heavy = (value: string) => (value.match(/[\][{}()*+?.\\^$|]/g)?.length ?? 0) * 4 >= value.length;
 const is_regex_pattern = (value: string) => is_meta_heavy(value) || /\[[^\]]+\](?:[*+?]|\{\d)|\\[dwsDWS]|\.[*+]|^\^.*\$$/.test(value) && !is_strong(value.replace(REGEX_SYNTAX, ''));
 
+// Contents of a wrapper that look like a value: no spaces, not made of words, 12+ characters with entropy >= 3.5.
+const is_random_inner = (inner: string) => inner.length >= 12 && /^\S+$/.test(inner) && !WORDY.test(inner) && compute_entropy(inner) >= 3.5;
+
 // Placeholder filter. `weak` words (test, password, secret) only apply to generic/url rules,
 // where the value is free text; known-shape keys like sk_test_ are real credentials.
 export function is_placeholder(value: string, weak: boolean): boolean {
   const line = value.toLowerCase();
-  if (/^your[_-]|<[^>]*>|\$\{|^\$[a-z_]|x{3,}|\*{3,}|\.{3}|…|example|changeme|change_me|dummy|placeholder|redacted/.test(line)) return true;
-  if (/^(?:\[.*\]|<.*>|\$\{.*\}|\{\{.*\}\}|\$\(.*\)|%\(.*\)s)$/.test(line) || /^(?:abc123|123456|abcdef|qwerty)/.test(line)) return true;
+  if (/^your[_-]|\$\{|^\$[a-z_]|x{3,}|\*{3,}|\.{3}|…|example|changeme|change_me|dummy|placeholder|redacted/.test(line)) return true;
+  // Wrapped values and fake-key prefixes only excuse free text, and only when what is inside is not itself a strong value.
+  if (weak) {
+    const wrapped = /^(?:\[(.*)\]|<(.*)>|\$\{(.*)\}|\{\{(.*)\}\}|\$\((.*)\)|%\((.*)\)s)$/.exec(value);
+    if (wrapped && !is_random_inner(wrapped.slice(1).find((group) => group !== undefined)!)) return true;
+    const inline = /<([^>]*)>/.exec(value);
+    if (inline && !is_random_inner(inline[1]!)) return true;
+    const prefix = /^(?:abc123|123456|abcdef|qwerty)/i.exec(value);
+    if (prefix && !is_strong(value.slice(prefix[0].length))) return true;
+  }
   if (new Set(line).size <= 2) return true;
   if (has_ascending_run(line)) return true;
   return weak && /password|passwd|secret|(^|[^a-z])test([^a-z]|$)/.test(line);
@@ -82,19 +93,20 @@ const is_strong = (value: string) => (UUID.test(value) && new Set(value.replace(
 // Code, not a credential: a word-made dotted chain (self.x, settings.X), a call of one, or only {name} template slots around weak text.
 const is_code = (value: string) => {
   if (is_word_chain(value)) return true;
-  const call = /^([A-Za-z_][\w.]*)\(/.exec(value);
-  if (call && is_word_chain(call[1]!)) return true;
   // member access, optional chain, call or index on a word-made name: the next token is a word-made name, a quote or ')'
   // (the value ends at a quote, so the end counts too).
-  const access = /^([A-Za-z_]\w*)(?:\?\.|\.|\(|\[)(?:([A-Za-z_]\w*)|[)"'`]|$)/.exec(value);
-  if (access && WORDY.test(access[1]!) && (access[2] === undefined || WORDY.test(access[2]))) return true;
+  // member access, optional chain, call or index: every identifier-like token is a word-made name or short.
+  if (/^[A-Za-z_]\w*(?:\?\.|\.|\(|\[)/.test(value) && value.split(/[^A-Za-z0-9_$]+/).every((token) => token.length <= 4 || WORDY.test(token))) return true;
   const rest = value.replace(/\{([A-Za-z_][\w.]*)\}/g, (whole_match, slot: string) => (is_word_chain(slot) ? '' : whole_match));
   return rest !== value && !is_strong(rest);
 };
-// Any well-formed address is an email unless a part of it looks random (12+ characters with entropy >= 3.3).
+// Any well-formed address is an email unless a part looks random: 12+ characters with entropy >= 3.3, or 8+ characters
+// that (minus trailing digits) are neither word-made nor all digits.
+const is_random_part = (part: string) => (part.length >= 12 && compute_entropy(part) >= 3.3)
+  || (part.length >= 8 && !/^\d+$/.test(part) && (!WORDY.test(part.replace(/\d+$/, '')) || !!part.match(/[A-Z]?[a-z]+/g)?.some((hump) => hump.length >= 3 && !/[aeiou]/i.test(hump))));
 const is_email = (value: string) => {
   const match = /^([^@\s]{1,64})@([^@\s]{1,255}\.[A-Za-z]{2,})$/.exec(value);
-  return !!match && ![...match[1]!.split(/[._+-]/), ...match[2]!.split(/[.-]/)].some((part) => part.length >= 12 && compute_entropy(part) >= 3.3);
+  return !!match && ![...match[1]!.split(/[._+-]/), ...match[2]!.split(/[.-]/)].some(is_random_part);
 };
 /** `<NAME from Vault: ...>`: a word-made name after '<' with a closing '>' later on the same line. */
 const build_pointer_record = (value: string, match: RegExpMatchArray) => {

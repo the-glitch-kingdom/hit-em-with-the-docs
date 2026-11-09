@@ -99,7 +99,28 @@ hewtd reconcile --secrets [scope] [--json]
   not. Real values (`hvs.` tokens, long url passwords) are still found.
 - **Literals only (3.1.1)**: `generic-secret` reports literal values. Each exemption
   below excuses only words or runs, never random characters: a part counts as random
-  when it is not made of words, or holds five consonants in a row.
+  when it is not made of words (the word test below).
+  - **Word test (3.1.2)**: `is_word_like(token)` in `src/core/reconcile/secrets.ts`
+    splits a token on non-alphanumerics, cuts each piece into humps
+    (`openAIApiKey` is `open`, `AI`, `Api`, `Key`; `LLMProviderKey` is `LLM`, `Provider`,
+    `Key`) and judges every hump on its own, so acronyms and camelCase are words and
+    consonants are never counted across a hump. A hump passes with a vowel (`y` counts),
+    no run of five consonants, and no consonant pair English lacks; a short list of
+    vowel-less abbreviations (`http`, `css`, `cidr`) also passes. Acronyms of 1-2 letters
+    are fine; 3-5 letter all-caps humps need a vowel or a listed abbreviation; longer
+    acronyms pass only as a whole piece (`VAULT_TOKEN_FROM_ENVIRONMENT`), not glued
+    mid-token. Digits are up to four and mostly follow a word (`Http2Response`,
+    `acme2go`, `v1.15` pass; `ypap7nhi` does not). The code, wrapped-contents, prefix-tail,
+    regex-remainder, email-part and pointer-record exemptions all use this one test, and
+    wrapped contents are judged piece by piece. So `settings.openAIApiKey`, `getAPIKey(provider)`,
+    `LLMProviderKey`, `minLengthRequirement12` and `<token-from-init>` are not findings,
+    while random values in the same positions still are. On a corpus of 3186 real
+    identifiers the test passes 99.1% (the 3.1.1 test passed 78.2%).
+  - Known limits: there is no word list, so a random letters-only run that reads like a
+    word can pass. About 0.9% of real names are rejected (hump runs of 5+ consonants such
+    as `Fullscreen`, digit-heavy names such as `ed25519`, a few acronym-glued names such as
+    `JSDOMOptions`). Word-likeness only decides exemption from `generic-secret`, so such a
+    name is reported, not hidden; allowlist it if it is a false positive.
   - **Code**: member access, optional chaining, calls or indexing
     (`req.headers.authorization?.split(" ")[1]`, `hash(password)`) where every token
     is a word, a word with version digits (`sha256`, `b64decode`) or a short number,
@@ -116,7 +137,7 @@ hewtd reconcile --secrets [scope] [--json]
   - **Emails**: a well-formed address under a secret-named key is a `personal` finding
     and never blocks, unless a local segment or domain label looks random (12+
     characters with entropy of 3.3 or more, 8+ characters not made of words, 6+
-    characters with an inner capital not made of words, or five consonants in a row);
+    characters with an inner capital not made of words);
     then it stays `generic-secret`. Digit-bearing emails such as a name with a year
     are `personal`, and a doc with only such values is not in the secret lane.
   - Known limit: a very short random token (3 letters) or a letters-only random run
@@ -488,6 +509,7 @@ accepted entry. Links from other outside files are not repointed.
 - **Placeholder or short password flagged** (`abc123def456...`, `user:pass@host`, a regex): fixed in 3.1.0, see Placeholders above.
 - **Docs in the secret lane for code like `self.token` or `settings.X`**: fixed in 2.22.0; word-made code references, `{name}` slots, email values and `<NAME ...>` pointer records are no longer `generic-secret` findings (emails stay non-blocking `personal` findings).
 - **Code, a wrapped placeholder, a regex or an email still in the secret lane**: fixed in 3.1.1, see Literals only above. Upgrade and rerun `hewtd reconcile`.
+- **`generic-secret` flags `openAIApiKey`, `getAPIKey(...)`, `LLMProviderKey`, `minLengthRequirement12` or a `<root-token-...>` placeholder**: fixed in 3.1.2 (the word test works per hump, see Word test). An email-only doc is never in the secret lane.
 - **False positive flagged as a secret**: add it to `reconcile.secrets.allow`
   (by `fingerprint` from the report, the full hash or any prefix of at least 12 hex
   chars as shown there, or a `pattern`) with a `reason`.

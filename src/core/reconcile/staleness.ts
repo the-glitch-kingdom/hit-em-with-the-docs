@@ -25,6 +25,36 @@ function run_git(repo_root: string, args: string[]): string {
 
 const MAX_WALK = 50;
 
+// Per-run memos (cleared by reset_history_memo at the start of a graph build): triage and the export dates walk the same doc once.
+const body_change_memo = new Map<string, { commit: string; date: string } | null>();
+const shallow_memo = new Map<string, boolean>();
+export function reset_history_memo(): void {
+  body_change_memo.clear();
+  shallow_memo.clear();
+}
+
+/** The body of every `sha:path` object in one `git cat-file --batch` process; null for a missing object. */
+function read_blobs(repo_root: string, objects: string[]): Array<string | null> {
+  const output = execFileSync('git', ['cat-file', '--batch'], {
+    // eslint-disable-next-line id-denylist -- child_process option name
+    cwd: repo_root,
+    input: objects.join('\n') + '\n',
+    stdio: ['pipe', 'pipe', 'ignore'],
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  const blobs: Array<string | null> = [];
+  let at = 0;
+  for (let i = 0; i < objects.length; i++) {
+    const line_end = output.indexOf('\n', at);
+    const size = Number(output.toString('utf-8', at, line_end).split(' ')[2]);
+    at = line_end + 1;
+    if (Number.isNaN(size)) { blobs.push(null); continue; } // "<object> missing"
+    blobs.push(output.toString('utf-8', at, at + size));
+    at += size + 1;
+  }
+  return blobs;
+}
+
 const get_body = (text: string): string => {
   try {
     return strip_frontmatter(text).trim();
@@ -43,6 +73,14 @@ export function find_body_change(
   repo_root: string,
   doc_path: string
 ): { commit: string; date: string } | null {
+  const key = JSON.stringify([repo_root, doc_path]);
+  if (body_change_memo.has(key)) return body_change_memo.get(key)!;
+  const change = walk_body_change(repo_root, doc_path);
+  body_change_memo.set(key, change);
+  return change;
+}
+
+function walk_body_change(repo_root: string, doc_path: string): { commit: string; date: string } | null {
   // --follow so a renamed doc keeps its history (works for a single path only)
   const log_output = run_git(repo_root, [
     'log', '--follow', '--name-only', `-n${MAX_WALK}`, '--format=%x00%H%x09%cI', '--', doc_path,
@@ -65,14 +103,10 @@ export function find_body_change(
   }
   // shortcut: an uncommitted body edit matches no commit, so it falls back to the newest commit
   let match = first;
-  for (const candidate of commits) {
-    let body: string;
-    try {
-      body = get_body(run_git(repo_root, ['show', `${candidate.sha}:${candidate.path}`]));
-    } catch {
-      break;
-    }
-    if (body !== current) break;
+  const blobs = read_blobs(repo_root, commits.map((candidate) => `${candidate.sha}:${candidate.path}`));
+  for (const [i, candidate] of commits.entries()) {
+    const blob = blobs[i];
+    if (blob === null || blob === undefined || get_body(blob) !== current) break;
     match = candidate;
   }
   return { commit: match.sha, date: match.date };
@@ -88,7 +122,9 @@ export function find_staleness_signal(
   cited_paths: string[]
 ): StalenessSignal {
   try {
-    if (run_git(repo_root, ['rev-parse', '--is-shallow-repository']) === 'true') {
+    let shallow = shallow_memo.get(repo_root);
+    if (shallow === undefined) shallow_memo.set(repo_root, (shallow = run_git(repo_root, ['rev-parse', '--is-shallow-repository']) === 'true'));
+    if (shallow) {
       return {
         status: 'unknown',
         warning: 'shallow clone: git history is incomplete, staleness unknown (fetch full history)',

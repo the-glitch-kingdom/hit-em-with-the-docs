@@ -86,7 +86,15 @@ hewtd reconcile --secrets [scope] [--json]
   prefix, e.g. `vault-token docs/ops.md:12 hvs....28`. `--json` prints masked
   findings only. A value is never printed, logged or passed through argv or temp files.
 - **Placeholders** such as `XXXX`, `<token>`, `${VAR}`, `changeme` and
-  `example` are ignored.
+  `example` are ignored. Since 3.1.0 so are ascending runs: a value with 5 or
+  more consecutive ascending `[a-z0-9]` characters (`abcde`, `12345`), or three
+  separate runs of 3 or more in a value of 64 characters or fewer
+  (`abc123def456ghi789jkl`), is a placeholder. Long random values (PEM bodies)
+  are unaffected. A `url-password` under 8 characters, or one of `pass`,
+  `password`, `changeme`, `secret`, `admin`, `root`, `postgres`, `user`, `test`,
+  `dev`, `example` (any case), is not a finding. `generic-secret` skips values
+  that look like a regex (a character class with a quantifier, `\d` `\w` `\s`,
+  `.*`, `.+`, `^...$`). Real values (`hvs.` tokens, long url passwords) are still found.
 - **Allowlist**: `reconcile.secrets.allow` is a list of
   `{ "fingerprint" | "pattern", "file"?, "reason" }`. `reason` is required;
   `file` is an exact path or glob. `reconcile.secrets.disabled_rules` turns
@@ -98,9 +106,13 @@ hewtd reconcile --secrets [scope] [--json]
   whose findings are all `generic-secret` or `url-password` is withheld, not
   blocking: it leaves `cited`, is listed in `blocked_files`, and the doc gets the
   reason `cited file withheld: <file> (<masked>)` but keeps its normal lane. A
-  cited file with any other secret rule, or any finding in a cited `.md`/`.mdx`
-  file, still puts the doc in the secret lane (`cited file blocked`). The doc's
-  own findings of any rule always do. Related-repo cited files follow the same rule.
+  cited file with any other secret rule still puts the doc in the secret lane
+  (`cited file blocked`). **Linked docs are withheld (3.1.0)**: a cited `.md` or
+  `.mdx` file with findings is always listed in `blocked_files` with the reason
+  `cited file withheld: <path> (<masked>)` and never puts the citing doc in the
+  secret lane, so a secret does not spread through doc links. Only the doc's own
+  findings, or a known-shape finding in a cited code file, set the lane.
+  Related-repo cited files follow the same rule.
 - **The `secret` verdict**: `--write-review` proposes it with a masked entry per
   finding. On accept, `--apply` appends each value to `.env.hewtd` (mode 0600,
   git-ignored first) and replaces it with a pointer,
@@ -279,7 +291,14 @@ Verdicts: `verify`, `rewrite`, `archive`, `unverifiable`, `fields`, `secret`,
 
 `--apply <files...>`:
 
-- Serial, one commit per batch. Skips entries not ticked `accept` or with a
+- Serial. A batch makes up to two commits (3.1.0): `docs(reconcile): <scope> batch <n>`
+  holds only the changed docs, and `docs(index): refresh after reconcile batch <n>` is
+  made only if a regenerated index file changed. Both go through the staged-diff secret
+  guard, and a rollback restores docs and index files. The ledger `applied_commit` is
+  the docs commit. Indexes are regenerated only when a verdict changes what they list
+  (`phrases`, `verify`, `unverifiable` and `rewrite` entries with no title, summary,
+  purpose, description, tier, status, domains, keywords or kind change skip it). Gaps
+  `phrases` and `verify` applies make one docs-only commit. Skips entries not ticked `accept` or with a
   null verdict.
 - Re-checks `content_hash`; a doc that changed since triage is reported
   `stale` and left alone.
@@ -294,7 +313,7 @@ Verdicts: `verify`, `rewrite`, `archive`, `unverifiable`, `fields`, `secret`,
 - `rewrite` drafts are written to `.hewtd/reconcile/drafts/`, outside the tree.
   Rewrite entries alone do not produce a commit.
 - Touched domains have their indexes regenerated.
-- Only the frontmatter keys an entry changes are rewritten (2.22.0): `symptoms` for phrases;
+- Only the frontmatter keys an entry changes are rewritten (2.22.0; since 3.1.0 the same holds for `fix-retrieval-fields --apply`, `maintain --fix` / `metadata-sync`, `archive` / `unarchive` and the outside move, see [write-time-guards.md](./write-time-guards.md#commands-that-edit-a-doc-rewrite-only-their-own-keys-310)): `symptoms` for phrases;
   the keys in `frontmatter`, plus `sources` and `last_verified` (verify) and
   `confidence: low` (unverifiable). Every other frontmatter byte (quoting, dates,
   comments, spacing, CRLF) and the body stay byte-identical, so apply no longer
@@ -431,10 +450,13 @@ accepted entry. Links from other outside files are not repointed.
   owning repo's doc; do not copy it.
 - **Staleness resets after a `last_verified` stamp**: it does not; only body
   changes reset it.
+- **`docs(index)` commit after apply**: expected since 3.1.0 when an index file changed; the docs commit is the one before it.
 - **Apply exits 1 with "rolled back"**: nothing was committed; fix the
   reported error and rerun the same review file.
 - **Config ignored from a subdirectory**: fixed in 2.16.0; config is read from
   the docs path's project root, not the current directory.
+- **A doc is in the secret lane only because a doc it links to has a secret**: fixed in 3.1.0; the linked `.md` is withheld in `blocked_files` and the citing doc keeps its lane.
+- **Placeholder or short password flagged** (`abc123def456...`, `user:pass@host`, a regex): fixed in 3.1.0, see Placeholders above.
 - **Docs in the secret lane for code like `self.token` or `settings.X`**: fixed in 2.22.0; word-made code references, `{name}` slots, email values and `<NAME ...>` pointer records are no longer `generic-secret` findings (emails stay non-blocking `personal` findings).
 - **False positive flagged as a secret**: add it to `reconcile.secrets.allow`
   (by `fingerprint` from the report, the full hash or any prefix of at least 12 hex

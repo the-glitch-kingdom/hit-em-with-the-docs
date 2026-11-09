@@ -1,6 +1,6 @@
 /**
  * Change dates for the graph export: last-change date per file (one git pass
- * per repo) and per-doc body-change date (cached by content hash + HEAD).
+ * per repo) and per-doc body-change date (cached by content hash; walked again when a commit since touched it).
  * Read-only on git; never throws outside a repo.
  */
 import { execFileSync } from 'child_process';
@@ -8,6 +8,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { compute_content_hash } from '../reconcile/ledger.js';
 import { find_body_change } from '../reconcile/staleness.js';
+import { list_committed_changes } from './cache.js';
 
 const run_git = (working_dir: string, args: string[]): string =>
   // eslint-disable-next-line id-denylist -- child_process option name
@@ -39,8 +40,8 @@ const CACHE = '.hewtd/graph-cache.json';
 interface Cache { head: string; docs: Record<string, { hash: string; body_changed: string | null }> }
 
 /**
- * Body-change date (YYYY-MM-DD) per doc. Entries are reused when HEAD and the
- * doc's content hash are unchanged, so unchanged docs are not walked again.
+ * Body-change date (YYYY-MM-DD) per doc. Entries are reused when the doc's content hash
+ * is unchanged and no commit since the cached HEAD touched it, so unchanged docs are not walked again.
  * `walked` counts the docs that needed a git walk.
  */
 export function find_body_changed_dates(
@@ -57,10 +58,11 @@ export function find_body_changed_dates(
     return { dates, walked: 0 };
   }
   let old: Cache | null = null;
+  let touched: Set<string> | null = null;
   let others: Record<string, unknown> = {}; // fields cache.ts owns: kept on write
   try {
     const cache = JSON.parse(readFileSync(join(repo_root, CACHE), 'utf-8')) as Cache;
-    if (cache.head === head && cache.docs) old = cache;
+    if (cache.docs) { touched = list_committed_changes(repo_root, cache.head, head); if (touched) old = cache; } // commits since: only the docs they touched are walked again
     others = cache as unknown as Record<string, unknown>;
   } catch { /* no cache */ }
   const next: Cache = { head, docs: {} };
@@ -68,7 +70,7 @@ export function find_body_changed_dates(
   for (const doc of docs) {
     const hash = compute_content_hash(doc.content);
     let cached = old?.docs[doc.path];
-    if (!cached || cached.hash !== hash) {
+    if (!cached || cached.hash !== hash || touched?.has(doc.path)) {
       walked++;
       let changed: string | null = null;
       try { changed = find_body_change(repo_root, doc.path)?.date.slice(0, 10) ?? null; } catch { /* leave null */ }

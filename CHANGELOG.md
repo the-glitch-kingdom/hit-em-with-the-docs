@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.1.2] — 2026-11-08
+
+Follow-up to 3.1.1 (#76). No breaking changes; `.hewtd/graph.json` stays `version: 1`.
+
+- Secrets: one hump-based word test, `is_word_like` (acronym humps and camelCase are words, consonants are not counted
+  across humps), used by every exemption. A bare value (no `.`, `(` or `[`) is excused only when shaped like an
+  identifier (two or more word humps, digits only as a short trailing group), so pronounceable generated passwords
+  and long lowercase runs are still reported. `generic-secret` no longer reports `settings.openAIApiKey`,
+  `getAPIKey(provider)`, `LLMProviderKey`, `minLengthRequirement12` or `<token-from-init>`; email parts like `QATeam`
+  and `DevOps-Oncall2` count as words, random parts stay random, email-only docs are not in the secret lane. On a
+  corpus of 3186 real identifiers the test passes 99.1% (78.2% in 3.1.1). Known limit: about 0.9% of real names
+  (digit-heavy, 5-consonant humps) are still reported.
+- Speed: the per-doc cache keys on the last code commit, not HEAD. A docs-only commit re-indexes in 1.3 s instead of
+  31.8 s on the large profile. Amend, rebase, a non-descending branch switch or a 3.1.1 cache (no `head`) takes the
+  full path, so the first run after upgrading is a full rebuild. `bench-graph.mjs` gains a docs-only commit step.
+
 ## [3.1.1] — 2026-11-08
 
 Follow-up to 3.1.0 (#74). No breaking changes; `.hewtd/graph.json` stays `version: 1`.

@@ -13,7 +13,7 @@ import { find_git_top, list_markdown_files, resolve_docs, STALE_COMMITS_BAR } fr
 import { find_duplicates } from '../reconcile/duplicates.js';
 import { find_md_mentions } from '../reconcile/references.js';
 import { find_body_changed_dates, find_file_dates } from './dates.js';
-import { compute_code_state, compute_fingerprint, compute_link_fingerprint, compute_graph_hash, is_fingerprint_current, load_doc_cache, load_staleness_cache, write_cache_fields, type DocEntry, type GraphTriage } from './cache.js';
+import { compute_code_state, list_committed_changes, compute_fingerprint, compute_link_fingerprint, compute_graph_hash, is_fingerprint_current, load_doc_cache, load_staleness_cache, write_cache_fields, type DocEntry, type GraphTriage } from './cache.js';
 import { print_timings, time_stage } from './timing.js';
 import { GRAPH_VERSION, type GraphDoc, type GraphRef, type GraphRefKind, type GraphSymbol, type GraphV1, type GraphVerdict } from './schema.js';
 
@@ -52,10 +52,18 @@ export async function build_graph(options: { root: string; docs_root: string; co
   const kept = [...raws.keys()];
   const ledger = await load_ledger(resolve(repo_root, config.reconcile.ledger_path));
   const head = find_head(git_top);
-  const staleness_cache = head ? load_staleness_cache(git_top, head) : undefined;
+  let staleness_cache = head ? load_staleness_cache(git_top, head) : undefined;
   const ledger_path = resolve(repo_root, config.reconcile.ledger_path);
   const code_state = compute_code_state({ git_top, docs_root, config, ledger_path });
-  const prior = load_doc_cache(git_top, code_state);
+  let prior = load_doc_cache(git_top, code_state);
+  // docs touched by commits since the cached HEAD are resolved again (their body date and staleness moved); no known ancestor: full path
+  const committed = prior.head && head ? list_committed_changes(git_top, prior.head, head) : null;
+  if (!committed) prior = { state: '', entries: {}, mentions: {} };
+  if (staleness_cache && committed && prior.head !== head) { // same code, so the signals of docs no commit touched still hold
+    const carried = Object.entries(load_staleness_cache(git_top, prior.head!).entries).filter(([key]) => !committed.has((JSON.parse(key) as string[])[0]!));
+    staleness_cache = { head: head!, entries: Object.fromEntries(carried) };
+  }
+  const touched = [...committed ?? []].filter((file) => /\.mdx?$/.test(file)).map((file) => join(git_top, file));
   const duplicates = await time_stage('duplicates', () => find_duplicates(docs_root, config));
   const hashes = new Map(kept.map((doc_path) => [doc_path, compute_content_hash(raws.get(doc_path)!.raw_text)]));
   const ledger_text = (doc_path: string): string => JSON.stringify(ledger.entries[doc_path] ?? null);
@@ -65,6 +73,7 @@ export async function build_graph(options: { root: string; docs_root: string; co
   const changed = new Set<string>(); // absolute paths of docs that are new, edited or gone
   for (const doc_path of kept) if (prior.entries[doc_path]?.hash !== hashes.get(doc_path)) changed.add(join(docs_root, doc_path));
   for (const doc_path of Object.keys(prior.entries)) if (!raws.has(doc_path)) changed.add(join(docs_root, doc_path));
+  for (const abs_path of touched) changed.add(abs_path);
   /** Absolute targets of a doc's doc-links; null when one cannot be decoded. */
   const get_link_targets = (doc_path: string, doc_refs: GraphTriage['refs']): string[] | null => {
     try { return doc_refs.filter((reference) => reference.kind === 'doc-link').map((reference) => resolve(dirname(join(docs_root, doc_path)), decodeURI(reference.ref.split(/[#?]/)[0]!))); } catch { return null; }
@@ -87,7 +96,7 @@ export async function build_graph(options: { root: string; docs_root: string; co
   };
   const reusable = kept.filter((doc_path) => {
     const entry = prior.entries[doc_path];
-    return !!entry && entry.hash === hashes.get(doc_path) && entry.ledger === ledger_text(doc_path) && entry.duplicates === duplicates_text(doc_path) && !points_at_changed(doc_path, entry);
+    return !!entry && !changed.has(join(docs_root, doc_path)) && entry.hash === hashes.get(doc_path) && entry.ledger === ledger_text(doc_path) && entry.duplicates === duplicates_text(doc_path) && !points_at_changed(doc_path, entry);
   });
   const unfound_names = [...new Set(reusable.flatMap((doc_path) => prior.entries[doc_path]!.unfound))];
   const mentions = changed.size && unfound_names.length ? find_md_mentions(git_top, unfound_names) : undefined;
@@ -166,7 +175,7 @@ export async function build_graph(options: { root: string; docs_root: string; co
 
   if (staleness_cache && !options.dry_run) {
     const mention_names = [...new Set(Object.values(entries).flatMap((entry) => entry.unfound))];
-    const doc_cache = code_state ? { doc_cache: { state: code_state, entries, mentions: Object.fromEntries([...find_md_mentions(git_top, mention_names)].map(([name, files]) => [name, [...files]])) } } : {};
+    const doc_cache = code_state ? { doc_cache: { state: code_state, head: head!, entries, mentions: Object.fromEntries([...find_md_mentions(git_top, mention_names)].map(([name, files]) => [name, [...files]])) } } : {};
     write_cache_fields(git_top, { staleness: { head: head!, entries: staleness_cache.entries }, ...doc_cache });
   }
   print_timings();

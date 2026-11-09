@@ -47,6 +47,9 @@ hewtd hooks uninstall       # removes exactly that block (byte-exact)
   regex-heavy values, `abc123`/`123456`/`qwerty` placeholders and well-formed emails (digit-bearing ones too) no longer
   block a write, as long as what they excuse is words or runs, never random characters. Rules in
   [reconcile.md](./reconcile.md#secrets-first-2170).
+- 3.1.2: the word test behind those exemptions judges each camelCase or acronym hump on its own (`openAIApiKey`,
+  `getAPIKey(`, `LLMProviderKey`, `minLengthRequirement12` are no longer flagged); random values in the same
+  positions still block. See the Word test in [reconcile.md](./reconcile.md#secrets-first-2170).
 - The hook block is `# >>> hewtd secrets >>>` ... `# <<< hewtd secrets <<<` and
   runs `npx --no-install hewtd secrets --staged || exit 1`. It resolves
   `core.hooksPath` or `.git/hooks` and is idempotent. In an existing hook the block

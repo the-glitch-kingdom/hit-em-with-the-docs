@@ -167,11 +167,31 @@ export function is_identifier_shaped(raw_token: string): boolean {
   }
   return !(/^[a-z][a-z0-9]*$/.test(token) && token.length > 16) || is_word_like(token);
 }
-// `[text](target)`: the target is a URL or a path and the text is not random.
+// Code names are rarely all English (utcnow, qdrant, hsl, kv), but random values are made of non-words. Each token (split at
+// punctuation, '_' kept) is word-like as a whole, with at most one exception in the value: a short lowercase name that is called
+// or accessed (utcnow(), hsl(, b64decode(), or one short part of a name beside at most two common config words (qdrant_api_key, vault_kv).
+// A long single-case run is random even when it passes the word test.
+const CONFIG_WORDS = new Set('api key keys id url uri host port token secret secrets client user username password pass name version path endpoint base region index collection db kv vault auth app env model org project bucket account access cluster server service'.split(' '));
+const is_word_token = (token: string) => is_word_like(token) && !(/^(?:[a-z]{13,}|[A-Z]{13,})$/.test(token) && (token.length >= 20 || compute_entropy(token) >= 3.3));
+const is_code_words = (text: string) => {
+  const odd = new Set<string>();
+  for (const match of text.matchAll(/[A-Za-z0-9_]+/g)) {
+    const token = match[0];
+    if (/^\d{1,4}$/.test(token) || is_word_token(token)) continue;
+    const parts = token.split('_').filter(Boolean), words = parts.filter(is_word_token), [part = ''] = parts.filter((piece) => !is_word_token(piece));
+    const is_called = /^[.(]/.test(text.slice(match.index + token.length));
+    const allowed = parts.length - words.length === 1 && (parts.length === 1
+      ? is_called && /^[a-z][a-z0-9]{1,9}$/.test(part)
+      : /^(?:[a-z]{2,6}|[A-Z]{2,6})$/.test(part) && (part.length <= 2 || /[aeiou]/i.test(part)) && words.length <= 2 && words.every((word) => CONFIG_WORDS.has(word.toLowerCase())));
+    if (!allowed) return false;
+    odd.add(part.toLowerCase());
+  }
+  return odd.size <= 1;
+};
+// `[text](target)`: no userinfo in the target, and the text and target together pass is_code_words.
 const is_markdown_link = (value: string) => {
-  const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(value);
-  if (!link || is_random_inner(link[1]!)) return false;
-  return /^[a-z][a-z0-9+.-]*:\/\/[^@]*$/i.test(link[2]!) || /^(?:\.{0,2}\/|#)/.test(link[2]!) || link[2]!.split(/[/.#]+/).filter(Boolean).every(is_word_like);
+  const link = /^\[([^\]]+)\]\(([^)\s@]+)\)$/.exec(value);
+  return !!link && is_code_words(`${link[1]} ${link[2]}`);
 };
 // `$NAME` / `${NAME}` references: code when nothing random is left once the references and regex syntax are removed.
 const is_variable_reference = (value: string) => {
@@ -182,10 +202,10 @@ const is_variable_reference = (value: string) => {
 const is_code = (value: string) => {
   if (value.includes('.') ? is_word_chain(value) : is_bare_identifier(value)) return true;
   if (is_markdown_link(value) || is_variable_reference(value)) return true;
-  // member access, optional chain, call or index: every identifier-like token is identifier-shaped or a short number, and at
-  // least one is 4+ letters, and at most one, or a third, are not English-like (utcnow, hsl): a chain of short random pieces is a value.
+  // member access, optional chain, call or index: every token is identifier-shaped or a short number, at least one is 4+ letters,
+  // and the word parts pass is_code_words.
   const tokens = value.split(/[^A-Za-z0-9_$]+/).filter(Boolean);
-  if (/^[A-Za-z_]\w*(?:\?\.|\.|\(|\[)/.test(value) && tokens.some((token) => token.length >= 4 && is_identifier_shaped(token)) && tokens.every((token) => is_identifier_shaped(token) || /^\d{1,4}$/.test(token)) && ((unvouched) => unvouched <= 1 || unvouched * 3 <= tokens.length)(tokens.filter((token) => !is_word_like(token) && !/^\d{1,4}$/.test(token)).length)) return true;
+  if (/^[A-Za-z_]\w*(?:\?\.|\.|\(|\[)/.test(value) && tokens.some((token) => token.length >= 4 && is_identifier_shaped(token)) && tokens.every((token) => is_identifier_shaped(token) || /^\d{1,4}$/.test(token)) && is_code_words(value)) return true;
   const rest = value.replace(/\{([A-Za-z_][\w.]*)\}/g, (whole_match, slot: string) => (is_word_chain(slot) ? '' : whole_match));
   return rest !== value && !is_strong(rest);
 };

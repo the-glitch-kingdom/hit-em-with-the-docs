@@ -6,11 +6,13 @@ All notable changes to this project will be documented in this file.
 
 Follow-up to 3.1.3 (#80). No breaking changes; `.hewtd/graph.json` stays `version: 1`.
 
-- Secrets: structured values are judged by identifier shape (`is_identifier_shaped`), not English-likeness, so
-  `datetime.utcnow()`, `settings.qdrant_api_key` and CSS functions such as `hsl(var(--x))` are no longer `generic-secret`.
-  Markdown links `[text](url)` and values with `$VAR` references are skipped when nothing random remains. Random values in
-  the same shapes are still reported. Known limit: a short random all-lowercase token (up to 16 letters) in a structured
-  position passes as an identifier.
+- Secrets: structured values (member access, call, index, CSS functions) may hold one non-English name, so
+  `datetime.utcnow()`, `settings.qdrant_api_key`, `vault_kv.read_secret_version` and `hsl(var(--x))` are no longer
+  `generic-secret`. The exception is a short lowercase name that is called or accessed (`utcnow(`, `hsl(`), or one short
+  part of a name next to common config words (`qdrant` in `qdrant_api_key`); every other token must still read as a word.
+  Markdown links `[text](url)` are skipped when the text and target both read as words (a random query, path or fragment
+  is still reported), and values with `$VAR` references when nothing random remains. Long single-case runs with high
+  entropy now count as random even when they pass the word test.
 
 ## [3.1.3] — 2026-11-08
 

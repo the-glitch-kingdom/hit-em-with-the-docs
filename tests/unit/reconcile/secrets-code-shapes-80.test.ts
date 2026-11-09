@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { scan_text, compute_entropy, is_identifier_shaped } from '../../../src/core/reconcile/secrets';
+import { scan_text, compute_entropy, is_identifier_shaped, is_word_like } from '../../../src/core/reconcile/secrets';
 
 // Random tokens are built at runtime from a seeded generator so the repo never holds a scannable literal.
 const make_draw = (seed: number) => (alphabet: string, n: number) => { let out = ''; for (let i = 0; i < n; i++) { seed = (seed * 1103515245 + 12345) & 0x7fffffff; out += alphabet[(seed >> 8) % alphabet.length]; } return out; };
@@ -52,5 +52,41 @@ describe('is_identifier_shaped (#80)', () => {
     const corpus = readFileSync(join(__dirname, '../../fixtures/identifier-corpus.txt'), 'utf-8').split('\n').filter(Boolean);
     const rejected = corpus.filter((name) => !is_identifier_shaped(name));
     expect(rejected.length / corpus.length, rejected.slice(0, 20).join(' ')).toBeLessThanOrEqual(0.01);
+  });
+});
+
+// Review of the #80 branch: random values hidden in link targets, snake/UPPER chains, short lowercase runs and CSS wrappers.
+describe('random values inside the #80 exemptions are still found (review)', () => {
+  const draw_review = make_draw(8080);
+  const LOWER = 'abcdefghijklmnopqrstuvwxyz', UPPER = LOWER.toUpperCase();
+  const parts = (alphabet: string, count: number, sep: string) => Array.from({ length: count }, () => draw_review(alphabet, 3 + (draw_review('0123', 1).charCodeAt(0) % 4))).join(sep);
+  const camel = () => [draw_review(LOWER, 2), ...Array.from({ length: 3 }, () => { const word = draw_review(LOWER, 6); return word[0]!.toUpperCase() + word.slice(1); })].join('');
+  // [shape, build]: build returns the value and, when 3.1.3 already exempted a word-like draw, the part 3.1.3 judged; such
+  // draws are not part of the bar (3.1.3 missed them too). Every sample must be reported on 3.1.4.
+  const shapes: Array<[string, () => [string, string?]]> = [
+    ['link, random query', () => [`[docs](https://x.io/?k=${draw_review(BASE62, 32)})`]],
+    ['link, random path', () => [`[docs](https://x.io/${draw_review(BASE62, 32)})`]],
+    ['link, random fragment', () => [`[docs](https://x.io/#${draw_review(BASE62, 32)})`]],
+    ['link, random relative path', () => [`[docs](./${draw_review(BASE62, 32)})`]],
+    ['link, random lowercase target', () => [`[docs](${draw_review(LOWER, 32)})`]],
+    ['link, random lowercase text', () => [`[${draw_review(LOWER, 24)}](https://x.io)`]],
+    ['snake chain of random parts', () => { const part = parts(LOWER, 4, '_'); return [`api.${part}`, part]; }],
+    ['UPPER_SNAKE chain of random parts', () => { const part = parts(UPPER, 4, '_'); return [`cfg.${part}`, part]; }],
+    ['one random UPPER run', () => { const part = draw_review(UPPER, 22); return [`cfg.${part}`, part]; }],
+    ['16 random lowercase, member', () => { const part = draw_review(LOWER, 16); return [`cfg.${part}`, part]; }],
+    ['16 random lowercase, call', () => { const part = draw_review(LOWER, 16); return [`get(${part})`, part]; }],
+    ['random camel humps, member', () => { const part = camel(); return [`cfg.${part}`, part]; }],
+    ['css var of random lowercase parts', () => { const part = parts(LOWER, 3, '-'); return [`var(--${part})`, part]; }],
+    ['css hsl of random lowercase', () => { const part = draw_review(LOWER, 24); return [`hsl(${part})`, part]; }],
+    ['three-part snake chain', () => { const part = parts(LOWER, 3, '_'); return [`api.${part}`, part]; }],
+    ['three-part UPPER_SNAKE chain', () => { const part = parts(UPPER, 3, '_'); return [`cfg.${part}`, part]; }],
+    ['short random callee', () => [`client.${draw_review(LOWER, 4)}${draw_review('0123456789', 2)}${draw_review(LOWER, 4)}(${draw_review(BASE62, 20)})`]],
+    ['index chain of 4-char random', () => [`x${Array.from({ length: 5 }, () => `[${draw_review(BASE62, 4)}]`).join('')}`]],
+  ];
+  it.each(shapes)('%s', (_name, build) => {
+    const values: string[] = [];
+    while (values.length < 200) { const [value, judged] = build(); if (value.length >= 16 && compute_entropy(value) >= 3.5 && !(judged && is_word_like(judged))) values.push(value); }
+    const missed = values.filter((value) => !rules(`API_KEY = ${value}`).includes('generic-secret'));
+    expect(missed.length, missed.slice(0, 3).join(' ')).toBeLessThanOrEqual(2);
   });
 });

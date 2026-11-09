@@ -108,12 +108,13 @@ describe('a commit leaves per-doc entries reusable unless code changed', () => {
     await check_equal();
   });
 
-  it('a code commit takes the full path', async () => {
+  it('a code commit reuses the docs that do not read the changed file (#82)', async () => {
     plant(...UNTOUCHED);
     put('src/b.ts', 'export const B = 2;\n');
     commit('code');
     const graph = await check_equal();
-    for (const other of UNTOUCHED) expect(is_reused(graph, other)).toBe(false);
+    expect(is_reused(graph, 'guides/three.md')).toBe(false); // cites src/b.ts
+    expect(is_reused(graph, 'guides/four.md')).toBe(true);
   });
 
   it('amend and rebase (cached head no longer an ancestor) take the full path', async () => {

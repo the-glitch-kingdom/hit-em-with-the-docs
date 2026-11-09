@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.1.5] — 2026-11-09
+
+Follow-up to 3.1.4 (#82). No breaking changes; `.hewtd/graph.json` stays `version: 1`. Speed only, output is byte-identical to a cold build.
+
+- Speed: a code commit, a dirty code edit or a `node_modules/.bin` change re-resolves only the docs that read the changed paths, instead of rebuilding everything. The cache state key is now the hewtd version, config and docs root; HEAD, dirty non-doc files and the `.bin` listing are stored in `doc_cache`, and `cache_version` is 2 (an old cache is rebuilt once). Cached symbols and staleness signals are kept unless a changed file touches them. Falls back to a full run when the cached head is not an ancestor, more than 2000 paths changed, or `related_repos` is set. Measured with `scripts/bench-graph.mjs` (large profile, 920 docs, 3000 code files, loaded machine, about 30% noise): code commit 18.6 s to 1.0-1.7 s, `.sh` comment commit 21.5 s to 0.9-1.5 s, `.bin` entry added plus one doc edit 7.3 s to 1.9-2.0 s, dirty code edit 8.3 s to 0.9-1.5 s.
+- A `.bin` change with no other edit now rebuilds the graph (the warm fingerprint includes the `.bin` listing).
+
 ## [3.1.4] — 2026-11-08
 
 Follow-up to 3.1.3 (#80). No breaking changes; `.hewtd/graph.json` stays `version: 1`.

@@ -11,15 +11,17 @@ import { compute_content_hash, load_ledger } from '../reconcile/ledger.js';
 import { validate_no_secrets } from '../reconcile/secrets.js';
 import { find_git_top, list_markdown_files, resolve_docs, STALE_COMMITS_BAR } from '../reconcile/triage.js';
 import { find_duplicates } from '../reconcile/duplicates.js';
-import { find_md_mentions } from '../reconcile/references.js';
+import { build_glob_regex, drop_changed_symbols, find_md_mentions, is_path_ref_affected, type SymbolTable } from '../reconcile/references.js';
 import { find_body_changed_dates, find_file_dates } from './dates.js';
 import { reset_history_memo } from '../reconcile/staleness.js';
-import { compute_code_state, list_committed_changes, compute_fingerprint, compute_link_fingerprint, compute_graph_hash, is_fingerprint_current, load_doc_cache, load_staleness_cache, load_symbol_table, dump_symbol_table, write_cache_fields, type DocEntry, type GraphTriage } from './cache.js';
+import { compute_code_snapshot, list_code_changes, list_committed_changes, compute_fingerprint, compute_link_fingerprint, compute_graph_hash, is_fingerprint_current, load_doc_cache, load_staleness_cache, load_symbol_table, dump_symbol_table, write_cache_fields, type DocEntry, type GraphTriage } from './cache.js';
 import { print_timings, time_stage } from './timing.js';
 import { GRAPH_VERSION, type GraphDoc, type GraphRef, type GraphRefKind, type GraphSymbol, type GraphV1, type GraphVerdict } from './schema.js';
 
 const format_posix_path = (path_text: string): string => path_text.split('\\').join('/');
 const compare_strings = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+/** More changed paths than this and the incremental path is not worth its checks: run everything. */
+const MAX_CODE_CHANGES = 2000;
 const KIND: Record<string, GraphRefKind> = { path: 'file', 'doc-link': 'doc' };
 
 function get_verdict(doc: GraphTriage, ledger_verified: boolean, in_ledger: boolean): GraphVerdict {
@@ -56,13 +58,17 @@ export async function build_graph(options: { root: string; docs_root: string; co
   const head = find_head(git_top);
   let staleness_cache = head ? load_staleness_cache(git_top, head) : undefined;
   const ledger_path = resolve(repo_root, config.reconcile.ledger_path);
-  const code_state = compute_code_state({ git_top, docs_root, config, ledger_path });
+  const snapshot = compute_code_snapshot({ git_top, docs_root, config, ledger_path });
+  const code_state = snapshot?.state ?? null;
   let prior = load_doc_cache(git_top, code_state);
-  // docs touched by commits since the cached HEAD are resolved again (their body date and staleness moved); no known ancestor: full path
-  const committed = prior.head && head ? list_committed_changes(git_top, prior.head, head) : null;
-  if (!committed) prior = { state: '', entries: {}, mentions: {} };
-  if (staleness_cache && committed && prior.head !== head) { // same code, so the signals of docs no commit touched still hold
-    const carried = Object.entries(load_staleness_cache(git_top, prior.head!).entries).filter(([key]) => !committed.has((JSON.parse(key) as string[])[0]!));
+  const prior_head = prior.head;
+  // commits since the cached HEAD name the docs and code files that moved; no known ancestor (amend, rebase, branch switch): full path
+  const committed = prior_head && head ? list_committed_changes(git_top, prior_head, head) : null;
+  const code_changes = committed && snapshot ? list_code_changes(prior, snapshot, committed) : null;
+  const incremental = !!code_changes && code_changes.size <= MAX_CODE_CHANGES && !!prior.bins;
+  if (!incremental) prior = { state: '', entries: {}, mentions: {} };
+  if (staleness_cache && committed && prior_head !== head) { // a doc's signal holds unless a commit touched the doc or a file it cites
+    const carried = Object.entries(load_staleness_cache(git_top, prior_head!).entries).filter(([key]) => { const [doc_path, , cited] = JSON.parse(key) as [string, string, string[]]; return !committed.has(doc_path) && !cited.some((file) => committed.has(file)); });
     staleness_cache = { head: head!, entries: Object.fromEntries(carried) };
   }
   const touched = [...committed ?? []].filter((file) => /\.mdx?$/.test(file)).map((file) => join(git_top, file));
@@ -76,6 +82,26 @@ export async function build_graph(options: { root: string; docs_root: string; co
   for (const doc_path of kept) if (prior.entries[doc_path]?.hash !== hashes.get(doc_path)) changed.add(join(docs_root, doc_path));
   for (const doc_path of Object.keys(prior.entries)) if (!raws.has(doc_path)) changed.add(join(docs_root, doc_path));
   for (const abs_path of touched) changed.add(abs_path);
+  const markdown_moved = changed.size > 0 || [...code_changes ?? []].some((file) => /\.mdx?$/.test(file)); // what the unfound names' markdown mentions depend on
+  // Code that moved: a symbol answer it may alter (recomputed whole-repo), and what else a doc's refs read from the repo.
+  const symbol_table: SymbolTable = incremental ? load_symbol_table(git_top, code_state) : { state: code_state ?? '', symbols: new Map() };
+  const moved = incremental ? code_changes! : new Set<string>();
+  const dropped_symbols = drop_changed_symbols(git_top, symbol_table, moved);
+  for (const file of moved) changed.add(join(git_top, file));
+  const prior_bins = new Set(prior.bins), bins = new Set(snapshot?.bins);
+  const moved_bins = new Set([...prior_bins, ...bins].filter((bin) => prior_bins.has(bin) !== bins.has(bin))); // `npx <bin>` resolves against node_modules/.bin
+  const schema_globs = config.reconcile.schema_sources.map(build_glob_regex);
+  const package_moved = [...moved].some((file) => file === 'package.json' || file.endsWith('/package.json'));
+  const schema_moved = [...moved].some((file) => schema_globs.some((schema_glob) => schema_glob.test(file)));
+  const reads_moved_code = (entry: DocEntry): boolean => entry.triage.refs.some((reference) => {
+    switch (reference.kind) {
+      case 'symbol': case 'env': return dropped_symbols.has(reference.ref);
+      case 'path': return is_path_ref_affected(reference.ref, moved);
+      case 'command': return reference.ref.startsWith('make ') ? moved.has('Makefile') : package_moved || (reference.ref.startsWith('npx ') && moved_bins.has(reference.ref.replace(/^\S+( run)? /, '')));
+      case 'table': case 'column': return schema_moved;
+      default: return false;
+    }
+  });
   /** Absolute targets of a doc's doc-links; null when one cannot be decoded. */
   const get_link_targets = (doc_path: string, doc_refs: GraphTriage['refs']): string[] | null => {
     try { return doc_refs.filter((reference) => reference.kind === 'doc-link').map((reference) => resolve(dirname(join(docs_root, doc_path)), decodeURI(reference.ref.split(/[#?]/)[0]!))); } catch { return null; }
@@ -98,13 +124,12 @@ export async function build_graph(options: { root: string; docs_root: string; co
   };
   const reusable = kept.filter((doc_path) => {
     const entry = prior.entries[doc_path];
-    return !!entry && !changed.has(join(docs_root, doc_path)) && entry.hash === hashes.get(doc_path) && entry.ledger === ledger_text(doc_path) && entry.duplicates === duplicates_text(doc_path) && !points_at_changed(doc_path, entry);
+    return !!entry && !changed.has(join(docs_root, doc_path)) && entry.hash === hashes.get(doc_path) && entry.ledger === ledger_text(doc_path) && entry.duplicates === duplicates_text(doc_path) && !points_at_changed(doc_path, entry) && !reads_moved_code(entry);
   });
   const unfound_names = [...new Set(reusable.flatMap((doc_path) => prior.entries[doc_path]!.unfound))];
-  const mentions = changed.size && unfound_names.length ? find_md_mentions(git_top, unfound_names) : undefined;
+  const mentions = markdown_moved && unfound_names.length ? find_md_mentions(git_top, unfound_names) : undefined;
   const reused = new Set(mentions ? reusable.filter((doc_path) => prior.entries[doc_path]!.unfound.every((name) => JSON.stringify([...mentions.get(name) ?? []]) === JSON.stringify(prior.mentions[name] ?? []))) : reusable);
   const to_resolve = kept.filter((doc_path) => !reused.has(doc_path));
-  const symbol_table = load_symbol_table(git_top, code_state);
   const resolved_docs = to_resolve.length ? await time_stage('triage (total)', () => resolve_docs({ root: repo_root, docs_root: docs_root, rels: to_resolve, config, ledger, duplicates, symbol_table, ...(staleness_cache && { staleness_cache }) })) : [];
   const entries: Record<string, DocEntry> = {};
   for (const doc_path of kept) entries[doc_path] = prior.entries[doc_path]!;
@@ -178,7 +203,7 @@ export async function build_graph(options: { root: string; docs_root: string; co
 
   if (staleness_cache && !options.dry_run) {
     const mention_names = [...new Set(Object.values(entries).flatMap((entry) => entry.unfound))];
-    const doc_cache = code_state ? { doc_cache: { state: code_state, head: head!, entries, mentions: Object.fromEntries([...find_md_mentions(git_top, mention_names)].map(([name, files]) => [name, [...files]])) } } : {};
+    const doc_cache = code_state ? { doc_cache: { state: code_state, head: head!, dirty: snapshot!.dirty, bins: snapshot!.bins, entries, mentions: Object.fromEntries([...find_md_mentions(git_top, mention_names)].map(([name, files]) => [name, [...files]])) } } : {};
     write_cache_fields(git_top, { staleness: { head: head!, entries: staleness_cache.entries }, ...doc_cache, ...(code_state && { symbol_cache: dump_symbol_table(symbol_table) }) });
   }
   print_timings();

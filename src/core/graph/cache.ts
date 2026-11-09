@@ -15,7 +15,7 @@ import type { SymbolTable } from '../reconcile/references.js';
 
 const CACHE_FILE = '.hewtd/graph-cache.json';
 const GRAPH_FILE = '.hewtd/graph.json';
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 const hewtd_version = (createRequire(import.meta.url)('../../../package.json') as { version: string }).version;
 
 export interface Fingerprint { value: string; graph_hash: string }
@@ -24,8 +24,12 @@ export interface StalenessCache { head: string; entries: Record<string, Stalenes
 export type GraphTriage = Pick<TriageDoc, 'lane' | 'reasons' | 'missing' | 'refs' | 'staleCommits' | 'duplicates'>;
 /** One doc's reusable result, valid while its inputs (content, ledger entry, duplicates, `outside` link-target fingerprints) are the same. */
 export interface DocEntry { hash: string; ledger: string; duplicates: string; unfound: string[]; outside?: Record<string, string>; triage: GraphTriage }
-/** Per-doc entries valid for one code state (written at `head`; commits since then are listed by `list_committed_changes`), plus the markdown mentions that made code-less names `unknown`. */
-export interface DocCache { state: string; head?: string; entries: Record<string, DocEntry>; mentions: Record<string, string[]> }
+/**
+ * Per-doc entries valid for one code state (hewtd version, config, docs root), written at `head` with the working-tree
+ * `dirty` non-doc files (path -> status + content hash) and the `bins` listing; what changed since is worked out from those
+ * (`list_committed_changes`, `list_code_changes`). Plus the markdown mentions that made code-less names `unknown`.
+ */
+export interface DocCache { state: string; head?: string; dirty?: Record<string, string>; bins?: string[]; entries: Record<string, DocEntry>; mentions: Record<string, string[]> }
 interface CacheFile { cache_version?: number; fingerprint?: Fingerprint; staleness?: StalenessCache; doc_cache?: DocCache; symbol_cache?: { state: string; symbols: Array<[string, string | null, string | null]> }; [key: string]: unknown }
 
 const hash_text = (text: string): string => createHash('sha1').update(text).digest('hex');
@@ -54,13 +58,26 @@ export function write_cache_fields(git_top: string, changes: Pick<CacheFile, 'fi
   } catch { /* cache is best effort */ }
 }
 
-/** Paths changed by the commits from `from` to `to`, renames as delete + add; null when `from` is not an ancestor of `to` (amend, rebase, branch switch) or unknown. */
+/**
+ * Paths touched by the commits from `from` to `to`, renames as delete + add: the net diff plus every path any commit in
+ * the range names (a change and its revert still add commits to a cited file); null when `from` is not an ancestor of `to`
+ * (amend, rebase, branch switch) or unknown.
+ */
 export function list_committed_changes(git_top: string, from: string, to: string): Set<string> | null {
   try {
     if (from === to) return new Set();
     run_git(git_top, ['merge-base', '--is-ancestor', from, to]);
-    return new Set(run_git(git_top, ['diff', '--name-only', '--no-renames', '-z', from, to]).split('\0').filter(Boolean));
+    const range = `${from}..${to}`;
+    return new Set([...run_git(git_top, ['diff', '--name-only', '--no-renames', '-z', from, to]).split('\0'), ...run_git(git_top, ['log', '--name-only', '--no-renames', '-z', '--format=', range]).split('\0')].filter(Boolean));
   } catch { return null; }
+}
+
+/** Every path whose content may differ from the cached run: committed since its head plus dirty files that are new, gone or changed (both directions). */
+export function list_code_changes(prior: DocCache, snapshot: CodeSnapshot, committed: Set<string>): Set<string> {
+  const changes = new Set(committed);
+  const old_dirty = prior.dirty ?? {};
+  for (const file of new Set([...Object.keys(old_dirty), ...Object.keys(snapshot.dirty)])) if (old_dirty[file] !== snapshot.dirty[file]) changes.add(file);
+  return changes;
 }
 
 /** Staleness signals reusable at this HEAD (empty when the cache is missing, stale or malformed). */
@@ -69,9 +86,15 @@ export function load_staleness_cache(git_top: string, head: string): StalenessCa
   return cache && cache.head === head && cache.entries && typeof cache.entries === 'object' ? cache : { head, entries: {} };
 }
 
+/** The gitignored `node_modules/.bin` entries that resolve, sorted: triage resolves `npx <bin>` with existsSync, so a dangling link counts as absent. */
+function list_bins(git_top: string): string[] {
+  const bin_dir = join(git_top, 'node_modules/.bin');
+  try { return readdirSync(bin_dir).filter((name) => existsSync(join(bin_dir, name))).sort(); } catch { return []; }
+}
+
 /**
  * Everything the graph is a function of, hashed: HEAD, the working-tree changes (path + content of each),
- * every doc under the docs root (ignored ones too), the ledger, the config, the hewtd version.
+ * every doc under the docs root (ignored ones too), the ledger, the config, the hewtd version, the `.bin` listing.
  * Null when it cannot be known (no commits, related repos configured): then nothing is skipped.
  */
 export function compute_fingerprint(options: { git_top: string; docs_root: string; config: PluginConfig; ledger_path: string; docs: Array<{ path: string; hash: string }> }): string | null {
@@ -88,7 +111,7 @@ export function compute_fingerprint(options: { git_top: string; docs_root: strin
         return `${entry}\0${content}`;
       });
     const ledger = existsSync(options.ledger_path) ? hash_text(readFileSync(options.ledger_path, 'utf-8')) : '';
-    return hash_text(JSON.stringify([hewtd_version, head, dirty, ledger, config, options.docs_root, options.docs]));
+    return hash_text(JSON.stringify([hewtd_version, head, dirty, ledger, config, options.docs_root, options.docs, list_bins(git_top)]));
   } catch { return null; }
 }
 
@@ -119,38 +142,36 @@ export function load_symbol_table(git_top: string, state: string | null): Symbol
 
 export const dump_symbol_table = (table: SymbolTable): NonNullable<CacheFile['symbol_cache']> => ({ state: table.state, symbols: [...table.symbols].map(([name, [file, kind]]) => [name, file, kind]) });
 
+/** What a run's cache entries are valid for: the key (`state`) plus the code HEAD, dirty non-doc files and `node_modules/.bin` listing they were computed at. */
+export interface CodeSnapshot { state: string; head: string; dirty: Record<string, string>; bins: string[] }
+
 /**
- * Everything a doc's entry depends on besides docs: the last commit that touched anything but a markdown doc under the
- * docs root (not HEAD: a docs-only commit leaves it unchanged), the changed non-doc files (path + content), the config, the
- * hewtd version. Markdown under the docs root counts only when the git index differs from HEAD for it (their content is the per-doc hash),
- * and our own output and the ledger are left out. Null when it cannot be known (no commits, related repos).
+ * The code state of this run. `state` keeps only what invalidates every entry: the hewtd version, config and docs root.
+ * HEAD, the dirty non-doc files (path -> status + content; markdown under the docs root counts only when the git index differs
+ * from HEAD for it, their content is the per-doc hash; our own output and the ledger are left out) and the `.bin` listing
+ * (triage resolves `npx <bin>` against it) are stored beside the entries and diffed next run. Null when it cannot be known (no commits, related repos).
  */
-export function compute_code_state(options: { git_top: string; docs_root: string; config: PluginConfig; ledger_path: string }): string | null {
+export function compute_code_snapshot(options: { git_top: string; docs_root: string; config: PluginConfig; ledger_path: string }): CodeSnapshot | null {
   const { git_top, config } = options;
   if (config.reconcile.related_repos.length) return null;
   try {
-    run_git(git_top, ['rev-parse', 'HEAD']); // no commits: unknown
+    const head = run_git(git_top, ['rev-parse', 'HEAD']).trim(); // no commits: unknown
     const docs_prefix = relative(git_top, options.docs_root).split('\\').join('/');
     const ledger_file = relative(git_top, options.ledger_path).split('\\').join('/');
-    const outputs = [GRAPH_FILE, CACHE_FILE, ledger_file].map((file) => `:(exclude,literal)${file}`);
-    const code_head = run_git(git_top, ['log', '-1', '--format=%H', '--', '.', `:(exclude,glob)${docs_prefix ? `${docs_prefix}/` : ''}**/*.md`, ...outputs]).trim();
     const tokens = run_git(git_top, ['status', '--porcelain=v1', '-z', '--untracked-files=all']).split('\0');
-    const dirty: string[] = [];
+    const dirty: Record<string, string> = {};
     for (let i = 0; i < tokens.length; i++) {
       const entry = tokens[i]!;
       if (!entry) continue;
       const status = entry.slice(0, 2);
       const file = entry.slice(3);
-      if (/[RC]/.test(status)) dirty.push(`${tokens[++i]}\0gone`); // a rename's old path
+      if (/[RC]/.test(status)) dirty[tokens[++i]!] = 'gone'; // a rename's old path
       if (file === GRAPH_FILE || file === CACHE_FILE || file === ledger_file) continue;
-      if (file.endsWith('.md') && (!docs_prefix || file.startsWith(`${docs_prefix}/`))) { if ('ADRC'.includes(status[0]!)) dirty.push(`${file}\0${status[0]}`); continue; } // only a change to the index matters
+      if (file.endsWith('.md') && (!docs_prefix || file.startsWith(`${docs_prefix}/`))) { if ('ADRC'.includes(status[0]!)) dirty[file] = status[0]!; continue; } // only a change to the index matters
       let content = '';
       try { content = hash_text(readFileSync(join(git_top, file), 'utf-8')); } catch { /* deleted */ }
-      dirty.push(`${entry}\0${content}`);
+      dirty[file] = `${status}\0${content}`;
     }
-    // triage resolves `npx <bin>` against the gitignored node_modules/.bin
-    let bins: string[] = [];
-    try { bins = readdirSync(join(git_top, 'node_modules/.bin')).sort(); } catch { /* none */ }
-    return hash_text(JSON.stringify([hewtd_version, code_head, dirty, config, options.docs_root, bins]));
+    return { state: hash_text(JSON.stringify([hewtd_version, config, options.docs_root])), head, dirty, bins: list_bins(git_top) };
   } catch { return null; }
 }

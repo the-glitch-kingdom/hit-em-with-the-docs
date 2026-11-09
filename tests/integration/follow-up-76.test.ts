@@ -71,16 +71,16 @@ describe('a docs-only commit keeps the incremental graph equal to a cold build (
     expect(read('.hewtd/graph.json')).toBe(incremental);
   });
 
-  it('a code commit changes the code state key and the graph still equals a cold build', () => {
+  it('a code commit moves the cached head (the state key stays) and the graph still equals a cold build', () => {
     put('src/a.ts', 'export function alphaUnit() { return 1; }\n');
     put('.documentation/backend/a.md', fm('a', 'See `alphaUnit()` and `betaUnit()`.'));
     commit();
     hewtd(['index']);
-    const before = JSON.parse(read('.hewtd/graph-cache.json')).doc_cache.state;
+    const before = JSON.parse(read('.hewtd/graph-cache.json')).doc_cache.head;
     put('src/b.ts', 'export function betaUnit() { return 2; }\n');
     g('add', '-A'); g('commit', '-qm', 'code');
     expect(hewtd(['index']).status).toBe(0);
-    expect(JSON.parse(read('.hewtd/graph-cache.json')).doc_cache.state).not.toBe(before);
+    expect(JSON.parse(read('.hewtd/graph-cache.json')).doc_cache.head).not.toBe(before);
     const incremental = read('.hewtd/graph.json');
     rmSync(join(root, '.hewtd/graph-cache.json'), { force: true });
     hewtd(['index']);

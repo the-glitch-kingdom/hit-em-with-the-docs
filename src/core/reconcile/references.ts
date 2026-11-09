@@ -387,6 +387,26 @@ export function add_known_symbols(index: RepoIndex, names: Iterable<string>, tab
   if (table) for (const name of todo) table.symbols.set(name, [index.symbols.get(name) ?? null, index.symbol_kinds.get(name) ?? null]);
 }
 
+/**
+ * Drop from `table` every name an edit to the `changed` paths may have altered: its cached file is one of them, or it appears
+ * as a whole word in one of them (a new candidate, a moved definition). The next `add_known_symbols` recomputes those over the
+ * whole repo, so ranking and the definition rules stay the cold ones. Markdown and hewtd output are never symbol sources.
+ * Returns the dropped names.
+ */
+export function drop_changed_symbols(repo_root: string, table: SymbolTable, changed: Set<string>): Set<string> {
+  const dropped = new Set<string>();
+  for (const [name, [file]] of table.symbols) if (file && changed.has(file)) dropped.add(name);
+  for (const file of changed) {
+    if (/\.mdx?$/.test(file) || /(?:^|\/)\.hewtd\//.test(file)) continue;
+    let text = '';
+    try { text = readFileSync(join(repo_root, file), 'utf-8'); } catch { continue; } // gone or a directory
+    const words = new Set(text.match(/\w+/g));
+    for (const name of table.symbols.keys()) if (!dropped.has(name) && (/^\w+$/.test(name) ? words.has(name) : has_word(text, name))) dropped.add(name);
+  }
+  for (const name of dropped) table.symbols.delete(name);
+  return dropped;
+}
+
 // ---------- resolution ----------
 
 function is_mentioned_elsewhere(index: RepoIndex, name: string, self: string | undefined): boolean {
@@ -417,8 +437,10 @@ export interface ResolveOptions {
 /** `example.com/x`: a host-like first segment (letters-only TLD) is a URL, not a repo directory. */
 const HOST_LIKE = /^[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}\//i;
 
+const normalize_path_ref = (reference: string): string => reference.replace(/^\.\//, '').replace(/^\//, '');
+
 function resolve_path(index: RepoIndex, reference: string): string | undefined {
-  const path_text = reference.replace(/^\.\//, '').replace(/^\//, '');
+  const path_text = normalize_path_ref(reference);
   if (index.files.has(path_text)) return path_text;
   const dir_path = path_text.endsWith('/') ? path_text : `${path_text}/`;
   for (const file of index.files) {
@@ -426,6 +448,16 @@ function resolve_path(index: RepoIndex, reference: string): string | undefined {
     if (file.endsWith(`/${path_text}`)) return file; // docs often cite a path relative to a package
   }
   return undefined;
+}
+
+/** True when a path ref could resolve differently (`resolve_path`) because the files in `changes` were added or deleted: it names one, a directory above one, or a suffix of one. */
+export function is_path_ref_affected(reference: string, changes: Set<string>): boolean {
+  const path_text = normalize_path_ref(reference);
+  const dir_path = path_text.endsWith('/') ? path_text : `${path_text}/`;
+  for (const file of changes) {
+    if (file === path_text || file.startsWith(dir_path) || file.endsWith(`/${path_text}`)) return true;
+  }
+  return false;
 }
 
 /** `<name>:<where>` for the first sibling that has the ref (and how it holds a symbol); undefined if none does. */

@@ -13,7 +13,8 @@ import { find_git_top, list_markdown_files, resolve_docs, STALE_COMMITS_BAR } fr
 import { find_duplicates } from '../reconcile/duplicates.js';
 import { find_md_mentions } from '../reconcile/references.js';
 import { find_body_changed_dates, find_file_dates } from './dates.js';
-import { compute_code_state, list_committed_changes, compute_fingerprint, compute_link_fingerprint, compute_graph_hash, is_fingerprint_current, load_doc_cache, load_staleness_cache, write_cache_fields, type DocEntry, type GraphTriage } from './cache.js';
+import { reset_history_memo } from '../reconcile/staleness.js';
+import { compute_code_state, list_committed_changes, compute_fingerprint, compute_link_fingerprint, compute_graph_hash, is_fingerprint_current, load_doc_cache, load_staleness_cache, load_symbol_table, dump_symbol_table, write_cache_fields, type DocEntry, type GraphTriage } from './cache.js';
 import { print_timings, time_stage } from './timing.js';
 import { GRAPH_VERSION, type GraphDoc, type GraphRef, type GraphRefKind, type GraphSymbol, type GraphV1, type GraphVerdict } from './schema.js';
 
@@ -41,6 +42,7 @@ function find_head(git_top: string): string | null {
 
 export async function build_graph(options: { root: string; docs_root: string; config: PluginConfig; dry_run?: boolean }): Promise<GraphV1> {
   const { root: repo_root, docs_root: docs_root, config } = options;
+  reset_history_memo();
   const git_top = find_git_top(docs_root) ?? repo_root;
   // exactly the set triage judges: the export and triage cannot diverge
   const doc_paths = (await list_markdown_files(docs_root)).map((file) => format_posix_path(relative(docs_root, file))).sort(compare_strings);
@@ -102,7 +104,8 @@ export async function build_graph(options: { root: string; docs_root: string; co
   const mentions = changed.size && unfound_names.length ? find_md_mentions(git_top, unfound_names) : undefined;
   const reused = new Set(mentions ? reusable.filter((doc_path) => prior.entries[doc_path]!.unfound.every((name) => JSON.stringify([...mentions.get(name) ?? []]) === JSON.stringify(prior.mentions[name] ?? []))) : reusable);
   const to_resolve = kept.filter((doc_path) => !reused.has(doc_path));
-  const resolved_docs = to_resolve.length ? await time_stage('triage (total)', () => resolve_docs({ root: repo_root, docs_root: docs_root, rels: to_resolve, config, ledger, duplicates, ...(staleness_cache && { staleness_cache }) })) : [];
+  const symbol_table = load_symbol_table(git_top, code_state);
+  const resolved_docs = to_resolve.length ? await time_stage('triage (total)', () => resolve_docs({ root: repo_root, docs_root: docs_root, rels: to_resolve, config, ledger, duplicates, symbol_table, ...(staleness_cache && { staleness_cache }) })) : [];
   const entries: Record<string, DocEntry> = {};
   for (const doc_path of kept) entries[doc_path] = prior.entries[doc_path]!;
   for (const resolved_doc of resolved_docs) {
@@ -176,7 +179,7 @@ export async function build_graph(options: { root: string; docs_root: string; co
   if (staleness_cache && !options.dry_run) {
     const mention_names = [...new Set(Object.values(entries).flatMap((entry) => entry.unfound))];
     const doc_cache = code_state ? { doc_cache: { state: code_state, head: head!, entries, mentions: Object.fromEntries([...find_md_mentions(git_top, mention_names)].map(([name, files]) => [name, [...files]])) } } : {};
-    write_cache_fields(git_top, { staleness: { head: head!, entries: staleness_cache.entries }, ...doc_cache });
+    write_cache_fields(git_top, { staleness: { head: head!, entries: staleness_cache.entries }, ...doc_cache, ...(code_state && { symbol_cache: dump_symbol_table(symbol_table) }) });
   }
   print_timings();
   return { version: GRAPH_VERSION, source_commit: head, docs, symbols };

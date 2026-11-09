@@ -11,7 +11,7 @@ import { parse_frontmatter } from '../../utils/frontmatter.js';
 import type { PluginConfig } from '../../utils/config.js';
 import { check_retrieval } from '../audit/retrieval.js';
 import { find_clusters } from '../links/clusters.js';
-import { build_repo_index, extract_references, add_known_symbols, load_sibling_index, resolve_references, type RelatedRepo, type ResolvedReference } from './references.js';
+import { build_repo_index, extract_references, add_known_symbols, load_sibling_index, resolve_references, type RelatedRepo, type ResolvedReference, type SymbolTable } from './references.js';
 import { find_body_change, count_sibling_commits, find_staleness_signal, type StalenessSignal } from './staleness.js';
 import { compute_content_hash, is_reviewed, build_ledger_entry, type Ledger } from './ledger.js';
 import { find_section } from '../links/anchors.js';
@@ -208,6 +208,8 @@ export async function triage_docs(options: {
   staleness_cache?: { entries: Record<string, StalenessSignal> };
   /** Whole-tree duplicates when the caller already has them (the graph export), so a few-doc run skips the tree pass. */
   duplicates?: Map<string, Duplicate[]>;
+  /** Code-derived symbol answers kept between runs (graph export), valid for one code state. */
+  symbol_table?: SymbolTable;
 }): Promise<TriageResult> {
   const { docs_root: docs_root, rels: doc_paths, config } = options;
   const git_top = find_git_top(docs_root) ?? options.root;
@@ -227,7 +229,7 @@ export async function triage_docs(options: {
     const { data, content } = parse_frontmatter<Record<string, unknown>>(raw_text);
     return { doc_path, raw_text, data, body: content, references: extract_references(content) };
   });
-  time_stage('symbol priming', () => add_known_symbols(index, loaded.flatMap((doc) => doc.references.filter((reference) => reference.kind === 'symbol' || reference.kind === 'env').map((reference) => reference.ref))));
+  time_stage('symbol priming', () => add_known_symbols(index, loaded.flatMap((doc) => doc.references.filter((reference) => reference.kind === 'symbol' || reference.kind === 'env').map((reference) => reference.ref)), options.symbol_table));
 
   const retrieval = check_retrieval(
     loaded.map((doc) => ({ doc_path: doc.doc_path, data: doc.data, body: doc.body })),
@@ -409,7 +411,7 @@ export async function triage_docs(options: {
 }
 
 /** Read-only resolution of some docs for the graph export: no ledger, no dirty-tree check (that lives in the CLI). */
-export async function resolve_docs(options: { root: string; docs_root: string; rels: string[]; config: PluginConfig; ledger?: Ledger; staleness_cache?: { entries: Record<string, StalenessSignal> }; duplicates?: Map<string, Duplicate[]> }): Promise<TriageDoc[]> {
+export async function resolve_docs(options: { root: string; docs_root: string; rels: string[]; config: PluginConfig; ledger?: Ledger; staleness_cache?: { entries: Record<string, StalenessSignal> }; duplicates?: Map<string, Duplicate[]>; symbol_table?: SymbolTable }): Promise<TriageDoc[]> {
   // A copy, so the ledger-driven reasons (pointer target / member changed) fire without recording anything.
   const { ledger, ...rest } = options;
   return (await triage_docs({ ...rest, ...(ledger && { ledger: structuredClone(ledger) }) })).docs;

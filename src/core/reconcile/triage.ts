@@ -206,6 +206,8 @@ export async function triage_docs(options: {
   ledger?: Ledger;
   /** Reused staleness signals (graph export): a hit needs the same doc content and cited files at the same HEAD. */
   staleness_cache?: { entries: Record<string, StalenessSignal> };
+  /** Whole-tree duplicates when the caller already has them (the graph export), so a few-doc run skips the tree pass. */
+  duplicates?: Map<string, Duplicate[]>;
 }): Promise<TriageResult> {
   const { docs_root: docs_root, rels: doc_paths, config } = options;
   const git_top = find_git_top(docs_root) ?? options.root;
@@ -248,7 +250,7 @@ export async function triage_docs(options: {
   };
   const peripheral = await time_stage('peripheral scan', () => scan_peripheral(options.root, docs_root, config));
 
-  const dups = await time_stage('duplicates', () => find_duplicates(docs_root, config));
+  const dups = options.duplicates ?? await time_stage('duplicates', () => find_duplicates(docs_root, config));
   const docs: TriageDoc[] = [];
   let stale_warned = false;
   for (const doc of loaded) {
@@ -407,7 +409,7 @@ export async function triage_docs(options: {
 }
 
 /** Read-only resolution of some docs for the graph export: no ledger, no dirty-tree check (that lives in the CLI). */
-export async function resolve_docs(options: { root: string; docs_root: string; rels: string[]; config: PluginConfig; ledger?: Ledger; staleness_cache?: { entries: Record<string, StalenessSignal> } }): Promise<TriageDoc[]> {
+export async function resolve_docs(options: { root: string; docs_root: string; rels: string[]; config: PluginConfig; ledger?: Ledger; staleness_cache?: { entries: Record<string, StalenessSignal> }; duplicates?: Map<string, Duplicate[]> }): Promise<TriageDoc[]> {
   // A copy, so the ledger-driven reasons (pointer target / member changed) fire without recording anything.
   const { ledger, ...rest } = options;
   return (await triage_docs({ ...rest, ...(ledger && { ledger: structuredClone(ledger) }) })).docs;

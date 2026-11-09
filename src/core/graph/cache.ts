@@ -7,9 +7,10 @@ import { createHash } from 'crypto';
 import { execFileSync } from 'child_process';
 import { createRequire } from 'module';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { dirname, join } from 'path';
+import { dirname, join, relative } from 'path';
 import type { PluginConfig } from '../../utils/config.js';
 import type { StalenessSignal } from '../reconcile/staleness.js';
+import type { TriageDoc } from '../reconcile/triage.js';
 
 const CACHE_FILE = '.hewtd/graph-cache.json';
 const GRAPH_FILE = '.hewtd/graph.json';
@@ -18,7 +19,13 @@ const hewtd_version = (createRequire(import.meta.url)('../../../package.json') a
 
 export interface Fingerprint { value: string; graph_hash: string }
 export interface StalenessCache { head: string; entries: Record<string, StalenessSignal> }
-interface CacheFile { cache_version?: number; fingerprint?: Fingerprint; staleness?: StalenessCache; [key: string]: unknown }
+/** What the graph reads from triage for one doc. */
+export type GraphTriage = Pick<TriageDoc, 'lane' | 'reasons' | 'missing' | 'refs' | 'staleCommits' | 'duplicates'>;
+/** One doc's reusable result, valid while its inputs (content, ledger entry, duplicates) are the same. */
+export interface DocEntry { hash: string; ledger: string; duplicates: string; unfound: string[]; triage: GraphTriage }
+/** Per-doc entries valid for one code state, plus the markdown mentions that made code-less names `unknown`. */
+export interface DocCache { state: string; entries: Record<string, DocEntry>; mentions: Record<string, string[]> }
+interface CacheFile { cache_version?: number; fingerprint?: Fingerprint; staleness?: StalenessCache; doc_cache?: DocCache; [key: string]: unknown }
 
 const hash_text = (text: string): string => createHash('sha1').update(text).digest('hex');
 const run_git = (working_dir: string, args: string[]): string =>
@@ -33,7 +40,7 @@ function load_cache_file(git_top: string): CacheFile {
 }
 
 /** Merge `changes` into the cache file (dates.ts's own fields are kept). Best effort. */
-export function write_cache_fields(git_top: string, changes: Pick<CacheFile, 'fingerprint' | 'staleness'>): void {
+export function write_cache_fields(git_top: string, changes: Pick<CacheFile, 'fingerprint' | 'staleness' | 'doc_cache'>): void {
   try {
     let existing: CacheFile = {};
     try { existing = JSON.parse(readFileSync(join(git_top, CACHE_FILE), 'utf-8')) as CacheFile; } catch { /* none yet */ }
@@ -78,3 +85,39 @@ export function is_fingerprint_current(git_top: string, value: string | null, gr
 }
 
 export const compute_graph_hash = hash_text;
+
+/** Per-doc entries reusable under this code state (empty when the state differs or the cache is missing or malformed). */
+export function load_doc_cache(git_top: string, state: string | null): DocCache {
+  const cache = load_cache_file(git_top).doc_cache;
+  return state && cache && cache.state === state && cache.entries && typeof cache.entries === 'object' ? cache : { state: state ?? '', entries: {}, mentions: {} };
+}
+
+/**
+ * Everything a doc's entry depends on besides docs: HEAD, the changed non-doc files (path + content), the config, the
+ * hewtd version. Markdown under the docs root counts only when the git index differs from HEAD for it (their content is the per-doc hash),
+ * and our own output and the ledger are left out. Null when it cannot be known (no commits, related repos).
+ */
+export function compute_code_state(options: { git_top: string; docs_root: string; config: PluginConfig; ledger_path: string }): string | null {
+  const { git_top, config } = options;
+  if (config.reconcile.related_repos.length) return null;
+  try {
+    const head = run_git(git_top, ['rev-parse', 'HEAD']).trim();
+    const docs_prefix = relative(git_top, options.docs_root).split('\\').join('/');
+    const ledger_file = relative(git_top, options.ledger_path).split('\\').join('/');
+    const tokens = run_git(git_top, ['status', '--porcelain=v1', '-z', '--untracked-files=all']).split('\0');
+    const dirty: string[] = [];
+    for (let i = 0; i < tokens.length; i++) {
+      const entry = tokens[i]!;
+      if (!entry) continue;
+      const status = entry.slice(0, 2);
+      const file = entry.slice(3);
+      if (/[RC]/.test(status)) dirty.push(`${tokens[++i]}\0gone`); // a rename's old path
+      if (file === GRAPH_FILE || file === CACHE_FILE || file === ledger_file) continue;
+      if (file.endsWith('.md') && (!docs_prefix || file.startsWith(`${docs_prefix}/`))) { if ('ADRC'.includes(status[0]!)) dirty.push(`${file}\0${status[0]}`); continue; } // only a change to the index matters
+      let content = '';
+      try { content = hash_text(readFileSync(join(git_top, file), 'utf-8')); } catch { /* deleted */ }
+      dirty.push(`${entry}\0${content}`);
+    }
+    return hash_text(JSON.stringify([hewtd_version, head, dirty, config, options.docs_root]));
+  } catch { return null; }
+}

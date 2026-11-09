@@ -301,6 +301,28 @@ function scan_definitions(index: RepoIndex, names: string[], files: string[]): v
   }
 }
 
+/** name -> up to two markdown files that mention it, for names with no code hit (git grep order). Also what the graph cache compares. */
+export function find_md_mentions(repo_root: string, names: string[]): Map<string, Set<string>> {
+  const mentions = new Map<string, Set<string>>();
+  if (!names.length) return mentions;
+  const dir_path = mkdtempSync(join(tmpdir(), 'hewtd-refs-'));
+  const patterns_file = join(dir_path, 'patterns');
+  writeFileSync(patterns_file, names.join('\n') + '\n');
+  const want = new Set(names);
+  try {
+    let found = '';
+    try { found = run_git(repo_root, ['grep', '-I', '-o', '-w', '-F', '-f', patterns_file, '--', '*.md', '*.mdx']); } catch { /* exit 1 = no matches */ }
+    for (const line of found.split('\n')) {
+      const content = line.lastIndexOf(':');
+      const tok = line.slice(content + 1);
+      if (content <= 0 || !want.has(tok)) continue;
+      const files = mentions.get(tok) ?? mentions.set(tok, new Set()).get(tok)!;
+      if (files.size < 2) files.add(line.slice(0, content));
+    }
+  } finally { rmSync(dir_path, { recursive: true, force: true }); }
+  return mentions;
+}
+
 /**
  * Per 400 names: `git grep -l` finds candidate files fast; `-o` runs only on small candidates (it crawls on a
  * huge single-line file), large ones are scanned in Node. Markdown is excluded: docs do not prove code exists,
@@ -344,16 +366,7 @@ export function add_known_symbols(index: RepoIndex, names: Iterable<string>): vo
       }
       scan_definitions(index, chunk.filter((name) => index.symbols.get(name)), small); // shortcut: files over 512KB are not searched for definitions (git grep -o crawls on them)
       const unfound = chunk.filter((name) => !index.symbols.get(name));
-      if (unfound.length) {
-        writeFileSync(patterns_file, unfound.join('\n') + '\n');
-        for (const line of run_git_in_index(['grep', '-I', '-o', '-w', '-F', '-f', patterns_file, '--', '*.md', '*.mdx']).split('\n')) {
-          const content = line.lastIndexOf(':');
-          const tok = line.slice(content + 1);
-          if (content <= 0 || !want.has(tok)) continue;
-          const files = index.md_names.get(tok) ?? index.md_names.set(tok, new Set()).get(tok)!;
-          if (files.size < 2) files.add(line.slice(0, content));
-        }
-      }
+      if (unfound.length) for (const [name, files] of find_md_mentions(index.root, unfound)) index.md_names.set(name, files);
     } finally { rmSync(dir_path, { recursive: true, force: true }); }
     for (const name of chunk) if (!index.symbols.has(name)) index.symbols.set(name, null);
   }

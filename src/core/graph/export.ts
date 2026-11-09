@@ -4,14 +4,16 @@
  */
 import { execFileSync } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { join, relative, resolve } from 'path';
+import { dirname, join, relative, resolve } from 'path';
 import type { PluginConfig } from '../../utils/config.js';
 import { parse_frontmatter } from '../../utils/frontmatter.js';
 import { compute_content_hash, load_ledger } from '../reconcile/ledger.js';
 import { validate_no_secrets } from '../reconcile/secrets.js';
-import { find_git_top, list_markdown_files, resolve_docs, STALE_COMMITS_BAR, type TriageDoc } from '../reconcile/triage.js';
+import { find_git_top, list_markdown_files, resolve_docs, STALE_COMMITS_BAR } from '../reconcile/triage.js';
+import { find_duplicates } from '../reconcile/duplicates.js';
+import { find_md_mentions } from '../reconcile/references.js';
 import { find_body_changed_dates, find_file_dates } from './dates.js';
-import { compute_fingerprint, compute_graph_hash, is_fingerprint_current, load_staleness_cache, write_cache_fields } from './cache.js';
+import { compute_code_state, compute_fingerprint, compute_graph_hash, is_fingerprint_current, load_doc_cache, load_staleness_cache, write_cache_fields, type DocEntry, type GraphTriage } from './cache.js';
 import { print_timings, time_stage } from './timing.js';
 import { GRAPH_VERSION, type GraphDoc, type GraphRef, type GraphRefKind, type GraphSymbol, type GraphV1, type GraphVerdict } from './schema.js';
 
@@ -19,7 +21,7 @@ const format_posix_path = (path_text: string): string => path_text.split('\\').j
 const compare_strings = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 const KIND: Record<string, GraphRefKind> = { path: 'file', 'doc-link': 'doc' };
 
-function get_verdict(doc: TriageDoc, ledger_verified: boolean, in_ledger: boolean): GraphVerdict {
+function get_verdict(doc: GraphTriage, ledger_verified: boolean, in_ledger: boolean): GraphVerdict {
   if (doc.lane === 'secret') return 'secret';
   if (doc.lane === 'archive-candidate') return 'archive-candidate';
   if (doc.lane === 'clean') return 'verified'; // attributed (sources + last_verified) and every ref resolves
@@ -51,7 +53,55 @@ export async function build_graph(options: { root: string; docs_root: string; co
   const ledger = await load_ledger(resolve(repo_root, config.reconcile.ledger_path));
   const head = find_head(git_top);
   const staleness_cache = head ? load_staleness_cache(git_top, head) : undefined;
-  const triaged = new Map((await time_stage('triage (total)', () => resolve_docs({ root: repo_root, docs_root: docs_root, rels: kept, config, ledger, ...(staleness_cache && { staleness_cache }) }))).map((doc) => [doc.path, doc]));
+  const ledger_path = resolve(repo_root, config.reconcile.ledger_path);
+  const code_state = compute_code_state({ git_top, docs_root, config, ledger_path });
+  const prior = load_doc_cache(git_top, code_state);
+  const duplicates = await time_stage('duplicates', () => find_duplicates(docs_root, config));
+  const hashes = new Map(kept.map((doc_path) => [doc_path, compute_content_hash(raws.get(doc_path)!.raw_text)]));
+  const ledger_text = (doc_path: string): string => JSON.stringify(ledger.entries[doc_path] ?? null);
+  const duplicates_text = (doc_path: string): string => JSON.stringify(duplicates.get(doc_path) ?? null);
+  // Reuse an entry while its doc, ledger entry and duplicates are as cached, nothing it points at changed, and the
+  // markdown mentions behind its code-less names are the same: then only the other docs are resolved again.
+  const changed = new Set<string>(); // absolute paths of docs that are new, edited or gone
+  for (const doc_path of kept) if (prior.entries[doc_path]?.hash !== hashes.get(doc_path)) changed.add(join(docs_root, doc_path));
+  for (const doc_path of Object.keys(prior.entries)) if (!raws.has(doc_path)) changed.add(join(docs_root, doc_path));
+  const points_at_changed = (doc_path: string, entry: DocEntry): boolean => {
+    const ledger_entry = ledger.entries[doc_path];
+    const sources = raws.get(doc_path)!.data.sources;
+    const targets = [
+      ...(Array.isArray(sources) ? sources.filter((source): source is string => typeof source === 'string').map((source) => resolve(git_top, source)) : []),
+      ...Object.keys(ledger_entry?.members ?? {}).map((member) => join(docs_root, member)),
+      ...(ledger_entry?.pointer ? [join(docs_root, ledger_entry.pointer.target.split('#')[0]!)] : []),
+    ];
+    for (const reference of entry.triage.refs) {
+      if (reference.kind === 'path') targets.push(resolve(git_top, reference.where ?? reference.ref.replace(/:\d+(?::\d+)?$/, '')));
+      else if (reference.kind === 'doc-link') {
+        try { targets.push(resolve(dirname(join(docs_root, doc_path)), decodeURI(reference.ref.split(/[#?]/)[0]!))); } catch { return true; }
+      }
+    }
+    return targets.some((target) => changed.has(target));
+  };
+  const reusable = kept.filter((doc_path) => {
+    const entry = prior.entries[doc_path];
+    return !!entry && entry.hash === hashes.get(doc_path) && entry.ledger === ledger_text(doc_path) && entry.duplicates === duplicates_text(doc_path) && !points_at_changed(doc_path, entry);
+  });
+  const unfound_names = [...new Set(reusable.flatMap((doc_path) => prior.entries[doc_path]!.unfound))];
+  const mentions = changed.size && unfound_names.length ? find_md_mentions(git_top, unfound_names) : undefined;
+  const reused = new Set(mentions ? reusable.filter((doc_path) => prior.entries[doc_path]!.unfound.every((name) => JSON.stringify([...mentions.get(name) ?? []]) === JSON.stringify(prior.mentions[name] ?? []))) : reusable);
+  const to_resolve = kept.filter((doc_path) => !reused.has(doc_path));
+  const resolved_docs = to_resolve.length ? await time_stage('triage (total)', () => resolve_docs({ root: repo_root, docs_root: docs_root, rels: to_resolve, config, ledger, duplicates, ...(staleness_cache && { staleness_cache }) })) : [];
+  const entries: Record<string, DocEntry> = {};
+  for (const doc_path of kept) entries[doc_path] = prior.entries[doc_path]!;
+  for (const resolved_doc of resolved_docs) {
+    const doc_path = resolved_doc.path;
+    entries[doc_path] = {
+      hash: hashes.get(doc_path)!, ledger: ledger_text(doc_path), duplicates: duplicates_text(doc_path),
+      unfound: [...new Set(resolved_doc.refs.filter((item) => (item.kind === 'symbol' || item.kind === 'env') && item.status !== 'ok').map((item) => item.ref))],
+      // eslint-disable-next-line id-denylist, @typescript-eslint/naming-convention -- serialized keys (triage/graph JSON)
+      triage: { lane: resolved_doc.lane, reasons: resolved_doc.reasons, missing: resolved_doc.missing, refs: resolved_doc.refs, ...(resolved_doc.staleCommits !== undefined && { staleCommits: resolved_doc.staleCommits }), ...(resolved_doc.duplicates && { duplicates: resolved_doc.duplicates }) },
+    };
+  }
+  const triaged = new Map(kept.map((doc_path) => [doc_path, entries[doc_path]!.triage]));
   const body = time_stage('body dates', () => find_body_changed_dates(git_top, kept.map((doc_path) => ({ path: format_posix_path(relative(git_top, join(docs_root, doc_path))), content: raws.get(doc_path)!.raw_text })), { persist: !options.dry_run }));
 
   const own_dates = time_stage('file dates', () => find_file_dates(git_top));
@@ -109,7 +159,11 @@ export async function build_graph(options: { root: string; docs_root: string; co
   for (const [doc, set] of owners) if (docs[doc]) docs[doc]!.owner_of = [...set].sort(compare_strings);
   for (const symbol of Object.values(symbols)) symbol.cited_by.sort(compare_strings);
 
-  if (staleness_cache && !options.dry_run) write_cache_fields(git_top, { staleness: { head: head!, entries: staleness_cache.entries } });
+  if (staleness_cache && !options.dry_run) {
+    const mention_names = [...new Set(Object.values(entries).flatMap((entry) => entry.unfound))];
+    const doc_cache = code_state ? { doc_cache: { state: code_state, entries, mentions: Object.fromEntries([...find_md_mentions(git_top, mention_names)].map(([name, files]) => [name, [...files]])) } } : {};
+    write_cache_fields(git_top, { staleness: { head: head!, entries: staleness_cache.entries }, ...doc_cache });
+  }
   print_timings();
   return { version: GRAPH_VERSION, source_commit: head, docs, symbols };
 }

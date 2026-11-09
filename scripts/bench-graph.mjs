@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Benchmark `hewtd index` (with graph export): cold, warm-unchanged, one doc edited, docs-only commit, one code file edited.
+// Benchmark `hewtd index` (with graph export): cold, warm-unchanged, one doc edited, docs-only commit, code commit, .sh comment commit, .bin entry added (#82), one code file edited (dirty).
 // Not part of CI. Usage: node scripts/bench-graph.mjs [path/to/dist/cli/index.js] [docs=900] [code=400] [--profile large]
 // --profile large: ~920 docs, ~3000 code files (a few over 512 KB), ~2400 cited symbols, ~13000 refs, 150 commits (#74).
 // --profile history: every doc has a 40-commit body history, so the per-doc history walk dominates (#77).
@@ -30,6 +30,8 @@ const code_file = (i) => `src/mod${i % 20}/unit${i}.ts`;
 
 try {
   git('init', '-q');
+  put('.gitignore', 'node_modules/\n');
+  put('scripts/run.sh', '#!/bin/sh\necho bench\n');
   for (let i = 0; i < code_count; i++) put(code_file(i), `export function benchUnit${i}() { return ${i}; }\nexport const BENCH_LIMIT_${i} = ${i};\n` + (large && i < 6 ? `// ${'filler line for a large file '.repeat(20)}\n`.repeat(1100) : ''));
   for (let i = 0; i < doc_count; i++) {
     const domain = domains[i % domains.length];
@@ -60,6 +62,15 @@ try {
   run('one doc edited');
   git('add', '.documentation'); git('commit', '-qm', 'docs only');
   run('docs-only commit');
+  put(code_file(3), 'export function benchUnit3() { return 77777; }\nexport const BENCH_LIMIT_3 = 3;\n');
+  git('add', code_file(3)); git('commit', '-qm', 'one code file');
+  run('code commit');
+  appendFileSync(join(dir, 'scripts', 'run.sh'), '# a comment line\n');
+  git('add', 'scripts'); git('commit', '-qm', 'sh comment');
+  run('sh comment commit');
+  put('node_modules/.bin/bench-fake-bin', '#!/bin/sh\n');
+  appendFileSync(join(docs, 'guides', 'doc-0.md'), '\nAnd another line.\n');
+  run('.bin added + doc edit');
   put(code_file(3), 'export function benchUnit3() { return 99999; }\nexport const BENCH_LIMIT_3 = 3;\n');
   run('one code file edited');
 } finally {

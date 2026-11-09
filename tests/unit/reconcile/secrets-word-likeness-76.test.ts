@@ -87,3 +87,21 @@ describe('email-only docs never reach the secret lane (#76)', () => {
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
+
+describe('review fix (#76): a bare value is code only when shaped like an identifier', () => {
+  let seed = 11;
+  const next = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) >> 8;
+  const pick = (chars: string) => chars[next() % chars.length]!;
+  const syllable = () => pick('bdfgklmnprstvz') + pick('aeiou') + (next() % 2 ? pick('lmnrs') : '');
+  const lower = (n: number) => Array.from({ length: n }, () => pick('abcdefghijklmnopqrstuvwxyz')).join('');
+  const strong = (build: () => string) => { let value = build(); while (value.length < 16 || compute_entropy(value) < 3.5) value = build(); return value; };
+  const misses = (build: () => string) => Array.from({ length: 200 }, () => strong(build)).filter((value) => !scan_text(`api_key = ${value}`, 'x', { allow: [], disabled_rules: [] }).some((finding) => finding.rule === 'generic-secret')).length;
+  it.each([
+    ['pronounceable syllables plus digits', () => Array.from({ length: 5 }, syllable).join('') + String(next() % 10000)],
+    ['capitalized syllable humps with digits between', () => Array.from({ length: 4 }, () => { const word = syllable() + syllable(); return word[0]!.toUpperCase() + word.slice(1) + String(next() % 99); }).join('')],
+    ['snake parts with digits', () => Array.from({ length: 4 }, () => syllable() + syllable() + String(next() % 10)).join('_')],
+    ['one long lowercase run', () => lower(16 + (next() % 17))],
+  ])('%s are values', (_name, build) => expect(misses(build as () => string)).toBe(0));
+  it.each(['password_policy: minLengthRequirement12', 'VAULT_TOKEN=VAULT_TOKEN_FROM_ENVIRONMENT', 'api_key = settings.openAIApiKey'])('keeps %s exempt', (line) =>
+    expect(scan_text(line, 'x', { allow: [], disabled_rules: [] }).map((finding) => finding.rule)).not.toContain('generic-secret'));
+});

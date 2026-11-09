@@ -100,6 +100,11 @@ hewtd reconcile --secrets [scope] [--json]
 - **Literals only (3.1.1)**: `generic-secret` reports literal values. Each exemption
   below excuses only words or runs, never random characters: a part counts as random
   when it is not made of words (the word test below).
+  - **Bare values (3.1.2)**: a value with no `.`, `(` or `[` is code only when shaped like
+    an identifier: two or more word humps (camelCase, snake_case, UPPER_SNAKE) with digits
+    only as one trailing group of up to three (`minLengthRequirement12`,
+    `VAULT_TOKEN_FROM_ENVIRONMENT`). A single run of letters, or digits between humps, is a
+    value, because generated pronounceable passwords look exactly like that.
   - **Word test (3.1.2)**: `is_word_like(token)` in `src/core/reconcile/secrets.ts`
     splits a token on non-alphanumerics, cuts each piece into humps
     (`openAIApiKey` is `open`, `AI`, `Api`, `Key`; `LLMProviderKey` is `LLM`, `Provider`,

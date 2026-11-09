@@ -140,8 +140,17 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const is_word_chain = (value: string, sep = '.') => value.length > 0 && value.split(sep).every((segment) => /^[\w-]+$/.test(segment) && is_word_like(segment));
 const is_strong = (value: string) => (UUID.test(value) && new Set(value.replace(/-/g, '')).size > 4) || (value.length >= 16 && compute_entropy(value) >= 3.5);
 // Code, not a credential: a word-made dotted chain (self.x, settings.X), a call of one, or only {name} template slots around weak text.
+// A bare value (no '.', '(' or '[') is code only when shaped like an identifier: two or more word humps (camelCase,
+// snake_case, UPPER_SNAKE) with digits only as one trailing group of up to 3. One run of letters, or digits between
+// humps, is how generated passwords look (pronounceable syllables plus digits).
+const is_bare_identifier = (value: string) => {
+  const core = value.replace(/\d{1,3}$/, '');
+  if (!/^[A-Za-z_]+$/.test(core)) return false;
+  const humps = core.split('_').filter(Boolean).flatMap((piece) => piece.match(/[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+/g) ?? []);
+  return humps.length >= 2 && humps.every((hump) => hump.length >= 2 && is_word_like(hump));
+};
 const is_code = (value: string) => {
-  if (is_word_chain(value)) return true;
+  if (value.includes('.') ? is_word_chain(value) : is_bare_identifier(value)) return true;
   // member access, optional chain, call or index on a word-made name: the next token is a word-made name, a quote or ')'
   // (the value ends at a quote, so the end counts too).
   // member access, optional chain, call or index: every identifier-like token is a word-made name or short.

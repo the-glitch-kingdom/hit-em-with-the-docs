@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.1.3] — 2026-11-08
+
+Follow-up to 3.1.2 (#77). No breaking changes; `.hewtd/graph.json` stays `version: 1`. Speed only, output is byte-identical to a cold build.
+
+- Speed: each doc's body history is walked once per run and read with one `git cat-file --batch`; the symbol table is cached in `.hewtd/graph-cache.json` (`symbol_cache`) under the code state, so a docs-only commit or a one-doc edit with no new symbol runs zero `git grep`; markdown mentions are read in Node. Cold build 30.7 s to 20.2 s (history profile) and 49.6 s to 18.9 s (large profile); docs-only commit and one-doc edit about 1.1 to 1.5 s.
+
 ## [3.1.2] — 2026-11-08
 
 Follow-up to 3.1.1 (#76). No breaking changes; `.hewtd/graph.json` stays `version: 1`.

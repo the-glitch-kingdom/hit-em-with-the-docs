@@ -160,3 +160,21 @@ describe('review fixes (#69): exemptions never hide a credential', () => {
     ]) expect(kinds(line).filter((k) => k.endsWith('/secret')), line).toEqual([]);
   });
 });
+
+describe('placeholders, regexes and code (#72)', () => {
+  const stripe_placeholder = 'sk' + '_test_51ABCDEF' + 'abcdef1234567890';
+  it.each([
+    'postgres://user:pass@db/x', 'postgres://admin:pass@db/x', 'postgres://app:Admin@db/x', 'postgres://app:short1@db/x',
+    'token: abc123def456ghi789jkl', 'API_KEY=' + stripe_placeholder, 'const k = "' + stripe_placeholder + '"',
+    'API_KEY_PATTERN=^[A-Za-z0-9_-]{32,64}$', 'API_KEY: ' + 'sk' + '_live_[a-zA-Z0-9]{24}', 'TOKEN=\\w+\\d.*',
+    'req.headers.authorization', 'const h = hash(password, salt)', 'PASSWORD=req.body.password',
+  ])('is not a finding: %s', (text) => { expect(scan(text)).toEqual([]); });
+  it('real values still are', () => {
+    const test_key = 'sk' + '_test_' + rnd(24, 11);
+    expect(scan(`k ${test_key}`).map((x) => x.rule)).toContain('stripe-key');
+    expect(scan(`k ${stripe}`).map((x) => x.rule)).toContain('stripe-key');
+    expect(scan(`ROLE_ID=${uuid}`).map((x) => x.rule)).toContain('generic-secret');
+    expect(scan(`t ${hvs}`).map((x) => x.rule)).toContain('vault-token');
+    expect(scan(`postgres://app:${rnd(16, 13)}@db`).map((x) => x.rule)).toContain('url-password');
+  });
+});

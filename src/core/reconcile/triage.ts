@@ -271,7 +271,8 @@ export async function triage_docs(options: {
     const withheld = new Map<string, SecretFinding[]>(); // weak hits in cited code: not read, but the doc keeps its lane
     const add_held_finding = (file_path: string, fs: SecretFinding[]) => {
       if (!fs.length) return;
-      (/\.(md|mdx)$/i.test(file_path) || fs.some((finding) => !WEAK_RULES.has(finding.rule)) ? blocked : withheld).set(file_path, fs);
+      // A cited doc is judged on its own: withheld here, never the reason this doc is in the secret lane.
+      (!/\.(md|mdx)$/i.test(file_path) && fs.some((finding) => !WEAK_RULES.has(finding.rule)) ? blocked : withheld).set(file_path, fs);
     };
     for (const cited_path of cited) add_held_finding(cited_path, (await scan_cited(join(git_top, cited_path), cited_path)).filter((finding) => finding.kind === 'secret'));
     cited = cited.filter((cited_path) => !blocked.has(cited_path) && !withheld.has(cited_path));

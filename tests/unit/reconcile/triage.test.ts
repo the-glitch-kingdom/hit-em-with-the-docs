@@ -226,6 +226,19 @@ describe('secret lane (#59)', () => {
     expect(d.bytes).toBeLessThan(400);
   });
 
+  it('a doc citing a markdown file with a finding keeps its own lane; the cited doc is withheld (#72)', async () => {
+    put('src/leaky.md', `token ${tok()}\n`);
+    g('add', '-A');
+    g('commit', '-m', 'leaky doc');
+    put('ops/links.md', fm().replace('[src/a.ts]', '[src/a.ts, src/leaky.md]') + 'See `src/a.ts`.\n');
+    const r = await lanes(['ops/links.md']);
+    const d = r.docs[0]!;
+    expect(d.lane).not.toBe('secret');
+    expect(d.blocked_files).toEqual(['src/leaky.md']);
+    expect(d.reasons.join()).toContain('cited file withheld: src/leaky.md');
+    expect(JSON.stringify(r)).not.toContain(tok());
+  });
+
   it('weak findings in cited code withhold the file; known shapes and own findings still block (#69)', async () => {
     put('src/settings.py', 'VAULT_TOKEN = settings.VAULT_TOKEN_PATH\nDB_PASSWORD = "' + 'q7Zr3LmP9xVb2NcK5tYw8HdJ' + '"\n');
     put('src/known.py', `X = "${key()}"\n`);

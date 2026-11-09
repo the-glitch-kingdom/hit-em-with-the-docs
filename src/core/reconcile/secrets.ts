@@ -48,13 +48,16 @@ const has_ascending_run = (text: string): boolean => {
 const COMMON_PASSWORDS = new Set(['pass', 'password', 'changeme', 'secret', 'admin', 'root', 'postgres', 'user', 'test', 'dev', 'example']);
 // A regex pattern, not a credential: regex syntax (a class with a quantifier, \d \w \s, .* .+, ^...$), and what is
 // left once that syntax is stripped is not itself a strong value (a comma in {32,64} ends the captured value).
-const REGEX_SYNTAX = /\[[^\]]+\](?:[*+?]|\{\d+(?:,\d*)?\}?)?|\\[dwsDWS.]|\.[*+?]|[\^$()|]|\{\d+(?:,\d*)?\}?/g;
+const REGEX_SYNTAX = /\[[^\]]+\](?:[*+?]|\{\d+(?:,\d*)?\}?)|\\[dwsDWS.]|\.[*+?]|[\^$()|]|\{\d+(?:,\d*)?\}?/g;
 // Regex metacharacters making up a quarter of the value also mark a pattern (.*/AKIA[0-9A-Z]{16}/.*).
 const is_meta_heavy = (value: string) => (value.match(/[\][{}()*+?.\\^$|]/g)?.length ?? 0) * 4 >= value.length;
-const is_regex_pattern = (value: string) => is_meta_heavy(value) || /\[[^\]]+\](?:[*+?]|\{\d)|\\[dwsDWS]|\.[*+]|^\^.*\$$/.test(value) && !is_strong(value.replace(REGEX_SYNTAX, ''));
+const is_regex_pattern = (value: string) => (is_meta_heavy(value) && !is_random_inner(value.replace(REGEX_SYNTAX, '').replace(/[^A-Za-z0-9_-]/g, ''))) || /\[[^\]]+\](?:[*+?]|\{\d)|\\[dwsDWS]|\.[*+]|^\^.*\$$/.test(value) && !is_strong(value.replace(REGEX_SYNTAX, ''));
 
-// Contents of a wrapper that look like a value: no spaces, not made of words, 12+ characters with entropy >= 3.5.
-const is_random_inner = (inner: string) => inner.length >= 12 && /^\S+$/.test(inner) && !WORDY.test(inner) && compute_entropy(inner) >= 3.5;
+// Contents that look like a value: 8+ characters, no spaces, neither made of words nor of ascending runs. No entropy
+// bar: short random strings often fall under one, and an excuse must never cover random characters.
+// Five consonants in a row (y counts) almost never occur in words, but often in random letters that pass WORDY.
+const has_consonant_run = (text: string) => /[bcdfghjklmnpqrstvwxyz]{5,}/i.test(text);
+const is_random_inner = (inner: string) => inner.length >= 8 && /^\S+$/.test(inner) && (!WORDY.test(inner.replace(/^[_-]+/, '')) || has_consonant_run(inner)) && !has_ascending_run(inner.toLowerCase());
 
 // Placeholder filter. `weak` words (test, password, secret) only apply to generic/url rules,
 // where the value is free text; known-shape keys like sk_test_ are real credentials.
@@ -68,7 +71,9 @@ export function is_placeholder(value: string, weak: boolean): boolean {
     const inline = /<([^>]*)>/.exec(value);
     if (inline && !is_random_inner(inline[1]!)) return true;
     const prefix = /^(?:abc123|123456|abcdef|qwerty)/i.exec(value);
-    if (prefix && !is_strong(value.slice(prefix[0].length))) return true;
+    // ...followed by nothing, a short tail, more runs (abc123def456) or a separated word (_your_key); glued letters are a value.
+    const tail = prefix ? value.slice(prefix[0].length) : '';
+    if (prefix && (tail.length < 4 || has_ascending_run(tail.toLowerCase()) || (/^[_-]/.test(tail) && WORDY.test(tail.slice(1)) && !has_consonant_run(tail)))) return true;
   }
   if (new Set(line).size <= 2) return true;
   if (has_ascending_run(line)) return true;
@@ -88,7 +93,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // shortcut: a letters-only random run in clean camel humps would pass; upgrade to a word list if one shows up.
 const WORD = '(?:[a-z]+|[A-Z]+|[A-Z]?[a-z]{2,}(?:[A-Z][a-z]{2,})+|[A-Z][a-z]+)';
 const WORDY = new RegExp(`^_?${WORD}(?:[_-]{1,2}(?:${WORD}|\\d{1,3}))*\\d{0,2}_?$`);
-const is_word_chain = (value: string, sep = '.') => value.length > 0 && value.split(sep).every((segment) => WORDY.test(segment));
+const is_word_chain = (value: string, sep = '.') => value.length > 0 && value.split(sep).every((segment) => WORDY.test(segment) && !has_consonant_run(segment));
 const is_strong = (value: string) => (UUID.test(value) && new Set(value.replace(/-/g, '')).size > 4) || (value.length >= 16 && compute_entropy(value) >= 3.5);
 // Code, not a credential: a word-made dotted chain (self.x, settings.X), a call of one, or only {name} template slots around weak text.
 const is_code = (value: string) => {
@@ -96,13 +101,18 @@ const is_code = (value: string) => {
   // member access, optional chain, call or index on a word-made name: the next token is a word-made name, a quote or ')'
   // (the value ends at a quote, so the end counts too).
   // member access, optional chain, call or index: every identifier-like token is a word-made name or short.
-  if (/^[A-Za-z_]\w*(?:\?\.|\.|\(|\[)/.test(value) && value.split(/[^A-Za-z0-9_$]+/).every((token) => token.length <= 4 || WORDY.test(token))) return true;
+  // A token is a word-made name, a word with version digits (sha256, utf8, b64decode) or a short number; never a short random run.
+  const tokens = value.split(/[^A-Za-z0-9_$]+/).filter(Boolean);
+  // ...and at least one is a real word of 4+ letters: a chain of short random pieces is a value.
+  if (/^[A-Za-z_]\w*(?:\?\.|\.|\(|\[)/.test(value) && tokens.some((token) => token.length >= 4 && WORDY.test(token) && !has_consonant_run(token)) && tokens.every((token) => (WORDY.test(token) && !has_consonant_run(token)) || /^[a-z]+\d{1,4}[a-z]*$/.test(token) || /^[A-Z]+\d{1,4}$/.test(token) || /^\d{1,4}$/.test(token))) return true;
   const rest = value.replace(/\{([A-Za-z_][\w.]*)\}/g, (whole_match, slot: string) => (is_word_chain(slot) ? '' : whole_match));
   return rest !== value && !is_strong(rest);
 };
-// Any well-formed address is an email unless a part looks random: 12+ characters with entropy >= 3.3, or 8+ characters
-// that (minus trailing digits) are neither word-made nor all digits.
-const is_random_part = (part: string) => (part.length >= 12 && compute_entropy(part) >= 3.3)
+// Any well-formed address is an email unless a part looks random: 12+ characters with entropy >= 3.3, 6+ characters
+// with an inner capital that (minus trailing digits) are not word-made, or 8+ characters that are neither word-made
+// nor all digits. shortcut: an all-lowercase random part reads as a word; upgrade to a word list if one shows up.
+const is_random_part = (part: string) => (part.length >= 12 && compute_entropy(part) >= 3.3) || (part.length >= 6 && has_consonant_run(part))
+  || (part.length >= 6 && /[A-Z]/.test(part.slice(1)) && !WORDY.test(part.replace(/\d+$/, '')))
   || (part.length >= 8 && !/^\d+$/.test(part) && (!WORDY.test(part.replace(/\d+$/, '')) || !!part.match(/[A-Z]?[a-z]+/g)?.some((hump) => hump.length >= 3 && !/[aeiou]/i.test(hump))));
 const is_email = (value: string) => {
   const match = /^([^@\s]{1,64})@([^@\s]{1,255}\.[A-Za-z]{2,})$/.exec(value);

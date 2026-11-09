@@ -26,14 +26,14 @@ describe('generic-secret reports literals only (#74)', () => {
   it('code, wrapped placeholders, regexes, abc123 placeholders and digit-bearing emails are not secrets; a random literal is', () => {
     put('.documentation/backend/kinds.md', fm('kinds', [
       'API_KEY = req.headers.authorization', 'password = hash(password)', 'token = <your-token-here>',
-      'secret = [from-the-vault]', 'PATTERN_KEY = ^[A-Za-z0-9_-]{32,64}$', 'password = abc123' + random_literal,
+      'secret = [from-the-vault]', 'PATTERN_KEY = ^[A-Za-z0-9_-]{32,64}$', 'password = abc123def456ghi789',
       'API_KEY = j.smith2@corp-01.io', 'token = ops-team@acme2go.com',
     ].join('\n\n')));
-    put('.documentation/backend/real.md', fm('real', `API_KEY = ${random_literal}`));
+    put('.documentation/backend/real.md', fm('real', `API_KEY = ${random_literal}\n\npassword = abc123${random_literal}`));
     commit();
     const found = secrets();
     expect(found.filter((f) => f.file.endsWith('kinds.md') && f.rule === 'generic-secret')).toEqual([]);
-    expect(found.filter((f) => f.file.endsWith('real.md')).map((f) => f.rule)).toContain('generic-secret');
+    expect(found.filter((f) => f.file.endsWith('real.md') && f.rule === 'generic-secret')).toHaveLength(2); // a placeholder prefix never excuses a random tail
     const lane = lanes();
     expect(lane['backend/kinds.md']).not.toBe('secret');
     expect(lane['backend/real.md']).toBe('secret');

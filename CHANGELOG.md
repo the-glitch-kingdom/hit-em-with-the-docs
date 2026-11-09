@@ -7,13 +7,17 @@ All notable changes to this project will be documented in this file.
 Follow-up to 3.1.0 (#74). No breaking changes; `.hewtd/graph.json` stays `version: 1`.
 
 - Secrets: `generic-secret` reports literal values only. Code expressions (member access, optional chaining, calls,
-  indexing), wrapped placeholders (`[..]`, `<..>`, `${..}`, `{{..}}`, `$(..)`, `%(..)s`), regexes (metacharacters at
-  least 25% of the value) and values starting with `abc123`, `123456`, `abcdef` or `qwerty` are skipped. Any
-  well-formed email is a non-blocking `personal` finding unless a segment looks random, so digit-bearing emails no
-  longer put a doc in the secret lane.
+  indexing), wrapped placeholders (`[..]`, `<..>`, `${..}`, `{{..}}`, `$(..)`, `%(..)s`), regex-heavy values and
+  `abc123`/`123456`/`abcdef`/`qwerty` placeholders are skipped, and a well-formed email is a non-blocking `personal`
+  finding, so digit-bearing emails no longer put a doc in the secret lane. Every exemption excuses only words or
+  ascending runs, never random characters, and wrappers and prefixes apply to the free-text rules only: strong rules
+  (`aws-secret-key`, `approle-id`, key prefixes) are never excused. Under 1% of adversarial random samples (3-letter
+  tokens, camel-shaped random letters) can still read as words.
 - Speed: `hewtd index` after a one-doc edit reuses per-doc triage entries (`doc_cache` in `.hewtd/graph-cache.json`)
   while HEAD and the code are unchanged: 8.2 s to 1.7 s on the large benchmark profile (920 docs). Output equals a
-  cold build. `bench-graph.mjs` gains `BENCH_KEEP=1`.
+  cold build. A reused entry is re-resolved when a doc-link target outside the kept docs (`archive/`, `INDEX.md`, a
+  dot-dir) appears, disappears or changes kind, and the code state includes the names in `node_modules/.bin`, so
+  installing a package refreshes `npx` refs. `bench-graph.mjs` gains `BENCH_KEEP=1`.
 
 ## [3.1.0] — 2026-11-08
 

@@ -49,3 +49,32 @@ describe('review findings (#74)', () => {
       expect(rules(`API_KEY = ${mail}`)).not.toContain('generic-secret'); // the email rule itself skips no-reply addresses
   });
 });
+
+describe('re-review findings (#74): no exemption covers random characters', () => {
+  // Only values the rule would report anyway (16+ chars, entropy >= 3.5) count, so every miss is an exemption's fault.
+  // Ceiling, not zero: a 3-letter random token or a letters-only random run can read as a word (Shk, PuaLiqed); telling
+  // those from real names needs a word list. Measured at 0-0.8% per shape; more than 1% (2 of 200) is a regression.
+  const CEILING = 2;
+  const strong_value = (build: () => string) => () => { let value = build(); while (value.length < 16 || compute_entropy(value) < 3.5) value = build(); return value; };
+  const misses_value = (key: string, build: () => string, rule = 'generic-secret') => Array.from({ length: 200 }, strong_value(build)).filter((value) => !rules(`${key} = ${value}`).includes(rule)).length;
+  it('short random segments in a member, index or call chain are a value', () => {
+    for (const k of [3, 4]) {
+      expect(misses_value('token', () => Array.from({ length: 5 }, () => draw(k)).join('.'))).toBeLessThanOrEqual(CEILING);
+      expect(misses_value('token', () => 'x' + Array.from({ length: 5 }, () => `[${draw(k)}]`).join(''))).toBeLessThanOrEqual(CEILING);
+    }
+    expect(misses_value('token', () => `${draw(4)}(${draw(4)}(${draw(4)}(${draw(4)}(${draw(4)}))))`)).toBeLessThanOrEqual(CEILING);
+  });
+  it('short random contents in a wrapper are a value', () => {
+    // A wrapped value must reach 16 characters in all, so brackets start at 14 inside and braces at 12.
+    for (const n of [14, 15, 16]) expect(misses_value('password', () => `[${draw(n)}]`)).toBeLessThanOrEqual(CEILING);
+    for (const n of [12, 13, 14, 15, 16]) expect(misses_value('password', () => `{{${draw(n)}}}`)).toBeLessThanOrEqual(CEILING);
+  });
+  it('a placeholder prefix followed by a short random remainder is a value', () => {
+    expect(misses_value('password', () => `abc123${draw(10)}`)).toBeLessThanOrEqual(CEILING);
+    expect(misses_value('password', () => `qwerty${draw(17)}`)).toBeLessThanOrEqual(CEILING);
+  });
+  it('short random email parts are a value', () => {
+    expect(misses_value('secret', () => `${draw(7)}@${draw(7)}.com`)).toBeLessThanOrEqual(CEILING);
+  });
+  it.each(['API_KEY=abc123def456ghi789jkl', 'password = {{password}}', 'token = <token>', 'ALERT_TOKEN_EMAIL=j.smith2@corp-01.io', 'SECRET_CONTACT=ops-team@acme2go.com', 'SECRET_EMAIL=JaneDoe1987@gmail.com', 'secret = utf8.decode(base64.b64decode(raw))'])('still keeps %s exempt', (text) => expect(rules(text)).not.toContain('generic-secret'));
+});

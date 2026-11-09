@@ -16,8 +16,8 @@ describe('generic-secret reports literals only (#74)', () => {
   it.each([
     'const t = req.headers.authorization?.split(" ")[1];', 'password = hash(password)', 'token = this.token', 'API_KEY = settings.API_KEY',
     'code = [code-from-the-authenticator-app]', 'token = <your-token-here>', 'token = ${{ secrets.NAME }}', 'password = $(cat /run/pw)', 'password = %(db_pass)s',
-    'pattern = .*/AKIA[0-9A-Z]{16}/.*', 'key = ^[A-Za-z0-9]{20,}$', 'password = abc123' + rnd(10), 'token = 123456' + rnd(10), 'secret = Qwerty' + rnd(10),
-    'password = abcdef' + rnd(10),
+    'pattern = .*/AKIA[0-9A-Z]{16}/.*', 'key = ^[A-Za-z0-9]{20,}$', 'password = abc123def456ghi7', 'token = 1234567890_example_key', 'secret = Qwerty_your_api_key',
+    'password = abcdef123456789',
   ])('ignores %s', (text) => expect(rules(text)).not.toContain('generic-secret'));
 
   it.each(['j.smith2@corp-01.io', 'ops-team@acme2go.com', 'JaneDoe1987@gmail.com'])('%s under a secret key is an email', (mail) => {

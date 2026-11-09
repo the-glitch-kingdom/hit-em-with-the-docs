@@ -95,8 +95,8 @@ describe('outside apply', () => {
     expect(t).toContain('(../../src/x.ts)'); // relative link rebased
     expect(readFileSync(join(docs, 'backend/a.md'), 'utf-8')).toContain('(../api/design.md)'); // inbound link repointed
     expect(g('status', '--porcelain')).toBe('');
-    expect(g('show', '--stat', '--format=%s', 'HEAD')).toContain('notes/design.md');
-    expect(g('rev-list', '--count', 'HEAD')).toBe('2');
+    expect(g('show', '--stat', '--format=%s', 'HEAD~1')).toContain('notes/design.md');
+    expect(g('rev-list', '--count', 'HEAD')).toBe('3');
   });
 
   it('never overwrites an existing doc at the target path (review fix)', async () => {

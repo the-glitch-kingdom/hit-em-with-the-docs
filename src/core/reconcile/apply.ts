@@ -253,6 +253,8 @@ async function build_overview_doc(entry: ReviewEntry, docs_root: string, ledger:
   return with_frontmatter(entry.draft!, { ...frontmatter, kind: 'overview', ...(entry.sources && { sources: entry.sources }) });
 }
 
+const INDEXED_KEYS = new Set(['title', 'summary', 'purpose', 'description', 'tier', 'status', 'domains', 'keywords', 'kind']);
+
 export async function apply_reviews(options: {
   root: string;
   docs_root: string;
@@ -411,33 +413,40 @@ export async function apply_reviews(options: {
 
   const git_top = find_git_top(repo_root);
   let commit: string | undefined;
+  const index_files: string[] = [];
   try {
-    if (domains.size) {
+    // Only verdicts that change what an index lists regenerate it (phrases/verify/unverifiable/rewrite do not).
+    const changes_index = applied.some(({ entry, outside }) => outside || (entry.verdict !== 'phrases' && entry.verdict !== 'verify' && entry.verdict !== 'unverifiable' && entry.verdict !== 'rewrite') || Object.keys(entry.frontmatter ?? {}).some((key) => INDEXED_KEYS.has(key)));
+    const first = reviews[0]!;
+    const commit_paths = (message: string, files: string[]): void => {
+      const paths = files.map((path_text) => relative(git_top!, path_text));
+      const present = paths.filter((path) => existsSync(join(git_top!, path)));
+      // -f: apply wrote these itself, so an ignored target (archive/) must still be staged.
+      // An empty pathspec would stage the whole tree (ignored files included).
+      if (present.length) run_git(git_top!, ['add', '-A', '-f', '--', ...present]);
+      const gone = paths.filter((path) => !present.includes(path));
+      if (gone.length) run_git(git_top!, ['rm', '-q', '--cached', '--ignore-unmatch', '--', ...gone]);
+      // Last line of defence: the staged diff may not add a secret.
+      const added = run_git(git_top!, ['diff', '--cached', '-U0', '--no-color', '--', ...paths]).split('\n').filter((line) => line.startsWith('+') && !line.startsWith('+++')).join('\n');
+      validate_no_secrets(added, 'the staged diff', secrets_config);
+      if (run_git(git_top!, ['status', '--porcelain', '--', ...paths])) run_git(git_top!, ['commit', '-q', '--only', '-m', message, '--', ...paths]);
+    };
+    if (domains.size && changes_index) {
       const regenerated = await regenerate_indexes({
         docs_root: docs_root, silent: true,
         domains: [...domains].filter((domain) => known.has(domain)) as never,
       });
-      regenerated.files_written.forEach((file) => touched.add(file));
+      index_files.push(...regenerated.files_written.filter((file) => !touched.has(file)));
     }
     if (git_top && touched.size) {
-      const paths = [...touched].map((path_text) => relative(git_top, path_text));
-      const present = paths.filter((path) => existsSync(join(git_top, path)));
-      // -f: apply wrote these itself, so an ignored target (archive/) must still be staged.
-      // An empty pathspec would stage the whole tree (ignored files included).
-      if (present.length) run_git(git_top, ['add', '-A', '-f', '--', ...present]);
-      const gone = paths.filter((path) => !present.includes(path));
-      if (gone.length) run_git(git_top, ['rm', '-q', '--cached', '--ignore-unmatch', '--', ...gone]);
-      // Last line of defence: the staged diff may not add a secret.
-      const added = run_git(git_top, ['diff', '--cached', '-U0', '--no-color', '--', ...paths]).split('\n').filter((line) => line.startsWith('+') && !line.startsWith('+++')).join('\n');
-      validate_no_secrets(added, 'the staged diff', secrets_config);
-      const first = reviews[0]!;
-      if (run_git(git_top, ['status', '--porcelain', '--', ...paths])) run_git(git_top, ['commit', '-q', '--only', '-m', `docs(reconcile): ${first.scope || 'docs'} batch ${first.batch}`, '--', ...paths]);
+      commit_paths(`docs(reconcile): ${first.scope || 'docs'} batch ${first.batch}`, [...touched]);
       commit = run_git(git_top, ['rev-parse', '--short', 'HEAD']);
     }
+    if (git_top && index_files.length) commit_paths(`docs(index): refresh after reconcile batch ${first.batch}`, index_files);
   } catch (error) {
     let message = (error as Error).message;
     if (git_top) {
-      try { rollback_files(git_top, [...touched, ...(env_path ? [env_path] : [])], snap); } catch (rollback_error) { message += `; rollback also failed: ${(rollback_error as Error).message}`; }
+      try { rollback_files(git_top, [...touched, ...index_files, ...(env_path ? [env_path] : [])], snap); } catch (rollback_error) { message += `; rollback also failed: ${(rollback_error as Error).message}`; }
     }
     const failed = new Set(applied.map((a) => a.entry.path));
     return { outcomes: outcomes.map((outcome) => (failed.has(outcome.path) && outcome.status === 'applied' ? { ...outcome, status: 'error' as const, detail: `rolled back: ${message}` } : outcome)), touched: [] };

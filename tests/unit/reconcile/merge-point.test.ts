@@ -92,7 +92,7 @@ describe('point', () => {
     expect(t).toContain('Release with a canary (`--canary`) for 30 minutes. Details: [Deploy guide: Release](deploy.md#release)');
     expect(t).not.toContain(OLD);
     expect(t).toContain('Intro.');
-    expect(g('rev-list', '--count', 'HEAD')).toBe('2');
+    expect(g('rev-list', '--count', 'HEAD')).toBe('3');
     const l = (await load_ledger(ledger_file)).entries;
     expect(l['backend/admin.md']!.verdict).toBe('point');
     expect(l['backend/deploy.md']!.verdict).toBe('merge');

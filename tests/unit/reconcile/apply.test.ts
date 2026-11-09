@@ -98,6 +98,25 @@ describe('applyReviews', () => {
     expect(r.outcomes.map((o) => o.status)).toContain('rejected');
   });
 
+  it('a phrases apply makes one commit with only the phrase docs; an archive apply adds a separate index commit', async () => {
+    const before = g('rev-list', '--count', 'HEAD');
+    const res = await run([review('review-p-1.md', [entry('backend/a.md', { verdict: 'phrases', phrases: ['why is the build slow'] })])]);
+    expect(res.outcomes[0].status).toBe('applied');
+    expect(Number(g('rev-list', '--count', 'HEAD')) - Number(before)).toBe(1);
+    expect(g('show', '--name-only', '--format=', 'HEAD')).toBe('.documentation/backend/a.md');
+    expect((await load_ledger(ledger_file)).entries['backend/a.md'].applied_commit).toBe(g('rev-parse', '--short', 'HEAD'));
+
+    const mid = g('rev-list', '--count', 'HEAD');
+    const arch = await run([review('review-p-2.md', [entry('backend/b.md', { verdict: 'archive', reason: 'gone' })], [true], 2)]);
+    expect(arch.outcomes[0].status).toBe('applied');
+    expect(Number(g('rev-list', '--count', 'HEAD')) - Number(mid)).toBe(2);
+    expect(g('log', '-1', '--format=%s')).toMatch(/^docs\(index\): refresh after reconcile batch/);
+    expect(g('show', '--name-only', '--format=', 'HEAD')).toMatch(/INDEX\.md|REGISTRY/);
+    expect(g('show', '--name-only', '--format=', 'HEAD~1')).not.toMatch(/INDEX\.md|REGISTRY/);
+    expect(g('log', '-1', '--format=%s', 'HEAD~1')).toMatch(/^docs\(reconcile\)/);
+    expect((await load_ledger(ledger_file)).entries['backend/b.md'].applied_commit).toBe(g('rev-parse', '--short', 'HEAD~1'));
+  });
+
   it('archive uses archiveDoc; rewrite leaves the original and writes a draft', async () => {
     const f = review('review-1-1.md', [entry('backend/b.md', { verdict: 'archive', reason: 'gone' })]);
     const res = await run([f]);

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import { execFileSync, spawnSync } from 'child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 
@@ -74,5 +74,19 @@ describe('.bin changes are scoped to the docs naming the binary (#82)', () => {
     rmSync(join(root, 'node_modules/.bin/fake-a'));
     expect(index_ok()).toBe(before);
     expect(before).toBe(cold());
+  });
+
+  it('the named binary turning into a dangling symlink, and back, matches cold (review)', () => {
+    put('node_modules/.bin/fake-a', '#!/bin/sh\n');
+    index_ok();
+    rmSync(join(root, 'node_modules/.bin/fake-a'));
+    symlinkSync('../gone.js', join(root, 'node_modules/.bin/fake-a'));
+    const dangling = index_ok();
+    expect(doc_refs(dangling, 'backend/d0.md').find((reference) => reference.target === 'npx fake-a')?.resolved).toBe(null);
+    expect(dangling).toBe(cold());
+    put('node_modules/gone.js', '#!/bin/sh\n');
+    const live = index_ok();
+    expect(doc_refs(live, 'backend/d0.md').find((reference) => reference.target === 'npx fake-a')?.resolved).toBe(true);
+    expect(live).toBe(cold());
   });
 });

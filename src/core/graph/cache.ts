@@ -86,9 +86,10 @@ export function load_staleness_cache(git_top: string, head: string): StalenessCa
   return cache && cache.head === head && cache.entries && typeof cache.entries === 'object' ? cache : { head, entries: {} };
 }
 
-/** The gitignored `node_modules/.bin` listing, sorted: triage resolves `npx <bin>` against it. */
+/** The gitignored `node_modules/.bin` entries that resolve, sorted: triage resolves `npx <bin>` with existsSync, so a dangling link counts as absent. */
 function list_bins(git_top: string): string[] {
-  try { return readdirSync(join(git_top, 'node_modules/.bin')).sort(); } catch { return []; }
+  const bin_dir = join(git_top, 'node_modules/.bin');
+  try { return readdirSync(bin_dir).filter((name) => existsSync(join(bin_dir, name))).sort(); } catch { return []; }
 }
 
 /**

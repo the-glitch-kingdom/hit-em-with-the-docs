@@ -94,3 +94,14 @@ describe('writers touch only their own keys (#72)', () => {
     expect(restored).toBe(raw.replace('status: active', 'status: active'));
   });
 });
+
+describe('review fix (#72): aliases', () => {
+  it('rewriting an anchored key never leaves a dangling alias', async () => {
+    const { with_frontmatter_keys, parse_frontmatter } = await import('../../../src/utils/frontmatter.js');
+    const raw = '---\ntitle: A\nbase: &a {x: 1}\nother: *a\n---\n\nBody\n';
+    for (const out of [with_frontmatter_keys(raw, { base: undefined }), with_frontmatter_keys(raw, { base: { x: 2 } })]) {
+      expect(() => parse_frontmatter(out)).not.toThrow();
+      expect(parse_frontmatter(out).data.other).toEqual({ x: 1 });
+    }
+  });
+});

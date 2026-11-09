@@ -86,15 +86,17 @@ hewtd reconcile --secrets [scope] [--json]
   prefix, e.g. `vault-token docs/ops.md:12 hvs....28`. `--json` prints masked
   findings only. A value is never printed, logged or passed through argv or temp files.
 - **Placeholders** such as `XXXX`, `<token>`, `${VAR}`, `changeme` and
-  `example` are ignored. Since 3.1.0 so are ascending runs: a value with 5 or
-  more consecutive ascending `[a-z0-9]` characters (`abcde`, `12345`), or three
-  separate runs of 3 or more in a value of 64 characters or fewer
-  (`abc123def456ghi789jkl`), is a placeholder. Long random values (PEM bodies)
-  are unaffected. A `url-password` under 8 characters, or one of `pass`,
+  `example` are ignored. Since 3.1.0 so are values made of ascending runs: when
+  runs of 3 or more consecutive ascending letters or digits (`abc`, `123`, `ABCDEF`)
+  cover at least half of a value's letters and digits (`abc123def456ghi789jkl`,
+  a Stripe-style test key whose body is `ABCDEF…1234567890`), it is a placeholder. A random key holding one
+  short run by chance is still found. A `url-password` under 8 characters, or one of `pass`,
   `password`, `changeme`, `secret`, `admin`, `root`, `postgres`, `user`, `test`,
   `dev`, `example` (any case), is not a finding. `generic-secret` skips values
   that look like a regex (a character class with a quantifier, `\d` `\w` `\s`,
-  `.*`, `.+`, `^...$`). Real values (`hvs.` tokens, long url passwords) are still found.
+  `.*`, `.+`, `^...$`) when what remains without that syntax is not itself a strong
+  value, so `^[A-Za-z0-9]{32}$` is skipped but a random secret containing `.*` is
+  not. Real values (`hvs.` tokens, long url passwords) are still found.
 - **Allowlist**: `reconcile.secrets.allow` is a list of
   `{ "fingerprint" | "pattern", "file"?, "reason" }`. `reason` is required;
   `file` is an exact path or glob. `reconcile.secrets.disabled_rules` turns
@@ -294,7 +296,9 @@ Verdicts: `verify`, `rewrite`, `archive`, `unverifiable`, `fields`, `secret`,
 - Serial. A batch makes up to two commits (3.1.0): `docs(reconcile): <scope> batch <n>`
   holds only the changed docs, and `docs(index): refresh after reconcile batch <n>` is
   made only if a regenerated index file changed. Both go through the staged-diff secret
-  guard, and a rollback restores docs and index files. The ledger `applied_commit` is
+  guard, and a rollback restores docs and index files. If only the index commit fails,
+  the docs commit stands, the ledger is written, the index files are restored and a
+  warning says to run `hewtd index`. The ledger `applied_commit` is
   the docs commit. Indexes are regenerated only when a verdict changes what they list
   (`phrases`, `verify`, `unverifiable` and `rewrite` entries with no title, summary,
   purpose, description, tier, status, domains, keywords or kind change skip it). Gaps

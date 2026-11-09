@@ -178,3 +178,22 @@ describe('placeholders, regexes and code (#72)', () => {
     expect(scan(`postgres://app:${rnd(16, 13)}@db`).map((x) => x.rule)).toContain('url-password');
   });
 });
+
+describe('review fixes (#72): placeholder and regex rules never hide a credential', () => {
+  const r = rnd(22, 17);
+  const rules = (t: string) => scan(t).map((f) => f.rule);
+  it('a random value containing regex syntax is still a secret', () => {
+    for (const line of [`api_key = "${r.slice(0, 3)}.*${r.slice(3)}"`, `api_key = "${r.slice(0, 3)}\\d${r.slice(3)}"`, `secret_token = "${r.slice(0, 8)}[a-z]+${r.slice(8)}"`])
+      expect(rules(line), line).toContain('generic-secret');
+  });
+  it('a random known-shape key with one ascending run is still a secret', () => {
+    const github = 'gh' + 'p_' + rnd(14, 19) + '12345' + rnd(17, 23);
+    const stripe = 'sk' + '_live_' + rnd(8, 29) + 'abcde' + rnd(11, 31);
+    expect(rules(github)).toContain('github-token');
+    expect(rules(stripe)).toContain('stripe-key');
+  });
+  it('patterns and run-made placeholders stay exempt', () => {
+    for (const line of ['token_pattern: ^[A-Za-z0-9_-]{32,64}$', 'SECRET_REGEX=sk' + '_live_[a-zA-Z0-9]{24}', 'API_KEY=abc123def456ghi789jkl', 'STRIPE_KEY=sk' + '_test_51ABCDEFabcdef1234567890'])
+      expect(rules(line), line).toEqual([]);
+  });
+});

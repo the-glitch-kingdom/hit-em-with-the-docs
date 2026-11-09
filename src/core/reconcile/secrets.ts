@@ -33,21 +33,23 @@ export const compute_entropy = (text: string): number => {
   return entropy;
 };
 
-// 5+ consecutive ascending characters (abcde, 12345), or three 3-runs in a short value (abc123def456): fake keys give
-// themselves away; random keys essentially never do. shortcut: the 3-run rule only covers values up to 64 characters.
+// Fake keys are made of ascending runs (abc123def456, ABCDEF...1234567890); a random key may hold one short run by
+// chance but never mostly runs. Runs of 3+ must cover at least half of the letters and digits.
 const has_ascending_run = (text: string): boolean => {
-  let run = 1, short_runs = 0;
-  for (let i = 1; i <= text.length; i++) {
-    if (i < text.length && text.charCodeAt(i) === text.charCodeAt(i - 1) + 1 && /[a-z0-9]/.test(text[i]!)) { run++; continue; }
-    if (run >= 5) return true;
-    if (run >= 3) short_runs++;
+  const alnum = text.replace(/[^a-z0-9]/g, '');
+  let run = 1, covered = 0;
+  for (let i = 1; i <= alnum.length; i++) {
+    if (i < alnum.length && alnum.charCodeAt(i) === alnum.charCodeAt(i - 1) + 1) { run++; continue; }
+    if (run >= 3) covered += run;
     run = 1;
   }
-  return text.length <= 64 && short_runs >= 3;
+  return alnum.length >= 6 && covered * 2 >= alnum.length;
 };
 const COMMON_PASSWORDS = new Set(['pass', 'password', 'changeme', 'secret', 'admin', 'root', 'postgres', 'user', 'test', 'dev', 'example']);
-// A regex pattern, not a credential: a class with a quantifier, \d \w \s, .* .+, or ^...$ (a comma in {32,64} ends the captured value).
-const is_regex_pattern = (value: string) => /\[[^\]]+\](?:[*+?]|\{\d)|\\[dwsDWS]|\.[*+]|^\^.*\$$/.test(value);
+// A regex pattern, not a credential: regex syntax (a class with a quantifier, \d \w \s, .* .+, ^...$), and what is
+// left once that syntax is stripped is not itself a strong value (a comma in {32,64} ends the captured value).
+const REGEX_SYNTAX = /\[[^\]]+\](?:[*+?]|\{\d+(?:,\d*)?\}?)?|\\[dwsDWS.]|\.[*+?]|[\^$()|]|\{\d+(?:,\d*)?\}?/g;
+const is_regex_pattern = (value: string) => /\[[^\]]+\](?:[*+?]|\{\d)|\\[dwsDWS]|\.[*+]|^\^.*\$$/.test(value) && !is_strong(value.replace(REGEX_SYNTAX, ''));
 
 // Placeholder filter. `weak` words (test, password, secret) only apply to generic/url rules,
 // where the value is free text; known-shape keys like sk_test_ are real credentials.

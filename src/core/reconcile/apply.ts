@@ -34,6 +34,8 @@ export interface ApplyResult {
   outcomes: ApplyOutcome[];
   commit?: string;
   touched: string[];
+  /** The docs commit landed but the separate index commit failed: index files were restored, run `hewtd index`. */
+  index_warning?: string;
 }
 
 const ENV = '.env.hewtd';
@@ -414,23 +416,23 @@ export async function apply_reviews(options: {
   const git_top = find_git_top(repo_root);
   let commit: string | undefined;
   const index_files: string[] = [];
+  const first = reviews[0]!;
+  const commit_paths = (message: string, files: string[]): void => {
+    const paths = files.map((path_text) => relative(git_top!, path_text));
+    const present = paths.filter((path) => existsSync(join(git_top!, path)));
+    // -f: apply wrote these itself, so an ignored target (archive/) must still be staged.
+    // An empty pathspec would stage the whole tree (ignored files included).
+    if (present.length) run_git(git_top!, ['add', '-A', '-f', '--', ...present]);
+    const gone = paths.filter((path) => !present.includes(path));
+    if (gone.length) run_git(git_top!, ['rm', '-q', '--cached', '--ignore-unmatch', '--', ...gone]);
+    // Last line of defence: the staged diff may not add a secret.
+    const added = run_git(git_top!, ['diff', '--cached', '-U0', '--no-color', '--', ...paths]).split('\n').filter((line) => line.startsWith('+') && !line.startsWith('+++')).join('\n');
+    validate_no_secrets(added, 'the staged diff', secrets_config);
+    if (run_git(git_top!, ['status', '--porcelain', '--', ...paths])) run_git(git_top!, ['commit', '-q', '--only', '-m', message, '--', ...paths]);
+  };
   try {
     // Only verdicts that change what an index lists regenerate it (phrases/verify/unverifiable/rewrite do not).
     const changes_index = applied.some(({ entry, outside }) => outside || (entry.verdict !== 'phrases' && entry.verdict !== 'verify' && entry.verdict !== 'unverifiable' && entry.verdict !== 'rewrite') || Object.keys(entry.frontmatter ?? {}).some((key) => INDEXED_KEYS.has(key)));
-    const first = reviews[0]!;
-    const commit_paths = (message: string, files: string[]): void => {
-      const paths = files.map((path_text) => relative(git_top!, path_text));
-      const present = paths.filter((path) => existsSync(join(git_top!, path)));
-      // -f: apply wrote these itself, so an ignored target (archive/) must still be staged.
-      // An empty pathspec would stage the whole tree (ignored files included).
-      if (present.length) run_git(git_top!, ['add', '-A', '-f', '--', ...present]);
-      const gone = paths.filter((path) => !present.includes(path));
-      if (gone.length) run_git(git_top!, ['rm', '-q', '--cached', '--ignore-unmatch', '--', ...gone]);
-      // Last line of defence: the staged diff may not add a secret.
-      const added = run_git(git_top!, ['diff', '--cached', '-U0', '--no-color', '--', ...paths]).split('\n').filter((line) => line.startsWith('+') && !line.startsWith('+++')).join('\n');
-      validate_no_secrets(added, 'the staged diff', secrets_config);
-      if (run_git(git_top!, ['status', '--porcelain', '--', ...paths])) run_git(git_top!, ['commit', '-q', '--only', '-m', message, '--', ...paths]);
-    };
     if (domains.size && changes_index) {
       const regenerated = await regenerate_indexes({
         docs_root: docs_root, silent: true,
@@ -442,7 +444,6 @@ export async function apply_reviews(options: {
       commit_paths(`docs(reconcile): ${first.scope || 'docs'} batch ${first.batch}`, [...touched]);
       commit = run_git(git_top, ['rev-parse', '--short', 'HEAD']);
     }
-    if (git_top && index_files.length) commit_paths(`docs(index): refresh after reconcile batch ${first.batch}`, index_files);
   } catch (error) {
     let message = (error as Error).message;
     if (git_top) {
@@ -450,6 +451,16 @@ export async function apply_reviews(options: {
     }
     const failed = new Set(applied.map((a) => a.entry.path));
     return { outcomes: outcomes.map((outcome) => (failed.has(outcome.path) && outcome.status === 'applied' ? { ...outcome, status: 'error' as const, detail: `rolled back: ${message}` } : outcome)), touched: [] };
+  }
+  // The docs commit has landed, so an index commit failure must not report the batch as rolled back.
+  let index_warning: string | undefined;
+  if (git_top && index_files.length) {
+    try {
+      commit_paths(`docs(index): refresh after reconcile batch ${reviews[0]!.batch}`, index_files);
+    } catch (error) {
+      index_warning = `index refresh not committed (${(error as Error).message}); index files restored, run \`hewtd index\``;
+      try { rollback_files(git_top, index_files, snap); } catch (rollback_error) { index_warning += `; restore also failed: ${(rollback_error as Error).message}`; }
+    }
   }
 
   for (const applied_item of applied) {
@@ -465,5 +476,5 @@ export async function apply_reviews(options: {
     Object.assign(ledger_record, { verdict: applied_item.entry.verdict ?? '', reviewed_on: today, review_file: applied_item.file, ...(applied_item.env_names && { env_names: applied_item.env_names }), ...(pointers.has(applied_item.entry.path) && { pointer: pointers.get(applied_item.entry.path)! }), ...(overview_members.has(applied_item.entry.path) && { members: overview_members.get(applied_item.entry.path)! }), ...(commit && { applied_commit: commit }) });
   }
   await write_ledger(options.ledger_file, ledger);
-  return { ...result, ...(commit && { commit }), touched: [...touched] };
+  return { ...result, ...(commit && { commit }), ...(index_warning && { index_warning }), touched: [...touched] };
 }

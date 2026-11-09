@@ -117,6 +117,20 @@ describe('applyReviews', () => {
     expect((await load_ledger(ledger_file)).entries['backend/b.md'].applied_commit).toBe(g('rev-parse', '--short', 'HEAD~1'));
   });
 
+  it('a failed index commit keeps the docs commit, warns, writes the ledger and restores the index files (review fix #72)', async () => {
+    const hook = join(root, '.git', 'hooks', 'pre-commit');
+    writeFileSync(hook, '#!/bin/sh\ngit diff --cached --name-only | grep -qE "INDEX.md|REGISTRY.md" && exit 1\nexit 0\n');
+    chmodSync(hook, 0o755);
+    const before = g('rev-list', '--count', 'HEAD');
+    const res = await run([review('review-f-1.md', [entry('backend/b.md', { verdict: 'archive', reason: 'gone' })])]);
+    expect(res.outcomes[0].status).toBe('applied');
+    expect(res.index_warning).toMatch(/index refresh not committed/);
+    expect(Number(g('rev-list', '--count', 'HEAD')) - Number(before)).toBe(1);
+    expect(g('log', '-1', '--format=%s')).toMatch(/^docs\(reconcile\)/);
+    expect((await load_ledger(ledger_file)).entries['backend/b.md'].applied_commit).toBe(g('rev-parse', '--short', 'HEAD'));
+    expect(g('status', '--porcelain', '--', '.documentation')).toBe('');
+  });
+
   it('archive uses archiveDoc; rewrite leaves the original and writes a draft', async () => {
     const f = review('review-1-1.md', [entry('backend/b.md', { verdict: 'archive', reason: 'gone' })]);
     const res = await run([f]);

@@ -154,7 +154,8 @@ export function with_frontmatter_keys(raw_text: string, changes: Record<string, 
   const frontmatter = match[1]!;
   const start = raw_text.indexOf('\n') + 1;
   const doc = yaml.parseDocument(frontmatter);
-  if (doc.errors.length || !isMap(doc.contents)) return build_fallback();
+  // An alias (`*name`) can point at a key this rewrites or removes; a full render keeps the values valid instead.
+  if (doc.errors.length || !isMap(doc.contents) || /(^|[\s,[{:])\*[\w-]+/m.test(frontmatter)) return build_fallback();
   const eol = raw_text.includes('\r\n') ? '\r\n' : '\n';
   const render_field = (key: string): string => render_frontmatter({ [key]: changes[key] }, raw_text).replace(/\n$/, '').replace(/\n/g, eol);
   const edits: Array<[number, number, string]> = [];

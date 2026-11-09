@@ -11,7 +11,7 @@ const refs = (token: string) => extract_references(`See \`${token}\`.`).map((r) 
 
 describe('runtime expressions in references', () => {
   it.each(['import.meta.env', 'import.meta', 'process.env', 'os.environ', 'os.getenv', 'Deno.env', 'Bun.env',
-    'window.location', 'req.body', 'config.env', 'document.cookie'])('%s adds no ref', (token) => {
+    'window.location', 'req.body', 'document.cookie'])('%s adds no ref', (token) => {
     expect(refs(token)).toEqual([]);
   });
 
@@ -27,7 +27,7 @@ describe('runtime expressions in references', () => {
     expect(refs(token)).toEqual([`env:${name}`]);
   });
 
-  it.each(['src/a.ts', 'config/app.env', 'config.json', 'app.config.ts'])('%s stays a path', (token) => {
+  it.each(['src/a.ts', 'config/app.env', 'config.env', 'config.json', 'app.config.ts'])('%s stays a path', (token) => {
     expect(refs(token)).toEqual([`path:${token}`]);
   });
 });
@@ -48,5 +48,13 @@ describe('graph export of runtime expressions', () => {
     const g = await build_graph({ root: dir, docs_root: join(dir, '.documentation'), config: await load_plugin_config(dir), dry_run: true });
     const files = g.docs['ops/e.md']!.refs.filter((r) => r.kind === 'file').map((r) => r.target);
     expect(files).toEqual(['src/gone.ts']);
+  });
+});
+
+describe('review fixes (#72): real file names are not runtime expressions', () => {
+  it('keeps bare file names whose stem is a runtime object name', async () => {
+    const { extract_references } = await import('../../../src/core/reconcile/references.js');
+    const refs = extract_references('See `request.ts`, `response.json`, `ctx.ts`, `document.md`, `config.env` and `app.env`.');
+    expect(refs.filter((r) => r.kind === 'path').map((r) => r.ref).sort()).toEqual(['app.env', 'config.env', 'ctx.ts', 'document.md', 'request.ts', 'response.json']);
   });
 });

@@ -10,15 +10,17 @@ Fixes from the 3.0.0 field test (#72). No breaking changes; `.hewtd/graph.json` 
   outside move rewrite only the keys they own (new `with_frontmatter_data`; `with_frontmatter_keys` removes a key
   given `undefined`). `parse_frontmatter` normalizes CRLF before parsing.
 - Secrets: a cited `.md` with findings is withheld in `blocked_files` and no longer puts the citing doc in the
-  secret lane. Ascending-run placeholders, url passwords under 8 characters or common ones, and regex values are no
-  longer findings.
+  secret lane. Placeholders made mostly of ascending runs, url passwords under 8 characters or common ones, and regex
+  values with no strong value left once the regex syntax is removed are no longer findings. Random keys with one
+  short run, and random secrets containing `.*` or `\d`, are still found.
 - Graph: runtime expressions (`process.env`, `import.meta.env`, `os.environ`, `window.*`...) are not file, column
-  or symbol refs; named env vars become env refs. Link format change: consumers (semantic-memory) will see fewer refs, so some previously dead refs disappear.
+  or symbol refs (a token ending in a file extension, such as `request.ts` or `config.env`, stays a file); named env vars become env refs. Link format change: consumers (semantic-memory) will see fewer refs, so some previously dead refs disappear.
 - Speed: `hewtd index` skips the export when nothing changed and reuses per-doc staleness otherwise; warm unchanged
   on 900 docs goes from 15.7 s to 0.2 s. Cache in `.hewtd/graph-cache.json`; `HEWTD_TIMING=1` prints stage timings;
   `scripts/bench-graph.mjs` reproduces the numbers.
 - Reconcile apply makes a `docs(reconcile)` commit for the docs and, only if an index file changed, a separate
-  `docs(index)` commit. The ledger `applied_commit` is the docs commit.
+  `docs(index)` commit. The ledger `applied_commit` is the docs commit. A failed index commit keeps the docs commit
+  and warns to run `hewtd index`.
 
 ## [3.0.0] — 2026-11-08
 

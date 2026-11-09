@@ -44,10 +44,11 @@ const SQL_TABLE_RES = [
 
 const ENV_ACCESS_RE = /^(?:import\.meta(?:\.env)?|process\.env|os\.environ|os\.getenv|Deno\.env|Bun\.env)(?![\w$])/;
 const ENV_NAME_RE = /^(?:\.(?:get\()?|\[|\()\s*["']?([A-Za-z_]\w*)/;
-const RUNTIME_OBJECT_RE = /^(?:window|document|globalThis|self|this|navigator|location|console|req|res|request|response|ctx)\.[\w$.]+$/;
-const RUNTIME_ENV_RE = /^(?:config|settings|options|app)\.env$/i;
 
-/** Runtime expression (`process.env.X`, `req.body`): null when the token is not one, else the env variable it names. */
+// `window.location`, `req.body`: a runtime object member, unless the token ends in a file extension (`request.ts`).
+const RUNTIME_OBJECT_RE = /^(?:window|document|globalThis|self|this|navigator|location|console|req|res|request|response|ctx)\.[\w$.]+$/;
+
+/** Env access expression (`process.env.X`, `os.environ`): undefined when the token is not one, null when it names no variable, else the variable. */
 function parse_runtime_expression(token: string): string | null | undefined {
   if (token.includes('/')) return undefined;
   const access = ENV_ACCESS_RE.exec(token);
@@ -55,7 +56,7 @@ function parse_runtime_expression(token: string): string | null | undefined {
     const name = ENV_NAME_RE.exec(token.slice(access[0].length))?.[1];
     return name && name !== 'env' && name !== 'get' ? name : null;
   }
-  return RUNTIME_OBJECT_RE.test(token) || RUNTIME_ENV_RE.test(token) ? null : undefined;
+  return RUNTIME_OBJECT_RE.test(token) && !FILE_EXT.test(token) ? null : undefined;
 }
 
 function is_symbol(token: string): boolean {

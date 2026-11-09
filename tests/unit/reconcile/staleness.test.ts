@@ -3,11 +3,12 @@ import { execFileSync } from 'child_process';
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { find_staleness_signal, find_body_change } from '../../../src/core/reconcile/staleness';
+import { find_staleness_signal, find_body_change, reset_history_memo } from '../../../src/core/reconcile/staleness';
 
 let dir: string;
 const g = (...a: string[]) =>
   execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: dir, stdio: 'ignore' });
+const g_out = (...a: string[]) => execFileSync('git', a, { cwd: dir, encoding: 'utf-8' }).trim();
 const commit = (file: string, body: string) => {
   mkdirSync(join(dir, file, '..'), { recursive: true });
   writeFileSync(join(dir, file), body);
@@ -16,6 +17,7 @@ const commit = (file: string, body: string) => {
 };
 
 beforeEach(() => {
+  reset_history_memo();
   dir = mkdtempSync(join(tmpdir(), 'stale-'));
   g('init', '-q');
 });
@@ -97,5 +99,28 @@ describe('stalenessSignal', () => {
     } finally {
       rmSync(plain, { recursive: true, force: true });
     }
+  });
+});
+
+describe('single body walk (#77)', () => {
+  it('walks each doc once per run, and again after a reset', () => {
+    commit('doc.md', 'one');
+    reset_history_memo();
+    const first = find_body_change(dir, 'doc.md');
+    commit('other.md', 'x');
+    expect(find_body_change(dir, 'doc.md')).toBe(first); // memoized: same object
+    reset_history_memo();
+    expect(find_body_change(dir, 'doc.md')).toEqual(first);
+    expect(find_body_change(dir, 'doc.md')).not.toBe(first);
+  });
+
+  it('skips frontmatter-only commits and follows a rename, through one cat-file process', () => {
+    commit('old.md', '---\na: 1\n---\nbody');
+    const body_commit = g_out('rev-parse', 'HEAD');
+    commit('old.md', '---\na: 2\n---\nbody');
+    g('mv', 'old.md', 'new.md');
+    g('commit', '-m', 'rename');
+    reset_history_memo();
+    expect(find_body_change(dir, 'new.md')?.commit).toBe(body_commit);
   });
 });

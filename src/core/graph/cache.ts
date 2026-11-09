@@ -11,6 +11,7 @@ import { dirname, join, relative } from 'path';
 import type { PluginConfig } from '../../utils/config.js';
 import type { StalenessSignal } from '../reconcile/staleness.js';
 import type { TriageDoc } from '../reconcile/triage.js';
+import type { SymbolTable } from '../reconcile/references.js';
 
 const CACHE_FILE = '.hewtd/graph-cache.json';
 const GRAPH_FILE = '.hewtd/graph.json';
@@ -25,7 +26,7 @@ export type GraphTriage = Pick<TriageDoc, 'lane' | 'reasons' | 'missing' | 'refs
 export interface DocEntry { hash: string; ledger: string; duplicates: string; unfound: string[]; outside?: Record<string, string>; triage: GraphTriage }
 /** Per-doc entries valid for one code state (written at `head`; commits since then are listed by `list_committed_changes`), plus the markdown mentions that made code-less names `unknown`. */
 export interface DocCache { state: string; head?: string; entries: Record<string, DocEntry>; mentions: Record<string, string[]> }
-interface CacheFile { cache_version?: number; fingerprint?: Fingerprint; staleness?: StalenessCache; doc_cache?: DocCache; [key: string]: unknown }
+interface CacheFile { cache_version?: number; fingerprint?: Fingerprint; staleness?: StalenessCache; doc_cache?: DocCache; symbol_cache?: { state: string; symbols: Array<[string, string | null, string | null]> }; [key: string]: unknown }
 
 const hash_text = (text: string): string => createHash('sha1').update(text).digest('hex');
 /** What a doc-link's status depends on for a target that is not a kept doc: absent, a directory or a file (anchor mismatches are advisory only, never a status). */
@@ -44,7 +45,7 @@ function load_cache_file(git_top: string): CacheFile {
 }
 
 /** Merge `changes` into the cache file (dates.ts's own fields are kept). Best effort. */
-export function write_cache_fields(git_top: string, changes: Pick<CacheFile, 'fingerprint' | 'staleness' | 'doc_cache'>): void {
+export function write_cache_fields(git_top: string, changes: Pick<CacheFile, 'fingerprint' | 'staleness' | 'doc_cache' | 'symbol_cache'>): void {
   try {
     let existing: CacheFile = {};
     try { existing = JSON.parse(readFileSync(join(git_top, CACHE_FILE), 'utf-8')) as CacheFile; } catch { /* none yet */ }
@@ -104,6 +105,19 @@ export function load_doc_cache(git_top: string, state: string | null): DocCache 
   const cache = load_cache_file(git_top).doc_cache;
   return state && cache && cache.state === state && cache.entries && typeof cache.entries === 'object' ? cache : { state: state ?? '', entries: {}, mentions: {} };
 }
+
+/** Symbol answers reusable under this code state (empty when the state differs or the cache is missing or malformed). */
+export function load_symbol_table(git_top: string, state: string | null): SymbolTable {
+  const cache = load_cache_file(git_top).symbol_cache;
+  const table: SymbolTable = { state: state ?? '', symbols: new Map() };
+  if (!state || !cache || cache.state !== state || !Array.isArray(cache.symbols)) return table;
+  for (const row of cache.symbols) {
+    if (Array.isArray(row) && typeof row[0] === 'string' && (row[1] === null || typeof row[1] === 'string') && (row[2] === null || row[2] === 'definition' || row[2] === 'reference')) table.symbols.set(row[0], [row[1], row[2]]);
+  }
+  return table;
+}
+
+export const dump_symbol_table = (table: SymbolTable): NonNullable<CacheFile['symbol_cache']> => ({ state: table.state, symbols: [...table.symbols].map(([name, [file, kind]]) => [name, file, kind]) });
 
 /**
  * Everything a doc's entry depends on besides docs: the last commit that touched anything but a markdown doc under the

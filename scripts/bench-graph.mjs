@@ -2,6 +2,7 @@
 // Benchmark `hewtd index` (with graph export): cold, warm-unchanged, one doc edited, docs-only commit, one code file edited.
 // Not part of CI. Usage: node scripts/bench-graph.mjs [path/to/dist/cli/index.js] [docs=900] [code=400] [--profile large]
 // --profile large: ~920 docs, ~3000 code files (a few over 512 KB), ~2400 cited symbols, ~13000 refs, 150 commits (#74).
+// --profile history: every doc has a 40-commit body history, so the per-doc history walk dominates (#77).
 // Set HEWTD_TIMING=1 (done here) to print per-stage timings from build_graph.
 import { execFileSync, spawnSync } from 'child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync, appendFileSync } from 'fs';
@@ -12,7 +13,9 @@ import { fileURLToPath } from 'url';
 const here = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const profile_at = args.indexOf('--profile');
-const large = profile_at >= 0 && args.splice(profile_at, 2)[1] === 'large';
+const profile = profile_at >= 0 ? args.splice(profile_at, 2)[1] : '';
+const large = profile === 'large';
+const history = profile === 'history'; // every doc edited in 40 commits (#77)
 const cli = resolve(args[0] ?? join(here, '..', 'dist', 'cli', 'index.js'));
 const doc_count = Number(args[1] ?? (large ? 920 : 900));
 const code_count = Number(args[2] ?? (large ? 3000 : 400));
@@ -37,6 +40,11 @@ try {
   }
   git('add', '-A'); git('commit', '-qm', 'initial');
   for (let n = large ? 6 : 0; n < (large ? 156 : 15); n++) { put(code_file(n % code_count), `export function benchUnit${n}() { return ${n + 1000}; }\nexport const BENCH_LIMIT_${n} = ${n};\n`); git('add', '-A'); git('commit', '-qm', `c${n}`); }
+
+  if (history) for (let round = 0; round < 40; round++) {
+    for (let i = 0; i < doc_count; i++) appendFileSync(join(docs, domains[i % domains.length], `doc-${i}.md`), `\nRevision ${round}.\n`);
+    git('add', '-A'); git('commit', '-qm', `rev${round}`);
+  }
 
   const run = (label) => {
     const start = Date.now();

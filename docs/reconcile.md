@@ -356,7 +356,14 @@ project root, `name` matching `[\w.-]+`. Invalid entries are dropped one by one.
 (never overwrites). Each doc is a `## <path>` heading, a `- [ ] accept` line and
 a JSON entry: `path`, `content_hash`, `verdict`, and optionally `frontmatter`,
 `patch` (`{old,new}` pairs; each `old` must occur exactly once in the body),
-`draft`, `sources`, `sources_remove`, `reason`.
+`draft`, `sources`, `sources_remove`, `external_refs`, `reason`.
+
+Skeleton entries (3.1.7) also print `missing: [..]` (the doc's refs triage found missing;
+read-only, apply ignores it) and an empty `external_refs: []`. Secret-lane, gaps, overview
+and outside entries do not get them. Decide every `missing` ref: fix it with a `patch`, or
+list it in `external_refs` when it is not checkable (third-party names, other products'
+files, negation or history, placeholders). `external_refs` can sit at the top level of the
+entry or inside `frontmatter`.
 
 `--write-review` with named docs includes the named docs that triage put in the
 `clean` lane, so you can re-judge one on purpose. `--next` still skips clean docs.
@@ -389,6 +396,8 @@ Verdicts: `verify`, `rewrite`, `archive`, `unverifiable`, `fields`, `secret`,
   ignored), and the doc's own path dropped (docs-relative and repo-relative forms). List paths in
   `sources_remove` to remove them. A source that is not in the repo is kept and listed in
   the outcome `detail` (not checked for URLs, prose or `<name>:<path>`).
+  `external_refs` merges the same way (3.1.7): the doc's existing list first, then the
+  entry's, then `frontmatter.external_refs`, deduped, never overwritten.
 - `archive` goes through `hewtd archive` machinery (creates `archive/`, link
   guard, reindex). No domain folder is created or moved.
 - `rewrite` replaces the doc body with `draft` in the batch commit (3.1.6). The doc's
@@ -458,7 +467,10 @@ The slash command runs this as step 4b.
 root of the docs path, not the current directory). One entry per doc: lane,
 verdict, `reviewed_on`, `applied_commit`, `review_file`, and a content hash.
 A doc counts as reviewed only while its hash is unchanged. `--status` shows
-counts per lane and verdict and the next unreviewed docs.
+counts per lane and verdict and the next unreviewed docs. On reviewed docs it adds
+`refs in reviewed docs: N covered by external_refs, M still missing in K doc(s)` (3.1.7),
+read from `.hewtd/graph.json` (written by `reconcile --apply`, triage, `hewtd maintain` or
+the graph export); with no graph it prints a one-line hint instead. It never runs triage.
 
 ## Team mode
 
@@ -543,6 +555,9 @@ accepted entry. Links from other outside files are not repointed.
   `external_refs: ["the/ref"]` to the doc's frontmatter. A doc whose only missing refs were
   false positives moves from `archive-candidate` to `check`. The incremental graph re-checks
   these refs when `.gitignore`, the `secret/` folder or a settings file changes.
+- **Reviewed docs still show missing refs** (before 3.1.7, apply and the skeleton ignored
+  `external_refs`): read the `missing` list in the skeleton and put the refs that are fine
+  in the entry's `external_refs`. `--status` shows covered and still-missing counts.
 - **Tables reported nowhere / not checked**: set `reconcile.schema_sources`
   (default `[]`); triage prints the schema files it found.
 - **A reference to another repo shows missing or unknown**: add that repo to

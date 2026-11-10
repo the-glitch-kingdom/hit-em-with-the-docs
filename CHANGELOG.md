@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.1.7] — 2026-11-10
+
+Fixes #90. No breaking changes; `.hewtd/graph.json` stays `version: 1`, no existing JSON key changes.
+
+- reconcile --apply (#90): `external_refs` (top level of the entry or `frontmatter.external_refs`) is merged into the doc's frontmatter: existing entries first, deduped, never overwritten. Refs a judge rules fine no longer stay `missing`.
+- reconcile --write-review (#90): each non-secret entry gets a read-only `missing: [..]` and an empty `external_refs: []`.
+- reconcile --status (#90): reviewed docs add `refs in reviewed docs: N covered by external_refs, M still missing in K doc(s)`, read from `.hewtd/graph.json`; without a graph it prints a one-line hint.
+- Help refresh: `commands/help.md`, `commands/reconcile.md`, `docs/LLM-GUIDE.md`, `docs/reconcile.md`, README and the skill now match the 3.x CLI. New test `tests/unit/help-drift-90.test.ts` fails when `--help` and the help files disagree (needs `npm run build` first).
+
 ## [3.1.6] — 2026-11-10
 
 Fixes #84, #85 and #86. No breaking changes; `.hewtd/graph.json` stays `version: 1`.

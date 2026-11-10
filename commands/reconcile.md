@@ -175,7 +175,7 @@ hewtd reconcile --apply .hewtd/reconcile/review-<batch>-*.md
 
 Apply is serial, one commit per batch, archives through the normal archive path, and regenerates the touched indexes. It reports per doc: applied, stale (the doc changed since the review was written; re-run triage for it), rejected, already-applied, skipped or error. A doc in two review files is an error. Show the outcomes.
 
-`hewtd reconcile --status` also prints, for reviewed docs, how many refs are covered by `external_refs` and how many are still missing (read from `.hewtd/graph.json`; without a graph it says to run `hewtd index`). Use it to find docs whose `missing` refs were never decided.
+`hewtd reconcile --status` also prints, for reviewed docs, how many refs are covered by `external_refs` and how many are still missing (read from `.hewtd/graph.json`, which `hewtd index` and `reconcile --apply` write; without one it says why: run `hewtd index`, or the export is off (`graph_export: false`), or the docs are not in a git checkout). Use it to find docs whose `missing` refs were never decided.
 
 Then suggest `hewtd audit` and `hewtd link-check`, and `hewtd reconcile --status` to see progress; `--next N` continues with the next unreviewed docs. Two runs on an unchanged scope produce no changes.
 

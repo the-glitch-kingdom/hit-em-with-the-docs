@@ -1340,11 +1340,19 @@ program
     if (st.next_unreviewed.length) logger.info(`  next unreviewed:\n${st.next_unreviewed.map((path_text) => `    ${path_text}`).join('\n')}`);
     // Cheap: the last graph export plus each reviewed doc's frontmatter; never runs triage.
     const { is_reviewed, get_external_refs_status } = await import('../core/reconcile/ledger.js');
+    // the graph lives at the docs' git top-level (write_graph), which can differ from where the command ran
+    const { find_git_top: find_graph_top } = await import('../core/reconcile/triage.js');
+    const graph_top = find_graph_top(docs_root);
     let graph_text: string | undefined;
     try {
-      graph_text = await readFile(join(repo_root, '.hewtd', 'graph.json'), 'utf-8');
-    } catch {
-      logger.info('  refs in reviewed docs: no .hewtd/graph.json (run `hewtd index` to write it)');
+      graph_text = graph_top ? await readFile(join(graph_top, '.hewtd', 'graph.json'), 'utf-8') : undefined;
+    } catch { /* absent: the hint below says why */ }
+    if (graph_text === undefined) {
+      const { load_plugin_config: load_status_config } = await import('../utils/config.js');
+      const why = !graph_top ? 'the docs are not in a git checkout, so no graph is written'
+        : !(await load_status_config(repo_root)).graph_export ? 'graph_export is off in the plugin config, so no graph is written'
+        : 'no .hewtd/graph.json yet (run `hewtd index` to write it)';
+      logger.info(`  refs in reviewed docs: ${why}`);
     }
     if (graph_text !== undefined) {
       try {

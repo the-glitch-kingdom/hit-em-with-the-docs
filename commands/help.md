@@ -42,6 +42,11 @@ If `$ARGUMENTS` matches one of the topics below, focus the orientation on that t
 
 CLI (via `npx --no @theglitchking/hit-em-with-the-docs <cmd>` or `hewtd <cmd>` if globally installed):
 
+Common options (run `hewtd <cmd> --help` for each command's full list):
+- `-p, --path <path>` (`-p, --docs-path` on `reconcile`, `secrets`, `hooks`, `fix-retrieval-fields`): the docs folder, default `.documentation`
+- `-d, --domain <domain>`: limit the command to one domain (`audit`, `index`, `metadata-sync`, `link-check`), or pick the target domain (`integrate`)
+- `--force`: override the command's safety check. It means something different per command: overwrite existing files (`init`), integrate despite duplicates (`integrate`), archive a doc active docs still link to (`archive`), migrate onto an existing folder (`migrate-incident`)
+
 - `init` — scaffold a `.documentation/` tree
 - `maintain` — full maintenance pass (sync metadata, check links, audit, generate KB indexes)
 - `audit [--strict]` — compliance check

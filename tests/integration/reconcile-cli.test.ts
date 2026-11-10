@@ -127,7 +127,11 @@ describe('hewtd reconcile (built CLI)', () => {
     fill(f, (p) => (p === 'backend/a.md' ? { verdict: 'verify', sources: ['src/real.ts'] } : null));
     hewtd(['reconcile', '--apply', f]);
     rmSync(join(root, '.hewtd/graph.json'), { force: true });
-    expect(hewtd(['reconcile', '--status']).stdout).toMatch(/no \.hewtd\/graph\.json \(run `hewtd index`/);
+    expect(hewtd(['reconcile', '--status']).stdout).toMatch(/no \.hewtd\/graph\.json yet \(run `hewtd index`/);
+    // review: with the export off, `hewtd index` would never write it, so the hint says why instead
+    put('.claude/hit-em-with-the-docs.json', JSON.stringify({ graph_export: false }));
+    expect(hewtd(['reconcile', '--status']).stdout).toMatch(/graph_export is off/);
+    rmSync(join(root, '.claude/hit-em-with-the-docs.json'));
     put('.hewtd/graph.json', '{"docs": 3}');
     expect(hewtd(['reconcile', '--status']).stdout).toMatch(/graph\.json is malformed/);
     put('.hewtd/graph.json', 'not json');

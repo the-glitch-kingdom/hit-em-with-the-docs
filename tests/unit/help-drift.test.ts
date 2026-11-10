@@ -58,6 +58,11 @@ describe('#90 the whole surface is documented', () => {
     it.each([...new Set(names)])('CLI command %s', (name) => {
       expect(help).toMatch(new RegExp(`\`(?:hewtd )?${name}(?=[\\s\`|\\[<])`));
     });
+    // A subcommand (discover patterns, domain add) is named on a help line that also names its parent.
+    const nested = program.commands.flatMap((parent) => parent.commands.map((child) => [parent.name(), child.name()] as const));
+    it.each(nested.map(([parent, child]) => [`${parent} ${child}`, parent, child] as const))('CLI subcommand %s', (_label, parent, child) => {
+      expect(help.split('\n').some((line) => new RegExp(`\\b${parent}\\b`).test(line) && new RegExp(`(?<![\\w-])${child}(?![\\w-])`).test(line)), `${parent} ${child} is not on a help.md line with ${parent}`).toBe(true);
+    });
     it.each(slash_commands)('slash command %s', (name) => {
       expect(help).toMatch(new RegExp(`/hit-em-with-the-docs:${name}(?![\\w-])`));
     });
@@ -75,7 +80,8 @@ describe('#90 the whole surface is documented', () => {
     const commands_per_flag = new Map<string, number>();
     for (const use of uses) commands_per_flag.set(use.flag, (commands_per_flag.get(use.flag) ?? 0) + 1);
     it.each(uses.map((use) => [`${use.command} ${use.flag}`, use] as const))('%s', (_label, use) => {
-      if ((commands_per_flag.get(use.flag) ?? 0) >= COMMON_FLAG_MIN_COMMANDS) return expect(flag_re(use.flag).test(all_text), `${use.flag} is not named in any doc`).toBe(true);
+      // a flag many commands share is documented once, in help.md's common options
+      if ((commands_per_flag.get(use.flag) ?? 0) >= COMMON_FLAG_MIN_COMMANDS) return expect(flag_re(use.flag).test(help), `${use.flag} (shared by ${commands_per_flag.get(use.flag)} commands) is not in commands/help.md`).toBe(true);
       // A command-specific flag must sit near its command: in commands/<command>.md, or within 8 lines of the command's name.
       const top = use.command.split(' ')[0]!;
       const covered = docs.some((doc) => {
@@ -93,7 +99,13 @@ describe('#90 the whole surface is documented', () => {
       const parts = key.split('.');
       const leaf = parts.at(-1)!;
       const needle = GENERIC_LEAVES.has(leaf) || parts.length === 1 && leaf.length < 4 ? parts.slice(-2).join('.') : leaf;
-      const found = new RegExp(`(?<![\\w])${needle.replace(/\./g, '\\.')}(?![\\w])`).test(all_text);
+      const word = (text: string) => new RegExp(`(?<![\\w])${text.replace(/\./g, '\\.')}(?![\\w])`);
+      // a nested key's leaf counts only in its dotted form or within 15 lines of its parent's name
+      const parent = parts.at(-2);
+      const found = !parent || needle.includes('.') ? word(needle).test(all_text) : word(`${parent}.${leaf}`).test(all_text) || docs.some((doc) => {
+        const lines = doc.text.split('\n');
+        return lines.some((line, index) => word(leaf).test(line) && lines.slice(Math.max(0, index - 15), index + 16).some((near) => word(parent).test(near)));
+      });
       expect(found, `config key ${key} (searched for ${needle}) is not named in any doc`).toBe(true);
     });
   });

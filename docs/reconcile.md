@@ -469,8 +469,10 @@ verdict, `reviewed_on`, `applied_commit`, `review_file`, and a content hash.
 A doc counts as reviewed only while its hash is unchanged. `--status` shows
 counts per lane and verdict and the next unreviewed docs. On reviewed docs it adds
 `refs in reviewed docs: N covered by external_refs, M still missing in K doc(s)` (3.1.7),
-read from `.hewtd/graph.json` (written by `hewtd index` and `reconcile --apply`); with no graph it
-prints a one-line hint, and a malformed graph is reported as such. It never runs triage.
+read from `.hewtd/graph.json` at the docs' git top-level (written by `hewtd index` and
+`reconcile --apply`). With no graph it says why in one line: run `hewtd index`, the export is off
+(`graph_export: false`), or the docs are not in a git checkout. A malformed graph is reported as
+such. It never runs triage.
 
 ## Team mode
 

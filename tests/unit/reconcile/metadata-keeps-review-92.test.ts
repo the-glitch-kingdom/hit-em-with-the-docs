@@ -48,6 +48,11 @@ describe('metadata verdicts keep the review (#92)', () => {
     expect(is_reviewed(e, e.content_hash)).toBe(true);
     const st = get_ledger_status(ledger, [{ path: 'backend/a.md', hash: e.content_hash }]);
     expect([st.by_verdict, st.metadata_updated]).toEqual([{ verify: 1 }, 1]);
+    // a fresh review of the unchanged doc clears the metadata-updated mark
+    await run({ verdict: 'verify' }, '2026-11-09');
+    const again = await load_ledger(ledger_file);
+    expect(again.entries['backend/a.md']!.fields_on).toBeUndefined();
+    expect(get_ledger_status(again, [{ path: 'backend/a.md', hash: e.content_hash }]).metadata_updated).toBe(0);
   });
 
   it('fields without an earlier review, or after the doc changed, records fields as before', async () => {

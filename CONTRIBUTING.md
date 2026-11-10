@@ -99,8 +99,8 @@ npm test
 ```
 
 `tests/unit/help-drift-90.test.ts` runs `node dist/cli/index.js --help`, so run `npm run build`
-first (it fails if `dist/` is missing). It checks that `commands/help.md` and `docs/LLM-GUIDE.md`
-name every top-level CLI command. When it fails, add the missing command to those files (or
+first (it fails if `dist/` is missing). It checks that `commands/help.md`
+name every top-level CLI command. When it fails, add the missing command to that file (or
 remove a stale one) and rerun.
 
 Run tests with coverage:

@@ -1337,6 +1337,7 @@ program
     logger.info(`  reviewed ${st.reviewed} of ${st.total}`);
     for (const [key, value] of Object.entries(st.by_lane)) logger.info(`  lane ${key}: ${value}`);
     for (const [key, value] of Object.entries(st.by_verdict)) logger.info(`  verdict ${key}: ${value}`);
+    if (st.metadata_updated) logger.info(`  reviewed, metadata updated since: ${st.metadata_updated}`);
     if (st.next_unreviewed.length) logger.info(`  next unreviewed:\n${st.next_unreviewed.map((path_text) => `    ${path_text}`).join('\n')}`);
     // Cheap: the last graph export plus each reviewed doc's frontmatter; never runs triage.
     const { is_reviewed, get_external_refs_status } = await import('../core/reconcile/ledger.js');

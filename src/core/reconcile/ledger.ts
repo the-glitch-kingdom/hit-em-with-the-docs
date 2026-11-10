@@ -12,6 +12,8 @@ export interface LedgerEntry {
   lane: string;
   verdict?: string;
   reviewed_on?: string;
+  /** Day a metadata-only verdict (fields, phrases) touched a doc whose earlier review still holds; cleared by the next review. */
+  fields_on?: string;
   applied_commit?: string;
   review_file?: string;
   /** secret verdict: env names the values moved to (never the values). */
@@ -81,6 +83,8 @@ export interface LedgerStatus {
   reviewed: number;
   by_lane: Record<string, number>;
   by_verdict: Record<string, number>;
+  /** Reviewed docs whose metadata was updated after their review. */
+  metadata_updated: number;
   next_unreviewed: string[];
 }
 
@@ -90,12 +94,13 @@ export function get_ledger_status(
   docs: { path: string; hash: string }[],
   next = 10
 ): LedgerStatus {
-  const status: LedgerStatus = { total: docs.length, reviewed: 0, by_lane: {}, by_verdict: {}, next_unreviewed: [] };
+  const status: LedgerStatus = { total: docs.length, reviewed: 0, by_lane: {}, by_verdict: {}, metadata_updated: 0, next_unreviewed: [] };
   for (const doc of docs) {
     const entry = ledger.entries[doc.path];
     if (entry) status.by_lane[entry.lane] = (status.by_lane[entry.lane] ?? 0) + 1;
     if (is_reviewed(entry, doc.hash)) {
       status.reviewed++;
+      if (entry!.fields_on) status.metadata_updated++;
       status.by_verdict[entry!.verdict!] = (status.by_verdict[entry!.verdict!] ?? 0) + 1;
     } else if (status.next_unreviewed.length < next) status.next_unreviewed.push(doc.path);
   }

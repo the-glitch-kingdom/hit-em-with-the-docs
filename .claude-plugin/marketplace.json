@@ -6,13 +6,13 @@
   },
   "metadata": {
     "description": "Official marketplace for hit-em-with-the-docs - Self-managing documentation system",
-    "version": "3.1.7"
+    "version": "3.1.8"
   },
   "plugins": [
     {
       "name": "hit-em-with-the-docs",
       "description": "Self-managing documentation system with hierarchical structure, intelligent automation, pattern discovery, and agent orchestration",
-      "version": "3.1.7",
+      "version": "3.1.8",
       "author": {
         "name": "TheGlitchKing"
       },

@@ -62,7 +62,22 @@ Each review file has, per doc, a heading `## <docs-relative path>`, a `- [ ] acc
 - `frontmatter`: keys to set, for example `purpose` and `symptoms`. Never `last_verified`; only the `verify` verdict stamps it.
 - `patch`: `[{old, new}]` exact-text body edits. Each `old` must occur exactly once in the body.
 - `sources`: every file you actually read to decide. Do not list files you did not open. Apply merges them into the doc's existing `sources` (existing first, no duplicates, the doc itself dropped); to remove one, list it in `sources_remove`. A source that is not in the repo is kept and reported. A file read in a related repo (`reconcile.related_repos`) is listed as `<name>:<path>`.
+- `external_refs`: names or paths the doc cites that cannot be checked in this repo. Apply unions them into the doc's own `external_refs` (existing first, no duplicates) and never overwrites; it can also sit under `frontmatter`. They are then not checkable (`unknown`), never `missing`.
 - `reason`: for `archive` and `unverifiable`.
+
+Every `missing` ref in the entry needs a decision, or it stays `missing` on every later pass. Either fix the doc (a `patch` to the new name or path, or a `rewrite`), or list the ref in `external_refs` when it is not a thing in this repo: a third-party name, another product's file, a negation or history ("no longer uses `x`"), or a placeholder. `missing` itself is read-only and apply ignores it. Skeletons print `missing` and an empty `external_refs: []` on each entry (not on secret-lane, gaps, overview or outside entries). Example:
+
+```json
+{
+  "path": "api/auth.md",
+  "verdict": "verify",
+  "missing": ["boto3", "legacy/old_login.py"],
+  "external_refs": ["boto3"],
+  "patch": [{"old": "legacy/old_login.py", "new": "src/auth/login.py"}],
+  "sources": ["src/auth/login.py"],
+  "sources_remove": ["src/auth/old.py"]
+}
+```
 
 Rules: draft metadata from the doc's own text and the code it cites only. Do not invent symptoms or purposes. If a claim cannot be checked, say `unverifiable`; do not guess. Do not touch `content_hash`, `path`, `lane` or `reasons`. Leave `verdict: null` for a doc you did not get to. Use the `missing` references and `reasons` in the entry as the starting evidence. Do not edit anything under the docs tree.
 
@@ -158,6 +173,8 @@ hewtd reconcile --apply .hewtd/reconcile/review-<batch>-*.md
 ```
 
 Apply is serial, one commit per batch, archives through the normal archive path, and regenerates the touched indexes. It reports per doc: applied, stale (the doc changed since the review was written; re-run triage for it), rejected, already-applied, skipped or error. A doc in two review files is an error. Show the outcomes.
+
+`hewtd reconcile --status` also prints, for reviewed docs, how many refs are covered by `external_refs` and how many are still missing (read from `.hewtd/graph.json`; without a graph it says to run `hewtd maintain`). Use it to find docs whose `missing` refs were never decided.
 
 Then suggest `hewtd audit` and `hewtd link-check`, and `hewtd reconcile --status` to see progress; `--next N` continues with the next unreviewed docs. Two runs on an unchanged scope produce no changes.
 

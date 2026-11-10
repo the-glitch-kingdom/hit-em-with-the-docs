@@ -40,6 +40,8 @@ If unsure, write 2-3 sentences of body, then ask `hewtd discover patterns` or re
 
 ## Universal frontmatter (required, every doc)
 
+Optional reconcile keys: `sources: [paths]` (merged by apply) and `external_refs: [names]` (cited things that cannot be checked in this repo). See "Reconcile in 3.x".
+
 ```yaml
 ---
 title: <Human readable>
@@ -136,10 +138,21 @@ Use Bash to run these. They're all available via `npx --no @theglitchking/hit-em
 | `hewtd domain remove <id>` | Remove a custom domain from config. Never deletes docs — reports how many become orphaned. Can't remove a built-in. |
 | `hewtd archive <file>` | Retire a doc: move it into `archive/`, stamp lifecycle frontmatter, reindex. Reversible. Link guard refuses if active docs still link to it — `--force` overrides; `--dry-run` previews; `-r/--reason` records why. |
 | `hewtd unarchive <file>` | Restore an archived doc to its recorded `archived_from` path; clears the archive stamp. Refuses if the target already exists. |
-| `hewtd reconcile <scope>` | Check existing docs against the code (2.15.0+). Deterministic triage; `--write-review` writes review files, `--apply <files>` applies accepted entries, `--status`, `--outside`, `--secrets [scope] [--json]` (masked secret scan, 2.17.0), `--overview "<q>"` (seed an overview from a question) and `--write-review --overview <members-file>` (2.18.0; verdicts `overview`, `merge`, `point` give one owner per fact). `--gaps <file> [--write-review]` (2.21.0; missed search queries become `user_phrase` proposals, new-doc candidates or open questions; format in `docs/gaps-format.md`). Judging is done by `/hit-em-with-the-docs:reconcile`. See `docs/reconcile.md`. |
+| `hewtd index` (alias `reindex`) | Regenerate every INDEX/REGISTRY from disk and write `.hewtd/graph.json` (incremental via a cache since 3.1.4/3.1.5; `--no-graph` skips the export, `--dry-run` previews). |
+| `hewtd reconcile <scope>` | Check existing docs against the code (2.15.0+). Deterministic triage; `--write-review` writes review files, `--apply <files>` applies accepted entries, `--status`, `--outside`, `--secrets [scope] [--json]` (masked secret scan, 2.17.0), `--overview "<q>"` (seed an overview from a question) and `--write-review --overview <members-file>` (2.18.0; verdicts `overview`, `merge`, `point` give one owner per fact). `--gaps <file> [--write-review]` (2.21.0; missed search queries become `user_phrase` proposals, new-doc candidates or open questions; format in `docs/gaps-format.md`). Judging is done by `/hit-em-with-the-docs:reconcile`. See `docs/reconcile.md` and "Reconcile in 3.x" below. |
 | `hewtd secrets --staged` | Scan only lines the staged diff adds for secrets (2.19.0); exit 1 with masked findings. `--baseline-add <file:line> --reason "..."` and `--baseline-prune` manage `.hewtd/secrets-baseline.json`. See `docs/write-time-guards.md`. |
 | `hewtd hooks install\|uninstall` | Opt-in pre-commit block running `hewtd secrets --staged` (2.19.0). Appended, never overwrites; uninstall is byte-exact. |
 | `hewtd archive-candidates` | Advisory, read-only. List docs that may warrant archiving (score + reasons). Never moves anything. `--json` for machine output. |
+
+## Reconcile in 3.x
+
+- **Statuses:** each cited thing is `ok`, `missing` or `unknown`. `unknown` means not checkable (outside the repo, gitignored, a placeholder or regex, a `secret/` path with no such folder, or listed in `external_refs`) and never counts as `missing`.
+- **Decide every `missing` ref.** The review skeleton prints `missing` (read-only) and an empty `external_refs: []` per entry. Fix the doc with a `patch`, or list the ref in `external_refs` (third-party names, other products' files, negation or history, placeholders). Apply unions `external_refs` into the doc's frontmatter (existing first, deduped) and never overwrites; it works for symbol-shaped and path-shaped names.
+- **`sources` merge:** apply merges an entry's `sources` into the doc's (existing first, no duplicates); `sources_remove: [..]` drops one.
+- **`rewrite`:** an accepted draft replaces the body in the batch commit; the doc's frontmatter is kept and merged. Warnings list dropped anchors others link to and dropped cited paths.
+- **`--write-review` on named docs** includes clean-lane docs (for a sources-only fix-up); `--next` skips them.
+- **`--status`** also prints, for reviewed docs, refs covered by `external_refs` vs still missing (needs `.hewtd/graph.json`).
+- **Secrets:** a repo path value such as `tokens: config/theme/theme.data.json` is not a `generic-secret` finding when that file exists in the repo.
 
 ## Slash commands (Claude Code)
 
@@ -150,6 +163,8 @@ Use Bash to run these. They're all available via `npx --no @theglitchking/hit-em
 | `/hit-em-with-the-docs:policy [auto\|nudge\|off]` | Get/set the update policy |
 | `/hit-em-with-the-docs:domain list\|add\|remove` | Manage custom domains (add confirms via dry-run; remove confirms the orphaned-doc count before applying) |
 | `/hit-em-with-the-docs:reconcile <scope>` | Reconcile existing docs with the code; proposes fixes, applies only what you accept (`--next N`, `--status`, `--outside`) |
+| `/hit-em-with-the-docs:archive` | Deprecate/restore docs or list candidates |
+| `/hit-em-with-the-docs:find-citers`, `audit-facts`, `cite`, `extract-facts`, `migrate-incident` | Knowledge-base workflows (prefix each with `/hit-em-with-the-docs:`) |
 | `/hit-em-with-the-docs:update` | Update to the latest version |
 | `/hit-em-with-the-docs:relink` | Re-run the skill linker (no-op for hewtd; useful for plugin-stack debugging) |
 

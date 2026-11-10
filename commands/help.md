@@ -21,6 +21,9 @@ If `$ARGUMENTS` matches one of the topics below, focus the orientation on that t
 - `templates` — list available templates with paths
 - `domains` — explain the 15 built-in domains + custom domains (`hewtd domain add/remove/list`, 2.6.0+)
 - `archive` / `deprecation` — explain the archival workflow (`hewtd archive/unarchive/archive-candidates`, 2.7.0+)
+- `reconcile` — explain the doc-vs-code pass: triage lanes, reference statuses (`ok`, `missing`, `unknown` = not checkable), deciding every `missing` ref (fix it with a `patch`, or list it in `external_refs`), the `--write-review` / judge / `--apply` loop, `sources` merge (`sources_remove` to drop one), landed `rewrite` drafts, `--status`; point at `docs/reconcile.md` and `/hit-em-with-the-docs:reconcile`
+- `graph` — explain `hewtd index` (aliased `reindex`): it regenerates the INDEX/REGISTRY files and writes `.hewtd/graph.json` (per doc resolved and missing refs, change dates, reconcile verdict, a symbol index); the export is incremental via a cache, `--no-graph` skips it, `graph_export: false` turns it off; point at `docs/graph-export.md`
+- `secrets` — explain the secret scan: `hewtd reconcile --secrets` (masked findings), `hewtd secrets --staged`, the `--baseline-add <file:line> --reason` / `--baseline-prune` baseline in `.hewtd/secrets-baseline.json`, and the opt-in `hewtd hooks install|uninstall` pre-commit block; point at `docs/write-time-guards.md`
 
 ## What hewtd does (the one-paragraph brief)
 
@@ -52,7 +55,17 @@ CLI (via `npx --no @theglitchking/hit-em-with-the-docs <cmd>` or `hewtd <cmd>` i
 - `archive <file>` — deprecate a doc into `archive/` (reversible, link-safe, reindexes) (2.7.0+)
 - `unarchive <file>` — restore an archived doc to its domain folder (2.7.0+)
 - `archive-candidates` — advisory list of docs worth retiring (2.7.0+)
-- `reconcile <scope> [--json|--write-review|--apply <files>|--status|--next N|--serial|--team]` — deterministic triage, review files and serial apply for the reconcile pass
+- `index` (alias `reindex`) `[--dry-run|--no-graph|-d <domain>]` — regenerate every domain + root INDEX/REGISTRY from the docs on disk and write the `.hewtd/graph.json` export
+- `reconcile <scope> [--json|--write-review|--apply <files>|--status|--next N|--serial|--team|--outside|--secrets|--overview "<q>"|--gaps <file>]` — deterministic triage, review files and serial apply for the reconcile pass (the judging is the slash command)
+- `secrets [--staged|--baseline-add <file:line> --reason "..."|--baseline-prune]` — secret scan baseline; `--staged` scans only the lines a staged diff adds (exit 1 on a finding). Never prints a value
+- `hooks install|uninstall` — add or remove the opt-in pre-commit block that runs `hewtd secrets --staged`; never overwrites an existing hook
+- `find-citers <fact-id>` — list the playbooks and incidents that cite a fact
+- `audit-facts [--run-verify <id>|--run-verify-all|--window <days>]` — report facts past their review window; re-run a fact's `verify_command`
+- `cite <fact-id> -f <playbook>` — insert a `cites:` entry into a playbook's symptom (`--alert-name`, `--user-phrase`, `--error-pattern` pick the symptom; `--dry-run`)
+- `migrate-incident <flat-file>` — convert a legacy flat-file incident into the folder form (`narrative.md` + `facts.md`)
+- `fix-legacy-layout` — move incident folders written by the buggy 2.3.0 `migrate-incident` into `<vault>/incidents/`; idempotent
+- `extract-facts <incident-folder>` — write accepted fact specs to `<vault>/facts/` (the specs come from the slash command)
+- `update` / `policy [auto|nudge|off]` / `status` / `relink` — plugin maintenance: install the latest version, get or set the update policy, show version and hook state, refresh skill symlinks
 - `search <query>` — search documentation
 - `fix-retrieval-fields [--apply]` — move `summary`/`description` into `purpose`, merge `keywords` into `tags` (dry run by default); drops filler, clears generator-fallback purposes (2.12.0+, filler 2.14.0)
 
@@ -60,6 +73,9 @@ Slash commands (Claude Code):
 - `/hit-em-with-the-docs:domain` — add/remove/list custom domains (2.6.0+)
 - `/hit-em-with-the-docs:archive` — deprecate/restore docs, or list candidates (2.7.0+)
 - `/hit-em-with-the-docs:reconcile <scope>` — check existing docs against the code, propose fixes, apply only what you accept (serial or agent team); `--next N`, `--status`, `--outside`
+- `/hit-em-with-the-docs:find-citers`, `/hit-em-with-the-docs:audit-facts`, `/hit-em-with-the-docs:cite` — the knowledge-base CLI commands of the same names
+- `/hit-em-with-the-docs:extract-facts` — propose atomic facts from an incident narrative; you accept, edit or reject, then the accepted ones are committed
+- `/hit-em-with-the-docs:migrate-incident` — convert a legacy flat-file incident into the folder form
 - `/hit-em-with-the-docs:status` — installed version, update policy, hook state
 - `/hit-em-with-the-docs:policy [auto|nudge|off]` — get/set update policy
 - `/hit-em-with-the-docs:update` — pull the latest version
@@ -74,6 +90,8 @@ Slash commands (Claude Code):
 - `fact`: `id`, `confidence`, `last_verified`, `provenance` (≥1 entry)
 - `incident-narrative`: `id`, `date`, `severity`, `resolution_status`, `components`
 - `incident-facts`: `incident_id`, `produced` (may be empty)
+
+**Optional reconcile fields:** `sources` (files a doc was checked against; `reconcile --apply` merges new ones into it, never replaces) and `external_refs` (names or paths the doc cites that cannot be checked in this repo, such as third-party names, other products' files, negation or history, placeholders; reconcile treats them as not checkable, so they never count as `missing`). `last_verified` is stamped only by a `verify` verdict.
 
 **Retrieval fields (2.12.0+):** write `purpose` (one sentence) and `symptoms` (plain strings, any tier) on every doc. `hewtd audit` raises advisory `RETRIEVAL_*` warnings when they are missing, weak, generic or duplicated; they never fail the audit. See `docs/retrieval-fields.md`.
 
@@ -93,6 +111,9 @@ When asked to create one of these, **read the template first**, replace every `<
 
 ## Where to find more
 
+- **docs/reconcile.md** — the reconcile pass, reference statuses, review-file format
+- **docs/graph-export.md** — `.hewtd/graph.json` schema and the incremental index
+- **docs/write-time-guards.md** — secret scan, baseline, pre-commit hook
 - **README.md** — full reference (long; use the index)
 - **docs/LLM-GUIDE.md** — concise agent-facing guide (this is the cheat sheet)
 - **docs/knowledge-base-primitives.md** — KB schema reference + error codes table

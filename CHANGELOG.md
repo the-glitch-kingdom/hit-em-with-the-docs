@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.1.7] — 2026-11-10
+
+Fixes #90. No breaking changes; `.hewtd/graph.json` stays `version: 1`, no existing JSON key changes.
+
+- reconcile --apply (#90): `external_refs` (top level of the entry or `frontmatter.external_refs`; string entries only) is merged into the doc's frontmatter: existing entries first, deduped, never overwritten. Refs a judge rules fine no longer stay `missing`.
+- reconcile --write-review (#90): each non-secret entry gets a read-only `missing: [..]` and an empty `external_refs: []`.
+- reconcile --status (#90): reviewed docs add `refs in reviewed docs: N covered by external_refs, M still missing in K doc(s)`, read from `.hewtd/graph.json`; without a graph it says why in one line (run `hewtd index`, `graph_export: false`, or not a git checkout), and a malformed graph is reported as malformed. It reads the graph at the docs' git top-level, where it is written. Non-string `external_refs` entries in a review entry are ignored; `covered` counts distinct string entries.
+- Help refresh: `commands/help.md`, `commands/reconcile.md`, `docs/LLM-GUIDE.md`, `docs/reconcile.md`, README and the skill now match the 3.x CLI.
+- Invisible features documented: `reconcile.schema_sources`, `reconcile.secrets.disabled_rules` (turns a whole rule off), `reconcile.search_command` (used only by `reconcile --overview`, no shell, 30 s timeout, results first), the `vault.*` keys (table in `docs/knowledge-base-primitives.md`), `cite --alert-name` / `--user-phrase`, `discover patterns --category`, and the `domain add` long flags `--name`, `--description`, `--keywords`, `--category`.
+- Drift test: one `tests/unit/help-drift.test.ts` replaces the help-only test. It reads the commander program and the zod config schema directly (no `dist/` needed) and fails when a command, command-specific flag or config key is undocumented. `src/cli/index.ts` now exports `program` and skips `program.parse()` when `HEWTD_NO_PARSE` is set; `plugin_config_schema` is exported.
+- Review fixes: the `--status` no-graph hint names the real reason; `docs/reconcile.md` says `graph.json` is written by `hewtd index` and `reconcile --apply`; `rewrite` is documented as stamping `last_verified`; a malformed graph throws instead of reading as empty; a review entry only adds string `external_refs` and keeps non-strings already in the doc; the drift test also covers subcommands, puts flags shared by 4+ commands in help.md's new common options, and finds a nested config key only in dotted form or next to its parent.
+- CI: build and test run as a 2 Node x 3 shard matrix (fail-fast off), lint on shard 1 only, the separate Type check step is dropped (the `tsc` build is the same check), `HEWTD_TEST_PREBUILT=1` skips the duplicate rebuild, and action-build is folded into test-action. Local shards (prebuilt) took 27/25/29 s for 377/590/423 tests, together all 1390; CI times come from the PR run. `incremental-code-82` is split into three files over a shared fixture. Branch protection needs the new `build (<node>, shard n/3)` check names. Coverage thresholds are not enforced (`thresholds.global` is read as a glob).
+
 ## [3.1.6] — 2026-11-10
 
 Fixes #84, #85 and #86. No breaking changes; `.hewtd/graph.json` stays `version: 1`.

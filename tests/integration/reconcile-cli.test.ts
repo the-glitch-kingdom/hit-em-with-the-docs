@@ -121,6 +121,23 @@ describe('hewtd reconcile (built CLI)', () => {
     expect(st).toMatch(/reviewed 1 of 3/);
   });
 
+  it('--status hints `hewtd index` without a graph and says so when the graph is malformed (#90)', () => {
+    hewtd(['reconcile', 'backend', '--write-review']);
+    const f = review_files()[0]!;
+    fill(f, (p) => (p === 'backend/a.md' ? { verdict: 'verify', sources: ['src/real.ts'] } : null));
+    hewtd(['reconcile', '--apply', f]);
+    rmSync(join(root, '.hewtd/graph.json'), { force: true });
+    expect(hewtd(['reconcile', '--status']).stdout).toMatch(/no \.hewtd\/graph\.json yet \(run `hewtd index`/);
+    // review: with the export off, `hewtd index` would never write it, so the hint says why instead
+    put('.claude/hit-em-with-the-docs.json', JSON.stringify({ graph_export: false }));
+    expect(hewtd(['reconcile', '--status']).stdout).toMatch(/graph_export is off/);
+    rmSync(join(root, '.claude/hit-em-with-the-docs.json'));
+    put('.hewtd/graph.json', '{"docs": 3}');
+    expect(hewtd(['reconcile', '--status']).stdout).toMatch(/graph\.json is malformed/);
+    put('.hewtd/graph.json', 'not json');
+    expect(hewtd(['reconcile', '--status']).stdout).toMatch(/graph\.json is malformed/);
+  });
+
   it('an error entry exits 1 with a summary line; a rewrite doc stays in --next', () => {
     hewtd(['reconcile', 'backend', '--write-review']);
     const f = review_files()[0]!;

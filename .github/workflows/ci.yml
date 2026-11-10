@@ -8,11 +8,18 @@ on:
 
 jobs:
   build:
+    name: build (${{ matrix.node-version }}, shard ${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: false
       matrix:
         node-version: [20.x, 22.x]
+        shard: [1, 2, 3]
+
+    env:
+      # tests/global-setup.ts skips its own rebuild: the Build step below already produced dist/
+      HEWTD_TEST_PREBUILT: '1'
 
     steps:
       - uses: actions/checkout@v4
@@ -26,17 +33,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Type check
-        run: npm run typecheck
-
       - name: Lint
+        if: matrix.shard == 1
         run: npm run lint
 
+      # `npm run build` is `tsc`, the same project `npm run typecheck` checks, so a type error fails here
       - name: Build
         run: npm run build
 
       - name: Test
-        run: npm run test:coverage
+        run: npx vitest run --shard=${{ matrix.shard }}/3 ${{ matrix.node-version == '20.x' && '--coverage' || '' }}
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
@@ -45,36 +51,8 @@ jobs:
           files: ./coverage/coverage-final.json
           fail_ci_if_error: false
 
-  action-build:
-    runs-on: ubuntu-latest
-    needs: build
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Use Node.js 20.x
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20.x'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build action
-        run: npm run build:action
-
-      - name: Verify action dist
-        run: |
-          if [ ! -f dist/action/index.js ]; then
-            echo "Action build failed - dist/action/index.js not found"
-            exit 1
-          fi
-          echo "Action build successful"
-
   test-action:
     runs-on: ubuntu-latest
-    needs: action-build
 
     steps:
       - uses: actions/checkout@v4
@@ -89,6 +67,14 @@ jobs:
         run: |
           npm ci
           npm run build:all
+
+      - name: Verify action dist
+        run: |
+          if [ ! -f dist/action/index.js ]; then
+            echo "Action build failed - dist/action/index.js not found"
+            exit 1
+          fi
+          echo "Action build successful"
 
       - name: Create test documentation
         run: |

@@ -98,6 +98,19 @@ Run all tests:
 npm test
 ```
 
+`tests/unit/help-drift.test.ts` reads the commander program (`src/cli/index.ts`, imported with
+`HEWTD_NO_PARSE=1` so it does not parse argv) and the zod `plugin_config_schema`; it needs no
+`dist/`. It fails when a CLI command or alias is missing from `commands/help.md`, when a
+command-specific flag is in neither `commands/<command>.md` nor near the command's name in some doc,
+or when a config key path is in no doc. When it fails, document the missing command, flag or key
+(or remove the stale one) and rerun. Importing `src/cli/index.ts` elsewhere needs the same
+`HEWTD_NO_PARSE=1`.
+
+CI runs the suite as a 2 Node (20.x, 22.x) x 3 shard matrix (`vitest run --shard=n/3`). Each job
+builds once and sets `HEWTD_TEST_PREBUILT=1`, so `tests/global-setup.ts` skips its own rebuild.
+Set it yourself only after running `npm run build`; without it the setup rebuilds `dist/`.
+Lint runs on shard 1 only; the Build step (`tsc`) is the type check.
+
 Run tests with coverage:
 ```bash
 npm run test:coverage

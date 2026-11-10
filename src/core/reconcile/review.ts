@@ -31,6 +31,10 @@ export interface ReviewEntry {
   sources?: string[];
   /** Sources to drop from the doc's existing `sources` (the rest of `sources` is merged in, never replaced). */
   sources_remove?: string[];
+  /** Missing refs the judge rules fine (third-party names, history, placeholders); merged into the doc's `external_refs`, never replaced. */
+  external_refs?: string[];
+  /** Skeleton only: the doc's missing refs at triage time. Information for the judge; apply ignores it. */
+  missing?: string[];
   /** archive: reason stamped on the doc. */
   reason?: string;
   /** Outside-tree entry: `path` is project-root-relative; verdicts are integrate | delete. */
@@ -179,6 +183,7 @@ export async function write_review_skeletons(options: {
         verdict: secrets ? 'secret' : null,
         ...(secrets && { secrets }),
         ...(doc && { lane: doc.lane, reasons: doc.reasons }),
+        ...(doc && doc.lane !== 'secret' && { missing: doc.missing, external_refs: [] }),
       });
     }
     if (!entries.length) continue;

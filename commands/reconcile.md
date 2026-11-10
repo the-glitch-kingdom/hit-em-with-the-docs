@@ -20,7 +20,7 @@ hewtd reconcile --secrets <scope...> --json
 
 The scan covers the docs in scope, `archive/`, the outside lane, `.hewtd/` and every file the docs cite. `--json` prints masked findings only: `rule`, `file:line`, the first 4 characters plus the length, and a sha256 fingerprint. Never a value.
 
-If there are findings, show that masked list and stop. Offer the `secret` verdicts (move the value to `.env.hewtd` and leave a pointer in the doc), let the user accept or reject each, apply them with `--apply`, and only then continue to triage. For a false positive, point the user at `reconcile.secrets.allow` in the plugin config (a fingerprint or pattern, with a reason). If there are none, go on to step 1.
+If there are findings, show that masked list and stop. Offer the `secret` verdicts (move the value to `.env.hewtd` and leave a pointer in the doc), let the user accept or reject each, apply them with `--apply`, and only then continue to triage. For a false positive, point the user at `reconcile.secrets.allow` in the plugin config (a fingerprint or pattern, with a reason). For a rule that is noisy across the repo, `reconcile.secrets.disabled_rules` (a list of rule ids) turns the whole rule off; say so plainly, because it also hides every real finding of that rule, and prefer `allow` for one-off cases. If there are none, go on to step 1.
 
 Triage repeats the scan and puts any doc with a finding, in itself or in a file it cites, into the `secret` lane. Files with findings are listed under `blocked_files` and dropped from the doc's `cited` list. Since 2.22.0 `blocked_files` also lists cited code files withheld for weak hits only (`generic-secret`, `url-password`) on docs that are not in the secret lane; those docs keep their lane, and you still never open the withheld files.
 
@@ -34,6 +34,7 @@ Triage repeats the scan and puts any doc with a finding, in itself or in a file 
 
 - `--status`: run `hewtd reconcile --status` (add `--next N` to list the next N unreviewed docs), show it, stop.
 - `--next N` with no scope: resume from the ledger. Triage `hewtd reconcile --next N --json` and continue at step 1.
+- `--overview "<question>"` ranks docs with built-in BM25; if the plugin config sets `reconcile.search_command` (an argv template with `{query}`, run without a shell), the doc paths it prints come first.
 - `--outside`: docs outside the docs root (tool-read, misplaced, junk, not a doc). Run `hewtd reconcile --outside` and follow its output: it proposes integrate-and-remove for misplaced docs and deletion for junk, each applied only on acceptance. Files matching `keep_in_place` are never moved.
 
 ## 1. Triage
@@ -44,7 +45,7 @@ hewtd reconcile <scope...> --json [--serial|--team] [--next N]
 
 The scope must be committed: the CLI refuses a dirty or untracked in-scope file. Tell the user to commit or stash and stop if it does.
 
-Show the user: docs per lane (`clean`, `fields-only`, `check`, `archive-candidate`), the work estimate (judgment docs and bytes), the `mode` and shard count, and any `warnings` (for example a shallow clone, where staleness is unknown). Honour `--serial` / `--team` from the arguments; otherwise follow the plan's `mode`.
+Show the user: docs per lane (`clean`, `fields-only`, `check`, `archive-candidate`), the work estimate (judgment docs and bytes), the `mode` and shard count, and any `warnings` (for example a shallow clone, where staleness is unknown). Honour `--serial` / `--team` from the arguments; otherwise follow the plan's `mode`. Table and column refs are `unknown` (not checked, never `missing`) until the plugin config lists `reconcile.schema_sources`, a list of globs such as `["**/migrations/**/*.sql", "**/schema.prisma"]`; triage prints the schema files it found (`schema files:`), so offer to set it from that list when the docs cite tables.
 
 Then write the skeletons:
 
@@ -59,10 +60,25 @@ It prints one review file per shard under `.hewtd/reconcile/review-<batch>-<shar
 Each review file has, per doc, a heading `## <docs-relative path>`, a `- [ ] accept` line, and a ```json block holding a ReviewEntry. For every entry fill:
 
 - `verdict`: `verify` (doc matches the code; stamps `last_verified`), `rewrite` (needs a larger rewrite; put the full proposed body in `draft`; apply replaces the doc's body with it, keeps the doc's frontmatter and merges `frontmatter` and `sources` like an edit, and reports in `detail` any heading anchor other docs link to or any cited path that the draft drops), `archive` (obsolete; put the why in `reason`), `merge`, `point` and `overview` (step 3), `unverifiable` (cannot be checked from the repo; sets `confidence: low`), or `fields` (frontmatter only).
-- `frontmatter`: keys to set, for example `purpose` and `symptoms`. Never `last_verified`; only the `verify` verdict stamps it.
+- `frontmatter`: keys to set, for example `purpose` and `symptoms`. Never `last_verified`; only the `verify` and `rewrite` verdicts stamp it.
 - `patch`: `[{old, new}]` exact-text body edits. Each `old` must occur exactly once in the body.
 - `sources`: every file you actually read to decide. Do not list files you did not open. Apply merges them into the doc's existing `sources` (existing first, no duplicates, the doc itself dropped); to remove one, list it in `sources_remove`. A source that is not in the repo is kept and reported. A file read in a related repo (`reconcile.related_repos`) is listed as `<name>:<path>`.
+- `external_refs`: names or paths the doc cites that cannot be checked in this repo. Apply unions them into the doc's own `external_refs` (existing first, no duplicates) and never overwrites; it can also sit under `frontmatter`. They are then not checkable (`unknown`), never `missing`.
 - `reason`: for `archive` and `unverifiable`.
+
+Every `missing` ref in the entry needs a decision, or it stays `missing` on every later pass. Either fix the doc (a `patch` to the new name or path, or a `rewrite`), or list the ref in `external_refs` when it is not a thing in this repo: a third-party name, another product's file, a negation or history ("no longer uses `x`"), or a placeholder. `missing` itself is read-only and apply ignores it. Skeletons print `missing` and an empty `external_refs: []` on each entry (not on secret-lane, gaps, overview or outside entries). Example:
+
+```json
+{
+  "path": "api/auth.md",
+  "verdict": "verify",
+  "missing": ["boto3", "legacy/old_login.py"],
+  "external_refs": ["boto3"],
+  "patch": [{"old": "legacy/old_login.py", "new": "src/auth/login.py"}],
+  "sources": ["src/auth/login.py"],
+  "sources_remove": ["src/auth/old.py"]
+}
+```
 
 Rules: draft metadata from the doc's own text and the code it cites only. Do not invent symptoms or purposes. If a claim cannot be checked, say `unverifiable`; do not guess. Do not touch `content_hash`, `path`, `lane` or `reasons`. Leave `verdict: null` for a doc you did not get to. Use the `missing` references and `reasons` in the entry as the starting evidence. Do not edit anything under the docs tree.
 
@@ -158,6 +174,8 @@ hewtd reconcile --apply .hewtd/reconcile/review-<batch>-*.md
 ```
 
 Apply is serial, one commit per batch, archives through the normal archive path, and regenerates the touched indexes. It reports per doc: applied, stale (the doc changed since the review was written; re-run triage for it), rejected, already-applied, skipped or error. A doc in two review files is an error. Show the outcomes.
+
+`hewtd reconcile --status` also prints, for reviewed docs, how many refs are covered by `external_refs` and how many are still missing (read from `.hewtd/graph.json`, which `hewtd index` and `reconcile --apply` write; without one it says why: run `hewtd index`, or the export is off (`graph_export: false`), or the docs are not in a git checkout). Use it to find docs whose `missing` refs were never decided.
 
 Then suggest `hewtd audit` and `hewtd link-check`, and `hewtd reconcile --status` to see progress; `--next N` continues with the next unreviewed docs. Two runs on an unchanged scope produce no changes.
 

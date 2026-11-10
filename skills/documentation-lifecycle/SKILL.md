@@ -166,6 +166,9 @@ with a `verify_command`. `/hit-em-with-the-docs:help` covers the rest.
 Reconciling existing docs with the code: `/hit-em-with-the-docs:reconcile <domain|folder|files>`
 (`--next N` resumes, `--status` shows progress). The CLI triages and applies;
 the slash command does the judging; nothing changes until you accept.
+A doc that cites things this repo cannot check (third-party names, other
+products' files) lists them in frontmatter `external_refs: [..]` so they are
+not reported `missing`; the slash command covers the review loop.
 
 ## Checking the tree
 

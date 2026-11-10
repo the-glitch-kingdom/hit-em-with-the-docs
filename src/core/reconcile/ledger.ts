@@ -101,3 +101,36 @@ export function get_ledger_status(
   }
   return status;
 }
+
+export interface ExternalRefsStatus {
+  /** refs the reviewed docs declare in `external_refs` */
+  covered: number;
+  /** refs still unresolved (graph `resolved: false`) in reviewed docs */
+  still_missing: number;
+  docs_still_missing: number;
+}
+
+/** Reviewed docs only; `graph` is `.hewtd/graph.json`, `frontmatters` maps doc path to its parsed frontmatter. Throws on a malformed graph. */
+export function get_external_refs_status(
+  graph: unknown,
+  frontmatters: Record<string, Record<string, unknown>>,
+  reviewed_paths: string[]
+): ExternalRefsStatus {
+  // eslint-disable-next-line id-denylist -- serialized key (graph JSON)
+  const graph_docs = (graph as { docs?: unknown } | null)?.docs;
+  if (typeof graph_docs !== 'object' || graph_docs === null || Array.isArray(graph_docs)) throw new Error('graph.json has no docs map');
+  // eslint-disable-next-line id-denylist -- serialized key (graph JSON)
+  const docs = graph_docs as Record<string, { refs?: unknown } | undefined>;
+  const status: ExternalRefsStatus = { covered: 0, still_missing: 0, docs_still_missing: 0 };
+  for (const doc_path of reviewed_paths) {
+    const declared = frontmatters[doc_path]?.external_refs;
+    if (Array.isArray(declared)) status.covered += new Set(declared.filter((item): item is string => typeof item === 'string')).size;
+    // eslint-disable-next-line id-denylist -- serialized key (graph JSON)
+    const ref_list = docs[doc_path]?.refs;
+    if (ref_list !== undefined && !Array.isArray(ref_list)) throw new Error(`graph.json refs of ${doc_path} is not a list`);
+    const missing = (ref_list as { resolved?: unknown }[] | undefined)?.filter((item) => item?.resolved === false).length ?? 0;
+    status.still_missing += missing;
+    if (missing) status.docs_still_missing++;
+  }
+  return status;
+}

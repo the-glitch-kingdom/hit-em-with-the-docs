@@ -18,8 +18,8 @@ Adds a custom domain: writes the entry to `.claude/hit-em-with-the-docs.json` (u
 
 - Required fields the user must supply:
   - `<id>` — kebab-case (e.g. `mobile`, `ml-pipeline`). A built-in id (e.g. `security`, `api`) is rejected.
-  - `-k <comma,separated,keywords>` — **REQUIRED**. These drive auto-classification in `integrate`. If the user did not provide keywords, **ask for them** before running.
-- Optional fields (ask only if relevant): `-n <name>` (defaults to a title-cased id), `-d <description>`, `-c <category>` (one of `core | development | features | advanced`, default `features`), `--load-priority <n>` (1-10, default 5).
+  - `-k, --keywords <comma,separated,keywords>` — **REQUIRED**. These drive auto-classification in `integrate`. If the user did not provide keywords, **ask for them** before running.
+- Optional fields (ask only if relevant): `-n, --name <name>` (defaults to a title-cased id), `-d, --description <desc>`, `-c, --category <category>` (one of `core | development | features | advanced`, default `features`), `--load-priority <n>` (1-10, default 5).
 - **Preview first:** run with `--dry-run` to show the user the proposed config entry and the folder that will be scaffolded:
   ```bash
   npx --no @theglitchking/hit-em-with-the-docs domain add <id> -k "<keywords>" [-n "<name>"] [-d "<desc>"] [-c <category>] [--load-priority <n>] --dry-run

@@ -261,7 +261,7 @@ const integrate_config_schema = z
   .catch({ sources_max: 10 })
   .default({});
 
-const plugin_config_schema = z
+export const plugin_config_schema = z
   .object({
     /**
      * Where this project's documentation lives — the single source of truth for

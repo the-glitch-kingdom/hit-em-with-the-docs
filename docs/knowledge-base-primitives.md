@@ -14,6 +14,14 @@ documentation tree:
 Default `<vault-root>` is `.documentation/knowledge-base/` (configurable in
 `.claude/hit-em-with-the-docs.json` — `vault.root`; ships fully in 2.3.0 PR2).
 
+### Config (`vault` block)
+
+| Key | Default | Effect |
+|-----|---------|--------|
+| `vault.root` | `.documentation/knowledge-base/` | where `facts/` and `incidents/` live |
+| `vault.playbook_paths` | `[".documentation/**/*.md"]` | globs (relative to the repo root) that `find-citers` and `audit-facts` scan for playbooks that cite facts |
+| `vault.audit_window_days` | `90` | a fact is stale when its `last_verified` is older than this; `hewtd audit-facts --window <days>` overrides it for one run |
+
 ## What's special about these tiers
 
 All three new tiers are **lifecycle-tracked** (joining `plan` from 2.2.0).

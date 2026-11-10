@@ -44,6 +44,7 @@ describe('rewrite lands the draft (#86)', () => {
     expect(text).not.toContain('Old heading');
     expect(text).toContain('owner: keep-me');
     expect(text).toContain('purpose: why');
+    expect(text).toMatch(/last_verified: ['"]?2026-11-07/); // a rewrite stamps last_verified, like verify (review of #90)
     expect(sources_of('backend/a.md')).toEqual(['src/a.ts', 'src/b.ts', 'src/c.ts']);
     expect(g('status', '--porcelain', '--', '.documentation')).toBe('');
     expect((await load_ledger(ledger_file)).entries['backend/a.md']!.content_hash).toBe(compute_content_hash(text));

@@ -10,6 +10,9 @@
 > You still need to remember to use this plugin when creating documentation! As projects grow, documentation needs to be created and maintained. You'll need to invoke this plugin or ask an LLM to create documentation for your features, workflows, or infrastructure. This plugin must be invoked to create, update, or maintain your docs.
 
 > [!NOTE]
+> **3.x** — 3.0 is an internal naming standard (no CLI, JSON or file-format change). 3.1.x: faster graph export and incremental index, fewer false secret findings, and reconcile fixes (not-checkable references, `external_refs`, `sources` merge, landed `rewrite` drafts). See [CHANGELOG](./CHANGELOG.md).
+
+> [!NOTE]
 > **2.22.0** fixes from the 2.21.0 field test (#69): graph symbols point at the file that defines them (`file_kind`), the graph export covers every doc triage judges, `hewtd index --no-graph` skips the export, code references, placeholders and emails no longer put docs in the secret lane (while short `hvs.` tokens, AppRole ids and `vault kv put` values are caught), gap queries may be up to 200 characters, and `reconcile --apply` rewrites only the frontmatter keys it changes. See [CHANGELOG](./CHANGELOG.md).
 >
 > **2.21.0** adds `hewtd reconcile --gaps <file>`: missed search queries (semantic-memory `gaps --json`, or a plain list) become reviewed `symptoms.user_phrase` proposals, new-doc candidates or open questions. Secret-shaped queries are dropped and masked. See [`docs/reconcile.md`](./docs/reconcile.md) and [`docs/gaps-format.md`](./docs/gaps-format.md).
@@ -267,7 +270,7 @@ These commands run in your terminal and manage your documentation.
 | `hewtd maintain` | Run full health check and fix problems |
 | `hewtd integrate <file>` | Add a document to the system |
 | `hewtd list` | Show all 15 documentation categories |
-| `hewtd domain list\|add\|remove` | Manage custom domains beyond the built-in 15 |
+| `hewtd domain list\|add\|remove` | Manage custom domains beyond the built-in 15 (`add <id> --keywords <csv> [--name] [--description] [--category]`) |
 | `hewtd search <query>` | Search for content in your docs |
 | `hewtd metadata-sync` | Update document information tags |
 | `hewtd link-check` | Find broken links between documents |
@@ -422,6 +425,8 @@ hewtd search "user login flow"
 ```
 
 **When to use it**: When you need to find where specific information is documented.
+
+**Ranked search for reconcile**: `hewtd reconcile --overview "<question>"` ranks docs with built-in BM25. To put results from your own search tool first, set `reconcile.search_command` in `.claude/hit-em-with-the-docs.json` to an argv template with a `{query}` placeholder (run without a shell, 30 s timeout); each line it prints must be a doc path. If it fails, reconcile warns and uses the built-in ranking.
 
 **What to use it on**: Any topic, concept, or keyword you want to find.
 
@@ -596,6 +601,9 @@ hewtd discover patterns --language typescript
 
 # Scan specific folder
 hewtd discover patterns --root ./src
+
+# Only one category (architecture, data-access, error-handling, security, testing, api, state-management, utility)
+hewtd discover patterns --category security
 ```
 
 **When to use it**:
@@ -1253,6 +1261,10 @@ load_priority: 8                          # Override default domain priority (1-
 # Additional Context
 prerequisites: ["setup.md", "auth.md"]    # Required reading
 difficulty: intermediate                  # beginner|intermediate|advanced
+
+# Reconcile (3.1.6+)
+sources: [src/auth/login.py]              # Files the doc was checked against (reconcile --apply merges)
+external_refs: [boto3, other-repo/x.py]   # Cited names/paths not checkable in this repo (never "missing")
 ```
 
 ### Retrieval fields (2.12.0+)

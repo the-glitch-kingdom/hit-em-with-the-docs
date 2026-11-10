@@ -36,7 +36,7 @@ import { write_raw_config } from '../utils/config.js';
 import { get_status_values } from '../core/metadata/status-registry.js';
 import { resolve_docs_path } from '../utils/docs-root.js';
 
-const program = new Command();
+export const program = new Command();
 
 program
   .name('hit-em-with-the-docs')
@@ -1338,6 +1338,32 @@ program
     for (const [key, value] of Object.entries(st.by_lane)) logger.info(`  lane ${key}: ${value}`);
     for (const [key, value] of Object.entries(st.by_verdict)) logger.info(`  verdict ${key}: ${value}`);
     if (st.next_unreviewed.length) logger.info(`  next unreviewed:\n${st.next_unreviewed.map((path_text) => `    ${path_text}`).join('\n')}`);
+    // Cheap: the last graph export plus each reviewed doc's frontmatter; never runs triage.
+    const { is_reviewed, get_external_refs_status } = await import('../core/reconcile/ledger.js');
+    // the graph lives at the docs' git top-level (write_graph), which can differ from where the command ran
+    const { find_git_top: find_graph_top } = await import('../core/reconcile/triage.js');
+    const graph_top = find_graph_top(docs_root);
+    let graph_text: string | undefined;
+    try {
+      graph_text = graph_top ? await readFile(join(graph_top, '.hewtd', 'graph.json'), 'utf-8') : undefined;
+    } catch { /* absent: the hint below says why */ }
+    if (graph_text === undefined) {
+      const { load_plugin_config: load_status_config } = await import('../utils/config.js');
+      const why = !graph_top ? 'the docs are not in a git checkout, so no graph is written'
+        : !(await load_status_config(repo_root)).graph_export ? 'graph_export is off in the plugin config, so no graph is written'
+        : 'no .hewtd/graph.json yet (run `hewtd index` to write it)';
+      logger.info(`  refs in reviewed docs: ${why}`);
+    }
+    if (graph_text !== undefined) {
+      try {
+        const reviewed = docs.filter((doc) => is_reviewed(ledger.entries[doc.path], doc.hash)).map((doc) => doc.path);
+        const frontmatters = Object.fromEntries(await Promise.all(reviewed.map(async (doc_path) => [doc_path, (await import('gray-matter')).default(await readFile(join(docs_root, doc_path), 'utf-8')).data])));
+        const ref_status = get_external_refs_status(JSON.parse(graph_text), frontmatters, reviewed);
+        logger.info(`  refs in reviewed docs: ${ref_status.covered} covered by external_refs, ${ref_status.still_missing} still missing in ${ref_status.docs_still_missing} doc(s)`);
+      } catch (error) {
+        logger.info(`  refs in reviewed docs: .hewtd/graph.json is malformed (${error instanceof Error ? error.message : String(error)}); run \`hewtd index\` to rewrite it`);
+      }
+    }
   });
 
 // Secrets command: baseline management (later: --staged)
@@ -1473,5 +1499,5 @@ program
     }
   });
 
-// Parse and execute
-program.parse();
+// Parse and execute (unless a test imports the program to read its commands)
+if (!process.env.HEWTD_NO_PARSE) program.parse();

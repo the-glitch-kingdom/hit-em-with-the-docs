@@ -91,7 +91,7 @@ Slash commands (Claude Code):
 - `incident-narrative`: `id`, `date`, `severity`, `resolution_status`, `components`
 - `incident-facts`: `incident_id`, `produced` (may be empty)
 
-**Optional reconcile fields:** `sources` (files a doc was checked against; `reconcile --apply` merges new ones into it, never replaces) and `external_refs` (names or paths the doc cites that cannot be checked in this repo, such as third-party names, other products' files, negation or history, placeholders; reconcile treats them as not checkable, so they never count as `missing`). `last_verified` is stamped only by a `verify` verdict.
+**Optional reconcile fields:** `sources` (files a doc was checked against; `reconcile --apply` merges new ones into it, never replaces) and `external_refs` (names or paths the doc cites that cannot be checked in this repo, such as third-party names, other products' files, negation or history, placeholders; reconcile treats them as not checkable, so they never count as `missing`). `last_verified` is stamped only by a `verify` or `rewrite` verdict.
 
 **Retrieval fields (2.12.0+):** write `purpose` (one sentence) and `symptoms` (plain strings, any tier) on every doc. `hewtd audit` raises advisory `RETRIEVAL_*` warnings when they are missing, weak, generic or duplicated; they never fail the audit. See `docs/retrieval-fields.md`.
 

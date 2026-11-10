@@ -469,8 +469,8 @@ verdict, `reviewed_on`, `applied_commit`, `review_file`, and a content hash.
 A doc counts as reviewed only while its hash is unchanged. `--status` shows
 counts per lane and verdict and the next unreviewed docs. On reviewed docs it adds
 `refs in reviewed docs: N covered by external_refs, M still missing in K doc(s)` (3.1.7),
-read from `.hewtd/graph.json` (written by `reconcile --apply`, triage, `hewtd maintain` or
-the graph export); with no graph it prints a one-line hint instead. It never runs triage.
+read from `.hewtd/graph.json` (written by `hewtd index` and `reconcile --apply`); with no graph it
+prints a one-line hint, and a malformed graph is reported as such. It never runs triage.
 
 ## Team mode
 

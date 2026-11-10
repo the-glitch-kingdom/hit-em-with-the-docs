@@ -57,6 +57,15 @@ describe('external_refs in the review loop (#90)', () => {
     expect(external()).toEqual(['a', 'b']);
   });
 
+  it('an entry only adds string external_refs; non-strings already in the doc stay', async () => {
+    await run(entry({ external_refs: ['a', 7 as never, { x: 1 } as never], frontmatter: { external_refs: [null, 'b'] } }));
+    expect(external()).toEqual(['a', 'b']);
+    put('ops/a.md', read('ops/a.md').replace(/^external_refs:\n/m, 'external_refs:\n  - 5\n'));
+    await run(entry({ external_refs: ['c'] }));
+    expect(external()).toContain(5);
+    expect(external()).toContain('c');
+  });
+
   it('skeleton prints missing beside an empty external_refs; load_review tolerates it', async () => {
     const triaged = await triage();
     const [file] = await write_review_skeletons({ root, docs_root: docs, triage: triaged, scope: 'ops', include_clean: true });
@@ -69,5 +78,13 @@ describe('external_refs in the review loop (#90)', () => {
     const graph = { docs: { 'ops/a.md': { refs: [{ target: 'x', resolved: false }, { target: 'y', resolved: true }] }, 'ops/b.md': { refs: [{ target: 'z', resolved: false }] } } };
     const frontmatters = { 'ops/a.md': { external_refs: ['q', 'r'] } };
     expect(get_external_refs_status(graph, frontmatters, ['ops/a.md'])).toEqual({ covered: 2, still_missing: 1, docs_still_missing: 1 });
+  });
+
+  it('covered counts distinct string entries; a malformed graph throws', () => {
+    const graph = { docs: { 'ops/a.md': { refs: [] } } };
+    expect(get_external_refs_status(graph, { 'ops/a.md': { external_refs: ['q', 'q', 3, 'r'] } }, ['ops/a.md']).covered).toBe(2);
+    expect(() => get_external_refs_status({ docs: 3 }, {}, [])).toThrow(/no docs map/);
+    expect(() => get_external_refs_status(null, {}, [])).toThrow(/no docs map/);
+    expect(() => get_external_refs_status({ docs: { 'ops/a.md': { refs: 'x' } } }, {}, ['ops/a.md'])).toThrow(/not a list/);
   });
 });

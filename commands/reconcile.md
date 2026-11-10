@@ -59,7 +59,7 @@ It prints one review file per shard under `.hewtd/reconcile/review-<batch>-<shar
 Each review file has, per doc, a heading `## <docs-relative path>`, a `- [ ] accept` line, and a ```json block holding a ReviewEntry. For every entry fill:
 
 - `verdict`: `verify` (doc matches the code; stamps `last_verified`), `rewrite` (needs a larger rewrite; put the full proposed body in `draft`; apply replaces the doc's body with it, keeps the doc's frontmatter and merges `frontmatter` and `sources` like an edit, and reports in `detail` any heading anchor other docs link to or any cited path that the draft drops), `archive` (obsolete; put the why in `reason`), `merge`, `point` and `overview` (step 3), `unverifiable` (cannot be checked from the repo; sets `confidence: low`), or `fields` (frontmatter only).
-- `frontmatter`: keys to set, for example `purpose` and `symptoms`. Never `last_verified`; only the `verify` verdict stamps it.
+- `frontmatter`: keys to set, for example `purpose` and `symptoms`. Never `last_verified`; only the `verify` and `rewrite` verdicts stamp it.
 - `patch`: `[{old, new}]` exact-text body edits. Each `old` must occur exactly once in the body.
 - `sources`: every file you actually read to decide. Do not list files you did not open. Apply merges them into the doc's existing `sources` (existing first, no duplicates, the doc itself dropped); to remove one, list it in `sources_remove`. A source that is not in the repo is kept and reported. A file read in a related repo (`reconcile.related_repos`) is listed as `<name>:<path>`.
 - `external_refs`: names or paths the doc cites that cannot be checked in this repo. Apply unions them into the doc's own `external_refs` (existing first, no duplicates) and never overwrites; it can also sit under `frontmatter`. They are then not checkable (`unknown`), never `missing`.
@@ -174,7 +174,7 @@ hewtd reconcile --apply .hewtd/reconcile/review-<batch>-*.md
 
 Apply is serial, one commit per batch, archives through the normal archive path, and regenerates the touched indexes. It reports per doc: applied, stale (the doc changed since the review was written; re-run triage for it), rejected, already-applied, skipped or error. A doc in two review files is an error. Show the outcomes.
 
-`hewtd reconcile --status` also prints, for reviewed docs, how many refs are covered by `external_refs` and how many are still missing (read from `.hewtd/graph.json`; without a graph it says to run `hewtd maintain`). Use it to find docs whose `missing` refs were never decided.
+`hewtd reconcile --status` also prints, for reviewed docs, how many refs are covered by `external_refs` and how many are still missing (read from `.hewtd/graph.json`; without a graph it says to run `hewtd index`). Use it to find docs whose `missing` refs were never decided.
 
 Then suggest `hewtd audit` and `hewtd link-check`, and `hewtd reconcile --status` to see progress; `--next N` continues with the next unreviewed docs. Two runs on an unchanged scope produce no changes.
 

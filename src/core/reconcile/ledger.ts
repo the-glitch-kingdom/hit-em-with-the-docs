@@ -110,19 +110,23 @@ export interface ExternalRefsStatus {
   docs_still_missing: number;
 }
 
-/** Reviewed docs only; `graph` is `.hewtd/graph.json`, `frontmatters` maps doc path to its parsed frontmatter. */
+/** Reviewed docs only; `graph` is `.hewtd/graph.json`, `frontmatters` maps doc path to its parsed frontmatter. Throws on a malformed graph. */
 export function get_external_refs_status(
-  // eslint-disable-next-line id-denylist -- serialized key (graph JSON)
-  graph: { docs: Record<string, { refs: { resolved: boolean | null }[] }> },
+  graph: unknown,
   frontmatters: Record<string, Record<string, unknown>>,
   reviewed_paths: string[]
 ): ExternalRefsStatus {
+  // eslint-disable-next-line id-denylist -- serialized key (graph JSON)
+  const graph_docs = (graph as { docs?: unknown } | null)?.docs;
+  if (typeof graph_docs !== 'object' || graph_docs === null || Array.isArray(graph_docs)) throw new Error('graph.json has no docs map');
+  const docs = graph_docs as Record<string, { refs?: unknown } | undefined>;
   const status: ExternalRefsStatus = { covered: 0, still_missing: 0, docs_still_missing: 0 };
   for (const doc_path of reviewed_paths) {
     const declared = frontmatters[doc_path]?.external_refs;
-    if (Array.isArray(declared)) status.covered += declared.length;
-    // eslint-disable-next-line id-denylist -- serialized key (graph JSON)
-    const missing = graph.docs[doc_path]?.refs.filter((item) => item.resolved === false).length ?? 0;
+    if (Array.isArray(declared)) status.covered += new Set(declared.filter((item): item is string => typeof item === 'string')).size;
+    const refs = docs[doc_path]?.refs;
+    if (refs !== undefined && !Array.isArray(refs)) throw new Error(`graph.json refs of ${doc_path} is not a list`);
+    const missing = (refs as { resolved?: unknown }[] | undefined)?.filter((item) => item?.resolved === false).length ?? 0;
     status.still_missing += missing;
     if (missing) status.docs_still_missing++;
   }

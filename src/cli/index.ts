@@ -1339,15 +1339,22 @@ program
     for (const [key, value] of Object.entries(st.by_verdict)) logger.info(`  verdict ${key}: ${value}`);
     if (st.next_unreviewed.length) logger.info(`  next unreviewed:\n${st.next_unreviewed.map((path_text) => `    ${path_text}`).join('\n')}`);
     // Cheap: the last graph export plus each reviewed doc's frontmatter; never runs triage.
+    const { is_reviewed, get_external_refs_status } = await import('../core/reconcile/ledger.js');
+    let graph_text: string | undefined;
     try {
-      const { is_reviewed, get_external_refs_status } = await import('../core/reconcile/ledger.js');
-      const graph = JSON.parse(await readFile(join(repo_root, '.hewtd', 'graph.json'), 'utf-8'));
-      const reviewed = docs.filter((doc) => is_reviewed(ledger.entries[doc.path], doc.hash)).map((doc) => doc.path);
-      const frontmatters = Object.fromEntries(await Promise.all(reviewed.map(async (doc_path) => [doc_path, (await import('gray-matter')).default(await readFile(join(docs_root, doc_path), 'utf-8')).data])));
-      const ref_status = get_external_refs_status(graph, frontmatters, reviewed);
-      logger.info(`  refs in reviewed docs: ${ref_status.covered} covered by external_refs, ${ref_status.still_missing} still missing in ${ref_status.docs_still_missing} doc(s)`);
+      graph_text = await readFile(join(repo_root, '.hewtd', 'graph.json'), 'utf-8');
     } catch {
-      logger.info('  refs in reviewed docs: no .hewtd/graph.json (run hewtd maintain to write it)');
+      logger.info('  refs in reviewed docs: no .hewtd/graph.json (run `hewtd index` to write it)');
+    }
+    if (graph_text !== undefined) {
+      try {
+        const reviewed = docs.filter((doc) => is_reviewed(ledger.entries[doc.path], doc.hash)).map((doc) => doc.path);
+        const frontmatters = Object.fromEntries(await Promise.all(reviewed.map(async (doc_path) => [doc_path, (await import('gray-matter')).default(await readFile(join(docs_root, doc_path), 'utf-8')).data])));
+        const ref_status = get_external_refs_status(JSON.parse(graph_text), frontmatters, reviewed);
+        logger.info(`  refs in reviewed docs: ${ref_status.covered} covered by external_refs, ${ref_status.still_missing} still missing in ${ref_status.docs_still_missing} doc(s)`);
+      } catch (error) {
+        logger.info(`  refs in reviewed docs: .hewtd/graph.json is malformed (${error instanceof Error ? error.message : String(error)}); run \`hewtd index\` to rewrite it`);
+      }
     }
   });
 

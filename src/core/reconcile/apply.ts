@@ -192,11 +192,12 @@ function merge_sources(raw_text: string, entry: ReviewEntry, self_paths: string[
   return [...(Array.isArray(existing) ? existing : existing === undefined || existing === null ? [] : [existing]), ...(entry.sources ?? []), ...extra]
     .filter((source) => { const source_key = key(source); if (drop.has(source_key) || seen.has(source_key)) return false; seen.add(source_key); return true; });
 }
-/** Existing `external_refs` first, then the entry's and `frontmatter.external_refs`, deduplicated; non-string entries are kept. */
+/** Existing `external_refs` first, then the entry's and `frontmatter.external_refs`, deduplicated; the entry only adds strings, non-string entries already in the doc are kept. */
 function merge_external_refs(raw_text: string, entry: ReviewEntry): unknown[] {
   const as_list = (value: unknown): unknown[] => (Array.isArray(value) ? value : value === undefined || value === null ? [] : [value]);
   const seen = new Set<string>();
-  return [...as_list(parse_frontmatter<Record<string, unknown>>(raw_text).data.external_refs), ...as_list(entry.external_refs), ...as_list(entry.frontmatter?.external_refs)]
+  const only_strings = (value: unknown): unknown[] => as_list(value).filter((item) => typeof item === 'string');
+  return [...as_list(parse_frontmatter<Record<string, unknown>>(raw_text).data.external_refs), ...only_strings(entry.external_refs), ...only_strings(entry.frontmatter?.external_refs)]
     .filter((item) => { const item_key = typeof item === 'string' ? item.trim() : JSON.stringify(item); if (seen.has(item_key)) return false; seen.add(item_key); return true; });
 }
 /** Entry sources that look like repo paths but are not there (kept anyway; URLs, `<name>:<path>` and prose are not checked). */

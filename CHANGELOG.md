@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.1.6] — 2026-11-10
+
+Fixes #84, #85 and #86. No breaking changes; `.hewtd/graph.json` stays `version: 1`.
+
+- reconcile triage (#84): refs that could never be repo files are `unknown` (not checkable) instead of `missing`, so the lane and the archive rule no longer count them. This covers gitignored paths, placeholders (a `YYYY` date run, `...`, `<x>`, `{x}`, `*`, `?`), regexes (`^`, backslashes), a `secret/…` path when the repo has no `secret/` folder, and refs listed in the new doc frontmatter `external_refs: [..]`. `./` and `../` paths, including a path written as a link's text, resolve from the doc's own folder first. An UPPER_SNAKE env ref also counts as present through its lowercase name, but only in a file that reads settings or the environment (pydantic `BaseSettings` and similar). Deleted files, renamed files and renamed symbols are still `missing`.
+- reconcile --apply (#85): an entry's `sources` are merged into the doc's existing `sources` instead of replacing them. Existing entries come first, a single string or non-string entries are kept, duplicates are dropped and so is the doc's own path. `sources_remove: [..]` removes entries explicitly. A source that isn't in the repo is kept and reported.
+- reconcile --write-review (#85): with explicitly named docs, it now includes docs in the clean lane, so a sources-only fix-up can reach them. `--next` still skips them.
+- reconcile --apply (#86): an accepted `rewrite` replaces the doc body with the draft in the batch commit. Before, the draft was only written to `.hewtd/reconcile/drafts/` and reported as applied. The doc's frontmatter is kept and merged like an edit, and a draft's own frontmatter only adds keys the doc doesn't have. A draft with no body is an error. Warnings report dropped anchors that other docs link to and dropped cited paths. A landed rewrite is still queued once by `--next` for a second look.
+- generic-secret (#86): a repo path such as `tokens: config/theme/theme.data.json` is not a finding when that file exists in the repo. Path-shaped values that aren't files there are checked as before.
+- graph: the incremental index (#82) also re-checks refs affected by `.gitignore`, a file added at a doc-relative location, the `secret/` folder, settings files and changed paths a doc names, so the graph stays byte-identical to a cold build.
+
 ## [3.1.5] — 2026-11-09
 
 Follow-up to 3.1.4 (#82). No breaking changes; `.hewtd/graph.json` stays `version: 1`. Speed only, output is byte-identical to a cold build.

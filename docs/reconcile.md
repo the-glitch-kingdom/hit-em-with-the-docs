@@ -221,14 +221,23 @@ pushes a doc toward `archive-candidate`; `unknown` is neutral.
   SQLAlchemy (`__tablename__`, `Column`, `mapped_column`, `Table(...)`) and
   Django (`models.Model` classes, table `db_table` or `<app>_<model>`; columns
   are `id`, each `*Field`, and `name` plus `name_id` for foreign keys;
-  `ManyToManyField` and `db_column` are not read). The Python parsing is
-  regex-level, so tables built in loops or from computed names are not seen.
+  `ManyToManyField` and `db_column` are not read). A `name=` keyword on a
+  SQLAlchemy column wins over the attribute name. Columns of base classes and
+  mixins in the schema files are inherited by the tables that list them, and a
+  Django model with `abstract = True` in its `Meta` is not a table but passes its
+  fields on. The Python parsing is regex-level, so tables built in loops or from computed names are not seen.
   Only git-tracked files are indexed: a pattern that matches no tracked file
   gives a triage warning (in `warnings` in JSON).
-- Engine catalogs (`information_schema.*`, `mysql.*`, `sys.*`,
-  `performance_schema.*`, `pg_catalog.*`, `pg_*`, `sqlite_*`) are never
-  `missing`. A dotted `a.b` is a column ref only when `a` is a known table;
-  otherwise it is `unknown` (task names, JSON paths, attribute access).
+- A known table always wins. Otherwise a ref whose table (or column owner) is an
+  engine catalog is never `missing`: `information_schema`, `pg_catalog`, `mysql`,
+  `sys`, `performance_schema`, `sqlite_master`, `sqlite_schema`, or a name matching
+  `pg_*` / `sqlite_*`. Only the table or owner name is tested, never the column.
+- A dotted `a.b` in a code span is `missing` only when `a` is a known table and `b`
+  is not one of its columns; an unknown `a` is `unknown` (task names, JSON paths,
+  attribute access). A column ref taken from SQL text (`ALTER TABLE t ADD COLUMN c`)
+  keeps the strict rule: an unknown table is `missing`, except a one-word table name
+  without an underscore, which is `unknown`. A bare table ref from SQL is `missing`
+  when the table is unknown.
 - Cited bytes and staleness count resolved path references and `sources`
   only, not symbol hits.
 
@@ -590,8 +599,9 @@ accepted entry. Links from other outside files are not repointed.
   `reconcile.schema_sources` (default `[]`); triage prints the schema files it found.
   If triage warns that a pattern matches no tracked file, `git add` the schema file
   (untracked and gitignored files are not indexed) or fix the glob.
-- **`a.b` flagged as a missing column**: since 3.1.8 it is `missing` only when `a` is a
-  known table and `b` is not one of its columns; an unknown owner gives `unknown`.
+- **`a.b` flagged as a missing column**: since 3.1.8 in a code span it is `missing` only
+  when `a` is a known table and `b` is not one of its columns; an unknown owner gives
+  `unknown` (a column from SQL text such as `ALTER TABLE ... ADD COLUMN` stays `missing`).
 - **A reference to another repo shows missing or unknown**: add that repo to
   `reconcile.related_repos`, check it out, and rerun.
 - **`owner: <name>` hint on a clean doc**: summarize the details and link to the

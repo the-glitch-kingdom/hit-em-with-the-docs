@@ -80,10 +80,11 @@ function is_path(token: string): boolean {
 export function extract_references(body: string): Reference[] {
   const found: Reference[] = [];
   const seen = new Set<string>();
-  const add_reference = (reference: string, kind: RefKind, line: number): void => {
+  const add_reference = (reference: string, kind: RefKind, line: number, from_sql = false): void => {
     const key = `${kind}\0${reference}`;
     // eslint-disable-next-line id-denylist -- serialized key (triage/graph JSON)
     if (!seen.has(key)) { seen.add(key); found.push({ ref: reference, kind, line }); }
+    if (from_sql) sql_column_refs.add(found.find((item) => item.kind === kind && item.ref === reference)!);
   };
   const scan_commands = (text: string, line: number): void => {
     for (const [re, prefix] of CMD_RES) {
@@ -99,7 +100,7 @@ export function extract_references(body: string): Reference[] {
     }
     for (const match of text.matchAll(/ADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?["`]?(\w+)["`]?/gi)) {
       const table_match = /ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?["`]?([\w.]+)/i.exec(text);
-      if (table_match) add_reference(`${table_match[1]}.${match[1]}`, 'column', line);
+      if (table_match) add_reference(`${table_match[1]}.${match[1]}`, 'column', line, true);
     }
   };
 
@@ -247,6 +248,7 @@ export function build_repo_index(repo_root: string, schema_sources: string[] = [
   const schema_files: string[] = [];
   const schema_globs = schema_sources.map(build_glob_regex);
   const matched_globs = new Set<RegExp>();
+  const python_sources: Array<{ file: string; text: string }> = [];
   for (const file of files) {
     const file_globs = schema_globs.filter((schema_glob) => schema_glob.test(file));
     if (!file_globs.length) continue;
@@ -254,14 +256,17 @@ export function build_repo_index(repo_root: string, schema_sources: string[] = [
     if (/\.(?:sql|prisma|py)$/.test(file)) schema_files.push(file);
     if (file.endsWith('.sql')) parse_sql(read_repo_file(file), schema);
     else if (file.endsWith('.prisma')) parse_prisma(read_repo_file(file), schema);
-    else if (file.endsWith('.py')) parse_python_orm(read_repo_file(file), schema, file);
+    else if (file.endsWith('.py')) python_sources.push({ file, text: read_repo_file(file) });
   }
+  parse_python_orm(python_sources, schema);
   const unmatched_schema_sources = schema_sources.filter((_, i) => !matched_globs.has(schema_globs[i]!));
   return { root: repo_root, files, scripts, make_targets, deps, schema, schema_files, unmatched_schema_sources, md_names: new Map(), symbols: new Map(), symbol_kinds: new Map() };
 }
 
 /** Engine catalogs and system schemas, never the repo's own tables. */
-const DB_CATALOG = /^(?:[\w"`]+\.)?(?:(?:information_schema|mysql|sys|performance_schema|pg_catalog)(?:\.|$)|pg_|sqlite_)/i;
+const DB_CATALOG = /^(?:information_schema|pg_catalog|mysql|sys|performance_schema|sqlite_master|sqlite_schema|(?:pg|sqlite)_\w+)$/i;
+/** Column refs that came from SQL text (an ALTER TABLE ... ADD COLUMN), where an unknown table means a renamed or removed one. */
+const sql_column_refs = new WeakSet<Reference>();
 
 const BIG_FILE = 512 * 1024;
 const WORD = /\w/;
@@ -570,10 +575,16 @@ export async function resolve_references(index: RepoIndex, references: Reference
       }
       case 'table': case 'column': {
         if (!have_schema) break;
-        const [owner_token, content] = reference.kind === 'column' ? reference.ref.split('.') : [reference.ref, undefined];
-        const cols = index.schema.tables.get(normalize_name(owner_token!));
-        // a catalog is the engine's, and `a.b` is a column only when `a` is a known table (else a task name, JSON path, attribute)
-        status = DB_CATALOG.test(reference.ref) ? 'unknown' : !cols ? (content ? 'unknown' : 'missing') : content && !cols.has(content.toLowerCase()) ? 'missing' : 'ok';
+        const dot = reference.kind === 'column' ? reference.ref.lastIndexOf('.') : -1;
+        const [owner_token, content] = dot >= 0 ? [reference.ref.slice(0, dot), reference.ref.slice(dot + 1)] : [reference.ref, undefined];
+        const cols = index.schema.tables.get(normalize_name(owner_token));
+        if (cols) { status = content && !cols.has(content.toLowerCase()) ? 'missing' : 'ok'; break; }
+        // a catalog is the engine's: tested on the owner (or the bare table) only, and only when it is not a known table
+        const catalog_names = (content ? owner_token.split('.') : reference.ref.split('.')).map((name) => name.replace(/["`]/g, ''));
+        if (catalog_names.some((name) => DB_CATALOG.test(name))) break;
+        // a code-span `a.b` is a column only when `a` is a known table (else a task name, JSON path, attribute); SQL text keeps the strict rule
+        // shortcut: a one-word owner in SQL text is probably an object property, so unknown
+        status = !content ? 'missing' : sql_column_refs.has(reference) && owner_token.includes('_') ? 'missing' : 'unknown';
         break;
       }
       case 'doc-link':

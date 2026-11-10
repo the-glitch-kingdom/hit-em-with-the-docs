@@ -182,23 +182,29 @@ function rollback_files(git_top: string, abs_path: string[], snap: Map<string, B
   }
 }
 
-/** Existing sources first, then the entry's, deduplicated; the doc's own path and `sources_remove` dropped. */
-function merge_sources(raw_text: string, entry: ReviewEntry, self_paths: string[]): string[] {
+/** Existing sources first (a scalar becomes a list; non-string entries are kept), then the entry's and `extra`, deduplicated with
+ * `./` ignored; the doc's own path and `sources_remove` dropped. */
+function merge_sources(raw_text: string, entry: ReviewEntry, self_paths: string[], extra: string[] = []): unknown[] {
   const existing = parse_frontmatter<Record<string, unknown>>(raw_text).data.sources;
-  const drop = new Set([...self_paths, ...(entry.sources_remove ?? [])]);
-  return [...new Set([...(Array.isArray(existing) ? existing : []), ...(entry.sources ?? [])].filter((source): source is string => typeof source === 'string'))].filter((source) => !drop.has(source));
+  const key = (source: unknown): string => (typeof source === 'string' ? source.trim().replace(/^\.\//, '') : JSON.stringify(source));
+  const drop = new Set([...self_paths, ...(entry.sources_remove ?? [])].map(key));
+  const seen = new Set<string>();
+  return [...(Array.isArray(existing) ? existing : existing === undefined || existing === null ? [] : [existing]), ...(entry.sources ?? []), ...extra]
+    .filter((source) => { const source_key = key(source); if (drop.has(source_key) || seen.has(source_key)) return false; seen.add(source_key); return true; });
 }
-
 /** Entry sources that look like repo paths but are not there (kept anyway; URLs, `<name>:<path>` and prose are not checked). */
 function find_missing_sources(repo_root: string, sources: string[] = []): string[] {
   return sources.filter((source) => !/\s|^[\w.-]+:/.test(source) && !existsSync(resolve(repo_root, source)));
 }
 
 /** Build the new file content for a verify/fields/unverifiable entry. */
-function build_edit_doc(raw_text: string, entry: ReviewEntry, today: string, self_paths: string[] = []): string {
+function build_edit_doc(raw_text: string, entry: ReviewEntry, today: string, self_paths: string[] = [], extra_sources: string[] = []): string {
   const { last_verified: _ignored, ...frontmatter } = entry.frontmatter ?? {};
   const changes: Record<string, unknown> = { ...frontmatter };
-  if (entry.sources || entry.sources_remove) changes.sources = merge_sources(raw_text, entry, self_paths);
+  if (entry.sources?.length || entry.sources_remove?.length || extra_sources.length) {
+    const merged = merge_sources(raw_text, entry, self_paths, extra_sources);
+    if (merged.length || parse_frontmatter<Record<string, unknown>>(raw_text).data.sources !== undefined) changes.sources = merged;
+  }
   if (entry.verdict === 'verify' || entry.verdict === 'rewrite') changes.last_verified = today;
   if (entry.verdict === 'unverifiable') changes.confidence = 'low';
   const next = with_frontmatter_keys(raw_text, changes);
@@ -212,15 +218,26 @@ function build_edit_doc(raw_text: string, entry: ReviewEntry, today: string, sel
   return next.slice(0, frontmatter_length) + body;
 }
 
-const get_rewrite_frontmatter = (entry: ReviewEntry): Record<string, unknown> => ({ ...parse_frontmatter<Record<string, unknown>>(entry.draft ?? '').data, ...entry.frontmatter });
+/** A draft's own frontmatter only adds keys the doc does not have (the entry's keys still win); its `sources` merge like the entry's. */
+function split_draft_frontmatter(raw_text: string, entry: ReviewEntry): { frontmatter: Record<string, unknown>; sources: string[]; ignored: string[] } {
+  const { sources, ...draft_keys } = parse_frontmatter<Record<string, unknown>>(entry.draft ?? '').data;
+  const doc_keys = parse_frontmatter<Record<string, unknown>>(raw_text).data;
+  const ignored = Object.keys(draft_keys).filter((name) => name in doc_keys && !(name in (entry.frontmatter ?? {})));
+  const added = Object.fromEntries(Object.entries(draft_keys).filter(([name]) => !(name in doc_keys)));
+  const draft_sources = (Array.isArray(sources) ? sources : sources ? [sources] : []).filter((source): source is string => typeof source === 'string');
+  return { frontmatter: { ...added, ...entry.frontmatter }, sources: draft_sources, ignored };
+}
 
-/** rewrite: the draft's body replaces the doc's; the doc's frontmatter stays, merged like an edit (entry over the draft's own keys). */
-function build_rewrite_doc(raw_text: string, entry: ReviewEntry, today: string, self_paths: string[]): string {
-  if (!entry.draft?.trim()) throw new Error('rewrite needs a draft');
+/** rewrite: the draft's body replaces the doc's; the doc's frontmatter stays, merged like an edit. Returns the text and keys it ignored. */
+function build_rewrite_doc(raw_text: string, entry: ReviewEntry, today: string, self_paths: string[]): { text: string; ignored: string[] } {
+  const body = parse_frontmatter(entry.draft ?? '').content.trim();
+  if (!body) throw new Error('rewrite needs a draft with a body');
   const { patch: _patch, ...rest } = entry;
-  const next = build_edit_doc(raw_text, { ...rest, frontmatter: get_rewrite_frontmatter(entry) }, today, self_paths);
+  const { frontmatter, sources, ignored } = split_draft_frontmatter(raw_text, entry);
+  const next = build_edit_doc(raw_text, { ...rest, frontmatter }, today, self_paths, sources);
   const frontmatter_length = next.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/)?.[0].length ?? 0;
-  return `${next.slice(0, frontmatter_length)}\n${parse_frontmatter(entry.draft).content.trim()}\n`;
+  const eol = raw_text.includes('\r\n') ? '\r\n' : '\n';
+  return { text: `${next.slice(0, frontmatter_length)}${eol}${body.replace(/\r?\n/g, eol)}${eol}`, ignored };
 }
 
 /** What a rewrite drops that something may rely on: anchors other docs link to, and paths or doc links the old body cited. */
@@ -437,11 +454,11 @@ export async function apply_reviews(options: {
           touched.add(abs_path);
           env_names_for = moved.names;
         } else if (entry.verdict === 'rewrite') {
-          const next = build_rewrite_doc(raw_text, entry, today, self_paths);
+          const { text: next, ignored } = build_rewrite_doc(raw_text, entry, today, self_paths);
           await writeFile(abs_path, next, 'utf-8');
           touched.add(abs_path);
-          const missing = find_missing_sources(repo_root, entry.sources);
-          const warnings = [...find_rewrite_losses(docs_root, abs_path, raw_text, next), ...(missing.length ? [`sources not found in the repo (kept): ${missing.join(', ')}`] : [])];
+          const missing = find_missing_sources(repo_root, [...(entry.sources ?? []), ...split_draft_frontmatter(raw_text, entry).sources]);
+          const warnings = [...find_rewrite_losses(docs_root, abs_path, raw_text, next), ...(missing.length ? [`sources not found in the repo (kept): ${missing.join(', ')}`] : []), ...(ignored.length ? [`draft frontmatter kept the doc's own value for: ${ignored.join(', ')}`] : [])];
           if (warnings.length) detail = `warning: ${warnings.join('; ')}`;
         } else {
           await writeFile(abs_path, build_edit_doc(raw_text, entry, today, self_paths), 'utf-8');
@@ -480,7 +497,7 @@ export async function apply_reviews(options: {
   };
   try {
     // Only verdicts that change what an index lists regenerate it (phrases/verify/unverifiable/rewrite do not).
-    const changes_index = applied.some(({ entry, outside }) => outside || (entry.verdict !== 'phrases' && entry.verdict !== 'verify' && entry.verdict !== 'unverifiable' && entry.verdict !== 'rewrite') || Object.keys((entry.verdict === 'rewrite' ? get_rewrite_frontmatter(entry) : entry.frontmatter) ?? {}).some((key) => INDEXED_KEYS.has(key)));
+    const changes_index = applied.some(({ entry, outside }) => outside || (entry.verdict !== 'phrases' && entry.verdict !== 'verify' && entry.verdict !== 'unverifiable' && entry.verdict !== 'rewrite') || Object.keys((entry.verdict === 'rewrite' ? { ...parse_frontmatter<Record<string, unknown>>(entry.draft ?? '').data, ...entry.frontmatter } : entry.frontmatter) ?? {}).some((key) => INDEXED_KEYS.has(key)));
     if (domains.size && changes_index) {
       const regenerated = await regenerate_indexes({
         docs_root: docs_root, silent: true,

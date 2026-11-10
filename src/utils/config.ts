@@ -297,6 +297,11 @@ export type PluginConfig = z.infer<typeof plugin_config_schema>;
 
 const CONFIG_FILENAME = '.claude/hit-em-with-the-docs.json';
 
+/** The repo root rides on the secrets config (not enumerable: never serialized or hashed) so a cited path that exists there is not a secret. */
+function set_secrets_root(config: PluginConfig, repo_root: string): void {
+  Object.defineProperty(config.reconcile.secrets, 'root', { value: resolve(repo_root), enumerable: false, configurable: true });
+}
+
 /**
  * Load the plugin config for a project, applying defaults. Never throws —
  * missing file, malformed JSON, and invalid shapes all fall through to
@@ -319,6 +324,7 @@ export async function load_plugin_config(repo_root: string = process.cwd()): Pro
   // The committed secrets baseline joins the allowlist, so every secret check honours it (#61).
   const { load_baseline, build_baseline_allow: baseline_allow } = await import('../core/reconcile/secrets.js');
   config.reconcile.secrets.allow = [...config.reconcile.secrets.allow, ...baseline_allow(await load_baseline(repo_root))];
+  set_secrets_root(config, repo_root);
   return config;
 }
 
@@ -338,10 +344,9 @@ export function load_plugin_config_sync(repo_root: string = process.cwd()): Plug
   }
 
   const parsed = plugin_config_schema.safeParse(raw_text);
-  if (parsed.success) {
-    return parsed.data;
-  }
-  return plugin_config_schema.parse({});
+  const config = parsed.success ? parsed.data : plugin_config_schema.parse({});
+  set_secrets_root(config, repo_root);
+  return config;
 }
 
 /**

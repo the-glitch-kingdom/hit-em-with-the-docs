@@ -188,5 +188,16 @@ describe('code changes are incremental (#82)', () => {
     commit_all('not settings any more');
     expect(index_ok()).toBe(cold());
   });
+
+  // #86: a path-shaped value is not a secret only while that file exists, so deleting it must re-scan the doc
+  it('deleting a file a doc names under a secret-like key equals cold (#86)', () => {
+    put('config/theme/theme.data.json', '{}\n');
+    put('.documentation/backend/d1.md', fm('d1', 'Font tokens: config/theme/theme.data.json', 'src/c1.ts'));
+    commit_all('cite theme file');
+    index_ok();
+    rmSync(join(root, 'config/theme/theme.data.json'));
+    commit_all('delete theme file');
+    expect(index_ok()).toBe(cold());
+  });
 });
 

@@ -58,6 +58,32 @@ describe('sources merge on apply (#85)', () => {
   });
 });
 
+describe('sources merge keeps every existing shape (#85 review)', () => {
+  it('a scalar sources value is kept as the first entry', async () => {
+    put('backend/s.md', '---\ntitle: s\nsources: src/a.ts\n---\n\n# S\n');
+    await run([review([entry('backend/s.md', { sources: ['src/b.ts'] })])]);
+    expect(sources_of('backend/s.md')).toEqual(['src/a.ts', 'src/b.ts']);
+  });
+
+  it('non-string entries are kept', async () => {
+    put('backend/o.md', '---\ntitle: o\nsources:\n  - path: src/a.ts\n    note: hi\n  - src/b.ts\n---\n\n# O\n');
+    await run([review([entry('backend/o.md', { sources: ['src/c.ts'] })])]);
+    const text = read('backend/o.md');
+    expect(text).toContain('note: hi');
+    expect(text).toContain('src/b.ts');
+    expect(text).toContain('src/c.ts');
+  });
+
+  it('./ forms dedupe, the own path in ./ form is dropped, and an empty sources_remove adds no key', async () => {
+    put('backend/d.md', '---\ntitle: d\nsources:\n  - ./src/a.ts\n---\n\n# D\n');
+    await run([review([entry('backend/d.md', { sources: ['src/a.ts', './backend/d.md', './.documentation/backend/d.md'] })])]);
+    expect(sources_of('backend/d.md')).toEqual(['./src/a.ts']);
+    put('backend/e.md', '---\ntitle: e\n---\n\n# E\n');
+    await run([review([entry('backend/e.md', { sources_remove: [] })], 'review-2-1.md')]);
+    expect(read('backend/e.md')).not.toContain('sources');
+  });
+});
+
 describe('--write-review with named docs (#85)', () => {
   const triage: any = { docs: [{ path: 'backend/a.md', lane: 'check', reasons: [] }, { path: 'backend/b.md', lane: 'clean', reasons: [] }], shards: [], totals: {}, mode: 'serial', warnings: [] };
   it('include_clean writes the clean lane too; default leaves it out', async () => {

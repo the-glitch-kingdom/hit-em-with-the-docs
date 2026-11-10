@@ -80,4 +80,22 @@ describe('rewrite lands the draft (#86)', () => {
     expect(detail).toContain('old-heading');
     expect(detail).toContain('src/old.ts');
   });
+
+  // review of the first #86 build
+  it('a draft that is only frontmatter is an error and the body is kept', async () => {
+    const before = read('backend/a.md');
+    const res = await run([review([entry('backend/a.md', { verdict: 'rewrite', draft: '---\ntitle: z\n---\n' })])]);
+    expect(res.outcomes[0]!.status).toBe('error');
+    expect(read('backend/a.md')).toBe(before);
+  });
+
+  it("a draft's frontmatter never overrides the doc's keys, and its sources merge", async () => {
+    const res = await run([review([entry('backend/a.md', { verdict: 'rewrite', draft: '---\nsources: [src/c.ts]\nowner: someone-else\nextra: 1\n---\n\nBody.\n' })])]);
+    const text = read('backend/a.md');
+    expect(text).toContain('owner: keep-me');
+    expect(text).toContain('extra: 1');
+    expect(sources_of('backend/a.md')).toEqual(['src/a.ts', 'src/b.ts', 'src/c.ts']);
+    expect(res.outcomes[0]!.detail ?? '').toContain('owner');
+  });
 });
+

@@ -215,6 +215,7 @@ export async function triage_docs(options: {
   const git_top = find_git_top(docs_root) ?? options.root;
   const index = time_stage('repo index', () => build_repo_index(git_top, config.reconcile.schema_sources));
   const warnings: string[] = [];
+  for (const pattern of index.unmatched_schema_sources) warnings.push(`schema_sources pattern "${pattern}" matches no tracked file: its tables and columns stay unknown (the file must be tracked by git; untracked and ignored files are never indexed)`);
   const sibling_repos: RelatedRepo[] = config.reconcile.related_repos.map((related_repo) => ({ name: related_repo.name, root: resolve(options.root, related_repo.path) }));
   for (const sibling_repo of sibling_repos) {
     if (!existsSync(sibling_repo.root)) warnings.push(`related repo "${sibling_repo.name}" is not checked out at ${sibling_repo.root}: its references stay unknown`);

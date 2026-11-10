@@ -54,4 +54,18 @@ describe('code changes are incremental (#82)', () => {
     commit_all('delete theme file');
     expect(index_ok()).toBe(cold());
   });
+
+  it('a column changed in a .py model in schema_sources equals cold (#93)', () => {
+    put('.claude/hit-em-with-the-docs.json', JSON.stringify({ reconcile: { schema_sources: ['db/models.py'] } }));
+    put('db/models.py', 'class U(Base):\n    __tablename__ = "users"\n    nick = Column(String)\n');
+    put('.documentation/backend/d1.md', fm('d1', 'See `users.nick`.', 'src/c1.ts'));
+    commit_all('model');
+    const before = index_ok();
+    expect(before).toBe(cold());
+    put('db/models.py', 'class U(Base):\n    __tablename__ = "users"\n    handle = Column(String)\n');
+    commit_all('rename column');
+    const after = index_ok();
+    expect(after).not.toBe(before);
+    expect(after).toBe(cold());
+  });
 });

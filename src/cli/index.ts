@@ -36,7 +36,7 @@ import { write_raw_config } from '../utils/config.js';
 import { get_status_values } from '../core/metadata/status-registry.js';
 import { resolve_docs_path } from '../utils/docs-root.js';
 
-const program = new Command();
+export const program = new Command();
 
 program
   .name('hit-em-with-the-docs')
@@ -1491,5 +1491,5 @@ program
     }
   });
 
-// Parse and execute
-program.parse();
+// Parse and execute (unless a test imports the program to read its commands)
+if (!process.env.HEWTD_NO_PARSE) program.parse();

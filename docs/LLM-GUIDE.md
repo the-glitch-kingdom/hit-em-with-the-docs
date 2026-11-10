@@ -154,6 +154,7 @@ Use Bash to run these. They're all available via `npx --no @theglitchking/hit-em
 - **`rewrite`:** an accepted draft replaces the body in the batch commit; the doc's frontmatter is kept and merged. Warnings list dropped anchors others link to and dropped cited paths.
 - **`--write-review` on named docs** includes clean-lane docs (for a sources-only fix-up); `--next` skips them.
 - **`--status`** also prints, for reviewed docs, refs covered by `external_refs` vs still missing (needs `.hewtd/graph.json`).
+- **`--status`** also prints "verified, metadata updated since": reviewed docs where a `fields`/`phrases` apply touched the metadata after the review. Such an apply keeps the earlier verdict and `reviewed_on` (new ledger key `fields_on`) while the doc is unchanged since that review (#92).
 - **Table and column refs** are `unknown` until `reconcile.schema_sources` lists schema globs (for example `["**/migrations/**/*.sql"]`); triage prints the schema files it found.
 - **`reconcile.search_command`:** optional argv template with a `{query}` placeholder (no shell, 30 s timeout) that `--overview` runs; the doc paths it prints come first, then the built-in BM25 ranking. If it fails, reconcile warns and uses BM25.
 - **Secret false positives:** `reconcile.secrets.allow` (fingerprint or pattern, with a `reason`) excuses one finding; `reconcile.secrets.disabled_rules` turns a whole rule off and hides its real findings too, so prefer `allow`.

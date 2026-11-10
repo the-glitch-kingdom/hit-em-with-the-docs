@@ -205,6 +205,9 @@ function find_missing_sources(repo_root: string, sources: string[] = []): string
   return sources.filter((source) => !/\s|^[\w.-]+:/.test(source) && !existsSync(resolve(repo_root, source)));
 }
 
+/** Verdicts that only touch frontmatter metadata; every other verdict is a judgment about the doc. */
+const METADATA_VERDICTS = new Set(['fields', 'phrases']);
+
 /** Build the new file content for a verify/fields/unverifiable entry. */
 function build_edit_doc(raw_text: string, entry: ReviewEntry, today: string, self_paths: string[] = [], extra_sources: string[] = []): string {
   const { last_verified: _ignored, ...frontmatter } = entry.frontmatter ?? {};
@@ -549,6 +552,9 @@ export async function apply_reviews(options: {
       lane: prev?.lane ?? applied_item.entry.lane ?? 'check',
       content_hash: raw_text !== undefined ? compute_content_hash(raw_text) : applied_item.entry.content_hash,
     });
+    // A metadata-only verdict on a doc whose earlier review still holds (unchanged since it) keeps that review (#92).
+    const keeps_review = METADATA_VERDICTS.has(applied_item.entry.verdict ?? '') && !!prev?.verdict && !METADATA_VERDICTS.has(prev.verdict) && prev.content_hash === applied_item.entry.content_hash;
+    if (keeps_review) { Object.assign(ledger_record, { verdict: prev!.verdict, reviewed_on: prev!.reviewed_on, review_file: prev!.review_file, applied_commit: prev!.applied_commit, fields_on: today }); continue; }
     Object.assign(ledger_record, { verdict: applied_item.entry.verdict ?? '', reviewed_on: today, review_file: applied_item.file, ...(applied_item.env_names && { env_names: applied_item.env_names }), ...(pointers.has(applied_item.entry.path) && { pointer: pointers.get(applied_item.entry.path)! }), ...(overview_members.has(applied_item.entry.path) && { members: overview_members.get(applied_item.entry.path)! }), ...(commit && { applied_commit: commit }) });
   }
   await write_ledger(options.ledger_file, ledger);

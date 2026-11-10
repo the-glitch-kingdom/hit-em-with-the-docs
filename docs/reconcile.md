@@ -206,6 +206,13 @@ pushes a doc toward `archive-candidate`; `unknown` is neutral.
   (including a leading-slash path), a host-like URL that does not resolve in the
   repo (`example.com/docs/x`), a name that no code defines but another doc also
   mentions (an external name; the citing doc's own mention does not count), and a reference into a related repo that is not checked out.
+- Not checkable (3.1.6, `unknown`, so never `missing` and not counted as checkable):
+  - a path ref listed in the doc's frontmatter `external_refs: [..]` (exact text as cited);
+  - a path ref that would be missing but is covered by `.gitignore` (build output, `.claude/*`, `.planning/*`), found with one batched `git check-ignore`;
+  - placeholders (`YYYY/MM/DD` runs, `...` or `…` segments, `<x>`, `{x}`, `*`, `?` shapes), regexes (a `^` or backslash) and `secret/` paths, which are no longer extracted as path refs;
+  - a code span that is the text of a markdown link; the link target is checked as a doc-link instead.
+- `./` and `../` paths resolve from the doc's own folder first, then the repo root.
+- An env ref is missing only when neither `NAME` nor its lowercase form is a whole word in code (settings classes such as pydantic read env vars case-insensitively).
 - Tables and columns are checked only against `schema_sources`. It defaults to
   `[]`, so nothing is checked until you list globs, for example
   `["**/migrations/**/*.sql", "**/schema.prisma"]`. Triage lists the schema
@@ -509,6 +516,12 @@ accepted entry. Links from other outside files are not repointed.
   repoint links in those docs and commit them; commit or stash them first.
 - **Many refs show `unknown` for URLs or `/abs/paths`**: by design. Only
   `missing` counts against a doc.
+- **Triage reports missing refs that exist (or never could)**: update to 3.1.6. If a ref is
+  still reported, it is a real miss or a bare name or partial path (`base.py`, `prom/`), which
+  are still checked against tracked files. For a thing that lives outside the repo, add
+  `external_refs: ["the/ref"]` to the doc's frontmatter. A doc whose only missing refs were
+  false positives moves from `archive-candidate` to `check`. Editing only `.gitignore` may not
+  refresh a cached ref until a full run.
 - **Tables reported nowhere / not checked**: set `reconcile.schema_sources`
   (default `[]`); triage prints the schema files it found.
 - **A reference to another repo shows missing or unknown**: add that repo to

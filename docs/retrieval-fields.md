@@ -47,6 +47,17 @@ files, not docs. See [`write-time-guards.md`](./write-time-guards.md).
 { "integrate": { "sources_max": 10 } }
 ```
 
+## `external_refs` (3.1.6)
+
+`external_refs: [..]` is an optional doc-level list of path-like things the doc cites
+that are not files in this repo (another service's paths, runtime locations). A listed
+ref is `unknown` in `hewtd reconcile`: never `missing`, not counted as checkable. Nothing
+else reads it and nothing writes it. See [`reconcile.md`](./reconcile.md#reference-statuses).
+
+```yaml
+external_refs: ["/var/lib/app/data", "other-service/config.yaml"]
+```
+
 ## Generated files
 
 Generated indexes, registries and reports carry `generated: true` in their

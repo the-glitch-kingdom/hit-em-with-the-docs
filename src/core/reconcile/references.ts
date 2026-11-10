@@ -9,6 +9,7 @@ import { tmpdir } from 'os';
 import { dirname, join, relative, resolve } from 'path';
 import { extract_links } from '../../utils/markdown.js';
 import { check_single_link } from '../links/checker.js';
+import { parse_python_orm } from './orm-schema.js';
 
 export type RefKind = 'path' | 'symbol' | 'env' | 'command' | 'table' | 'column' | 'doc-link';
 export type RefStatus = 'ok' | 'missing' | 'unknown';
@@ -154,6 +155,8 @@ export interface RepoIndex {
   schema: Schema;
   /** schema files actually parsed (from `schema_sources`) */
   schema_files: string[];
+  /** `schema_sources` patterns that matched no tracked file (untracked and ignored files are never indexed) */
+  unmatched_schema_sources: string[];
   /** names with no code hit that do appear in markdown (docs neither prove nor disprove them) */
   /** name -> up to two markdown files that mention it (names with no code hit only) */
   md_names: Map<string, Set<string>>;
@@ -243,14 +246,22 @@ export function build_repo_index(repo_root: string, schema_sources: string[] = [
   const schema: Schema = { tables: new Map() };
   const schema_files: string[] = [];
   const schema_globs = schema_sources.map(build_glob_regex);
+  const matched_globs = new Set<RegExp>();
   for (const file of files) {
-    if (!schema_globs.some((schema_glob) => schema_glob.test(file))) continue;
-    if (file.endsWith('.sql') || file.endsWith('.prisma')) schema_files.push(file);
+    const file_globs = schema_globs.filter((schema_glob) => schema_glob.test(file));
+    if (!file_globs.length) continue;
+    file_globs.forEach((schema_glob) => matched_globs.add(schema_glob));
+    if (/\.(?:sql|prisma|py)$/.test(file)) schema_files.push(file);
     if (file.endsWith('.sql')) parse_sql(read_repo_file(file), schema);
     else if (file.endsWith('.prisma')) parse_prisma(read_repo_file(file), schema);
+    else if (file.endsWith('.py')) parse_python_orm(read_repo_file(file), schema, file);
   }
-  return { root: repo_root, files, scripts, make_targets, deps, schema, schema_files, md_names: new Map(), symbols: new Map(), symbol_kinds: new Map() };
+  const unmatched_schema_sources = schema_sources.filter((_, i) => !matched_globs.has(schema_globs[i]!));
+  return { root: repo_root, files, scripts, make_targets, deps, schema, schema_files, unmatched_schema_sources, md_names: new Map(), symbols: new Map(), symbol_kinds: new Map() };
 }
+
+/** Engine catalogs and system schemas, never the repo's own tables. */
+const DB_CATALOG = /^(?:[\w"`]+\.)?(?:(?:information_schema|mysql|sys|performance_schema|pg_catalog)(?:\.|$)|pg_|sqlite_)/i;
 
 const BIG_FILE = 512 * 1024;
 const WORD = /\w/;
@@ -561,8 +572,8 @@ export async function resolve_references(index: RepoIndex, references: Reference
         if (!have_schema) break;
         const [owner_token, content] = reference.kind === 'column' ? reference.ref.split('.') : [reference.ref, undefined];
         const cols = index.schema.tables.get(normalize_name(owner_token!));
-        // shortcut: `a.b` with a one-word owner not in the schema is probably an object property, so unknown
-        status = !cols ? (content && !owner_token!.includes('_') ? 'unknown' : 'missing') : content && !cols.has(content.toLowerCase()) ? 'missing' : 'ok';
+        // a catalog is the engine's, and `a.b` is a column only when `a` is a known table (else a task name, JSON path, attribute)
+        status = DB_CATALOG.test(reference.ref) ? 'unknown' : !cols ? (content ? 'unknown' : 'missing') : content && !cols.has(content.toLowerCase()) ? 'missing' : 'ok';
         break;
       }
       case 'doc-link':

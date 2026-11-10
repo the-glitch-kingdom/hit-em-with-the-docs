@@ -45,7 +45,7 @@ hewtd reconcile <scope...> --json [--serial|--team] [--next N]
 
 The scope must be committed: the CLI refuses a dirty or untracked in-scope file. Tell the user to commit or stash and stop if it does.
 
-Show the user: docs per lane (`clean`, `fields-only`, `check`, `archive-candidate`), the work estimate (judgment docs and bytes), the `mode` and shard count, and any `warnings` (for example a shallow clone, where staleness is unknown). Honour `--serial` / `--team` from the arguments; otherwise follow the plan's `mode`. Table and column refs are `unknown` (not checked, never `missing`) until the plugin config lists `reconcile.schema_sources`, a list of globs such as `["**/migrations/**/*.sql", "**/schema.prisma"]`; triage prints the schema files it found (`schema files:`), so offer to set it from that list when the docs cite tables.
+Show the user: docs per lane (`clean`, `fields-only`, `check`, `archive-candidate`), the work estimate (judgment docs and bytes), the `mode` and shard count, and any `warnings` (for example a shallow clone, where staleness is unknown, or a `reconcile.schema_sources` pattern that matches no git-tracked file: those tables and columns stay `unknown`; schema files may be `.sql`, `.prisma` or SQLAlchemy/Django `.py` models). Honour `--serial` / `--team` from the arguments; otherwise follow the plan's `mode`. Table and column refs are `unknown` (not checked, never `missing`) until the plugin config lists `reconcile.schema_sources`, a list of globs such as `["**/migrations/**/*.sql", "**/schema.prisma"]`; triage prints the schema files it found (`schema files:`), so offer to set it from that list when the docs cite tables.
 
 Then write the skeletons:
 

@@ -389,7 +389,9 @@ Verdicts: `verify`, `rewrite`, `archive`, `unverifiable`, `fields`, `secret`,
 - A doc in two review files is rejected and the exit code is non-zero.
 - A second run reports `already-applied` and changes nothing.
 - Only `verify` stamps `last_verified` (today). `unverifiable` sets
-  `confidence: low`. `fields` never stamps; `rewrite` stamps like `verify`. A `last_verified`
+  `confidence: low`. `fields` never stamps; `rewrite` stamps like `verify`.
+  A `fields` or `phrases` entry whose earlier review still holds keeps that review (3.1.8, see
+  [Ledger](#ledger)). A `last_verified`
   inside the entry's frontmatter is ignored. `sources` are **merged** into the doc's
   existing `sources` (3.1.6): existing entries first (a single string becomes a list,
   non-string entries are kept), then the new ones, no duplicates (a leading `./` is
@@ -474,6 +476,16 @@ read from `.hewtd/graph.json` at the docs' git top-level (written by `hewtd inde
 (`graph_export: false`), or the docs are not in a git checkout. A malformed graph is reported as
 such. It never runs triage.
 
+**Metadata-only verdicts keep the review (3.1.8).** `fields` and `phrases` only touch
+frontmatter, so on a doc whose earlier substantive review (`verify`, `rewrite`, `archive`,
+...) still holds they no longer replace it. The rule: the entry's `content_hash` equals the
+ledger's stored hash (the doc did not change between that review and this one). Then the
+ledger keeps `verdict`, `reviewed_on`, `review_file` and `applied_commit`, records the new
+`content_hash`, and sets the additive key `fields_on` to today. `--status` prints
+`verified, metadata updated since: N` when any reviewed doc has `fields_on`. If the doc
+did change, or its last verdict was itself `fields`/`phrases`, the verdict is recorded as
+before. Any later review that does not keep clears `fields_on`.
+
 ## Team mode
 
 Auto when judged docs (`fields-only` + `check`) reach `team.min_docs` (12) or
@@ -557,6 +569,9 @@ accepted entry. Links from other outside files are not repointed.
   `external_refs: ["the/ref"]` to the doc's frontmatter. A doc whose only missing refs were
   false positives moves from `archive-candidate` to `check`. The incremental graph re-checks
   these refs when `.gitignore`, the `secret/` folder or a settings file changes.
+- **A `fields` review un-verified my docs** (before 3.1.8, a `fields` or `phrases` apply
+  replaced the `verify` verdict, so a batch of metadata fixes turned verified docs into
+  `fields`): upgrade to 3.1.8. Docs already flipped are not restored; re-review them.
 - **Reviewed docs still show missing refs** (before 3.1.7, apply and the skeleton ignored
   `external_refs`): read the `missing` list in the skeleton and put the refs that are fine
   in the entry's `external_refs`. `--status` shows covered and still-missing counts.

@@ -65,8 +65,11 @@ function is_symbol(token: string): boolean {
   return token.endsWith('()') || /[a-z][A-Z]/.test(name) || /^[A-Z][a-z]+[A-Z]/.test(name) || /^[a-z]+_[a-z_]+$/.test(name);
 }
 
+// Never a repo file: placeholders (date runs, `...`), regexes (`^`, backslashes) and secret-store (`secret/`) paths.
+const NOT_A_FILE = /[\\^]|\.\.\.|…|^secret\/|(?:^|[/_.-])(?:YYYY|MM|DD)(?:YYYY|MM|DD|HH|mm|ss)*(?=$|[/_.-])/;
+
 function is_path(token: string): boolean {
-  if (/[\s*?<>{}$|=,;]/.test(token) || /^[a-z][a-z0-9+.-]*:\/\//i.test(token) || token.startsWith('~') || token.startsWith('@')) return false;
+  if (/[\s*?<>{}$|=,;]/.test(token) || NOT_A_FILE.test(token) || /^[a-z][a-z0-9+.-]*:\/\//i.test(token) || token.startsWith('~') || token.startsWith('@')) return false;
   const path_text = token.replace(/:\d+(?::\d+)?$/, '');
   return (path_text.includes('/') && (FILE_EXT.test(path_text) || path_text.endsWith('/'))) || (FILE_EXT.test(path_text) && /^[\w.-]+$/.test(path_text) && path_text.includes('.') && !/^\.\w+$/.test(path_text));
 }
@@ -113,6 +116,7 @@ export function extract_references(body: string): Reference[] {
       fence = { marker: fence_open[1]![0]!, len: fence_open[1]!.length, skip: EXAMPLE_FENCE.test(info), sql: SQL_FENCE.test(info) };
       return;
     }
+    const link_texts = new Set([...line_text.matchAll(/\[`([^`\n]+)`\]\(/g)].map((match) => match[1]));
     for (const match of line_text.matchAll(/`([^`\n]+)`/g)) {
       const token = match[1]!.trim();
       scan_commands(token, line);
@@ -120,7 +124,7 @@ export function extract_references(body: string): Reference[] {
       const runtime = parse_runtime_expression(token);
       if (runtime !== undefined) { if (runtime) add_reference(runtime, 'env', line); continue; }
       if (ENV_RE.test(token)) add_reference(token, 'env', line);
-      else if (is_path(token)) add_reference(token.replace(/:\d+(?::\d+)?$/, ''), 'path', line);
+      else if (is_path(token)) { if (!link_texts.has(token)) add_reference(token.replace(/:\d+(?::\d+)?$/, ''), 'path', line); } // link text: the doc-link ref checks the target
       else if (is_symbol(token)) add_reference(token.replace(/\(\)$/, ''), 'symbol', line);
       else {
         const column_match = /^([a-z][a-z0-9_]*)\.([a-z][a-z0-9_]*)$/.exec(token);
@@ -432,6 +436,22 @@ export interface ResolveOptions {
   doc_file?: string;
   /** absolute docs root, for resolving links */
   docs_root?: string;
+  /** refs the doc declares external (frontmatter `external_refs`): never checkable, so `unknown` */
+  external_refs?: string[];
+}
+
+/** Names to look up for these refs: symbols and env vars, plus each env var's lowercase form (pydantic settings read env case-insensitively). */
+export function get_symbol_names(references: Reference[]): string[] {
+  return references.flatMap((reference) => reference.kind === 'symbol' ? [reference.ref] : reference.kind === 'env' ? [reference.ref, reference.ref.toLowerCase()] : []);
+}
+
+/** The subset of repo-relative `paths` that .gitignore covers (one `git check-ignore`). */
+function find_ignored(repo_root: string, paths: string[]): Set<string> {
+  if (!paths.length) return new Set();
+  try {
+    // eslint-disable-next-line id-denylist -- child_process option names
+    return new Set(execFileSync('git', ['check-ignore', '-z', '--stdin'], { cwd: repo_root, input: paths.join('\0'), encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }).split('\0').filter(Boolean));
+  } catch { return new Set(); } // exit 1 = none ignored
 }
 
 /** `example.com/x`: a host-like first segment (letters-only TLD) is a URL, not a repo directory. */
@@ -481,7 +501,10 @@ function find_sibling_match(sibling_repos: RelatedRepo[], reference: Reference):
 
 export async function resolve_references(index: RepoIndex, references: Reference[], options: ResolveOptions = {}): Promise<ResolvedReference[]> {
   const sibling_repos = options.related ?? [];
-  const sym_names = references.filter((reference) => reference.kind === 'symbol' || reference.kind === 'env').map((reference) => reference.ref);
+  const sym_names = get_symbol_names(references);
+  const external = new Set(options.external_refs);
+  const doc_dir = options.doc_file ? dirname(options.doc_file) : undefined;
+  const to_repo_path = (abs_path: string): string => relative(index.root, abs_path).split('\\').join('/');
   add_known_symbols(index, sym_names);
   const lost = sym_names.filter((sym_name) => !index.symbols.get(sym_name));
   if (sibling_repos.length && lost.length) for (const sibling_repo of sibling_repos) { const sibling_index = load_sibling_index(sibling_repo); if (sibling_index) add_known_symbols(sibling_index, lost); }
@@ -489,6 +512,7 @@ export async function resolve_references(index: RepoIndex, references: Reference
   const self = options.doc_file ? relative(index.root, options.doc_file).split('\\').join('/') : undefined;
   const found: ResolvedReference[] = [];
   for (const reference of references) {
+    if (external.has(reference.ref)) { found.push({ ...reference, status: 'unknown' }); continue; }
     let status: RefStatus = 'unknown';
     let where: string | undefined;
     let where_kind: 'definition' | 'reference' | undefined;
@@ -496,12 +520,17 @@ export async function resolve_references(index: RepoIndex, references: Reference
       case 'path':
         // `/docs/x/` and `/api/v1/x` are URL paths, not repo paths
         if (reference.ref.startsWith('/')) break;
-        where = resolve_path(index, reference.ref);
+        // `./x` and `../x` are relative to the doc's folder first, then the repo root
+        if (doc_dir && /^\.\.?\//.test(reference.ref)) { const from_doc = to_repo_path(resolve(doc_dir, reference.ref)); if (!from_doc.startsWith('..')) where = resolve_path(index, from_doc); }
+        where ??= resolve_path(index, reference.ref);
         status = where ? 'ok' : HOST_LIKE.test(reference.ref) ? 'unknown' : 'missing';
         break;
       case 'symbol': case 'env':
-        where = index.symbols.get(reference.ref) ?? undefined;
-        if (where) where_kind = index.symbol_kinds.get(reference.ref);
+        {
+          const found_name = [reference.ref, ...(reference.kind === 'env' ? [reference.ref.toLowerCase()] : [])].find((name) => index.symbols.get(name));
+          where = found_name ? index.symbols.get(found_name) ?? undefined : undefined;
+          if (where) where_kind = index.symbol_kinds.get(found_name!);
+        }
         // Only another doc's mention makes a code-less name `unknown` (an external name); the citing doc itself proves nothing.
         status = where ? 'ok' : is_mentioned_elsewhere(index, reference.ref, self) ? 'unknown' : 'missing';
         break;
@@ -547,6 +576,11 @@ export async function resolve_references(index: RepoIndex, references: Reference
     }
     found.push(where ? { ...reference, status, where, ...(reference.kind === 'symbol' && where_kind && { whereKind: where_kind }) } : { ...reference, status });
   }
+  // a gitignored path (`.venv/`, `dist/x.html`) is not tracked by design: not checkable, never missing
+  const candidates = (entry: ResolvedReference): string[] => [normalize_path_ref(entry.ref), ...(doc_dir && /^\.\.?\//.test(entry.ref) ? [to_repo_path(resolve(doc_dir, entry.ref))] : [])].filter((path_text) => !path_text.startsWith('..'));
+  const missing_paths = found.filter((entry) => entry.kind === 'path' && entry.status === 'missing');
+  const ignored = find_ignored(index.root, [...new Set(missing_paths.flatMap(candidates))]);
+  for (const entry of missing_paths) if (candidates(entry).some((path_text) => ignored.has(path_text))) entry.status = 'unknown';
   return found;
 }
 

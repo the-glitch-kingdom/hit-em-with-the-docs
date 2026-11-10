@@ -11,7 +11,7 @@ import { parse_frontmatter } from '../../utils/frontmatter.js';
 import type { PluginConfig } from '../../utils/config.js';
 import { check_retrieval } from '../audit/retrieval.js';
 import { find_clusters } from '../links/clusters.js';
-import { build_repo_index, extract_references, add_known_symbols, load_sibling_index, resolve_references, type RelatedRepo, type ResolvedReference, type SymbolTable } from './references.js';
+import { build_repo_index, extract_references, add_known_symbols, get_symbol_names, load_sibling_index, resolve_references, type RelatedRepo, type ResolvedReference, type SymbolTable } from './references.js';
 import { find_body_change, count_sibling_commits, find_staleness_signal, type StalenessSignal } from './staleness.js';
 import { compute_content_hash, is_reviewed, build_ledger_entry, type Ledger } from './ledger.js';
 import { find_section } from '../links/anchors.js';
@@ -229,7 +229,7 @@ export async function triage_docs(options: {
     const { data, content } = parse_frontmatter<Record<string, unknown>>(raw_text);
     return { doc_path, raw_text, data, body: content, references: extract_references(content) };
   });
-  time_stage('symbol priming', () => add_known_symbols(index, loaded.flatMap((doc) => doc.references.filter((reference) => reference.kind === 'symbol' || reference.kind === 'env').map((reference) => reference.ref)), options.symbol_table));
+  time_stage('symbol priming', () => add_known_symbols(index, loaded.flatMap((doc) => get_symbol_names(doc.references)), options.symbol_table));
 
   const retrieval = check_retrieval(
     loaded.map((doc) => ({ doc_path: doc.doc_path, data: doc.data, body: doc.body })),
@@ -257,7 +257,7 @@ export async function triage_docs(options: {
   let stale_warned = false;
   for (const doc of loaded) {
     const abs_path = join(docs_root, doc.doc_path);
-    const resolved: ResolvedReference[] = await time_stage('resolve refs', () => resolve_references(index, doc.references, { doc_file: abs_path, docs_root: docs_root, related: sibling_repos }));
+    const resolved: ResolvedReference[] = await time_stage('resolve refs', () => resolve_references(index, doc.references, { doc_file: abs_path, docs_root: docs_root, related: sibling_repos, external_refs: Array.isArray(doc.data.external_refs) ? doc.data.external_refs.filter((item): item is string => typeof item === 'string') : [] }));
     const sources = Array.isArray(doc.data.sources) ? doc.data.sources.filter((source): source is string => typeof source === 'string') : [];
     // Only path-like sources are checkable; URLs and prose citations are not claims about the repo.
     // `<name>:<path>` names a file in a related repo (read-only); checked there, not in this repo.

@@ -356,7 +356,10 @@ project root, `name` matching `[\w.-]+`. Invalid entries are dropped one by one.
 (never overwrites). Each doc is a `## <path>` heading, a `- [ ] accept` line and
 a JSON entry: `path`, `content_hash`, `verdict`, and optionally `frontmatter`,
 `patch` (`{old,new}` pairs; each `old` must occur exactly once in the body),
-`draft`, `sources`, `reason`.
+`draft`, `sources`, `sources_remove`, `reason`.
+
+`--write-review` with named docs includes the named docs that triage put in the
+`clean` lane, so you can re-judge one on purpose. `--next` still skips clean docs.
 
 Verdicts: `verify`, `rewrite`, `archive`, `unverifiable`, `fields`, `secret`,
 `overview`, `merge`, `point` (2.18.0), `phrases` (2.21.0); outside entries use `integrate` and `delete`.
@@ -379,13 +382,24 @@ Verdicts: `verify`, `rewrite`, `archive`, `unverifiable`, `fields`, `secret`,
 - A doc in two review files is rejected and the exit code is non-zero.
 - A second run reports `already-applied` and changes nothing.
 - Only `verify` stamps `last_verified` (today). `unverifiable` sets
-  `confidence: low`. `fields` and `rewrite` never stamp. A `last_verified`
-  inside the entry's frontmatter is ignored. `sources` are written exactly as
-  listed.
+  `confidence: low`. `fields` never stamps; `rewrite` stamps like `verify`. A `last_verified`
+  inside the entry's frontmatter is ignored. `sources` are **merged** into the doc's
+  existing `sources` (3.1.6): existing entries first (a single string becomes a list,
+  non-string entries are kept), then the new ones, no duplicates (a leading `./` is
+  ignored), and the doc's own path dropped (docs-relative and repo-relative forms). List paths in
+  `sources_remove` to remove them. A source that is not in the repo is kept and listed in
+  the outcome `detail` (not checked for URLs, prose or `<name>:<path>`).
 - `archive` goes through `hewtd archive` machinery (creates `archive/`, link
   guard, reindex). No domain folder is created or moved.
-- `rewrite` drafts are written to `.hewtd/reconcile/drafts/`, outside the tree.
-  Rewrite entries alone do not produce a commit.
+- `rewrite` replaces the doc body with `draft` in the batch commit (3.1.6). The doc's
+  frontmatter is kept, `frontmatter` and `sources` merge as for an edit, `last_verified`
+  is stamped, and indexes regenerate only if an indexed key changes. A frontmatter block
+  at the top of the draft can only add keys the doc does not have (the doc's value is kept
+  and the outcome says so); its `sources` merge like the entry's. A draft with no body
+  (empty, or frontmatter only) is an error. The body keeps the doc's line endings.
+  Warnings go in the applied outcome's `detail`:
+  `warning: anchors other docs link to are gone: ...; no longer cited: ...`.
+  `.hewtd/reconcile/drafts/` is no longer written. A hand edit after apply reports `stale`.
 - Touched domains have their indexes regenerated.
 - Only the frontmatter keys an entry changes are rewritten (2.22.0; since 3.1.0 the same holds for `fix-retrieval-fields --apply`, `maintain --fix` / `metadata-sync`, `archive` / `unarchive` and the outside move, see [write-time-guards.md](./write-time-guards.md#commands-that-edit-a-doc-rewrite-only-their-own-keys-310)): `symptoms` for phrases;
   the keys in `frontmatter`, plus `sources` and `last_verified` (verify) and
@@ -402,8 +416,8 @@ Verdicts: `verify`, `rewrite`, `archive`, `unverifiable`, `fields`, `secret`,
   (`rolled back: <msg>`).
 - **Exit code**: 1 on any error outcome (also for rollback and for entries
   resolving outside the project root), with a summary line; 0 otherwise.
-- `rewrite` is not a review: the doc stays unreviewed and stays in `--next`.
-  Its draft is rewritten on a rerun.
+- A landed `rewrite` is still recorded with verdict `rewrite`, so the ledger counts the
+  doc as unreviewed and `--next` offers it again. Re-judge it, or mark it `verify`.
 
 ## Search gaps (2.21.0)
 
@@ -509,6 +523,13 @@ accepted entry. Links from other outside files are not repointed.
   `git fetch --unshallow`. Triage still works without the signal.
 - **`--gaps`: "unsupported version" or exit 1**: the file needs `"version": 1` (or be a bare array / one question per line); check the path.
 - **`--gaps`: a query is missing from the proposals**: see `dropped` in the report (`too short`, `duplicate`, `over cap`...) and `errors` for unknown `used_doc` paths.
+- **Apply dropped my `sources`** (before 3.1.6, `sources` replaced the list): fixed in
+  3.1.6. `sources` now merges; use `sources_remove` to remove entries.
+- **A `rewrite` says applied but the doc did not change** (before 3.1.6, the draft was only
+  saved under `.hewtd/reconcile/drafts/`): fixed in 3.1.6. The draft now lands in the batch commit.
+- **`generic-secret` flags a heading with a repo path** such as `tokens: config/theme/theme.data.json`:
+  fixed in 3.1.6. A repo-relative path to a file that exists in the repo is not a finding;
+  a path-shaped value that is not a file there is still checked like any value.
 - **Rejected, doc in two review files** (or twice in one): remove the duplicate and rerun.
 - **Outside entry: "target ... already exists"**: a doc with that filename is
   already in the chosen domain. Pick another `domain` in the entry, or merge by hand.

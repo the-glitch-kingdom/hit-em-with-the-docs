@@ -6,7 +6,8 @@
  */
 import { createHash } from 'crypto';
 import { readFile, writeFile, mkdir } from 'fs/promises';
-import { join, dirname } from 'path';
+import { existsSync } from 'fs';
+import { join, dirname, isAbsolute } from 'path';
 import { build_glob_regex } from './references.js';
 import type { SecretsConfig } from '../../utils/config.js';
 
@@ -126,7 +127,7 @@ export function is_placeholder(value: string, weak: boolean): boolean {
   return weak && /password|passwd|secret|(^|[^a-z])test([^a-z]|$)/.test(line);
 }
 
-interface Rule { id: string; re: RegExp; group?: number; weak?: boolean; accept?: (value: string, match: RegExpMatchArray) => boolean;
+interface Rule { id: string; re: RegExp; group?: number; weak?: boolean; accept?: (value: string, match: RegExpMatchArray, root?: string) => boolean;
   /** one match yields several values: [value, offset in m[0]] */ expand?: (match: RegExpMatchArray) => Array<[string, number]> }
 const is_valid_jwt = (value: string): boolean => {
   try { return typeof JSON.parse(Buffer.from(value.split('.')[0]!, 'base64url').toString()).alg === 'string'; } catch { return false; }
@@ -222,7 +223,12 @@ const build_pointer_record = (value: string, match: RegExpMatchArray) => {
   const start_index = match.index! + match[0].lastIndexOf(value), end = match.input!.indexOf('\n', start_index);
   return match.input!.slice(start_index, end < 0 ? undefined : end).includes('>');
 };
-const is_path_or_url = (value: string) => /^(\/|\.{1,2}\/|~)/.test(value) || /^[a-z][a-z0-9+.-]*:\/\/[^@]*$/i.test(value);
+// A repo-relative file path (`config/theme/theme.data.json`): separators, a known extension, and every part made of words.
+// A repo-relative path to a file that exists in the repo (`config/theme/theme.data.json`) is a path, not a secret. Existence, not a word
+// test: random letters often pass one, but never name a real file. `root` is the repo root the secrets config was loaded for.
+const is_repo_path = (value: string, root?: string) =>
+  !!root && value.length <= 512 && /^[\w@+.-]+(?:\/[\w@+.-]+)+$/.test(value) && !isAbsolute(value) && !value.split('/').includes('..') && existsSync(join(root, value));
+const is_path_or_url = (value: string, root?: string) => /^(\/|\.{1,2}\/|~)/.test(value) || is_repo_path(value, root) || /^[a-z][a-z0-9+.-]*:\/\/[^@]*$/i.test(value);
 
 // Order matters: specific shapes first, so the generic rule skips what they already found.
 const RULES: Rule[] = [
@@ -247,7 +253,7 @@ const RULES: Rule[] = [
   // the old `[\w.-]*(?:NAME)[\w.-]*` form backtracked quadratically on long lines.
   { id: 'generic-secret', re: /(?<![\w.-])["'`]?([A-Za-z_][\w.-]{0,80})["'`]?[ \t]{0,8}[:=][ \t]{0,8}["'`]?([^\s"'`,;]{1,512})/g, group: 2, weak: true,
     // AppRole role/secret ids are uuids, which often fall under the entropy bar: `strong` counts a non-trivial uuid.
-    accept: (value, match) => NAME_RE.test(match[1]!) && !is_regex_pattern(value) && !is_path_or_url(value) && !is_code(value) && !is_email(value) && !build_pointer_record(value, match) && is_strong(value) },
+    accept: (value, match, root) => NAME_RE.test(match[1]!) && !is_regex_pattern(value) && !is_path_or_url(value, root) && !is_code(value) && !is_email(value) && !build_pointer_record(value, match) && is_strong(value) },
   // After generic-secret, so a secret-named key keeps that rule; this one also catches ids under plain keys.
   { id: 'approle-id', re: /(?:--role-id|--secret-id|role_id|secret_id|role id|secret id)(?:[ \t]{0,3}[:=][ \t]{0,3}|[ \t]{1,3})["']?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi, group: 1,
     accept: (value) => new Set(value.replace(/-/g, '')).size > 4 },
@@ -296,7 +302,7 @@ export function find_secrets(text: string, file: string, config: SecretsConfig):
         continue;
       }
       const value = match[rule.group ?? 0];
-      if (!value || (rule.accept && !rule.accept(value, match)) || is_placeholder(value, !!rule.weak)) continue;
+      if (!value || (rule.accept && !rule.accept(value, match, (config as SecretsConfig & { root?: string }).root)) || is_placeholder(value, !!rule.weak)) continue;
       add_finding(rule.id, 'secret', value, match.index! + (rule.group ? match[0].lastIndexOf(value) : 0));
     }
   }

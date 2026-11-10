@@ -58,10 +58,10 @@ It prints one review file per shard under `.hewtd/reconcile/review-<batch>-<shar
 
 Each review file has, per doc, a heading `## <docs-relative path>`, a `- [ ] accept` line, and a ```json block holding a ReviewEntry. For every entry fill:
 
-- `verdict`: `verify` (doc matches the code; stamps `last_verified`), `rewrite` (needs a larger rewrite; put the full proposed body in `draft`), `archive` (obsolete; put the why in `reason`), `merge`, `point` and `overview` (step 3), `unverifiable` (cannot be checked from the repo; sets `confidence: low`), or `fields` (frontmatter only).
+- `verdict`: `verify` (doc matches the code; stamps `last_verified`), `rewrite` (needs a larger rewrite; put the full proposed body in `draft`; apply replaces the doc's body with it, keeps the doc's frontmatter and merges `frontmatter` and `sources` like an edit, and reports in `detail` any heading anchor other docs link to or any cited path that the draft drops), `archive` (obsolete; put the why in `reason`), `merge`, `point` and `overview` (step 3), `unverifiable` (cannot be checked from the repo; sets `confidence: low`), or `fields` (frontmatter only).
 - `frontmatter`: keys to set, for example `purpose` and `symptoms`. Never `last_verified`; only the `verify` verdict stamps it.
 - `patch`: `[{old, new}]` exact-text body edits. Each `old` must occur exactly once in the body.
-- `sources`: every file you actually read to decide. Do not list files you did not open. A file read in a related repo (`reconcile.related_repos`) is listed as `<name>:<path>`.
+- `sources`: every file you actually read to decide. Do not list files you did not open. Apply merges them into the doc's existing `sources` (existing first, no duplicates, the doc itself dropped); to remove one, list it in `sources_remove`. A source that is not in the repo is kept and reported. A file read in a related repo (`reconcile.related_repos`) is listed as `<name>:<path>`.
 - `reason`: for `archive` and `unverifiable`.
 
 Rules: draft metadata from the doc's own text and the code it cites only. Do not invent symptoms or purposes. If a claim cannot be checked, say `unverifiable`; do not guess. Do not touch `content_hash`, `path`, `lane` or `reasons`. Leave `verdict: null` for a doc you did not get to. Use the `missing` references and `reasons` in the entry as the starting evidence. Do not edit anything under the docs tree.

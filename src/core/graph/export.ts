@@ -130,9 +130,11 @@ export async function build_graph(options: { root: string; docs_root: string; co
     if (!link_targets) return true;
     return [...targets, ...link_targets].some((target) => changed.has(target)) || JSON.stringify(compute_outside(link_targets)) !== JSON.stringify(entry.outside ?? {});
   };
+  // a path-shaped value is not a secret while that file exists (#86): a doc whose text names a changed path is scanned again
+  const names_moved_path = (doc_path: string): boolean => { const text = raws.get(doc_path)!.raw_text; return [...moved].some((file) => text.includes(file)); };
   const reusable = kept.filter((doc_path) => {
     const entry = prior.entries[doc_path];
-    return !!entry && !changed.has(join(docs_root, doc_path)) && entry.hash === hashes.get(doc_path) && entry.ledger === ledger_text(doc_path) && entry.duplicates === duplicates_text(doc_path) && !points_at_changed(doc_path, entry) && !reads_moved_code(doc_path, entry);
+    return !!entry && !changed.has(join(docs_root, doc_path)) && entry.hash === hashes.get(doc_path) && entry.ledger === ledger_text(doc_path) && entry.duplicates === duplicates_text(doc_path) && !points_at_changed(doc_path, entry) && !reads_moved_code(doc_path, entry) && !names_moved_path(doc_path);
   });
   const unfound_names = [...new Set(reusable.flatMap((doc_path) => prior.entries[doc_path]!.unfound))];
   const mentions = markdown_moved && unfound_names.length ? find_md_mentions(git_top, unfound_names) : undefined;

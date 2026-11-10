@@ -5,7 +5,7 @@
  */
 import { execFileSync } from 'child_process';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, statSync, writeFileSync } from 'fs';
-import { mkdir, readFile, stat, writeFile } from 'fs/promises';
+import { readFile, stat, writeFile } from 'fs/promises';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import { parse_frontmatter, with_frontmatter, with_frontmatter_keys } from '../../utils/frontmatter.js';
 import { format_date } from '../metadata/generator.js';
@@ -18,11 +18,12 @@ import { validate_no_secrets, find_secrets } from './secrets.js';
 import { load_plugin_config } from '../../utils/config.js';
 import { apply_outside_entry, build_outside_key } from './outside.js';
 import { extract_heading_anchors, find_section } from '../links/anchors.js';
+import { extract_references } from './references.js';
 import { find_missing_tokens } from './noloss.js';
 import { get_member_state } from './overview.js';
 import { build_phrases } from './phrases.js';
 import { extract_symptom_text } from './gaps.js';
-import { get_environment_names, load_review, resolve_review_dir, type ReviewEntry } from './review.js';
+import { get_environment_names, load_review, type ReviewEntry } from './review.js';
 
 export interface ApplyOutcome {
   path: string;
@@ -181,12 +182,30 @@ function rollback_files(git_top: string, abs_path: string[], snap: Map<string, B
   }
 }
 
+/** Existing sources first (a scalar becomes a list; non-string entries are kept), then the entry's and `extra`, deduplicated with
+ * `./` ignored; the doc's own path and `sources_remove` dropped. */
+function merge_sources(raw_text: string, entry: ReviewEntry, self_paths: string[], extra: string[] = []): unknown[] {
+  const existing = parse_frontmatter<Record<string, unknown>>(raw_text).data.sources;
+  const key = (source: unknown): string => (typeof source === 'string' ? source.trim().replace(/^\.\//, '') : JSON.stringify(source));
+  const drop = new Set([...self_paths, ...(entry.sources_remove ?? [])].map(key));
+  const seen = new Set<string>();
+  return [...(Array.isArray(existing) ? existing : existing === undefined || existing === null ? [] : [existing]), ...(entry.sources ?? []), ...extra]
+    .filter((source) => { const source_key = key(source); if (drop.has(source_key) || seen.has(source_key)) return false; seen.add(source_key); return true; });
+}
+/** Entry sources that look like repo paths but are not there (kept anyway; URLs, `<name>:<path>` and prose are not checked). */
+function find_missing_sources(repo_root: string, sources: string[] = []): string[] {
+  return sources.filter((source) => !/\s|^[\w.-]+:/.test(source) && !existsSync(resolve(repo_root, source)));
+}
+
 /** Build the new file content for a verify/fields/unverifiable entry. */
-function build_edit_doc(raw_text: string, entry: ReviewEntry, today: string): string {
+function build_edit_doc(raw_text: string, entry: ReviewEntry, today: string, self_paths: string[] = [], extra_sources: string[] = []): string {
   const { last_verified: _ignored, ...frontmatter } = entry.frontmatter ?? {};
   const changes: Record<string, unknown> = { ...frontmatter };
-  if (entry.sources) changes.sources = entry.sources;
-  if (entry.verdict === 'verify') changes.last_verified = today;
+  if (entry.sources?.length || entry.sources_remove?.length || extra_sources.length) {
+    const merged = merge_sources(raw_text, entry, self_paths, extra_sources);
+    if (merged.length || parse_frontmatter<Record<string, unknown>>(raw_text).data.sources !== undefined) changes.sources = merged;
+  }
+  if (entry.verdict === 'verify' || entry.verdict === 'rewrite') changes.last_verified = today;
   if (entry.verdict === 'unverifiable') changes.confidence = 'low';
   const next = with_frontmatter_keys(raw_text, changes);
   if (!entry.patch?.length) return next;
@@ -197,6 +216,45 @@ function build_edit_doc(raw_text: string, entry: ReviewEntry, today: string): st
     body = body.replace(patch.old, () => patch.new);
   }
   return next.slice(0, frontmatter_length) + body;
+}
+
+/** A draft's own frontmatter only adds keys the doc does not have (the entry's keys still win); its `sources` merge like the entry's. */
+function split_draft_frontmatter(raw_text: string, entry: ReviewEntry): { frontmatter: Record<string, unknown>; sources: string[]; ignored: string[] } {
+  const { sources, ...draft_keys } = parse_frontmatter<Record<string, unknown>>(entry.draft ?? '').data;
+  const doc_keys = parse_frontmatter<Record<string, unknown>>(raw_text).data;
+  const ignored = Object.keys(draft_keys).filter((name) => name in doc_keys && !(name in (entry.frontmatter ?? {})));
+  const added = Object.fromEntries(Object.entries(draft_keys).filter(([name]) => !(name in doc_keys)));
+  const draft_sources = (Array.isArray(sources) ? sources : sources ? [sources] : []).filter((source): source is string => typeof source === 'string');
+  return { frontmatter: { ...added, ...entry.frontmatter }, sources: draft_sources, ignored };
+}
+
+/** rewrite: the draft's body replaces the doc's; the doc's frontmatter stays, merged like an edit. Returns the text and keys it ignored. */
+function build_rewrite_doc(raw_text: string, entry: ReviewEntry, today: string, self_paths: string[]): { text: string; ignored: string[] } {
+  const body = parse_frontmatter(entry.draft ?? '').content.trim();
+  if (!body) throw new Error('rewrite needs a draft with a body');
+  const { patch: _patch, ...rest } = entry;
+  const { frontmatter, sources, ignored } = split_draft_frontmatter(raw_text, entry);
+  const next = build_edit_doc(raw_text, { ...rest, frontmatter }, today, self_paths, sources);
+  const frontmatter_length = next.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/)?.[0].length ?? 0;
+  const eol = raw_text.includes('\r\n') ? '\r\n' : '\n';
+  return { text: `${next.slice(0, frontmatter_length)}${eol}${body.replace(/\r?\n/g, eol)}${eol}`, ignored };
+}
+
+/** What a rewrite drops that something may rely on: anchors other docs link to, and paths or doc links the old body cited. */
+function find_rewrite_losses(docs_root: string, abs_path: string, old_text: string, new_text: string): string[] {
+  const old_body = parse_frontmatter(old_text).content, new_body = parse_frontmatter(new_text).content;
+  const new_anchors = extract_heading_anchors(new_body);
+  const dropped = new Set([...extract_heading_anchors(old_body)].filter((anchor) => !new_anchors.has(anchor)));
+  const linked = new Set<string>();
+  if (dropped.size) {
+    for (const file of readdirSync(docs_root, { recursive: true }) as string[]) {
+      const other = join(docs_root, file);
+      if (!file.endsWith('.md') || other === abs_path || file.split(/[\\/]/).includes('archive')) continue;
+      try { for (const link of readFileSync(other, 'utf-8').matchAll(/\]\(([^)#\s]+)#([^)\s]+)\)/g)) if (dropped.has(link[2]!) && resolve(dirname(other), link[1]!) === abs_path) linked.add(link[2]!); } catch { /* unreadable: skip */ }
+    }
+  }
+  const cited = [...new Set(extract_references(old_body).filter((reference) => (reference.kind === 'path' || reference.kind === 'doc-link') && !new_body.includes(reference.ref)).map((reference) => reference.ref))];
+  return [...(linked.size ? [`anchors other docs link to are gone: ${[...linked].join(', ')}`] : []), ...(cited.length ? [`no longer cited: ${cited.join(', ')}`] : [])];
 }
 
 /** phrases: add new user_phrase entries to symptoms (cap and duplicates re-checked); returns null when nothing is left to add. */
@@ -340,6 +398,8 @@ export async function apply_reviews(options: {
         continue;
       }
       let env_names_for: string[] | undefined;
+      let detail: string | undefined;
+      const self_paths = [entry.path, repo_path.split('\\').join('/')];
       try {
         // Nothing the review proposes to write may carry a secret.
         validate_no_secrets([...(entry.patch ?? []).map((patch) => patch.new), entry.draft ?? '', entry.pointer?.summary ?? '', ...(entry.phrases ?? []), JSON.stringify(entry.frontmatter ?? {})].join('\n'), entry.path, secrets_config);
@@ -347,7 +407,7 @@ export async function apply_reviews(options: {
           const body = parse_frontmatter(raw_text).content;
           if (!entry.section || !extract_heading_anchors(body).has(entry.section)) throw new Error(`section #${entry.section ?? ''} not found in ${entry.path}`);
           if (!entry.patch?.length) throw new Error('merge needs a patch');
-          const next = build_edit_doc(raw_text, entry, today);
+          const next = build_edit_doc(raw_text, entry, today, self_paths);
           if (!extract_heading_anchors(parse_frontmatter(next).content).has(entry.section)) throw new Error(`section #${entry.section} gone after the merge`);
           // A merge only adds to the owner: whatever a patch replaces must still be there afterwards.
           const lost = [...new Set(entry.patch.flatMap((patch) => find_missing_tokens(patch.old, parse_frontmatter(next).content, '')))];
@@ -394,16 +454,21 @@ export async function apply_reviews(options: {
           touched.add(abs_path);
           env_names_for = moved.names;
         } else if (entry.verdict === 'rewrite') {
-          const draft = join(resolve_review_dir(repo_root), 'drafts', entry.path);
-          await mkdir(dirname(draft), { recursive: true });
-          await writeFile(draft, entry.draft ?? '', 'utf-8');
-        } else {
-          await writeFile(abs_path, build_edit_doc(raw_text, entry, today), 'utf-8');
+          const { text: next, ignored } = build_rewrite_doc(raw_text, entry, today, self_paths);
+          await writeFile(abs_path, next, 'utf-8');
           touched.add(abs_path);
+          const missing = find_missing_sources(repo_root, [...(entry.sources ?? []), ...split_draft_frontmatter(raw_text, entry).sources]);
+          const warnings = [...find_rewrite_losses(docs_root, abs_path, raw_text, next), ...(missing.length ? [`sources not found in the repo (kept): ${missing.join(', ')}`] : []), ...(ignored.length ? [`draft frontmatter kept the doc's own value for: ${ignored.join(', ')}`] : [])];
+          if (warnings.length) detail = `warning: ${warnings.join('; ')}`;
+        } else {
+          await writeFile(abs_path, build_edit_doc(raw_text, entry, today, self_paths), 'utf-8');
+          touched.add(abs_path);
+          const missing = find_missing_sources(repo_root, entry.sources);
+          if (missing.length) detail = `sources not found in the repo (kept): ${missing.join(', ')}`;
         }
-        if (entry.verdict !== 'rewrite') domains.add(entry.path.split('/')[0] ?? '');
+        domains.add(entry.path.split('/')[0] ?? '');
         applied.push({ entry, file: review_ref, abs_path, ...(env_names_for && { env_names: env_names_for }) });
-        outcomes.push({ path: entry.path, status: 'applied' });
+        outcomes.push({ path: entry.path, status: 'applied', ...(detail && { detail }) });
       } catch (error) {
         outcomes.push({ path: entry.path, status: 'error', detail: (error as Error).message });
       }
@@ -432,7 +497,7 @@ export async function apply_reviews(options: {
   };
   try {
     // Only verdicts that change what an index lists regenerate it (phrases/verify/unverifiable/rewrite do not).
-    const changes_index = applied.some(({ entry, outside }) => outside || (entry.verdict !== 'phrases' && entry.verdict !== 'verify' && entry.verdict !== 'unverifiable' && entry.verdict !== 'rewrite') || Object.keys(entry.frontmatter ?? {}).some((key) => INDEXED_KEYS.has(key)));
+    const changes_index = applied.some(({ entry, outside }) => outside || (entry.verdict !== 'phrases' && entry.verdict !== 'verify' && entry.verdict !== 'unverifiable' && entry.verdict !== 'rewrite') || Object.keys((entry.verdict === 'rewrite' ? { ...parse_frontmatter<Record<string, unknown>>(entry.draft ?? '').data, ...entry.frontmatter } : entry.frontmatter) ?? {}).some((key) => INDEXED_KEYS.has(key)));
     if (domains.size && changes_index) {
       const regenerated = await regenerate_indexes({
         docs_root: docs_root, silent: true,

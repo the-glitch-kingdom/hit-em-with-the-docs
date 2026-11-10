@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.1.8] — 2026-11-10
+
+Fixes #92 and #93. No breaking changes; `.hewtd/graph.json` stays `version: 1`, no existing JSON key changes.
+
+- reconcile --apply (#92): a metadata-only verdict (`fields`, `phrases`) no longer replaces an earlier review. This applies to a doc whose earlier substantive review still holds, meaning it was unchanged between that review and this one. The ledger keeps `verdict`, `reviewed_on`, `review_file`, `applied_commit` and `env_names`, records the new `content_hash`, and sets a new additive key `fields_on`. A later non-keeping review clears it. `last_verified` is neither stamped nor cleared by a metadata-only apply. Before this, a frontmatter-only fix-up turned verified docs into `fields`.
+- reconcile --status (#92): prints `reviewed, metadata updated since: N` for reviewed docs with a `fields_on` mark.
+- reconcile schema_sources (#93): SQLAlchemy and Django models (`.py`) are read as schema, alongside `.sql` and `.prisma`.
+  - SQLAlchemy: `__tablename__`, `Column` / `mapped_column` (with `name=`), `Table("x", ...)`, and mixin or base-class columns.
+  - Django: `models.Model` subclasses, including custom base chains, with `db_table` or `<app>_<model>` and `<fk>_id`. Abstract models aren't tables but pass their fields on.
+- reconcile schema_sources (#93): a pattern that matches no git-tracked file now gives a triage warning, also in `--json` warnings. Untracked files are never indexed.
+- reconcile table/column refs (#93): a known table always wins. Otherwise an engine catalog (`information_schema`, `pg_catalog`, `mysql`, `sys`, `performance_schema`, `sqlite_master`, `pg_*`, `sqlite_*`) is `unknown`, never `missing`.
+- reconcile dotted refs (#93): a code-span `a.b` is a column ref only when `a` is a known table, so task names, JSON paths and attribute access are `unknown`. Column refs from SQL (`ALTER TABLE ... ADD COLUMN`) stay strict, so a dropped or renamed table is still `missing`. `schema.table.col` now splits at the last dot.
+
 ## [3.1.7] — 2026-11-10
 
 Fixes #90. No breaking changes; `.hewtd/graph.json` stays `version: 1`, no existing JSON key changes.

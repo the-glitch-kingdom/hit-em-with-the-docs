@@ -93,10 +93,18 @@ export async function build_graph(options: { root: string; docs_root: string; co
   const schema_globs = config.reconcile.schema_sources.map(build_glob_regex);
   const package_moved = [...moved].some((file) => file === 'package.json' || file.endsWith('/package.json'));
   const schema_moved = [...moved].some((file) => schema_globs.some((schema_glob) => schema_glob.test(file)));
-  const reads_moved_code = (entry: DocEntry): boolean => entry.triage.refs.some((reference) => {
+  // triage also reads .gitignore (ignored refs are not checkable), whether the repo has a secret/ folder and, for an env ref, its lowercase settings field (#84)
+  const gitignore_moved = [...moved].some((file) => file === '.gitignore' || file.endsWith('/.gitignore'));
+  const secret_dir_moved = [...moved].some((file) => file.startsWith('secret/'));
+  const reads_moved_code = (doc_path: string, entry: DocEntry): boolean => entry.triage.refs.some((reference) => {
     switch (reference.kind) {
-      case 'symbol': case 'env': return dropped_symbols.has(reference.ref);
-      case 'path': return is_path_ref_affected(reference.ref, moved);
+      case 'symbol': return dropped_symbols.has(reference.ref);
+      case 'env': return dropped_symbols.has(reference.ref) || dropped_symbols.has(reference.ref.toLowerCase());
+      case 'path': {
+        const from_doc = /^\.\.?\//.test(reference.ref) ? format_posix_path(relative(git_top, resolve(dirname(join(docs_root, doc_path)), reference.ref))) : undefined;
+        return is_path_ref_affected(reference.ref, moved) || (!!from_doc && !from_doc.startsWith('..') && is_path_ref_affected(from_doc, moved))
+          || (gitignore_moved && reference.status !== 'ok') || (secret_dir_moved && reference.ref.startsWith('secret/'));
+      }
       case 'command': return reference.ref.startsWith('make ') ? moved.has('Makefile') : package_moved || (reference.ref.startsWith('npx ') && moved_bins.has(reference.ref.replace(/^\S+( run)? /, '')));
       case 'table': case 'column': return schema_moved;
       default: return false;
@@ -124,7 +132,7 @@ export async function build_graph(options: { root: string; docs_root: string; co
   };
   const reusable = kept.filter((doc_path) => {
     const entry = prior.entries[doc_path];
-    return !!entry && !changed.has(join(docs_root, doc_path)) && entry.hash === hashes.get(doc_path) && entry.ledger === ledger_text(doc_path) && entry.duplicates === duplicates_text(doc_path) && !points_at_changed(doc_path, entry) && !reads_moved_code(entry);
+    return !!entry && !changed.has(join(docs_root, doc_path)) && entry.hash === hashes.get(doc_path) && entry.ledger === ledger_text(doc_path) && entry.duplicates === duplicates_text(doc_path) && !points_at_changed(doc_path, entry) && !reads_moved_code(doc_path, entry);
   });
   const unfound_names = [...new Set(reusable.flatMap((doc_path) => prior.entries[doc_path]!.unfound))];
   const mentions = markdown_moved && unfound_names.length ? find_md_mentions(git_top, unfound_names) : undefined;

@@ -206,6 +206,13 @@ pushes a doc toward `archive-candidate`; `unknown` is neutral.
   (including a leading-slash path), a host-like URL that does not resolve in the
   repo (`example.com/docs/x`), a name that no code defines but another doc also
   mentions (an external name; the citing doc's own mention does not count), and a reference into a related repo that is not checked out.
+- Not checkable (3.1.6, `unknown`, so never `missing` and not counted as checkable):
+  - a path ref listed in the doc's frontmatter `external_refs: [..]` (exact text as cited);
+  - a path ref that would be missing but is covered by `.gitignore` (build output, `.claude/*`, `.planning/*`), found with one batched `git check-ignore`;
+  - placeholders (a `YYYY` date run such as `YYYYMMDD_name.py`, `...` or `…` segments, `<x>`, `{x}`, `*`, `?` shapes) and regexes (a `^` or backslash), which are not extracted as path refs. A lone `MM` or `DD` can be a real file name and is still checked;
+  - a missing `secret/...` path (a secret-store KV path), unless the repo has a tracked `secret/` folder; then it is checked like any path.
+- `./` and `../` paths resolve from the doc's own folder first, then the repo root. This also covers a path written as a link's text, such as ``[`../auth/x.md`](../auth/x.md)``; link text is still checked, so a broken target is still reported.
+- An env ref is missing only when neither `NAME` nor its lowercase form is found in code. The lowercase form counts only in a file that reads settings or the environment (`BaseSettings`, `environ`, `getenv`, `process.env`, `env_prefix`, `Settings`), because pydantic settings read env vars case-insensitively; an unrelated local variable with that name does not count.
 - Tables and columns are checked only against `schema_sources`. It defaults to
   `[]`, so nothing is checked until you list globs, for example
   `["**/migrations/**/*.sql", "**/schema.prisma"]`. Triage lists the schema
@@ -509,6 +516,12 @@ accepted entry. Links from other outside files are not repointed.
   repoint links in those docs and commit them; commit or stash them first.
 - **Many refs show `unknown` for URLs or `/abs/paths`**: by design. Only
   `missing` counts against a doc.
+- **Triage reports missing refs that exist (or never could)**: update to 3.1.6. If a ref is
+  still reported, it is a real miss or a bare name or partial path (`base.py`, `prom/`), which
+  are still checked against tracked files. For a thing that lives outside the repo, add
+  `external_refs: ["the/ref"]` to the doc's frontmatter. A doc whose only missing refs were
+  false positives moves from `archive-candidate` to `check`. The incremental graph re-checks
+  these refs when `.gitignore`, the `secret/` folder or a settings file changes.
 - **Tables reported nowhere / not checked**: set `reconcile.schema_sources`
   (default `[]`); triage prints the schema files it found.
 - **A reference to another repo shows missing or unknown**: add that repo to

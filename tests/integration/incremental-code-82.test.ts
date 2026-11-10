@@ -150,4 +150,43 @@ describe('code changes are incremental (#82)', () => {
     g('checkout', '--', 'src/c3.ts');
     expect(index_ok()).toBe(cold());
   });
+
+  // #84 made refs depend on .gitignore, a doc-relative location, the secret/ folder and settings files: each must invalidate like code.
+  it('a .gitignore edit that turns a missing path ref into not-checkable equals cold (#84)', () => {
+    put('.documentation/backend/d1.md', fm('d1', 'Built to `out/app.js`.', 'src/c1.ts'));
+    commit_all('cite out/');
+    index_ok();
+    put('.gitignore', '.hewtd/\n.documentation/INDEX.md\n.documentation/REGISTRY.md\nout/\n');
+    commit_all('ignore out/');
+    expect(index_ok()).toBe(cold());
+  });
+
+  it('a file added where a doc-relative ref points equals cold (#84)', () => {
+    put('.documentation/backend/d1.md', fm('d1', 'See `../ops/runbook.md`.', 'src/c1.ts'));
+    commit_all('cite ../ops');
+    index_ok();
+    put('.documentation/ops/runbook.md', fm('runbook', 'Steps.'));
+    commit_all('add runbook');
+    expect(index_ok()).toBe(cold());
+  });
+
+  it('the first file under secret/ makes secret/ refs checkable, equal to cold (#84)', () => {
+    put('.documentation/backend/d1.md', fm('d1', 'Stored at `secret/app/prod.yaml`.', 'src/c1.ts'));
+    commit_all('cite secret/');
+    index_ok();
+    put('secret/other.yaml', 'a: 1\n');
+    commit_all('real secret folder');
+    expect(index_ok()).toBe(cold());
+  });
+
+  it('an env var backed by a settings field, and that file changing, equals cold (#84)', () => {
+    put('src/settings.py', 'class Settings(BaseSettings):\n    hot_tier_size: int = 1\n');
+    put('.documentation/backend/d1.md', fm('d1', 'Set `HOT_TIER_SIZE`.', 'src/c1.ts'));
+    commit_all('settings');
+    index_ok();
+    put('src/settings.py', 'hot_tier_size = 1\n');
+    commit_all('not settings any more');
+    expect(index_ok()).toBe(cold());
+  });
 });
+

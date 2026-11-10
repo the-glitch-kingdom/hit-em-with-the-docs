@@ -14,16 +14,16 @@ If `$ARGUMENTS` is empty, give a tight orientation (what hewtd does, the 5 most 
 
 If `$ARGUMENTS` matches one of the topics below, focus the orientation on that topic specifically:
 - `frontmatter` — explain the 22-field schema, the 9 tiers, and per-tier required fields
-- `knowledge-base` / `kb` — explain the 3 KB tiers + symptoms field; point at `docs/knowledge-base-primitives.md` and `templates/knowledge-base/`
+- `knowledge-base` / `kb` — explain the 3 KB tiers + symptoms field; config `vault.root`, `vault.playbook_paths` (globs `find-citers`, `audit-facts` scan for playbooks) and `vault.audit_window_days` (default 90; `audit-facts --window <days>` overrides it); point at `docs/knowledge-base-primitives.md` and `templates/knowledge-base/`
 - `commands` — list every `hewtd` CLI command with a one-line purpose
 - `audit` — explain `hewtd audit` + `--strict`; explain when to use each
 - `integrate` — explain `hewtd integrate <file>` and when to use it
 - `templates` — list available templates with paths
 - `domains` — explain the 15 built-in domains + custom domains (`hewtd domain add/remove/list`, 2.6.0+)
 - `archive` / `deprecation` — explain the archival workflow (`hewtd archive/unarchive/archive-candidates`, 2.7.0+)
-- `reconcile` — explain the doc-vs-code pass: triage lanes, reference statuses (`ok`, `missing`, `unknown` = not checkable), deciding every `missing` ref (fix it with a `patch`, or list it in `external_refs`), the `--write-review` / judge / `--apply` loop, `sources` merge (`sources_remove` to drop one), landed `rewrite` drafts, `--status`; point at `docs/reconcile.md` and `/hit-em-with-the-docs:reconcile`
+- `reconcile` — explain the doc-vs-code pass: triage lanes, reference statuses (`ok`, `missing`, `unknown` = not checkable), deciding every `missing` ref (fix it with a `patch`, or list it in `external_refs`), the `--write-review` / judge / `--apply` loop, `sources` merge (`sources_remove` to drop one), landed `rewrite` drafts, `--status`; config under `reconcile` in `.claude/hit-em-with-the-docs.json`: `schema_sources` (globs; table and column refs stay `unknown` until it is set), `search_command` (argv template with `{query}`; `--overview` lists its results first, then the built-in ranking); point at `docs/reconcile.md` and `/hit-em-with-the-docs:reconcile`
 - `graph` — explain `hewtd index` (aliased `reindex`): it regenerates the INDEX/REGISTRY files and writes `.hewtd/graph.json` (per doc resolved and missing refs, change dates, reconcile verdict, a symbol index); the export is incremental via a cache, `--no-graph` skips it, `graph_export: false` turns it off; point at `docs/graph-export.md`
-- `secrets` — explain the secret scan: `hewtd reconcile --secrets` (masked findings), `hewtd secrets --staged`, the `--baseline-add <file:line> --reason` / `--baseline-prune` baseline in `.hewtd/secrets-baseline.json`, and the opt-in `hewtd hooks install|uninstall` pre-commit block; point at `docs/write-time-guards.md`
+- `secrets` — explain the secret scan: `hewtd reconcile --secrets` (masked findings), `hewtd secrets --staged`, the `--baseline-add <file:line> --reason` / `--baseline-prune` baseline in `.hewtd/secrets-baseline.json`, and the opt-in `hewtd hooks install|uninstall` pre-commit block; false positives go in `reconcile.secrets.allow` (fingerprint or pattern, with a reason), and `reconcile.secrets.disabled_rules` turns a whole rule off (use sparingly: it hides real findings of that rule); point at `docs/write-time-guards.md`
 
 ## What hewtd does (the one-paragraph brief)
 
@@ -48,10 +48,10 @@ CLI (via `npx --no @theglitchking/hit-em-with-the-docs <cmd>` or `hewtd <cmd>` i
 - `link-check` — internal link validation
 - `metadata-sync` — backfill missing frontmatter fields
 - `integrate <file>` — auto-classify and place a raw markdown file
-- `discover patterns|anti-patterns|standards|dependencies` — extract conventions from source code
+- `discover patterns|anti-patterns|standards|dependencies` — extract conventions from source code (`discover patterns --category <cat> --language <lang> --root <path>` narrows the scan)
 - `report health|audit|links` — generate detailed reports
 - `list` — list the built-in domains
-- `domain list|add|remove` — manage custom domains (2.6.0+); `add <id> -k <keywords>` registers + scaffolds a project-specific domain
+- `domain list|add|remove` — manage custom domains (2.6.0+); `add <id> -k <keywords> [--name <name>] [--description <desc>] [--category <category>]` registers + scaffolds a project-specific domain
 - `archive <file>` — deprecate a doc into `archive/` (reversible, link-safe, reindexes) (2.7.0+)
 - `unarchive <file>` — restore an archived doc to its domain folder (2.7.0+)
 - `archive-candidates` — advisory list of docs worth retiring (2.7.0+)
@@ -66,7 +66,7 @@ CLI (via `npx --no @theglitchking/hit-em-with-the-docs <cmd>` or `hewtd <cmd>` i
 - `fix-legacy-layout` — move incident folders written by the buggy 2.3.0 `migrate-incident` into `<vault>/incidents/`; idempotent
 - `extract-facts <incident-folder>` — write accepted fact specs to `<vault>/facts/` (the specs come from the slash command)
 - `update` / `policy [auto|nudge|off]` / `status` / `relink` — plugin maintenance: install the latest version, get or set the update policy, show version and hook state, refresh skill symlinks
-- `search <query>` — search documentation
+- `search <query>` — search documentation (for ranked search over the docs tree with an optional external command, see `reconcile --overview` and `reconcile.search_command`)
 - `fix-retrieval-fields [--apply]` — move `summary`/`description` into `purpose`, merge `keywords` into `tags` (dry run by default); drops filler, clears generator-fallback purposes (2.12.0+, filler 2.14.0)
 
 Slash commands (Claude Code):

@@ -20,7 +20,7 @@ hewtd reconcile --secrets <scope...> --json
 
 The scan covers the docs in scope, `archive/`, the outside lane, `.hewtd/` and every file the docs cite. `--json` prints masked findings only: `rule`, `file:line`, the first 4 characters plus the length, and a sha256 fingerprint. Never a value.
 
-If there are findings, show that masked list and stop. Offer the `secret` verdicts (move the value to `.env.hewtd` and leave a pointer in the doc), let the user accept or reject each, apply them with `--apply`, and only then continue to triage. For a false positive, point the user at `reconcile.secrets.allow` in the plugin config (a fingerprint or pattern, with a reason). If there are none, go on to step 1.
+If there are findings, show that masked list and stop. Offer the `secret` verdicts (move the value to `.env.hewtd` and leave a pointer in the doc), let the user accept or reject each, apply them with `--apply`, and only then continue to triage. For a false positive, point the user at `reconcile.secrets.allow` in the plugin config (a fingerprint or pattern, with a reason). For a rule that is noisy across the repo, `reconcile.secrets.disabled_rules` (a list of rule ids) turns the whole rule off; say so plainly, because it also hides every real finding of that rule, and prefer `allow` for one-off cases. If there are none, go on to step 1.
 
 Triage repeats the scan and puts any doc with a finding, in itself or in a file it cites, into the `secret` lane. Files with findings are listed under `blocked_files` and dropped from the doc's `cited` list. Since 2.22.0 `blocked_files` also lists cited code files withheld for weak hits only (`generic-secret`, `url-password`) on docs that are not in the secret lane; those docs keep their lane, and you still never open the withheld files.
 
@@ -34,6 +34,7 @@ Triage repeats the scan and puts any doc with a finding, in itself or in a file 
 
 - `--status`: run `hewtd reconcile --status` (add `--next N` to list the next N unreviewed docs), show it, stop.
 - `--next N` with no scope: resume from the ledger. Triage `hewtd reconcile --next N --json` and continue at step 1.
+- `--overview "<question>"` ranks docs with built-in BM25; if the plugin config sets `reconcile.search_command` (an argv template with `{query}`, run without a shell), the doc paths it prints come first.
 - `--outside`: docs outside the docs root (tool-read, misplaced, junk, not a doc). Run `hewtd reconcile --outside` and follow its output: it proposes integrate-and-remove for misplaced docs and deletion for junk, each applied only on acceptance. Files matching `keep_in_place` are never moved.
 
 ## 1. Triage
@@ -44,7 +45,7 @@ hewtd reconcile <scope...> --json [--serial|--team] [--next N]
 
 The scope must be committed: the CLI refuses a dirty or untracked in-scope file. Tell the user to commit or stash and stop if it does.
 
-Show the user: docs per lane (`clean`, `fields-only`, `check`, `archive-candidate`), the work estimate (judgment docs and bytes), the `mode` and shard count, and any `warnings` (for example a shallow clone, where staleness is unknown). Honour `--serial` / `--team` from the arguments; otherwise follow the plan's `mode`.
+Show the user: docs per lane (`clean`, `fields-only`, `check`, `archive-candidate`), the work estimate (judgment docs and bytes), the `mode` and shard count, and any `warnings` (for example a shallow clone, where staleness is unknown). Honour `--serial` / `--team` from the arguments; otherwise follow the plan's `mode`. Table and column refs are `unknown` (not checked, never `missing`) until the plugin config lists `reconcile.schema_sources`, a list of globs such as `["**/migrations/**/*.sql", "**/schema.prisma"]`; triage prints the schema files it found (`schema files:`), so offer to set it from that list when the docs cite tables.
 
 Then write the skeletons:
 

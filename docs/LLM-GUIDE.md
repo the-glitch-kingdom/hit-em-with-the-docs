@@ -82,7 +82,9 @@ New lifecycle frontmatter fields the schema now recognizes: `superseded_by` (set
 
 ## Knowledge-base authoring (2.3.0+)
 
-The KB subtree lives at `.documentation/knowledge-base/` by default (configurable via `.claude/hit-em-with-the-docs.json` → `vault.root`). That same config file also holds the `domains: []` array — custom domains added via `hewtd domain add` (2.6.0+). Each entry has `id`, `name`, `description`, `keywords` (≥1), `loadPriority` (1-10), and `category` (one of `core | development | features | advanced`). You normally don't hand-edit this; use `hewtd domain add/remove`.
+The KB subtree lives at `.documentation/knowledge-base/` by default (configurable via `.claude/hit-em-with-the-docs.json` → `vault.root`). That same config file also holds the `domains: []` array — custom domains added via `hewtd domain add` (2.6.0+). Each entry has `id`, `name`, `description`, `keywords` (≥1), `loadPriority` (1-10), and `category` (one of `core | development | features | advanced`). You normally don't hand-edit this; use `hewtd domain add/remove` (`add` takes `--name`, `--description`, `--keywords`, `--category`).
+
+KB config (`vault` block): `vault.playbook_paths` (globs `find-citers` and `audit-facts` scan for playbooks, default `.documentation/**/*.md`) and `vault.audit_window_days` (default 90; `hewtd audit-facts --window <days>` overrides it). `hewtd cite <fact-id> --file <playbook>` targets one symptom with `--alert-name`, `--user-phrase` or `--error-pattern`.
 
 ```
 <vault-root>/
@@ -128,7 +130,7 @@ Use Bash to run these. They're all available via `npx --no @theglitchking/hit-em
 | `hewtd link-check` | Validate internal links. Run after moves/renames. |
 | `hewtd metadata-sync --fix` | Backfill missing frontmatter fields. |
 | `hewtd integrate <file>` | Auto-classify and place a raw markdown file. |
-| `hewtd discover patterns` | Extract coding patterns from source code. |
+| `hewtd discover patterns` | Extract coding patterns from source code (`--language`, `--root`, `--category` such as `security` or `testing`). |
 | `hewtd discover anti-patterns` | Detect anti-patterns in source code. |
 | `hewtd report {health\|audit\|links}` | Generate a saved report. |
 | `hewtd search <query>` | Cross-doc text search. |
@@ -152,6 +154,9 @@ Use Bash to run these. They're all available via `npx --no @theglitchking/hit-em
 - **`rewrite`:** an accepted draft replaces the body in the batch commit; the doc's frontmatter is kept and merged. Warnings list dropped anchors others link to and dropped cited paths.
 - **`--write-review` on named docs** includes clean-lane docs (for a sources-only fix-up); `--next` skips them.
 - **`--status`** also prints, for reviewed docs, refs covered by `external_refs` vs still missing (needs `.hewtd/graph.json`).
+- **Table and column refs** are `unknown` until `reconcile.schema_sources` lists schema globs (for example `["**/migrations/**/*.sql"]`); triage prints the schema files it found.
+- **`reconcile.search_command`:** optional argv template with a `{query}` placeholder (no shell, 30 s timeout) that `--overview` runs; the doc paths it prints come first, then the built-in BM25 ranking. If it fails, reconcile warns and uses BM25.
+- **Secret false positives:** `reconcile.secrets.allow` (fingerprint or pattern, with a `reason`) excuses one finding; `reconcile.secrets.disabled_rules` turns a whole rule off and hides its real findings too, so prefer `allow`.
 - **Secrets:** a repo path value such as `tokens: config/theme/theme.data.json` is not a `generic-secret` finding when that file exists in the repo.
 
 ## Slash commands (Claude Code)

@@ -7,7 +7,7 @@ argument-hint: "[fact-id-to-verify | all]"
 Arguments: $ARGUMENTS
 
 If `$ARGUMENTS` is empty:
-- Run `npx --no @theglitchking/hit-em-with-the-docs audit-facts --json` and parse the result.
+- Run `npx --no @theglitchking/hit-em-with-the-docs audit-facts --json` and parse the result. A fact is stale once its `last_verified` is older than `vault.audit_window_days` in the plugin config (default 90); `--window <days>` overrides it for one run. Facts are matched to playbooks through `vault.playbook_paths` (globs, default `.documentation/**/*.md`).
 - Report to the user: list of stale facts (with how many days overdue) and any unverifiable facts (malformed `last_verified`).
 - For each stale fact, suggest one of three actions:
   1. Re-verify it: `/hit-em-with-the-docs:audit-facts <fact-id>`

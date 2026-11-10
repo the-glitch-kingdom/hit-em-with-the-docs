@@ -270,7 +270,7 @@ These commands run in your terminal and manage your documentation.
 | `hewtd maintain` | Run full health check and fix problems |
 | `hewtd integrate <file>` | Add a document to the system |
 | `hewtd list` | Show all 15 documentation categories |
-| `hewtd domain list\|add\|remove` | Manage custom domains beyond the built-in 15 |
+| `hewtd domain list\|add\|remove` | Manage custom domains beyond the built-in 15 (`add <id> --keywords <csv> [--name] [--description] [--category]`) |
 | `hewtd search <query>` | Search for content in your docs |
 | `hewtd metadata-sync` | Update document information tags |
 | `hewtd link-check` | Find broken links between documents |
@@ -425,6 +425,8 @@ hewtd search "user login flow"
 ```
 
 **When to use it**: When you need to find where specific information is documented.
+
+**Ranked search for reconcile**: `hewtd reconcile --overview "<question>"` ranks docs with built-in BM25. To put results from your own search tool first, set `reconcile.search_command` in `.claude/hit-em-with-the-docs.json` to an argv template with a `{query}` placeholder (run without a shell, 30 s timeout); each line it prints must be a doc path. If it fails, reconcile warns and uses the built-in ranking.
 
 **What to use it on**: Any topic, concept, or keyword you want to find.
 
@@ -599,6 +601,9 @@ hewtd discover patterns --language typescript
 
 # Scan specific folder
 hewtd discover patterns --root ./src
+
+# Only one category (architecture, data-access, error-handling, security, testing, api, state-management, utility)
+hewtd discover patterns --category security
 ```
 
 **When to use it**:

@@ -25,7 +25,7 @@ export interface ReviewEntry {
   frontmatter?: Record<string, unknown>;
   /** Exact-text body edits; each `old` must occur exactly once. */
   patch?: { old: string; new: string }[];
-  /** rewrite: full proposed body, written under the drafts dir. */
+  /** rewrite: the full proposed body; apply replaces the doc's body with it (the doc's frontmatter stays, merged with `frontmatter`/`sources`). */
   draft?: string;
   /** Files the agent actually read; written to `sources` as listed. */
   sources?: string[];

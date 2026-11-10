@@ -5,7 +5,7 @@
  */
 import { execFileSync } from 'child_process';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, statSync, writeFileSync } from 'fs';
-import { mkdir, readFile, stat, writeFile } from 'fs/promises';
+import { readFile, stat, writeFile } from 'fs/promises';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import { parse_frontmatter, with_frontmatter, with_frontmatter_keys } from '../../utils/frontmatter.js';
 import { format_date } from '../metadata/generator.js';
@@ -18,11 +18,12 @@ import { validate_no_secrets, find_secrets } from './secrets.js';
 import { load_plugin_config } from '../../utils/config.js';
 import { apply_outside_entry, build_outside_key } from './outside.js';
 import { extract_heading_anchors, find_section } from '../links/anchors.js';
+import { extract_references } from './references.js';
 import { find_missing_tokens } from './noloss.js';
 import { get_member_state } from './overview.js';
 import { build_phrases } from './phrases.js';
 import { extract_symptom_text } from './gaps.js';
-import { get_environment_names, load_review, resolve_review_dir, type ReviewEntry } from './review.js';
+import { get_environment_names, load_review, type ReviewEntry } from './review.js';
 
 export interface ApplyOutcome {
   path: string;
@@ -198,7 +199,7 @@ function build_edit_doc(raw_text: string, entry: ReviewEntry, today: string, sel
   const { last_verified: _ignored, ...frontmatter } = entry.frontmatter ?? {};
   const changes: Record<string, unknown> = { ...frontmatter };
   if (entry.sources || entry.sources_remove) changes.sources = merge_sources(raw_text, entry, self_paths);
-  if (entry.verdict === 'verify') changes.last_verified = today;
+  if (entry.verdict === 'verify' || entry.verdict === 'rewrite') changes.last_verified = today;
   if (entry.verdict === 'unverifiable') changes.confidence = 'low';
   const next = with_frontmatter_keys(raw_text, changes);
   if (!entry.patch?.length) return next;
@@ -209,6 +210,34 @@ function build_edit_doc(raw_text: string, entry: ReviewEntry, today: string, sel
     body = body.replace(patch.old, () => patch.new);
   }
   return next.slice(0, frontmatter_length) + body;
+}
+
+const get_rewrite_frontmatter = (entry: ReviewEntry): Record<string, unknown> => ({ ...parse_frontmatter<Record<string, unknown>>(entry.draft ?? '').data, ...entry.frontmatter });
+
+/** rewrite: the draft's body replaces the doc's; the doc's frontmatter stays, merged like an edit (entry over the draft's own keys). */
+function build_rewrite_doc(raw_text: string, entry: ReviewEntry, today: string, self_paths: string[]): string {
+  if (!entry.draft?.trim()) throw new Error('rewrite needs a draft');
+  const { patch: _patch, ...rest } = entry;
+  const next = build_edit_doc(raw_text, { ...rest, frontmatter: get_rewrite_frontmatter(entry) }, today, self_paths);
+  const frontmatter_length = next.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/)?.[0].length ?? 0;
+  return `${next.slice(0, frontmatter_length)}\n${parse_frontmatter(entry.draft).content.trim()}\n`;
+}
+
+/** What a rewrite drops that something may rely on: anchors other docs link to, and paths or doc links the old body cited. */
+function find_rewrite_losses(docs_root: string, abs_path: string, old_text: string, new_text: string): string[] {
+  const old_body = parse_frontmatter(old_text).content, new_body = parse_frontmatter(new_text).content;
+  const new_anchors = extract_heading_anchors(new_body);
+  const dropped = new Set([...extract_heading_anchors(old_body)].filter((anchor) => !new_anchors.has(anchor)));
+  const linked = new Set<string>();
+  if (dropped.size) {
+    for (const file of readdirSync(docs_root, { recursive: true }) as string[]) {
+      const other = join(docs_root, file);
+      if (!file.endsWith('.md') || other === abs_path || file.split(/[\\/]/).includes('archive')) continue;
+      try { for (const link of readFileSync(other, 'utf-8').matchAll(/\]\(([^)#\s]+)#([^)\s]+)\)/g)) if (dropped.has(link[2]!) && resolve(dirname(other), link[1]!) === abs_path) linked.add(link[2]!); } catch { /* unreadable: skip */ }
+    }
+  }
+  const cited = [...new Set(extract_references(old_body).filter((reference) => (reference.kind === 'path' || reference.kind === 'doc-link') && !new_body.includes(reference.ref)).map((reference) => reference.ref))];
+  return [...(linked.size ? [`anchors other docs link to are gone: ${[...linked].join(', ')}`] : []), ...(cited.length ? [`no longer cited: ${cited.join(', ')}`] : [])];
 }
 
 /** phrases: add new user_phrase entries to symptoms (cap and duplicates re-checked); returns null when nothing is left to add. */
@@ -408,16 +437,19 @@ export async function apply_reviews(options: {
           touched.add(abs_path);
           env_names_for = moved.names;
         } else if (entry.verdict === 'rewrite') {
-          const draft = join(resolve_review_dir(repo_root), 'drafts', entry.path);
-          await mkdir(dirname(draft), { recursive: true });
-          await writeFile(draft, entry.draft ?? '', 'utf-8');
+          const next = build_rewrite_doc(raw_text, entry, today, self_paths);
+          await writeFile(abs_path, next, 'utf-8');
+          touched.add(abs_path);
+          const missing = find_missing_sources(repo_root, entry.sources);
+          const warnings = [...find_rewrite_losses(docs_root, abs_path, raw_text, next), ...(missing.length ? [`sources not found in the repo (kept): ${missing.join(', ')}`] : [])];
+          if (warnings.length) detail = `warning: ${warnings.join('; ')}`;
         } else {
           await writeFile(abs_path, build_edit_doc(raw_text, entry, today, self_paths), 'utf-8');
           touched.add(abs_path);
           const missing = find_missing_sources(repo_root, entry.sources);
           if (missing.length) detail = `sources not found in the repo (kept): ${missing.join(', ')}`;
         }
-        if (entry.verdict !== 'rewrite') domains.add(entry.path.split('/')[0] ?? '');
+        domains.add(entry.path.split('/')[0] ?? '');
         applied.push({ entry, file: review_ref, abs_path, ...(env_names_for && { env_names: env_names_for }) });
         outcomes.push({ path: entry.path, status: 'applied', ...(detail && { detail }) });
       } catch (error) {
@@ -448,7 +480,7 @@ export async function apply_reviews(options: {
   };
   try {
     // Only verdicts that change what an index lists regenerate it (phrases/verify/unverifiable/rewrite do not).
-    const changes_index = applied.some(({ entry, outside }) => outside || (entry.verdict !== 'phrases' && entry.verdict !== 'verify' && entry.verdict !== 'unverifiable' && entry.verdict !== 'rewrite') || Object.keys(entry.frontmatter ?? {}).some((key) => INDEXED_KEYS.has(key)));
+    const changes_index = applied.some(({ entry, outside }) => outside || (entry.verdict !== 'phrases' && entry.verdict !== 'verify' && entry.verdict !== 'unverifiable' && entry.verdict !== 'rewrite') || Object.keys((entry.verdict === 'rewrite' ? get_rewrite_frontmatter(entry) : entry.frontmatter) ?? {}).some((key) => INDEXED_KEYS.has(key)));
     if (domains.size && changes_index) {
       const regenerated = await regenerate_indexes({
         docs_root: docs_root, silent: true,

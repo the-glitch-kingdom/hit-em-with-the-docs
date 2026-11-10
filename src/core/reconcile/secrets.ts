@@ -222,7 +222,13 @@ const build_pointer_record = (value: string, match: RegExpMatchArray) => {
   const start_index = match.index! + match[0].lastIndexOf(value), end = match.input!.indexOf('\n', start_index);
   return match.input!.slice(start_index, end < 0 ? undefined : end).includes('>');
 };
-const is_path_or_url = (value: string) => /^(\/|\.{1,2}\/|~)/.test(value) || /^[a-z][a-z0-9+.-]*:\/\/[^@]*$/i.test(value);
+// A repo-relative file path (`config/theme/theme.data.json`): separators, a known extension, and every part made of words.
+const FILE_EXTENSION = /\.(?:json|ya?ml|toml|md|mdx|txt|csv|xml|html|css|scss|sql|sh|ini|conf|lock|[cm]?[jt]sx?|py|rb|go|rs|java)$/i;
+const is_repo_path = (value: string) => {
+  const extension = FILE_EXTENSION.exec(value);
+  return !!extension && value.includes('/') && value.slice(0, extension.index).split('/').every((part) => is_word_chain(part.replace(/^\./, '')));
+};
+const is_path_or_url = (value: string) => /^(\/|\.{1,2}\/|~)/.test(value) || is_repo_path(value) || /^[a-z][a-z0-9+.-]*:\/\/[^@]*$/i.test(value);
 
 // Order matters: specific shapes first, so the generic rule skips what they already found.
 const RULES: Rule[] = [

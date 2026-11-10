@@ -131,16 +131,15 @@ describe('applyReviews', () => {
     expect(g('status', '--porcelain', '--', '.documentation')).toBe('');
   });
 
-  it('archive uses archiveDoc; rewrite leaves the original and writes a draft', async () => {
+  it('archive uses archiveDoc; rewrite lands the draft as the body (#86)', async () => {
     const f = review('review-1-1.md', [entry('backend/b.md', { verdict: 'archive', reason: 'gone' })]);
     const res = await run([f]);
     expect(res.outcomes[0].status).toBe('applied');
     expect(existsSync(join(docs, 'backend/b.md'))).toBe(false);
     expect(existsSync(join(docs, 'archive/backend/b.md'))).toBe(true);
-    const before = read('backend/c.md');
     await run([review('review-1-2.md', [entry('backend/c.md', { verdict: 'rewrite', draft: 'NEW' })], [true], 2)]);
-    expect(read('backend/c.md')).toBe(before);
-    expect(readFileSync(join(root, '.hewtd/reconcile/drafts/backend/c.md'), 'utf-8')).toBe('NEW');
+    expect(read('backend/c.md')).toMatch(/title: c[\s\S]*---\n\nNEW\n$/);
+    expect(existsSync(join(root, '.hewtd/reconcile/drafts'))).toBe(false);
   });
 
   it('skeleton review files parse back, are unjudged, and are never applied', async () => {
@@ -209,7 +208,7 @@ describe('applyReviews', () => {
     } finally { rmSync(outside, { recursive: true, force: true }); }
   });
 
-  it('a rewrite verdict is recorded but the doc stays unreviewed', async () => {
+  it('a landed rewrite is recorded with the new hash and the doc stays in the queue', async () => {
     const res = await run([review('review-1-1.md', [entry('backend/a.md', { verdict: 'rewrite', draft: 'new' })])]);
     expect(res.outcomes[0].status).toBe('applied');
     const l = (await load_ledger(ledger_file)).entries['backend/a.md'];

@@ -101,3 +101,30 @@ export function get_ledger_status(
   }
   return status;
 }
+
+export interface ExternalRefsStatus {
+  /** refs the reviewed docs declare in `external_refs` */
+  covered: number;
+  /** refs still unresolved (graph `resolved: false`) in reviewed docs */
+  still_missing: number;
+  docs_still_missing: number;
+}
+
+/** Reviewed docs only; `graph` is `.hewtd/graph.json`, `frontmatters` maps doc path to its parsed frontmatter. */
+export function get_external_refs_status(
+  // eslint-disable-next-line id-denylist -- serialized key (graph JSON)
+  graph: { docs: Record<string, { refs: { resolved: boolean | null }[] }> },
+  frontmatters: Record<string, Record<string, unknown>>,
+  reviewed_paths: string[]
+): ExternalRefsStatus {
+  const status: ExternalRefsStatus = { covered: 0, still_missing: 0, docs_still_missing: 0 };
+  for (const doc_path of reviewed_paths) {
+    const declared = frontmatters[doc_path]?.external_refs;
+    if (Array.isArray(declared)) status.covered += declared.length;
+    // eslint-disable-next-line id-denylist -- serialized key (graph JSON)
+    const missing = graph.docs[doc_path]?.refs.filter((item) => item.resolved === false).length ?? 0;
+    status.still_missing += missing;
+    if (missing) status.docs_still_missing++;
+  }
+  return status;
+}

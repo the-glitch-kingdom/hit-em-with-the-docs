@@ -192,6 +192,13 @@ function merge_sources(raw_text: string, entry: ReviewEntry, self_paths: string[
   return [...(Array.isArray(existing) ? existing : existing === undefined || existing === null ? [] : [existing]), ...(entry.sources ?? []), ...extra]
     .filter((source) => { const source_key = key(source); if (drop.has(source_key) || seen.has(source_key)) return false; seen.add(source_key); return true; });
 }
+/** Existing `external_refs` first, then the entry's and `frontmatter.external_refs`, deduplicated; non-string entries are kept. */
+function merge_external_refs(raw_text: string, entry: ReviewEntry): unknown[] {
+  const as_list = (value: unknown): unknown[] => (Array.isArray(value) ? value : value === undefined || value === null ? [] : [value]);
+  const seen = new Set<string>();
+  return [...as_list(parse_frontmatter<Record<string, unknown>>(raw_text).data.external_refs), ...as_list(entry.external_refs), ...as_list(entry.frontmatter?.external_refs)]
+    .filter((item) => { const item_key = typeof item === 'string' ? item.trim() : JSON.stringify(item); if (seen.has(item_key)) return false; seen.add(item_key); return true; });
+}
 /** Entry sources that look like repo paths but are not there (kept anyway; URLs, `<name>:<path>` and prose are not checked). */
 function find_missing_sources(repo_root: string, sources: string[] = []): string[] {
   return sources.filter((source) => !/\s|^[\w.-]+:/.test(source) && !existsSync(resolve(repo_root, source)));
@@ -205,6 +212,9 @@ function build_edit_doc(raw_text: string, entry: ReviewEntry, today: string, sel
     const merged = merge_sources(raw_text, entry, self_paths, extra_sources);
     if (merged.length || parse_frontmatter<Record<string, unknown>>(raw_text).data.sources !== undefined) changes.sources = merged;
   }
+  // external_refs (a judge's "this missing ref is fine") merge like sources: a later review never drops an earlier decision.
+  const external_refs = merge_external_refs(raw_text, entry);
+  if (external_refs.length) changes.external_refs = external_refs;
   if (entry.verdict === 'verify' || entry.verdict === 'rewrite') changes.last_verified = today;
   if (entry.verdict === 'unverifiable') changes.confidence = 'low';
   const next = with_frontmatter_keys(raw_text, changes);

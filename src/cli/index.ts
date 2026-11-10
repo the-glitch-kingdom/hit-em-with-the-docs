@@ -1338,6 +1338,17 @@ program
     for (const [key, value] of Object.entries(st.by_lane)) logger.info(`  lane ${key}: ${value}`);
     for (const [key, value] of Object.entries(st.by_verdict)) logger.info(`  verdict ${key}: ${value}`);
     if (st.next_unreviewed.length) logger.info(`  next unreviewed:\n${st.next_unreviewed.map((path_text) => `    ${path_text}`).join('\n')}`);
+    // Cheap: the last graph export plus each reviewed doc's frontmatter; never runs triage.
+    try {
+      const { is_reviewed, get_external_refs_status } = await import('../core/reconcile/ledger.js');
+      const graph = JSON.parse(await readFile(join(repo_root, '.hewtd', 'graph.json'), 'utf-8'));
+      const reviewed = docs.filter((doc) => is_reviewed(ledger.entries[doc.path], doc.hash)).map((doc) => doc.path);
+      const frontmatters = Object.fromEntries(await Promise.all(reviewed.map(async (doc_path) => [doc_path, (await import('gray-matter')).default(await readFile(join(docs_root, doc_path), 'utf-8')).data])));
+      const ref_status = get_external_refs_status(graph, frontmatters, reviewed);
+      logger.info(`  refs in reviewed docs: ${ref_status.covered} covered by external_refs, ${ref_status.still_missing} still missing in ${ref_status.docs_still_missing} doc(s)`);
+    } catch {
+      logger.info('  refs in reviewed docs: no .hewtd/graph.json (run hewtd maintain to write it)');
+    }
   });
 
 // Secrets command: baseline management (later: --staged)

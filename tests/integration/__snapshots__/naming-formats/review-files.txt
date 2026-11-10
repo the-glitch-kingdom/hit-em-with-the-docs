@@ -48,7 +48,11 @@ Set "verdict" (verify | rewrite | archive | unverifiable | fields | integrate | 
   "reasons": [
     "no sources/provenance/cites with last_verified",
     "missing references: missing.md"
-  ]
+  ],
+  "missing": [
+    "missing.md"
+  ],
+  "external_refs": []
 }
 ```
 

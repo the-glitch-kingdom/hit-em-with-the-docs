@@ -554,7 +554,7 @@ export async function apply_reviews(options: {
     });
     // A metadata-only verdict on a doc whose earlier review still holds (unchanged since it) keeps that review (#92).
     const keeps_review = METADATA_VERDICTS.has(applied_item.entry.verdict ?? '') && !!prev?.verdict && !METADATA_VERDICTS.has(prev.verdict) && prev.content_hash === applied_item.entry.content_hash;
-    if (keeps_review) { Object.assign(ledger_record, { verdict: prev!.verdict, reviewed_on: prev!.reviewed_on, review_file: prev!.review_file, applied_commit: prev!.applied_commit, fields_on: today }); continue; }
+    if (keeps_review) { Object.assign(ledger_record, { verdict: prev!.verdict, reviewed_on: prev!.reviewed_on, review_file: prev!.review_file, applied_commit: prev!.applied_commit, ...(prev!.env_names && { env_names: prev!.env_names }), fields_on: today }); continue; }
     Object.assign(ledger_record, { fields_on: undefined, verdict: applied_item.entry.verdict ?? '', reviewed_on: today, review_file: applied_item.file, ...(applied_item.env_names && { env_names: applied_item.env_names }), ...(pointers.has(applied_item.entry.path) && { pointer: pointers.get(applied_item.entry.path)! }), ...(overview_members.has(applied_item.entry.path) && { members: overview_members.get(applied_item.entry.path)! }), ...(commit && { applied_commit: commit }) });
   }
   await write_ledger(options.ledger_file, ledger);

@@ -66,4 +66,14 @@ describe('metadata verdicts keep the review (#92)', () => {
     expect([e.verdict, e.reviewed_on, e.fields_on]).toEqual(['fields', '2026-11-11', undefined]);
     expect(stale_hash).not.toBe(e.content_hash);
   });
+
+  it('a kept secret review keeps its env_names (review of #92)', async () => {
+    mkdirSync(join(root, '.hewtd'), { recursive: true });
+    const hash = compute_content_hash(read());
+    writeFileSync(ledger_file, JSON.stringify({ version: 1, entries: { 'backend/a.md': { path: 'backend/a.md', lane: 'check', verdict: 'secret', reviewed_on: '2026-11-01', env_names: ['HEWTD_SECRET_DB_PASSWORD'], content_hash: hash } } }));
+    await run({ verdict: 'fields', frontmatter: { purpose: 'p' } }, '2026-11-09');
+    const e = (await load_ledger(ledger_file)).entries['backend/a.md']!;
+    expect([e.verdict, e.env_names, e.fields_on]).toEqual(['secret', ['HEWTD_SECRET_DB_PASSWORD'], '2026-11-09']);
+  });
 });
+

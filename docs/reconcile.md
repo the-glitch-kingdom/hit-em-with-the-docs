@@ -482,7 +482,7 @@ frontmatter, so on a doc whose earlier substantive review (`verify`, `rewrite`, 
 ledger's stored hash (the doc did not change between that review and this one). Then the
 ledger keeps `verdict`, `reviewed_on`, `review_file` and `applied_commit`, records the new
 `content_hash`, and sets the additive key `fields_on` to today. `--status` prints
-`verified, metadata updated since: N` when any reviewed doc has `fields_on`. If the doc
+`reviewed, metadata updated since: N` when any reviewed doc has `fields_on`. If the doc
 did change, or its last verdict was itself `fields`/`phrases`, the verdict is recorded as
 before. Any later review that does not keep clears `fields_on`.
 

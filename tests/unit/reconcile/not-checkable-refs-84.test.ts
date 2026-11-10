@@ -36,7 +36,7 @@ const run = async (rels: string[]) => {
 beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), 'not-checkable-84-'));
   put('.gitignore', '.venv/\ndist/\n.planning/\n');
-  put('src/settings.py', 'foo_delta_hot_tier: int = 1\n');
+  put('src/settings.py', 'class Settings(BaseSettings):\n    foo_delta_hot_tier: int = 1\n');
   put('.documentation/auth/x.md', '---\ntitle: X\n---\nx\n');
   put('.documentation/ops/sibling.md', '---\ntitle: S\n---\ns\n');
   put('.documentation/ops/good.md', GOOD);
@@ -53,5 +53,33 @@ describe('refs that cannot be missing (#84)', () => {
 
   it('still reports a deleted file and a renamed symbol', async () => {
     expect((await run(['ops/bad.md']))['ops/bad.md']!.sort()).toEqual(['renamedGoneFn', 'src/deleted.ts']);
+  });
+});
+
+// Review of the first #84 build: each exemption must not hide a ref that really is missing.
+describe('the #84 exemptions still report what is really missing (review)', () => {
+  let repo: string;
+  beforeAll(() => {
+    repo = mkdtempSync(join(tmpdir(), 'not-checkable-84-review-'));
+    const add = (rel: string, body: string) => { mkdirSync(dirname(join(repo, rel)), { recursive: true }); writeFileSync(join(repo, rel), body); };
+    add('secret/config.yaml', 'a: 1\n');
+    add('src/local.py', 'database_url = 1\n');
+    add('src/other.ts', 'export const x = 1;\n');
+    add('.documentation/ops/doc.md', [
+      '---', 'title: Doc', '---',
+      'Broken link text: [`src/gone_b.ts`](src/gone_b.ts) and [`src/gone_a.ts`](../../src/other.ts).',
+      'A real secret/ folder: `secret/config.yaml` and `secret/missing.yaml`.',
+      'A file named like a date part: `src/MM.py`.',
+      'Env read nowhere: `DATABASE_URL`.', '',
+    ].join('\n'));
+    const g = (...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: repo, stdio: 'ignore' });
+    g('init', '-q'); g('add', '-A'); g('commit', '-qm', 'init');
+  });
+  afterAll(() => rmSync(repo, { recursive: true, force: true }));
+
+  it('reports broken link text, a missing file under a real secret/ folder, a file named MM.py and an env var only a local variable matches', async () => {
+    const config = await load_plugin_config(repo);
+    const result = await triage_docs({ root: repo, docs_root: join(repo, '.documentation'), rels: ['ops/doc.md'], config });
+    expect(result.docs[0]!.missing.sort()).toEqual(['DATABASE_URL', 'secret/missing.yaml', 'src/MM.py', 'src/gone_a.ts', 'src/gone_b.ts']);
   });
 });

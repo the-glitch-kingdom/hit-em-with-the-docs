@@ -65,8 +65,10 @@ function is_symbol(token: string): boolean {
   return token.endsWith('()') || /[a-z][A-Z]/.test(name) || /^[A-Z][a-z]+[A-Z]/.test(name) || /^[a-z]+_[a-z_]+$/.test(name);
 }
 
-// Never a repo file: placeholders (date runs, `...`), regexes (`^`, backslashes) and secret-store (`secret/`) paths.
-const NOT_A_FILE = /[\\^]|\.\.\.|…|^secret\/|(?:^|[/_.-])(?:YYYY|MM|DD)(?:YYYY|MM|DD|HH|mm|ss)*(?=$|[/_.-])/;
+// Never a repo file: placeholders (a `YYYY` date run, `...`) and regexes (`^`, backslashes). A lone MM or DD can be a real name.
+const NOT_A_FILE = /[\\^]|\.\.\.|…|(?:^|[/_.-])YYYY/;
+// Secret-store paths (`secret/<app>/prod/.env`) are KV paths, unless the repo has a real secret/ folder.
+const SECRET_STORE = /^secret\//;
 
 function is_path(token: string): boolean {
   if (/[\s*?<>{}$|=,;]/.test(token) || NOT_A_FILE.test(token) || /^[a-z][a-z0-9+.-]*:\/\//i.test(token) || token.startsWith('~') || token.startsWith('@')) return false;
@@ -116,7 +118,6 @@ export function extract_references(body: string): Reference[] {
       fence = { marker: fence_open[1]![0]!, len: fence_open[1]!.length, skip: EXAMPLE_FENCE.test(info), sql: SQL_FENCE.test(info) };
       return;
     }
-    const link_texts = new Set([...line_text.matchAll(/\[`([^`\n]+)`\]\(/g)].map((match) => match[1]));
     for (const match of line_text.matchAll(/`([^`\n]+)`/g)) {
       const token = match[1]!.trim();
       scan_commands(token, line);
@@ -124,7 +125,7 @@ export function extract_references(body: string): Reference[] {
       const runtime = parse_runtime_expression(token);
       if (runtime !== undefined) { if (runtime) add_reference(runtime, 'env', line); continue; }
       if (ENV_RE.test(token)) add_reference(token, 'env', line);
-      else if (is_path(token)) { if (!link_texts.has(token)) add_reference(token.replace(/:\d+(?::\d+)?$/, ''), 'path', line); } // link text: the doc-link ref checks the target
+      else if (is_path(token)) add_reference(token.replace(/:\d+(?::\d+)?$/, ''), 'path', line);
       else if (is_symbol(token)) add_reference(token.replace(/\(\)$/, ''), 'symbol', line);
       else {
         const column_match = /^([a-z][a-z0-9_]*)\.([a-z][a-z0-9_]*)$/.exec(token);
@@ -445,6 +446,19 @@ export function get_symbol_names(references: Reference[]): string[] {
   return references.flatMap((reference) => reference.kind === 'symbol' ? [reference.ref] : reference.kind === 'env' ? [reference.ref, reference.ref.toLowerCase()] : []);
 }
 
+const SETTINGS_FILE = /BaseSettings|environ|getenv|process\.env|env_prefix|Settings\b/;
+const settings_files = new WeakMap<RepoIndex, Map<string, boolean>>();
+/** True when `file` reads settings or the environment; cached per index. */
+function is_settings_file(index: RepoIndex, file: string): boolean {
+  const cache = settings_files.get(index) ?? settings_files.set(index, new Map()).get(index)!;
+  let answer = cache.get(file);
+  if (answer === undefined) {
+    try { answer = SETTINGS_FILE.test(readFileSync(join(index.root, file), 'utf-8')); } catch { answer = false; }
+    cache.set(file, answer);
+  }
+  return answer;
+}
+
 /** The subset of repo-relative `paths` that .gitignore covers (one `git check-ignore`). */
 function find_ignored(repo_root: string, paths: string[]): Set<string> {
   if (!paths.length) return new Set();
@@ -510,6 +524,7 @@ export async function resolve_references(index: RepoIndex, references: Reference
   if (sibling_repos.length && lost.length) for (const sibling_repo of sibling_repos) { const sibling_index = load_sibling_index(sibling_repo); if (sibling_index) add_known_symbols(sibling_index, lost); }
   const have_schema = index.schema.tables.size > 0;
   const self = options.doc_file ? relative(index.root, options.doc_file).split('\\').join('/') : undefined;
+  const has_secret_dir = [...index.files].some((file) => SECRET_STORE.test(file));
   const found: ResolvedReference[] = [];
   for (const reference of references) {
     if (external.has(reference.ref)) { found.push({ ...reference, status: 'unknown' }); continue; }
@@ -523,11 +538,12 @@ export async function resolve_references(index: RepoIndex, references: Reference
         // `./x` and `../x` are relative to the doc's folder first, then the repo root
         if (doc_dir && /^\.\.?\//.test(reference.ref)) { const from_doc = to_repo_path(resolve(doc_dir, reference.ref)); if (!from_doc.startsWith('..')) where = resolve_path(index, from_doc); }
         where ??= resolve_path(index, reference.ref);
-        status = where ? 'ok' : HOST_LIKE.test(reference.ref) ? 'unknown' : 'missing';
+        status = where ? 'ok' : HOST_LIKE.test(reference.ref) || (SECRET_STORE.test(reference.ref) && !has_secret_dir) ? 'unknown' : 'missing';
         break;
       case 'symbol': case 'env':
         {
-          const found_name = [reference.ref, ...(reference.kind === 'env' ? [reference.ref.toLowerCase()] : [])].find((name) => index.symbols.get(name));
+          // an env var's lowercase form counts only in a file that reads settings or the environment (pydantic BaseSettings)
+          const found_name = [reference.ref, ...(reference.kind === 'env' ? [reference.ref.toLowerCase()] : [])].find((name) => index.symbols.get(name) && (name === reference.ref || is_settings_file(index, index.symbols.get(name)!)));
           where = found_name ? index.symbols.get(found_name) ?? undefined : undefined;
           if (where) where_kind = index.symbol_kinds.get(found_name!);
         }

@@ -1303,7 +1303,7 @@ program
         await save_ledger(ledger_file, ledger);
         if (options.writeReview) {
           const { write_review_skeletons } = await import('../core/reconcile/review.js');
-          const files = await write_review_skeletons({ root: repo_root, docs_root: docs_root, triage: result, scope: scope.join(' ') || `next ${options.next}`, batch: options.batch });
+          const files = await write_review_skeletons({ root: repo_root, docs_root: docs_root, triage: result, scope: scope.join(' ') || `next ${options.next}`, batch: options.batch, include_clean: scope.length > 0 && !options.next });
           files.forEach((file) => logger.info(`  wrote ${relative(repo_root, file)}`));
         }
         if (options.json) {

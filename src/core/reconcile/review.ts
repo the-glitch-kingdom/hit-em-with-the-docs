@@ -29,6 +29,8 @@ export interface ReviewEntry {
   draft?: string;
   /** Files the agent actually read; written to `sources` as listed. */
   sources?: string[];
+  /** Sources to drop from the doc's existing `sources` (the rest of `sources` is merged in, never replaced). */
+  sources_remove?: string[];
   /** archive: reason stamped on the doc. */
   reason?: string;
   /** Outside-tree entry: `path` is project-root-relative; verdicts are integrate | delete. */
@@ -139,11 +141,13 @@ export async function write_review_skeletons(options: {
   triage: TriageResult;
   scope: string;
   batch?: string;
+  /** Docs named explicitly get an entry whatever their lane (a now-clean doc included). */
+  include_clean?: boolean;
 }): Promise<string[]> {
   const { root: repo_root, docs_root: docs_root, triage, scope } = options;
   const dir_path = resolve_review_dir(repo_root);
   const batch = options.batch ?? (await find_next_batch(dir_path));
-  const judged = triage.docs.filter((doc) => doc.lane !== 'clean');
+  const judged = triage.docs.filter((doc) => options.include_clean || doc.lane !== 'clean');
   const by_path = new Map(judged.map((doc) => [doc.path, doc]));
   // Shards hold only fields-only/check docs; archive candidates (and serial mode) ride in shard 1.
   const placed = new Set(triage.shards.flatMap((shard) => shard.docs));

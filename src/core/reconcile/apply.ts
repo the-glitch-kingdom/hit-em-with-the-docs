@@ -181,11 +181,23 @@ function rollback_files(git_top: string, abs_path: string[], snap: Map<string, B
   }
 }
 
+/** Existing sources first, then the entry's, deduplicated; the doc's own path and `sources_remove` dropped. */
+function merge_sources(raw_text: string, entry: ReviewEntry, self_paths: string[]): string[] {
+  const existing = parse_frontmatter<Record<string, unknown>>(raw_text).data.sources;
+  const drop = new Set([...self_paths, ...(entry.sources_remove ?? [])]);
+  return [...new Set([...(Array.isArray(existing) ? existing : []), ...(entry.sources ?? [])].filter((source): source is string => typeof source === 'string'))].filter((source) => !drop.has(source));
+}
+
+/** Entry sources that look like repo paths but are not there (kept anyway; URLs, `<name>:<path>` and prose are not checked). */
+function find_missing_sources(repo_root: string, sources: string[] = []): string[] {
+  return sources.filter((source) => !/\s|^[\w.-]+:/.test(source) && !existsSync(resolve(repo_root, source)));
+}
+
 /** Build the new file content for a verify/fields/unverifiable entry. */
-function build_edit_doc(raw_text: string, entry: ReviewEntry, today: string): string {
+function build_edit_doc(raw_text: string, entry: ReviewEntry, today: string, self_paths: string[] = []): string {
   const { last_verified: _ignored, ...frontmatter } = entry.frontmatter ?? {};
   const changes: Record<string, unknown> = { ...frontmatter };
-  if (entry.sources) changes.sources = entry.sources;
+  if (entry.sources || entry.sources_remove) changes.sources = merge_sources(raw_text, entry, self_paths);
   if (entry.verdict === 'verify') changes.last_verified = today;
   if (entry.verdict === 'unverifiable') changes.confidence = 'low';
   const next = with_frontmatter_keys(raw_text, changes);
@@ -340,6 +352,8 @@ export async function apply_reviews(options: {
         continue;
       }
       let env_names_for: string[] | undefined;
+      let detail: string | undefined;
+      const self_paths = [entry.path, repo_path.split('\\').join('/')];
       try {
         // Nothing the review proposes to write may carry a secret.
         validate_no_secrets([...(entry.patch ?? []).map((patch) => patch.new), entry.draft ?? '', entry.pointer?.summary ?? '', ...(entry.phrases ?? []), JSON.stringify(entry.frontmatter ?? {})].join('\n'), entry.path, secrets_config);
@@ -347,7 +361,7 @@ export async function apply_reviews(options: {
           const body = parse_frontmatter(raw_text).content;
           if (!entry.section || !extract_heading_anchors(body).has(entry.section)) throw new Error(`section #${entry.section ?? ''} not found in ${entry.path}`);
           if (!entry.patch?.length) throw new Error('merge needs a patch');
-          const next = build_edit_doc(raw_text, entry, today);
+          const next = build_edit_doc(raw_text, entry, today, self_paths);
           if (!extract_heading_anchors(parse_frontmatter(next).content).has(entry.section)) throw new Error(`section #${entry.section} gone after the merge`);
           // A merge only adds to the owner: whatever a patch replaces must still be there afterwards.
           const lost = [...new Set(entry.patch.flatMap((patch) => find_missing_tokens(patch.old, parse_frontmatter(next).content, '')))];
@@ -398,12 +412,14 @@ export async function apply_reviews(options: {
           await mkdir(dirname(draft), { recursive: true });
           await writeFile(draft, entry.draft ?? '', 'utf-8');
         } else {
-          await writeFile(abs_path, build_edit_doc(raw_text, entry, today), 'utf-8');
+          await writeFile(abs_path, build_edit_doc(raw_text, entry, today, self_paths), 'utf-8');
           touched.add(abs_path);
+          const missing = find_missing_sources(repo_root, entry.sources);
+          if (missing.length) detail = `sources not found in the repo (kept): ${missing.join(', ')}`;
         }
         if (entry.verdict !== 'rewrite') domains.add(entry.path.split('/')[0] ?? '');
         applied.push({ entry, file: review_ref, abs_path, ...(env_names_for && { env_names: env_names_for }) });
-        outcomes.push({ path: entry.path, status: 'applied' });
+        outcomes.push({ path: entry.path, status: 'applied', ...(detail && { detail }) });
       } catch (error) {
         outcomes.push({ path: entry.path, status: 'error', detail: (error as Error).message });
       }

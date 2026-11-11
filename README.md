@@ -12,6 +12,8 @@
 > [!NOTE]
 > **3.3.0** adds `hewtd upgrade-check [--fix] [--record] [--json]`: after an update it lists what your repo must change (config keys, pre-commit hook, skill links, template, schema, instruction drift). See [`docs/upgrade-check.md`](./docs/upgrade-check.md).
 >
+> **3.3.0** adds `hewtd upgrade-check` (#104) and `hewtd reconcile --finish [--rotated <ENV>] [--fix] [--confirm]` (#106, lists and cleans what a reconcile leaves behind), `hewtd graph`, and `post-merge` / `post-checkout` graph hooks via `hewtd hooks install`. See [`docs/reconcile.md`](./docs/reconcile.md).
+>
 > **3.x** — 3.0 is an internal naming standard (no CLI, JSON or file-format change). 3.1.x: faster graph export and incremental index, fewer false secret findings, and reconcile fixes (not-checkable references, `external_refs`, `sources` merge, landed `rewrite` drafts). See [CHANGELOG](./CHANGELOG.md).
 
 > [!NOTE]

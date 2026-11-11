@@ -21,6 +21,7 @@ Each item prints `[ok]`, `[info]` or `[action]` (needs a human). `(--fix)` marks
 |---|---|
 | Version skew | hewtd copies that differ from the installed version: plugin cache, global CLI, npx cache, `node_modules` |
 | Config keys | keys new since your last check that are not set in `.claude/hit-em-with-the-docs.json`, with defaults; changed defaults |
+| Graph hooks | the `post-merge` / `post-checkout` blocks (`hewtd graph --quiet`) missing or out of date; custom `core.hooksPath` prints the lines (3.3.0) |
 | Pre-commit hook | the hewtd block missing or out of date. With a custom `core.hooksPath` the exact lines to add are printed |
 | Skill symlinks | `.claude/skills/` links that are missing or do not point at the installed package |
 | Doc template | a repo `doc.template.md` that differs from `templates/doc.template.md` (never overwritten) |

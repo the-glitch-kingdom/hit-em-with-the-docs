@@ -105,11 +105,11 @@ describe('reconcile --changed (#98)', () => {
     expect(r.stdout + r.stderr).toMatch(/hewtd reconcile --changed --write-review/);
   });
 
-  it('--staged --check looks only at staged docs', () => {
+  it('--cached --check looks only at staged docs', () => {
     put('.documentation/api/direct.md', body('Direct write'));
-    expect(hewtd(['reconcile', '--changed', '--check', '--staged']).stdout).not.toMatch(/not reviewed/);
+    expect(hewtd(['reconcile', '--changed', '--check', '--cached']).stdout).not.toMatch(/not reviewed/);
     g('add', '.documentation/api/direct.md');
-    expect(hewtd(['reconcile', '--changed', '--check', '--staged']).stdout + '').toMatch(/1 doc.* not reviewed/s);
+    expect(hewtd(['reconcile', '--changed', '--check', '--cached']).stdout + '').toMatch(/1 doc.* not reviewed/s);
   });
 });
 
@@ -119,7 +119,7 @@ describe('pre-commit hook block (#98)', () => {
     const hook = join(root, '.git/hooks/pre-commit');
     put('.git/hooks/pre-commit', '#!/bin/sh\n' + OLD + 'echo mine\n');
     expect(hewtd(['hooks', 'install']).status).toBe(0);
-    expect(readFileSync(hook, 'utf8')).toContain('hewtd reconcile --changed --check --staged || exit 1');
+    expect(readFileSync(hook, 'utf8')).toContain('hewtd reconcile --changed --check --cached || exit 1');
     expect(hewtd(['hooks', 'uninstall']).status).toBe(0);
     expect(readFileSync(hook, 'utf8')).toBe('#!/bin/sh\necho mine\n');
   });

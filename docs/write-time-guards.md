@@ -60,7 +60,7 @@ hewtd hooks uninstall       # removes exactly that block (byte-exact)
   `exec` cannot skip it. A hook that is a symlink or not a POSIX shell script is
   refused with a one-line snippet to add yourself. Uninstall removes exactly the
   block and deletes a hook file it created.
-- The same block also runs `hewtd reconcile --changed --check --staged` (3.2.0): it warns about
+- The same block also runs `hewtd reconcile --changed --check --cached` (3.2.0): it warns about
   staged docs not yet reviewed and blocks only when `reconcile.require_review` is `true`.
   hewtd's own commits (`reconcile --apply`) set `HEWTD_REVIEWED_COMMIT=1` and skip this check; the secrets scan still runs.
   Without the local ledger (fresh clone, CI) a doc counts as unreviewed when it has no `last_verified`, has

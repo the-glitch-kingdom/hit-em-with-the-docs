@@ -236,3 +236,16 @@ describe('tracked files whose cold path a .gitignore pattern matches', () => {
     expect(g('status', '--porcelain')).toBe('');
   });
 });
+
+// #97 x #98: rotation commits are hewtd's own, so the pre-commit review check (reconcile.require_review) must not block them.
+describe('rotation commits carry HEWTD_REVIEWED_COMMIT', () => {
+  it('promote and undo commit through a hook that only lets hewtd commits through', async () => {
+    const hook = join(root, '.git/hooks/pre-commit');
+    writeFileSync(hook, '#!/bin/sh\n[ -n "$HEWTD_REVIEWED_COMMIT" ] || exit 1\n');
+    chmodSync(hook, 0o755);
+    const done = await promote();
+    expect(g('log', '-1', '--format=%s')).toContain('promote');
+    await run_undo({ ...(await ctx()), generation: done.generation });
+    expect(g('log', '-1', '--format=%s')).toContain('undo');
+  });
+});

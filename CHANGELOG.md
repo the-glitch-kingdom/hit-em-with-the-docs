@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [3.2.0] — 2026-11-10
 
-Adds cold rotation (#97). No breaking changes; no existing JSON key changes. New config keys are additive: `reconcile.cold_root` (default `.documentation-cold`) and `cold_storage` (written by hewtd).
+Adds cold rotation (#97) and makes every new or changed doc end reconciled (#98). No existing JSON key changes. New config keys are additive: `reconcile.cold_root` (default `.documentation-cold`), `cold_storage` (written by hewtd) and `reconcile.require_review` (default false). One behaviour change: `integrate` no longer fills `purpose` from the first paragraph (#98).
 
 - reconcile `--stage <dir>` / `--staged <dir>`: snapshot the live docs working tree and run any reconcile mode on the copy only. The live tree, ledger, graph and git stay untouched; staged apply makes no commit and reports `secret` and outside-lane entries as `error`.
 - reconcile `--promote --staged <dir> [--confirm]`: checks everything first and refuses with nothing changed, then swaps the copy in and keeps the old tree as a committed, read-only, dated cold generation, with one commit. Every step after the first rename is undone on failure.
@@ -15,7 +15,12 @@ Adds cold rotation (#97). No breaking changes; no existing JSON key changes. New
 - The manifest has two checksums: `checksum` over the committed files and `disk_checksum` over every file. A fresh clone reports `ok (disk-only files absent: N)`, not CHANGED, and undo works there.
 - Promote and undo refuse a plugin config that is not valid JSON, keep its style when they write the manifest and restore its exact bytes on rollback. Git paths are read with `-z` (names with quotes, backslashes or tabs are ignored exactly). Undo removes a cold root it leaves empty.
 - The outside lane's config and non-markdown searches skip the cold root; a staged triage reads git staleness from the live counterpart of each doc; `audit` finds cold generations from a subfolder or with `-p`.
-- Docs: new `docs/cold-rotation.md`; help, reconcile command, LLM guide, README and skill updated.
+- Every doc created or updated with hewtd ends like a reconciled doc (#98). `reconcile --changed` selects docs that are new, edited since their last review, or never reviewed (scope args narrow it; no clean-tree check; writes no ledger state). The one documented ending for every create or update is `reconcile --changed --write-review`, then the author judges each entry (verdict, the `sources` read, a fix or `external_refs` for each missing ref, `purpose`, `symptoms`), then `--apply`, which stamps `last_verified`, records the review and commits. Batch commits are labelled `changed`.
+- One rule decides "unreviewed" for `--changed`, `hewtd audit` (new advisory `DOCS_UNREVIEWED` warning, never fails `--strict`) and the pre-commit hook (#98). Without a ledger entry (fresh clone, worktree, CI) it falls back to git: a doc is unreviewed with no `last_verified`, with uncommitted changes, or when it was committed after its `last_verified` day (a same-day edit is not caught without the ledger). The root `reports/` folder is skipped.
+- Pre-commit hook (`hewtd hooks install`) also runs `hewtd reconcile --changed --check --cached`: it warns about unreviewed doc changes and blocks only with `reconcile.require_review: true`. hewtd's own commits (apply, promote, undo) set `HEWTD_REVIEWED_COMMIT=1` and are never blocked by it. `hooks install` upgrades an older block in place.
+- `integrate` (#98): prints the new doc's lane, missing or unverified refs and the next step; `--review` writes its review entry (and Next points at that file); no first-paragraph `purpose` (`maintain --fix` and `metadata-sync --fix` unchanged); `-d <domain>` means that domain plus the doc's own, never a detected extra; it copies the source and says so (only when it was really copied); it refuses to overwrite a different doc at the target path (`--force` does not bypass that) and says when an unchanged source is already integrated; its own source copy is not mention evidence.
+- New `templates/doc.template.md` (title, tier, domains, purpose, symptoms, sources, optional commented `external_refs`); the documentation-lifecycle skill, help and README point at it and now describe integrate accurately (#98).
+- Docs: new `docs/cold-rotation.md`; help, reconcile command, LLM guide, README, `docs/reconcile.md`, `docs/write-time-guards.md`, `docs/retrieval-fields.md` and the skill updated for both.
 
 ## [3.1.8] — 2026-11-10
 

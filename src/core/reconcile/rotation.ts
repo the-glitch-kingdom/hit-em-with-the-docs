@@ -261,7 +261,9 @@ function commit_rotation(repo_root: string, message: string, paths: string[], tr
   for (let i = 0; i < kept.length; i += 500) read_git(repo_root, ['add', '-f', '--', ...kept.slice(i, i + 500).map((path_text) => `:(literal)${path_text}`)]);
   const gone = live.filter((path_text) => !present.includes(path_text));
   if (gone.length) read_git(repo_root, ['rm', '-r', '-q', '--cached', '--ignore-unmatch', '--', ...gone]);
-  const committed = run_git(repo_root, ['commit', '-q', '-m', message]);
+  // hewtd's own commit from a reviewed state: the pre-commit review check (reconcile.require_review) must not block it (#98)
+  // eslint-disable-next-line id-denylist -- child_process option names
+  const committed = spawnSync('git', ['-c', 'core.quotepath=off', 'commit', '-q', '-m', message], { cwd: repo_root, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, env: { ...process.env, HEWTD_REVIEWED_COMMIT: '1' } });
   if (committed.status !== 0) throw new Error(`git commit failed: ${(committed.stderr || committed.stdout).trim()}`);
   return read_git(repo_root, ['rev-parse', '--short', 'HEAD']).trim();
 }

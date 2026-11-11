@@ -280,7 +280,7 @@ These commands run in your terminal and manage your documentation.
 | `hewtd search <query>` | Search for content in your docs |
 | `hewtd metadata-sync` | Update document information tags |
 | `hewtd link-check` | Find broken links between documents |
-| `hewtd audit` | Check documentation quality and compliance |
+| `hewtd audit [--json]` | Check documentation quality and compliance; ends with the advisory docs Targets section (3.4.0, [`docs/docs-targets.md`](./docs/docs-targets.md)) |
 | `hewtd report <type>` | Generate health, audit, or link reports |
 | `hewtd discover` | Scan code for patterns and create docs |
 | `hewtd archive <file>` | Retire a doc into `archive/` (reversible, link-safe) |

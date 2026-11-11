@@ -137,7 +137,9 @@
   },
   "3.4.0": {
     "summary": "The graph hook runs hewtd graph in the background and hewtd graph locks itself (#108). Adds docs targets: a targets block in the plugin config and a Targets section in hewtd audit (#109).",
-    "config_keys": [],
+    "config_keys": [
+      { "key": "targets", "default": {"purpose_real":{"min":0.9,"reason":"the field retrieval leans on hardest for paraphrase questions"},"verified":{"min":0.8,"reason":"what search returns was checked against the code (last_verified in the window, or a review on the current content)"},"no_missing_refs":{"min":0.9,"reason":"dead file, symbol and table references are the most common wrong claim"},"unreviewed":{"max":0,"reason":"every new or changed doc ends reviewed (3.2.0)"},"secrets":{"max":0,"reason":"credential-shaped values do not belong in docs"},"archive_candidates":{"max":0,"reason":"stale docs outrank current ones in search"},"flows":[],"flows_reason":"multi-doc questions are the weakest retrieval tier; each named flow needs an overview doc","held":[]}, "note": "docs targets (#109): what a healthy tree looks like; hewtd audit reports them (advisory, never fails --strict). targets.flows names the multi-part flows that need an overview doc; targets.held lists docs held on purpose, with a reason." }
+    ],
     "changed_defaults": [],
     "behaviour_changes": [
       { "issue": 108, "note": "The post-merge / post-checkout graph block now runs `hewtd graph --quiet` in the background (git returns at once; graph.json reaches HEAD shortly after). A block you edited is never rewritten; a foreground one is reported. The first `hewtd graph` after an upgrade rebuilds its cache and can take minutes.", "patterns": ["hewtd graph\\b"] }

@@ -70,11 +70,11 @@ describe('hewtd init reports_dir', () => {
     await mkdir(join(root, '.claude'));
     await writeFile(cfg(), JSON.stringify({ updatePolicy: 'off', reports_dir: 'x/r' }));
     hewtd('init');
-    expect(JSON.parse(await read(cfg()))).toEqual({ updatePolicy: 'off', reports_dir: 'x/r' });
+    expect(JSON.parse(await read(cfg()))).toMatchObject({ updatePolicy: 'off', reports_dir: 'x/r' }); // plus the #109 targets block
     await rm(docs, { recursive: true, force: true });
     await writeFile(cfg(), JSON.stringify({ updatePolicy: 'off' }));
     hewtd('init');
-    expect(JSON.parse(await read(cfg()))).toEqual({ updatePolicy: 'off', reports_dir: '.hewtd/reports' });
+    expect(JSON.parse(await read(cfg()))).toMatchObject({ updatePolicy: 'off', reports_dir: '.hewtd/reports' });
   });
 
   it('never overwrites an unparseable config, and --force re-init keeps reports where they were (review fix)', async () => {
@@ -85,7 +85,9 @@ describe('hewtd init reports_dir', () => {
     expect(await read(cfg())).toBe('{ "updatePolicy": "off", }');
     await writeFile(cfg(), JSON.stringify({ updatePolicy: 'off' }));
     hewtd('init', '--force');
-    expect(JSON.parse(await read(cfg()))).toEqual({ updatePolicy: 'off' });
+    const kept = JSON.parse(await read(cfg()));
+    expect(kept.reports_dir).toBeUndefined(); // a re-init never adds reports_dir (the #109 targets block is added)
+    expect(kept.updatePolicy).toBe('off');
   });
 });
 

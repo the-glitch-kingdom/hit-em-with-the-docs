@@ -33,7 +33,7 @@ import {
 } from '../core/domains/registry.js';
 import { regenerate_indexes, generate_knowledge_base_indexes } from '../generators/regenerate.js';
 import { write_report_stamps } from '../generators/stamp-reports.js';
-import { write_raw_config } from '../utils/config.js';
+import { DEFAULT_TARGETS, write_raw_config } from '../utils/config.js';
 import { get_status_values } from '../core/metadata/status-registry.js';
 import { resolve_docs_path } from '../utils/docs-root.js';
 import { get_cold_regex } from '../core/reconcile/scanner-allowlist.js';
@@ -106,9 +106,9 @@ program
       process.exit(1);
     }
 
-    // New installs only: keep reports out of the searched docs tree. A re-init (--force) keeps
-    // where reports already go, and an unreadable config is never overwritten.
-    if (!existed) {
+    // Config defaults (never overwritten): new installs keep reports out of the searched docs tree (a re-init keeps
+    // where reports already go); every init adds the docs targets block (#109) if absent. An unreadable config is never overwritten.
+    {
       const repo_root = dirname(docs_root);
       let raw_text: Record<string, unknown> | null = {};
       try {
@@ -117,9 +117,12 @@ program
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') raw_text = null;
       }
       if (raw_text === null || typeof raw_text !== 'object' || Array.isArray(raw_text)) {
-        logger.warn('Could not parse .claude/hit-em-with-the-docs.json; left it alone (reports_dir not set).');
-      } else if (raw_text.reports_dir === undefined) {
-        await write_raw_config(repo_root, { ...raw_text, reports_dir: '.hewtd/reports' });
+        logger.warn('Could not parse .claude/hit-em-with-the-docs.json; left it alone (reports_dir and targets not set).');
+      } else {
+        const next = { ...raw_text };
+        if (!existed && next.reports_dir === undefined) next.reports_dir = '.hewtd/reports';
+        if (next.targets === undefined) next.targets = DEFAULT_TARGETS;
+        if (Object.keys(next).length !== Object.keys(raw_text).length) await write_raw_config(repo_root, next);
       }
     }
   });
@@ -357,6 +360,7 @@ program
     'Exit non-zero on ANY violation (including knowledge-base warnings); suitable for CI',
     false
   )
+  .option('--json', 'Print the audit result (including the Targets section) as JSON', false)
   .action(async (options) => {
     const docs_root = resolve(process.cwd(), options.path);
     const git_top = (await import('../core/reconcile/triage.js')).find_git_top(docs_root); // cold generations are found from any subfolder or -p
@@ -367,7 +371,9 @@ program
       domain: options.domain,
       issues_only: options.issuesOnly,
       strict: options.strict,
+      silent: options.json,
     });
+    if (options.json) console.log(JSON.stringify(result, null, 2));
 
     if (options.report) {
       const report_path = await write_audit_report(docs_root, result);

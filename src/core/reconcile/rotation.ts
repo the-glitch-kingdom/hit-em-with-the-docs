@@ -14,6 +14,7 @@ import { load_plugin_config_sync, resolve_config_file_path, type ColdGeneration,
 import { regenerate_indexes } from '../../generators/regenerate.js';
 import { scan_file } from './secrets.js';
 import { compute_content_hash, is_reviewed, load_ledger } from './ledger.js';
+import { parse_frontmatter } from '../../utils/frontmatter.js';
 import { add_baseline_exclude, add_gitleaks_allowlist, get_cold_regex, serialize_like } from './scanner-allowlist.js';
 
 export interface StageManifest {
@@ -122,6 +123,9 @@ export interface RotationPlan {
   tracked_files: string[];
   /** scanner configs the promote will edit or create so the cold root is allowlisted (empty when `reconcile.cold_scanner_allowlist` is false) */
   scanner_edits: ScannerEdit[];
+  /** scanner configs left alone: already allowlisting the cold root, or in a form hewtd does not edit (the user adds the path by hand) */
+  scanner_covered: string[];
+  scanner_manual: string[];
   /** distinct files holding the `secrets_findings` */
   flagged_files: number;
   /** staged docs with no review in the ledger that will be live after the promote (DOCS_UNREVIEWED), and the ledger file they are judged by */
@@ -134,24 +138,38 @@ export interface ScannerEdit { file: string; before: string | null; after: strin
 const SCANNER_FILES = ['.gitleaks.toml', '.secrets.baseline'];
 
 /** The edits that allowlist the cold root: `.gitleaks.toml` is created when absent (extending gitleaks' default rules), `.secrets.baseline` only edited when present. */
-function plan_scanner_edits(repo_root: string, cold_prefix: string): ScannerEdit[] {
+function plan_scanner_edits(repo_root: string, cold_prefix: string): Pick<RotationPlan, 'scanner_edits' | 'scanner_covered' | 'scanner_manual'> {
   const cold_regex = get_cold_regex(cold_prefix);
-  return SCANNER_FILES.flatMap((file) => {
+  const plan: Pick<RotationPlan, 'scanner_edits' | 'scanner_covered' | 'scanner_manual'> = { scanner_edits: [], scanner_covered: [], scanner_manual: [] };
+  for (const file of SCANNER_FILES) {
     const before = existsSync(join(repo_root, file)) ? readFileSync(join(repo_root, file), 'utf-8') : null;
     const after = file === '.gitleaks.toml' ? add_gitleaks_allowlist(before, cold_regex) : before === null ? null : add_baseline_exclude(before, cold_regex);
-    return after === null ? [] : [{ file, before, after }];
-  });
+    if (after !== null) plan.scanner_edits.push({ file, before, after });
+    else if (before !== null) (before.includes(file === '.gitleaks.toml' ? `'''${cold_regex}'''` : JSON.stringify(cold_regex).slice(1, -1)) ? plan.scanner_covered : plan.scanner_manual).push(file);
+  }
+  return plan;
 }
 
-/** Docs of the staged tree that no review in the ledger covers: promote does not mark them reviewed, so audit will flag them. */
+/**
+ * Docs of the staged tree that audit's DOCS_UNREVIEWED will flag after the promote (find_unreviewed_docs' rule, applied
+ * ahead of time): no review on the current content in the ledger, and, with no entry, no `last_verified` on or after the
+ * promote commit's day (every staged doc is committed by the promote).
+ */
 async function count_unreviewed_docs(repo_root: string, stage: Stage, config: PluginConfig): Promise<{ count: number; ledger_note: string }> {
-  const { list_markdown_files } = await import('./triage.js'); // triage imports this module
+  const { list_markdown_files, get_verified_day } = await import('./triage.js'); // triage imports this module
   const ledger_file = existsSync(stage.ledger_file) ? stage.ledger_file : resolve(repo_root, config.reconcile.ledger_path);
   const ledger = await load_ledger(ledger_file);
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`; // git %cs is the local day
   let count = 0;
   for (const abs_path of await list_markdown_files(stage.docs_root)) {
     const doc_path = format_posix_path(relative(stage.docs_root, abs_path));
-    if (!doc_path.startsWith('reports/') && !is_reviewed(ledger.entries[doc_path], compute_content_hash(readFileSync(abs_path, 'utf-8')))) count++;
+    if (doc_path.startsWith('reports/')) continue;
+    const text = readFileSync(abs_path, 'utf-8');
+    const entry = ledger.entries[doc_path];
+    if (is_reviewed(entry, compute_content_hash(text))) continue;
+    if (!entry && get_verified_day(parse_frontmatter<Record<string, unknown>>(text).data) >= today) continue;
+    count++;
   }
   return { count, ledger_note: format_posix_path(relative(repo_root, stage.ledger_file)) };
 }
@@ -235,7 +253,7 @@ function check_cold_root(context: RotationContext): { cold_prefix: string; cold_
 /** Nothing the rotation commit would sweep up may be uncommitted: the docs, the cold root, the config, the ledger, the index. */
 function check_clean(context: RotationContext, cold_prefix: string): void {
   const { repo_root, docs_root, config } = context;
-  const paths = [relative(repo_root, docs_root), cold_prefix, relative(repo_root, resolve_config_file_path(repo_root)), config.reconcile.ledger_path, ...SCANNER_FILES].map(format_posix_path);
+  const paths = [relative(repo_root, docs_root), cold_prefix, relative(repo_root, resolve_config_file_path(repo_root)), config.reconcile.ledger_path, ...(config.reconcile.cold_scanner_allowlist ? SCANNER_FILES : [])].map(format_posix_path);
   const dirty = read_git(repo_root, ['status', '--porcelain', '--', ...paths]).split('\n').filter(Boolean);
   const staged = read_git(repo_root, ['diff', '--cached', '--name-only']).split('\n').filter(Boolean);
   if (dirty.length || staged.length) throw new Error(`uncommitted changes (commit or stash first):\n${[...dirty.map((line) => `  ${line}`), ...staged.map((file) => `  staged: ${file}`)].slice(0, 20).join('\n')}`);
@@ -282,7 +300,7 @@ export async function plan_promote(context: RotationContext & { stage: Stage }):
   const unreviewed = await count_unreviewed_docs(repo_root, stage, config);
   return {
     generation, cold_path, stage_path: format_posix_path(relative(repo_root, stage.stage_dir)), docs_path, source_commit: stage.source_commit, secrets_findings, untracked_files, tracked_files,
-    scanner_edits: config.reconcile.cold_scanner_allowlist ? plan_scanner_edits(repo_root, cold_prefix) : [],
+    ...(config.reconcile.cold_scanner_allowlist ? plan_scanner_edits(repo_root, cold_prefix) : { scanner_edits: [], scanner_covered: [], scanner_manual: [] }),
     flagged_files: new Set(secrets_findings.map((finding) => finding.slice(0, finding.lastIndexOf(':')))).size,
     unreviewed_docs: unreviewed.count, ledger_note: unreviewed.ledger_note,
   };
@@ -438,7 +456,7 @@ export async function plan_undo(context: RotationContext & { generation: string 
   return entry;
 }
 
-export async function run_undo(context: RotationContext & { generation: string }): Promise<{ generation: string; rejected_stage: string; commit: string; disk_only_absent: number; scanner_left: string[] }> {
+export async function run_undo(context: RotationContext & { generation: string }): Promise<{ generation: string; rejected_stage: string; commit: string; disk_only_absent: number; scanner_left: string[]; scanner_kept_for: string | undefined }> {
   const entry = await plan_undo(context);
   const { repo_root, docs_root, config } = context;
   const cold_dir = resolve(repo_root, entry.path);
@@ -456,6 +474,9 @@ export async function run_undo(context: RotationContext & { generation: string }
   let scanner_record: Record<string, { before: string | null; after_sha256: string }> = {};
   if (existsSync(scanners_file)) { try { scanner_record = JSON.parse(readFileSync(scanners_file, 'utf-8')); } catch { throw new Error(`${relative(repo_root, scanners_file)} is not valid JSON; nothing was changed`); } }
   const scanner_left: string[] = [];
+  // every generation sits under the one cold root, so a newer one still needs the allowlist: hand the record to it
+  const heir = [...config.cold_storage].reverse().find((item) => item.generation !== entry.generation);
+  const handed = heir ? entry.scanner_allowlists.filter((file) => scanner_record[file]) : [];
   const disk_only_absent = get_generation_state(repo_root, entry).disk_only_absent;
   // the generation's committed files come back tracked even if a .gitignore pattern matches them at the docs path
   const generation_tracked = list_git_paths(repo_root, ['ls-files', '-z', '--', `:(literal)${entry.path}`]).map((file) => `${docs_path}${file.slice(entry.path.length)}`);
@@ -473,7 +494,15 @@ export async function run_undo(context: RotationContext & { generation: string }
     if (existsSync(generation_ledger)) { await copyFile(generation_ledger, ledger_file); inverses.push(async () => { await unlink(ledger_file); }); }
     const stage_manifest: StageManifest = { format: 1, docs_path, source_commit: read_git(repo_root, ['rev-parse', 'HEAD']).trim(), staged_at: new Date().toISOString(), live_checksum: compute_tree_checksum(docs_root) };
     await writeFile(join(rejected_dir, 'stage.json'), JSON.stringify(stage_manifest, null, 2) + '\n', 'utf-8'); inverses.push(() => unlink(join(rejected_dir, 'stage.json')));
-    for (const file of entry.scanner_allowlists) { // exact inverse of the promote's edit, unless the file was changed since
+    if (heir && handed.length) {
+      const heir_file = join(cold_root_dir, '.generations', heir.generation, 'scanners.json');
+      let heir_record: typeof scanner_record = {};
+      if (existsSync(heir_file)) { try { heir_record = JSON.parse(readFileSync(heir_file, 'utf-8')); } catch { throw new Error(`${relative(repo_root, heir_file)} is not valid JSON; nothing was changed`); } }
+      // the older `before` is the file as it was before any promote; the heir's own later edit, if any, is what is on disk now
+      for (const file of handed) { const record = scanner_record[file]!; heir_record[file] = { before: record.before, after_sha256: heir_record[file]?.after_sha256 ?? record.after_sha256 }; }
+      const previous = await replace_text_file(heir_file, JSON.stringify(heir_record, null, 2) + '\n'); inverses.push(async () => { await replace_text_file(heir_file, previous); });
+    }
+    for (const file of heir ? [] : entry.scanner_allowlists) { // exact inverse of the promote's edit, unless the file was changed since
       const record = scanner_record[file];
       const abs_path = join(repo_root, file);
       const current = existsSync(abs_path) ? readFileSync(abs_path, 'utf-8') : null;
@@ -498,10 +527,15 @@ export async function run_undo(context: RotationContext & { generation: string }
       try { await rmdir(dir_path); inverses.push(async () => { await mkdir(dir_path, { recursive: true }); }); } catch { break; } // only empty dirs go; a non-empty one stays
     }
     inverses.push(() => write_config_text(config_file, config_before.text));
-    await write_config_text(config_file, serialize_like(config_before.text, { ...config_before.data, cold_storage: get_manifest(config_before.data).filter((item) => (item as { generation?: unknown })?.generation !== entry.generation) }));
+    await write_config_text(config_file, serialize_like(config_before.text, { ...config_before.data, cold_storage: get_manifest(config_before.data).filter((item) => (item as { generation?: unknown })?.generation !== entry.generation).map((item) => {
+      const kept = item as { generation?: unknown; scanner_allowlists?: unknown };
+      if (!heir || kept.generation !== heir.generation || !handed.length) return item;
+      const before = Array.isArray(kept.scanner_allowlists) ? kept.scanner_allowlists as string[] : [];
+      return { ...kept, scanner_allowlists: [...before, ...handed.filter((file) => !before.includes(file))] };
+    }) }));
     // no index regeneration: the generation's own INDEX/REGISTRY come back byte for byte
     const commit = commit_rotation(repo_root, `docs(rotate): undo ${entry.generation}`, [docs_path, format_posix_path(relative(repo_root, cold_root_dir)), relative(repo_root, config_file), config.reconcile.ledger_path, ...entry.scanner_allowlists.filter((file) => !scanner_left.includes(file))].map(format_posix_path), generation_tracked);
-    return { generation: entry.generation, rejected_stage: format_posix_path(relative(repo_root, rejected_dir)), commit, disk_only_absent, scanner_left };
+    return { generation: entry.generation, rejected_stage: format_posix_path(relative(repo_root, rejected_dir)), commit, disk_only_absent, scanner_left, scanner_kept_for: heir && entry.scanner_allowlists.length ? heir.generation : undefined };
   } catch (error) {
     inverses.push(async () => { run_git(repo_root, ['reset', '-q']); });
     throw fail_with_rollback(error, await run_inverses(inverses), `generation ${entry.generation} is at ${entry.path} or at ${docs_path}, the rejected tree at ${relative(repo_root, rejected_dir)}/docs`);

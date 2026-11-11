@@ -124,13 +124,64 @@ describe('promote adds a cold-root scanner allowlist (#101)', () => {
     expect(undone.stdout + undone.stderr).toContain('.gitleaks.toml');
   });
 
+  it('undoing the older of two generations keeps the allowlist for the newer one, and undoing the last one removes it', () => {
+    commit_all();
+    expect(promote(['--confirm']).status).toBe(0);
+    const second = join(root, '.hewtd/stage-2');
+    expect(hewtd(['reconcile', '--stage', second]).status).toBe(0);
+    writeFileSync(join(second, 'docs/backend/b.md'), fm('b') + '\nReconciled twice.\n');
+    const second_plan = hewtd(['reconcile', '--promote', '--staged', second]);
+    expect(second_plan.stdout).toContain('already allowlisted in .gitleaks.toml');
+    expect(second_plan.stdout).not.toContain('no scanner config');
+    expect(hewtd(['reconcile', '--promote', '--staged', second, '--confirm']).status).toBe(0);
+    const [older, newer] = JSON.parse(read(config_file)).cold_storage.map((item: { generation: string }) => item.generation);
+    const undone = hewtd(['reconcile', '--undo', older, '--confirm']);
+    expect(undone.status, undone.stdout + undone.stderr).toBe(0);
+    expect(read('.gitleaks.toml')).toContain(`'''${COLD_RE}'''`);
+    expect(JSON.parse(read(config_file)).cold_storage[0].scanner_allowlists).toEqual(['.gitleaks.toml']);
+    expect(g('status', '--porcelain')).toBe('');
+    expect(hewtd(['reconcile', '--undo', newer, '--confirm']).status).toBe(0);
+    expect(existsSync(join(root, '.gitleaks.toml'))).toBe(false);
+    expect(g('status', '--porcelain')).toBe('');
+  });
+
+  it('with the opt-out, an uncommitted scanner file does not block promote', () => {
+    put(config_file, JSON.stringify({ updatePolicy: 'nudge', reconcile: { cold_scanner_allowlist: false } }, null, 2) + '\n');
+    put('.gitleaks.toml', '[extend]\nuseDefault = true\n');
+    commit_all();
+    put('.gitleaks.toml', '[extend]\nuseDefault = true\n# local edit\n');
+    const done = promote(['--confirm']);
+    expect(done.status, done.stdout + done.stderr).toBe(0);
+    expect(read('.gitleaks.toml')).toContain('# local edit');
+  });
+
+  it('a .gitleaks.toml with a dotted-key allowlist is left alone and the plan says to add the path by hand', () => {
+    put('.gitleaks.toml', "allowlist.paths = ['''^vendor/''']\n\n[extend]\nuseDefault = true\n");
+    commit_all();
+    const planned = promote();
+    expect(planned.stdout).toMatch(/\.gitleaks\.toml.*by hand/);
+    const done = hewtd(['reconcile', '--promote', '--staged', stage, '--confirm']);
+    expect(done.status, done.stdout + done.stderr).toBe(0);
+    expect(read('.gitleaks.toml')).not.toContain(COLD_RE);
+  });
+
+  it('a staged doc verified on or after the promote day is not counted as unreviewed, and the warning after --confirm does not say "first"', () => {
+    put('.documentation/backend/a.md', fm('a').replace('domains:', 'last_verified: 2099-01-01\ndomains:') + `\nkey=${fake_key()}\n`);
+    commit_all();
+    const planned = promote();
+    expect(planned.stdout).toMatch(/after promote, 1 doc\(s\) will show as unreviewed/);
+    const done = hewtd(['reconcile', '--promote', '--staged', stage, '--confirm']);
+    expect(done.stdout).toMatch(/1 doc\(s\) show as unreviewed/);
+    expect(done.stdout).not.toMatch(/ first/);
+  });
+
   it('warns how many staged docs have no review in the stage ledger, and never marks them reviewed', () => {
     commit_all();
     const planned = promote();
     expect(planned.stdout).toMatch(/after promote, 2 doc\(s\) will show as unreviewed \(DOCS_UNREVIEWED\)/);
     expect(planned.stdout).toContain('.hewtd/stage/ledger.json');
     const done = hewtd(['reconcile', '--promote', '--staged', stage, '--confirm']);
-    expect(done.stdout).toMatch(/2 doc\(s\) will show as unreviewed/);
+    expect(done.stdout).toMatch(/2 doc\(s\) show as unreviewed/);
     expect(existsSync(join(root, '.hewtd/reconcile.json'))).toBe(false);
   });
 });

@@ -143,7 +143,7 @@ export async function list_markdown_files(dir_path: string): Promise<string[]> {
 }
 
 /** `last_verified` as YYYY-MM-DD, or '' when absent. */
-const get_verified_day = (frontmatter: Record<string, unknown>): string => {
+export const get_verified_day = (frontmatter: Record<string, unknown>): string => {
   const value = frontmatter.last_verified;
   return value instanceof Date ? value.toISOString().slice(0, 10) : value ? String(value).slice(0, 10) : '';
 };

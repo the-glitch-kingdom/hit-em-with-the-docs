@@ -30,6 +30,11 @@ describe('add_gitleaks_allowlist', () => {
     expect(add_gitleaks_allowlist('[[rules]]\nid="r"', re)).toBe(`[[rules]]\nid="r"\n\n[allowlist]\npaths = [${entry}]\n`);
     expect(add_gitleaks_allowlist('[[allowlists]]\npaths=["v"]\n', re)).toBe(`[[allowlists]]\npaths=["v"]\n\n[[allowlists]]\npaths = [${entry}]\n`);
   });
+  it('leaves a root allowlist defined with dotted keys or an inline table alone (a second [allowlist] would be invalid TOML)', () => {
+    expect(add_gitleaks_allowlist("allowlist.paths = ['v']\n\n[extend]\nuseDefault = true\n", re)).toBeNull();
+    expect(add_gitleaks_allowlist('title = "t"\nallowlist = { paths = ["v"] }\n', re)).toBeNull();
+    expect(add_gitleaks_allowlist('[extend]\nallowlist.paths = ["v"]\n', re)).toContain('[allowlist]');
+  });
 });
 
 describe('add_baseline_exclude', () => {

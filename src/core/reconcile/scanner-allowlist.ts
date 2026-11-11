@@ -1,7 +1,7 @@
 /**
  * Cold-root allowlists for secret scanners (#101). A committed cold generation re-adds the old docs tree under a new path,
  * so every baselined finding comes back as new in a PR scan. These are pure text edits: each returns the new file text,
- * or null when nothing should change (already allowlisted, unreadable, unknown format).
+ * or null when nothing should change (already allowlisted, unreadable, a form these edits don't handle).
  */
 
 /** Anchored regex for everything under the cold root (gitleaks `paths`, detect-secrets `should_exclude_file`). */
@@ -22,6 +22,9 @@ export function add_gitleaks_allowlist(before: string | null, cold_regex: string
   const entry = `'''${cold_regex}'''`;
   if (before === null) return `[extend]\nuseDefault = true\n\n[allowlist]\npaths = [${entry}]\n`;
   if (before.includes(entry)) return null;
+  // a root allowlist set with dotted keys or an inline table can't take a second [allowlist] (invalid TOML): left for the user
+  const root_keys = before.slice(0, /^[ \t]*\[/m.exec(before)?.index ?? before.length);
+  if (/^[ \t]*allowlist[ \t]*[.=]/m.test(root_keys)) return null;
   const header = /^\[allowlist\][ \t]*(?:#.*)?$/m.exec(before);
   if (header) {
     const start = header.index + header[0].length;

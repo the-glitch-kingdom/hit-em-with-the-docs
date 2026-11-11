@@ -1,6 +1,6 @@
 {
   "name": "@theglitchking/hit-em-with-the-docs",
-  "version": "3.2.2",
+  "version": "3.3.0",
   "description": "Self-managing documentation system with hierarchical structure, intelligent automation, pattern discovery, and agent orchestration",
   "type": "module",
   "main": "dist/cli/index.js",

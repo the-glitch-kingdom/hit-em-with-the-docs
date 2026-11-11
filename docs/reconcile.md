@@ -470,6 +470,8 @@ by hand and staged again. `--staged` cannot be combined with `-p`.
 
 ### Promote, undo and cold generations
 
+Full workflow, layout, manifest and recovery: [`cold-rotation.md`](./cold-rotation.md).
+
 `hewtd reconcile --promote --staged <dir>` swaps the reconciled copy in as the live docs and
 keeps the old tree as a **cold generation**: `<cold_root>/<YYYY-MM-DD>` (`-2`, `-3` on a clash),
 read-only on disk, committed to git, and listed in `cold_storage` in

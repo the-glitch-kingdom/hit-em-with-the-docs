@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.2.0] — 2026-11-10
+
+Adds cold rotation (#97). No breaking changes; no existing JSON key changes. New config keys are additive: `reconcile.cold_root` (default `.documentation-cold`) and `cold_storage` (written by hewtd).
+
+- reconcile `--stage <dir>` / `--staged <dir>`: snapshot the live docs working tree and run any reconcile mode on the copy only. The live tree, ledger, graph and git stay untouched; staged apply makes no commit and reports `secret` and outside-lane entries as `error`.
+- reconcile `--promote --staged <dir> [--confirm]`: checks everything first and refuses with nothing changed, then swaps the copy in and keeps the old tree as a committed, read-only, dated cold generation, with one commit. Every step after the first rename is undone on failure.
+- reconcile `--undo <generation> --confirm`: restores a generation byte for byte; the rejected tree moves to a new stage under `.hewtd/stage`.
+- reconcile `--generations [--json]`: lists generations with checksum status and secret finding counts.
+- The cold root is left out of reference, mention and symbol search, the outside lane, the peripheral secrets scan, the integrator search, the staged-secrets hook scan and graph invalidation. `hewtd audit` warns when a generation is CHANGED or MISSING.
+- Docs: new `docs/cold-rotation.md`; help, reconcile command, LLM guide, README and skill updated.
+
 ## [3.1.8] — 2026-11-10
 
 Fixes #92 and #93. No breaking changes; `.hewtd/graph.json` stays `version: 1`, no existing JSON key changes.

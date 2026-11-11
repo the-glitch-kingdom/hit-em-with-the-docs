@@ -15,6 +15,8 @@
 > [!NOTE]
 > **2.22.0** fixes from the 2.21.0 field test (#69): graph symbols point at the file that defines them (`file_kind`), the graph export covers every doc triage judges, `hewtd index --no-graph` skips the export, code references, placeholders and emails no longer put docs in the secret lane (while short `hvs.` tokens, AppRole ids and `vault kv put` values are caught), gap queries may be up to 200 characters, and `reconcile --apply` rewrites only the frontmatter keys it changes. See [CHANGELOG](./CHANGELOG.md).
 >
+> **3.2.0** adds cold rotation: `hewtd reconcile --stage <dir>` snapshots the docs, `--staged <dir>` reconciles the copy only, `--promote --staged <dir> --confirm` swaps it in and keeps the old tree as a committed, read-only, dated cold generation, and `--undo <gen> --confirm` restores it byte for byte. See [`docs/cold-rotation.md`](./docs/cold-rotation.md).
+
 > **2.21.0** adds `hewtd reconcile --gaps <file>`: missed search queries (semantic-memory `gaps --json`, or a plain list) become reviewed `symptoms.user_phrase` proposals, new-doc candidates or open questions. Secret-shaped queries are dropped and masked. See [`docs/reconcile.md`](./docs/reconcile.md) and [`docs/gaps-format.md`](./docs/gaps-format.md).
 
 > **2.20.0** (ships in 2.21.0) writes `.hewtd/graph.json` on `hewtd index` and after `reconcile --apply`: per doc its resolved and missing references, body and code change dates, reconcile verdict and duplicate data, plus a symbol index, as a versioned plain file for other tools (hewtd never reads it back). `graph_export: false` turns it off. See [`docs/graph-export.md`](./docs/graph-export.md).

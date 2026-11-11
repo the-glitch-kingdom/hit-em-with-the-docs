@@ -12,7 +12,7 @@ import type { PluginConfig } from '../../utils/config.js';
 import { check_retrieval } from '../audit/retrieval.js';
 import { find_clusters } from '../links/clusters.js';
 import { build_repo_index, extract_references, add_known_symbols, get_symbol_names, load_sibling_index, resolve_references, type RelatedRepo, type ResolvedReference, type SymbolTable } from './references.js';
-import { find_body_change, count_sibling_commits, find_staleness_signal, type StalenessSignal } from './staleness.js';
+import { find_body_change, count_sibling_commits, find_staleness_signal, prefetch_body_changes, type StalenessSignal } from './staleness.js';
 import { compute_content_hash, is_reviewed, build_ledger_entry, type Ledger } from './ledger.js';
 import { find_section } from '../links/anchors.js';
 import { find_duplicates, type Duplicate } from './duplicates.js';
@@ -301,6 +301,7 @@ export async function triage_docs(options: {
   const dups = options.duplicates ?? await time_stage('duplicates', () => find_duplicates(docs_root, config));
   const docs: TriageDoc[] = [];
   let stale_warned = false;
+  prefetch_body_changes(git_top, loaded.map((doc) => format_posix_path(relative(git_top, options.history_docs_root ? join(options.history_docs_root, doc.doc_path) : join(docs_root, doc.doc_path))))); // one git pass for every doc's history (#101)
   for (const doc of loaded) {
     const abs_path = join(docs_root, doc.doc_path);
     const resolved: ResolvedReference[] = await time_stage('resolve refs', () => resolve_references(index, doc.references, { doc_file: abs_path, docs_root: docs_root, related: sibling_repos, external_refs: Array.isArray(doc.data.external_refs) ? doc.data.external_refs.filter((item): item is string => typeof item === 'string') : [], ...(options.ignore_mentions && { ignore_mentions: options.ignore_mentions }) }));

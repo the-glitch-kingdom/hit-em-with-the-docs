@@ -7,7 +7,7 @@ import { execFileSync } from 'child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { compute_content_hash } from '../reconcile/ledger.js';
-import { find_body_change } from '../reconcile/staleness.js';
+import { find_body_change, prefetch_body_changes } from '../reconcile/staleness.js';
 import { list_committed_changes } from './cache.js';
 
 const run_git = (working_dir: string, args: string[]): string =>
@@ -67,6 +67,8 @@ export function find_body_changed_dates(
   } catch { /* no cache */ }
   const next: Cache = { head, docs: {} };
   let walked = 0;
+  const stale = docs.filter((doc) => { const cached = old?.docs[doc.path]; return !cached || cached.hash !== compute_content_hash(doc.content) || touched?.has(doc.path); });
+  prefetch_body_changes(repo_root, stale.map((doc) => doc.path)); // one git pass for all of them (#101)
   for (const doc of docs) {
     const hash = compute_content_hash(doc.content);
     let cached = old?.docs[doc.path];

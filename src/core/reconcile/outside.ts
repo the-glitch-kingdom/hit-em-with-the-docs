@@ -16,6 +16,7 @@ import { build_glob_regex } from './references.js';
 import { find_git_top } from './triage.js';
 import { compute_content_hash } from './ledger.js';
 import { find_next_batch, render_review, resolve_review_dir, type ReviewEntry } from './review.js';
+import { get_cold_prefix, is_in_cold } from './rotation.js';
 
 export type OutsideClass = 'tool-read' | 'junk' | 'not-a-doc' | 'misplaced';
 export interface OutsideDoc { path: string; cls: OutsideClass; reason: string; }
@@ -58,7 +59,8 @@ const count_words = (raw_text: string): number => (parse_frontmatter(raw_text).c
 export async function discover_outside(docs_root: string, keep_in_place: string[]): Promise<OutsideDoc[]> {
   const git_top = resolve_git_top(docs_root);
   const docs_rel = relative(git_top, docs_root).split('\\').join('/');
-  const files = run_git(git_top, ['ls-files', '*.md']).split('\n').filter((file) => file && !(docs_rel && (file === docs_rel || file.startsWith(`${docs_rel}/`))));
+  const cold_prefix = get_cold_prefix(git_top); // a cold generation is never offered to integrate or delete
+  const files = run_git(git_top, ['ls-files', '*.md']).split('\n').filter((file) => file && !is_in_cold(file, cold_prefix) && !(docs_rel && (file === docs_rel || file.startsWith(`${docs_rel}/`))));
   const in_tree = new Set<string>();
   for (const file of await find_markdown_files(docs_root)) in_tree.add(compute_content_hash(await readFile(file, 'utf-8')));
 

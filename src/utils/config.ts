@@ -211,10 +211,19 @@ const lenient_secret_allow = z
     return [{ fingerprint: entry.fingerprint, pattern: entry.pattern, file: entry.file, reason: entry.reason!.trim() }];
   }))
   .catch([]);
+/** A secret-lane credential the owner says was rotated (#106): the env name and the date, never a value. */
+// eslint-disable-next-line id-denylist -- serialized key (plugin config)
+export const rotated_secret_schema = z.object({ env: z.string().min(1), rotated_on: z.string().min(1) });
+export type RotatedSecret = z.infer<typeof rotated_secret_schema>;
+const lenient_rotated = z
+  .array(z.unknown())
+  .transform((a) => a.flatMap((item) => { const result = rotated_secret_schema.safeParse(item); return result.success ? [result.data] : []; }))
+  .catch([] as RotatedSecret[]);
 const secrets_config_schema = z
   .object({
     allow: lenient_secret_allow,
     disabled_rules: z.array(z.string()).catch([]),
+    rotated: lenient_rotated.optional(),
   })
   .catch({ allow: [] as SecretAllow[], disabled_rules: [] as string[] })
   .default({});
@@ -314,6 +323,8 @@ export const plugin_config_schema = z
     integrate: integrate_config_schema,
     /** Write `.hewtd/graph.json` on `hewtd index` and after `reconcile --apply` (#65). */
     graph_export: z.boolean().catch(true).default(true),
+    /** The hewtd version `hewtd upgrade-check --fix` last cleared (#104); written by hewtd. */
+    last_upgrade_check: z.string().optional().catch(undefined),
     /** Reports directory, relative to the repo root. Unset = `<docs root>/reports`. */
     reports_dir: z.string().min(1).optional().catch(undefined),
   })

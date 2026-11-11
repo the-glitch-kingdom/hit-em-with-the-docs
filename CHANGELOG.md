@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.3.0] — 2026-11-11
+
+Adds `hewtd upgrade-check` (#104). Additive: the config key `last_upgrade_check` is written by hewtd; nothing else changes.
+
+- `hewtd upgrade-check [--fix] [--record] [--json]` lists what a repo must change after an update, from the shipped `upgrade-notes.json` (3.1.0 onward): version skew across the plugin cache, global CLI, npx cache and `node_modules`; new config keys; the pre-commit block (the exact lines for a custom `core.hooksPath`); skill symlinks; the doc template; `vault.schema.yml` against the frontmatter contract; instruction drift (`file:line` in `CLAUDE.md`, `AGENTS.md`, `.claude/rules/**` plus the release note).
+- Read-only without `--fix`. `--fix` relinks skills, upgrades an existing hook block and adds new config keys at their defaults, and records `last_upgrade_check` only when no item needs action.
+- `/hit-em-with-the-docs:update` runs it after the update; `/hit-em-with-the-docs:status` suggests it; new `/hit-em-with-the-docs:upgrade-check`.
+- `--record` records `last_upgrade_check` once a human has handled the remaining items. A config file that is not valid JSON is reported and never rewritten. Superseded plugin-cache versions are not counted as skew, and a never-installed hook is `[info]`. Versions with a `v` prefix or a prerelease tag compare by their numbers.
+- Docs: `docs/upgrade-check.md`, LLM guide, help, README.
+- #106: `hewtd reconcile --finish [--rotated <ENV>] [--fix] [--confirm] [--json]` inventories what a reconcile leaves behind (`.env.hewtd` key names and rotation, stages, review files, graph files, git hygiene); `--promote --confirm` ends with it. New config key `reconcile.secrets.rotated`. `hewtd graph [--quiet]` and `hewtd hooks install` adds `post-merge` / `post-checkout` graph-refresh blocks; `upgrade-check` reports them. `--confirm` removes only rejected and promoted stages under `.hewtd/` (an open stage is never removed: hewtd cannot tell in-progress from abandoned); `hewtd graph` without `-p` uses the configured `docs_root`.
+
 ## [3.2.2] — 2026-11-11
 
 Fixes #103: an applied `rewrite` counted as unreviewed forever. No key changes.

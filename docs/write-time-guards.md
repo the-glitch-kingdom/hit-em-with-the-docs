@@ -66,6 +66,7 @@ hewtd hooks uninstall       # removes exactly that block (byte-exact)
   Without the local ledger (fresh clone, CI) a doc counts as unreviewed when it has no `last_verified`, has
   uncommitted changes, or was committed after its `last_verified` day (a same-day edit is not caught).
   `hooks install` upgrades an older block of ours in place; `uninstall` removes either version.
+  Since 3.3.0 it also adds marked `post-merge` and `post-checkout` blocks running `hewtd graph --quiet` (never fails git, skips single-file checkouts), same upgrade-in-place and uninstall rules.
 - The hook fails closed: if `hewtd` cannot run (not installed), the commit is
   refused; uninstall the hook to bypass it deliberately.
 - Baseline entries need a fingerprint and a reason; others are ignored with a warning.

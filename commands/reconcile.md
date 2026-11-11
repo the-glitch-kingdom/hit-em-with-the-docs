@@ -187,8 +187,13 @@ Then suggest `hewtd audit` and `hewtd link-check`, and `hewtd reconcile --status
 
 When you wrote or edited docs yourself (a new file, `hewtd integrate`, an edit to a reviewed doc), you are the judge. Run `hewtd reconcile --changed --write-review` (scope args are optional; dirty docs are expected, no commit first). It writes one review file with exactly the docs created or changed since their last review. For each entry check the doc against the code and set `"verdict": "verify"`, fill `sources`, decide each `missing` ref (a `patch`, or `external_refs`), put `purpose` and `symptoms` under `frontmatter`, tick accept, then `--apply`. Apply stamps `last_verified`, records the verdict and commits the batch. A second `--changed` lists none. `hewtd reconcile --changed --check [--cached]` is the advisory check the pre-commit hook and CI run: it exits 1 only when `reconcile.require_review` is true.
 
+## When the reconcile is done (`--finish`)
+
+After a whole-tree reconcile (and after `--promote --confirm`), run `hewtd reconcile --finish` and show the user the inventory: credentials in `.env.hewtd` (names only), stages, review files, graph files, git hygiene. Never delete `.env.hewtd` yourself, and never print a value from it. When the user says they rotated a credential, record it with `hewtd reconcile --finish --rotated <ENV_NAME>`. `--fix` redacts secret values quoted in review files and adds missing `.gitignore` lines; `--confirm` removes only rejected and promoted stages, the graph cache and redacted review files (never an open stage: tell the user to delete one by hand when they are done with it): run either only with the user's say-so.
+
 ## What NOT to do
 
+- Never delete `.env.hewtd`, cold generations or anything under the docs tree.
 - Do not edit docs, frontmatter or folders directly. Everything goes through a review file and `--apply`.
 - Do not write or set `last_verified` yourself, and do not commit.
 - Do not tick `accept` without the user's say-so.

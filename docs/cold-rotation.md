@@ -12,7 +12,7 @@ hewtd reconcile --staged .hewtd/stage-1 <scope>        # 2. any reconcile mode, 
 hewtd reconcile --staged .hewtd/stage-1 --apply <review-files>
 # 3. optional: evaluate the copy (retrieval eval, review it, diff it) before swapping
 hewtd reconcile --promote --staged .hewtd/stage-1             # 4. prints the plan, changes nothing
-hewtd reconcile --promote --staged .hewtd/stage-1 --confirm   #    swaps and commits
+hewtd reconcile --promote --staged .hewtd/stage-1 --confirm   #    swaps and commits, then prints the --finish inventory
 hewtd reconcile --generations [--json]                        # 5. list cold generations
 hewtd reconcile --undo <generation> --confirm                 # 6. roll back
 ```
@@ -165,3 +165,11 @@ back to the docs path, put the config back with `git checkout -- .claude/hit-em-
 and remove the leftover `<cold_root>/.generations/<gen>` and its lines in `<cold_root>/.gitignore`.
 File modes: `<cold_root>/.generations/<gen>/modes.json` has the originals if you need them. A failed
 rollback prints which step failed.
+
+## Cleanup after promote (#106)
+
+`--promote --confirm` ends by printing the read-only `hewtd reconcile --finish` inventory: `.env.hewtd` key names and
+rotation state, stages under `.hewtd/` (rejected, promoted, open), review files (and which quote a secret-lane value), graph
+files and git hygiene. Run `hewtd reconcile --finish --fix --confirm` to redact those review files, add missing
+`.gitignore` lines and remove rejected and promoted stages and the graph cache. It never touches an open stage, `.env.hewtd`,
+cold generations or the docs tree; record rotated credentials with `--finish --rotated <ENV_NAME>`. See `docs/reconcile.md`.

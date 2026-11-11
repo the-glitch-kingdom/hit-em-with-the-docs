@@ -64,6 +64,11 @@ Generated indexes, registries and reports carry `generated: true` in their
 frontmatter. Search tools can skip them. The domain and root `INDEX.md` tables
 have a Purpose column filled from each doc's `purpose`.
 
+## Filling purpose and symptoms at the end
+
+`purpose` and `symptoms` are written by the author during `hewtd reconcile --changed --write-review`
+(under each entry's `frontmatter`), then `--apply` stamps `last_verified` (3.2.0). Nothing fills them for you.
+
 ## Audit warnings
 
 `hewtd audit` checks the fields above. Every `RETRIEVAL_*` issue is a warning:

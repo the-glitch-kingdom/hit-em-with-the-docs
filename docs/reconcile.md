@@ -33,6 +33,21 @@ hewtd reconcile --write-review --overview <members-file>      # overview review 
 
 Flags: `-p/--docs-path`, `--json`, `--serial`, `--team`, `--batch <id>`.
 
+## After creating or updating docs (`--changed`, 3.2.0)
+
+A doc you write, `integrate` or edit is finished only when it has been reconciled. You are the judge:
+
+```bash
+hewtd reconcile --changed --write-review   # no scope, no clean tree needed
+# per entry: check the doc against the code, "verdict": "verify", fill sources, external_refs,
+# frontmatter purpose and symptoms, tick accept
+hewtd reconcile --apply .hewtd/reconcile/review-<batch>-*.md   # last_verified, ledger verdict, commit
+```
+
+`--changed` selects docs that are not reviewed and were either edited since the ledger last saw them or triage outside the clean lane (new docs). It takes scope args, `--json`, `--write-review` (clean docs included) and `--status`, and never saves the ledger. A repo that never ran reconcile will see every doc without `last_verified` listed as new.
+
+Safety net: `hewtd audit` warns `DOCS_UNREVIEWED` with the count (advisory, never fails `--strict`). `hewtd reconcile --changed --check [--staged]` is what the pre-commit hook runs (`hewtd hooks install`; an older block is upgraded in place). It exits 1 only when `reconcile.require_review` is `true` (default `false`); otherwise it warns. Audit and the hook use a cheaper test than `--changed`: an unreviewed ledger entry, or no entry and no `last_verified`, so a new doc with a hand-typed `last_verified` is listed by `--changed` but not flagged by them.
+
 ## Lanes
 
 Triage sorts each doc by deterministic checks of what the body cites (paths,

@@ -60,6 +60,9 @@ hewtd hooks uninstall       # removes exactly that block (byte-exact)
   `exec` cannot skip it. A hook that is a symlink or not a POSIX shell script is
   refused with a one-line snippet to add yourself. Uninstall removes exactly the
   block and deletes a hook file it created.
+- The same block also runs `hewtd reconcile --changed --check --staged` (3.2.0): it warns about
+  staged docs not yet reviewed and blocks only when `reconcile.require_review` is `true`.
+  `hooks install` upgrades an older block of ours in place; `uninstall` removes either version.
 - The hook fails closed: if `hewtd` cannot run (not installed), the commit is
   refused; uninstall the hook to bypass it deliberately.
 - Baseline entries need a fingerprint and a reason; others are ignored with a warning.
@@ -123,7 +126,8 @@ Fixed in 3.1.0: only owned keys are rewritten. Upgrade, then `git diff` should s
 
 ### "my new doc is in the check lane right away"
 Expected: integrate never writes `last_verified`. Fix or list (`external_refs`) any
-reference it printed, then run `/hit-em-with-the-docs:reconcile <doc>`.
+reference it printed, then run `hewtd reconcile --changed --write-review`, judge the entry
+and `--apply` it. `hewtd audit` shows `DOCS_UNREVIEWED` until you do.
 
 ### "integrate recorded no sources"
 The doc cited nothing that resolves to a tracked file, `integrate.sources_max`

@@ -64,6 +64,11 @@ Generated indexes, registries and reports carry `generated: true` in their
 frontmatter. Search tools can skip them. The domain and root `INDEX.md` tables
 have a Purpose column filled from each doc's `purpose`.
 
+## Filling purpose and symptoms at the end
+
+`purpose` and `symptoms` are written by the author during `hewtd reconcile --changed --write-review`
+(under each entry's `frontmatter`), then `--apply` stamps `last_verified` (3.2.0). Nothing fills them for you.
+
 ## Audit warnings
 
 `hewtd audit` checks the fields above. Every `RETRIEVAL_*` issue is a warning:
@@ -147,8 +152,8 @@ block is rewritten (with hewtd's own YAML writer, which keeps dates as quoted
 strings); the body is left byte for byte. YAML quoting, list style and
 comments in that block may be normalised. A file whose frontmatter does not
 parse is skipped and reported, and the rest of the run continues.
-`integrate` no longer invents a purpose: if the first paragraph is not a
-usable sentence, `purpose` stays missing and the audit says so.
+`integrate` never invents a purpose (#98): it stays missing and the audit says so
+until you write one.
 
 Filler is handled too (2.14.0). A `summary` or `description` that fails the
 same weak-purpose rule `audit` uses is dropped (`<src> was filler, dropped`)
@@ -220,8 +225,9 @@ That is by design. The rules are advisory.
 
 ### "integrate left purpose empty"
 
-The first paragraph was a code block, table, list or over 200 characters.
-Write the purpose by hand.
+`integrate` never fills `purpose`: write it by hand, as the question the doc
+answers (`templates/doc.template.md` shows where). `maintain --fix` and
+`metadata-sync --fix` still fill a missing `purpose` from a usable first paragraph.
 
 ### "fix-retrieval-fields reports a conflict"
 

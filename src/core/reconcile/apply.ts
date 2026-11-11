@@ -513,7 +513,8 @@ export async function apply_reviews(options: {
     // Last line of defence: the staged diff may not add a secret.
     const added = run_git(git_top!, ['diff', '--cached', '-U0', '--no-color', '--', ...paths]).split('\n').filter((line) => line.startsWith('+') && !line.startsWith('+++')).join('\n');
     validate_no_secrets(added, 'the staged diff', secrets_config);
-    if (run_git(git_top!, ['status', '--porcelain', '--', ...paths])) run_git(git_top!, ['commit', '-q', '--only', '-m', message, '--', ...paths]);
+    // eslint-disable-next-line id-denylist -- child_process option names
+    if (run_git(git_top!, ['status', '--porcelain', '--', ...paths])) execFileSync('git', ['commit', '-q', '--only', '-m', message, '--', ...paths], { cwd: git_top!, stdio: 'ignore', env: { ...process.env, HEWTD_REVIEWED_COMMIT: '1' } }); // hewtd's own commit: the pre-commit review check must not block it (#98)
   };
   try {
     // Only verdicts that change what an index lists regenerate it (phrases/verify/unverifiable/rewrite do not).

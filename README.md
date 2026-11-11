@@ -377,6 +377,15 @@ refused ("already in the docs tree"; nothing is written): use
 `.documentation` by walking up from the current directory (stopping at the
 git root); an explicit `-p` is taken as given.
 
+`integrate` **copies** the file (the original stays where it was, unless you integrate a file already at its target, which is rewritten in place), refuses to overwrite a different doc of the same name (`--force` does not bypass that), never fills
+`purpose` from the first paragraph, and with `-d <domain>` adds no detected extra
+domain. It then prints the new doc's reconcile lane, each missing or unverified
+reference (fix it, or list it under `external_refs`) and the next step: commit the
+doc, then `/hit-em-with-the-docs:reconcile <doc>`. `--review` also writes the
+review skeleton (the single-doc form of the ending below). A general starting point lives in `templates/doc.template.md`.
+
+**Every new or changed doc ends reconciled (3.2.0).** A doc you write directly, `integrate`, or edit is finished only after `hewtd reconcile --changed --write-review` (lists the docs created or changed since their last review, no scope and no commit needed), you judge each entry as the author (`verify`, `sources`, `external_refs`, `purpose`, `symptoms`; tick accept), and `hewtd reconcile --apply <file>` stamps `last_verified`, records the verdict and commits. `hewtd audit` warns `DOCS_UNREVIEWED` while any are left. `hewtd hooks install` adds a pre-commit check (`reconcile --changed --check --cached`) that warns about staged docs not reviewed; set `reconcile.require_review: true` in `.claude/hit-em-with-the-docs.json` to block the commit instead.
+
 **When to use it**: When you have markdown files outside the `.documentation` folder that you want to organize.
 
 **What to use it on**: Individual markdown (.md) files or a folder of markdown files.
@@ -764,7 +773,7 @@ Would you like me to load these files and explain the rate limiting implementati
 
 **When to use it**: When you have a markdown file that needs to be added to the documentation system.
 
-**What to expect**: Claude reads the file, determines the best category, adds metadata, and moves it to the correct location.
+**What to expect**: Claude reads the file, determines the best category, adds metadata, and copies it to the correct location.
 
 ---
 

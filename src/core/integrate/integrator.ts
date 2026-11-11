@@ -13,8 +13,9 @@ import { regenerate_indexes } from '../../generators/regenerate.js';
 import levenshtein from 'fast-levenshtein';
 import { load_plugin_config, type PluginConfig } from '../../utils/config.js';
 import { scan_text } from '../reconcile/secrets.js';
-import { find_git_top } from '../reconcile/triage.js';
+import { find_git_top, triage_docs, type TriageDoc } from '../reconcile/triage.js';
 import { build_repo_index, extract_references, resolve_references, type RelatedRepo } from '../reconcile/references.js';
+import { write_review_skeletons } from '../reconcile/review.js';
 import { execFileSync } from 'child_process';
 import { get_cold_pathspec } from '../reconcile/rotation.js';
 
@@ -27,6 +28,8 @@ export interface IntegrateOptions {
   silent?: boolean;
   /** Target domain, overriding the frontmatter `domains:` and detection (#39). */
   domain?: string;
+  /** Also write the review skeleton for the new doc (`hewtd reconcile --write-review`, #98). */
+  review?: boolean;
 }
 
 export interface IntegrateResult {
@@ -40,6 +43,10 @@ export interface IntegrateResult {
   metadata?: PartialDocumentMetadata;
   /** Files/URLs this run added to the doc's `sources` (citation counts in `sourceCounts`). */
   sources_added?: string[];
+  /** Where the new doc lands in reconcile triage (lane, reasons, missing refs); absent on a dry run, outside a git checkout, or when `silent` without `review`. */
+  triage?: Pick<TriageDoc, 'lane' | 'reasons' | 'missing'> & { unknown: string[] };
+  /** Review skeleton written by `review: true`, relative to the repo root. */
+  review_file?: string;
   error?: string;
 }
 
@@ -63,6 +70,7 @@ export async function integrate_document(
     force = false,
     silent = false,
     domain: domain_override,
+    review = false,
   } = options;
 
   const result: IntegrateResult = {
@@ -159,6 +167,7 @@ export async function integrate_document(
       content,
       docs_root: docs_root,
       existing_metadata,
+      infer_purpose: false,
     });
 
     const final_metadata = merge_metadata(existing_metadata, generated);
@@ -186,12 +195,22 @@ export async function integrate_document(
     if (domain_override) {
       final_metadata.domains = [
         domain_override,
-        ...(final_metadata.domains ?? []).filter((doc) => doc !== domain_override),
-      ];
+        ...(existing_metadata.domains ?? []).filter((doc) => doc !== domain_override),
+      ]; // only the requested domain plus the doc's own, never a detected extra (#98)
     }
     const file_name = basename(file_path);
     const target_path = join(docs_root, target_domain, file_name);
     result.target_path = target_path;
+    const copied = resolve(file_path) !== resolve(target_path);
+
+    // Never overwrite a different doc; --force only bypasses the duplicate check.
+    if (copied && (await is_path_present(target_path))) {
+      const same_body = parse_frontmatter(await readFile(target_path, 'utf-8')).content.trim() === parse_frontmatter(content).content.trim();
+      result.error = same_body
+        ? `${relative(docs_root, target_path)} is already integrated (same content apart from the frontmatter hewtd added). Nothing was written.`
+        : `${relative(docs_root, target_path)} already exists and is a different doc; give the file another name or use --domain. Nothing was written.`;
+      return result;
+    }
 
     // A doc already in the tree must not be copied (that leaves two). Moving it
     // would break inbound links, so only the in-place rewrite is allowed.
@@ -245,7 +264,12 @@ export async function integrate_document(
     if (!silent) {
       logger.newline();
       logger.success('Document integrated successfully!');
+      if (copied) {
+        logger.info('The original file was copied, not moved: delete it yourself if you no longer need it.');
+        if (is_tracked(file_path)) logger.info('Until you remove or archive the tracked original, reconcile counts it as another mention of the names in this doc.');
+      }
     }
+    await report_triage(result, { repo_root, docs_root, config, review, silent, source: copied ? file_path : undefined });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     result.error = message;
@@ -256,6 +280,50 @@ export async function integrate_document(
   }
 
   return result;
+}
+
+/** True when git tracks the file (an untracked draft is not mention evidence for reconcile). */
+function is_tracked(file_path: string): boolean {
+  try {
+    // eslint-disable-next-line id-denylist -- child_process option name
+    execFileSync('git', ['ls-files', '--error-unmatch', '--', basename(file_path)], { cwd: dirname(resolve(file_path)), stdio: 'ignore' });
+    return true;
+  } catch { return false; }
+}
+
+/** Say where the new doc stands in reconcile triage and what to do next (#98); best effort, never fails the integrate. */
+async function report_triage(
+  result: IntegrateResult,
+  context: { repo_root: string; docs_root: string; config: PluginConfig; review: boolean; silent: boolean; source?: string | undefined }
+): Promise<void> {
+  const { repo_root, docs_root, config, review, silent, source } = context;
+  if (silent && !review) return; // triage builds the repo index: batch callers (reconcile --outside) skip it
+  const doc_path = relative(docs_root, result.target_path!).replace(/\\/g, '/');
+  try {
+    const triaged = await triage_docs({ root: repo_root, docs_root, rels: [doc_path], config, ...(source && { ignore_mentions: [relative(find_git_top(docs_root) ?? repo_root, resolve(source)).replace(/\\/g, '/')] }) });
+    const doc = triaged.docs[0];
+    if (!doc) return;
+    // eslint-disable-next-line id-denylist -- serialized key (triage JSON)
+    const unknown = doc.refs.filter((reference) => reference.status === 'unknown').map((reference) => reference.ref);
+    result.triage = { lane: doc.lane, reasons: doc.reasons, missing: doc.missing, unknown };
+    if (review) {
+      const [file] = await write_review_skeletons({ root: repo_root, docs_root, triage: triaged, scope: doc_path, include_clean: true });
+      if (file) result.review_file = relative(repo_root, file);
+    }
+  } catch (error) {
+    if (!silent) logger.warn(`Could not triage the new doc: ${error instanceof Error ? error.message : String(error)}`);
+    return;
+  }
+  if (silent) return;
+  const { lane, reasons, missing, unknown } = result.triage!;
+  logger.newline();
+  logger.info(`Reconcile lane: ${lane}${reasons.length ? ` (${reasons.join('; ')})` : ''}`);
+  for (const reference of missing) logger.warn(`  missing reference: ${reference} (fix the doc, or list it under external_refs if it is fine)`);
+  for (const reference of unknown) logger.info(`  unverified reference: ${reference} (not found in the code index; check it, or list it under external_refs)`);
+  if (result.review_file) logger.info(`  wrote ${result.review_file}`);
+  logger.info(result.review_file
+    ? `Next: fill ${result.review_file} (verdict, sources, external_refs, purpose, symptoms), then \`hewtd reconcile --apply ${result.review_file}\`; or commit and run /hit-em-with-the-docs:reconcile ${doc_path}`
+    : `Next: write purpose and symptoms, then \`hewtd reconcile --changed --write-review\` (no commit needed), judge the entry and --apply; or commit and run /hit-em-with-the-docs:reconcile ${doc_path}`);
 }
 
 /**

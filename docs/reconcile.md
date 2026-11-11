@@ -24,12 +24,29 @@ hewtd reconcile security --write-review    # write review-file skeletons
 hewtd reconcile --apply .hewtd/reconcile/review-1-1.md
 hewtd reconcile --status [--next 10]       # ledger progress
 hewtd reconcile --outside [--write-review] # docs outside the docs root
+hewtd reconcile --changed [--json|--write-review|--status]  # docs created or changed since their last review (3.2.0)
+hewtd reconcile --changed --check [--cached]  # advisory: exit 1 only if reconcile.require_review is true
 hewtd reconcile --secrets [scope] [--json] # masked secret scan (2.17.0)
 hewtd reconcile --overview "<question>" [--limit N] [--json]  # seed an overview (2.18.0)
 hewtd reconcile --write-review --overview <members-file>      # overview review skeleton
 ```
 
 Flags: `-p/--docs-path`, `--json`, `--serial`, `--team`, `--batch <id>`.
+
+## After creating or updating docs (`--changed`, 3.2.0)
+
+A doc you write, `integrate` or edit is finished only when it has been reconciled. You are the judge:
+
+```bash
+hewtd reconcile --changed --write-review   # no scope needed (scope args narrow it), no clean tree needed
+# per entry: check the doc against the code, "verdict": "verify", fill sources, external_refs,
+# frontmatter purpose and symptoms, tick accept
+hewtd reconcile --apply .hewtd/reconcile/review-<batch>-*.md   # last_verified, ledger verdict, commit
+```
+
+One rule decides "not reviewed" for `--changed`, `audit` and the hook check, over the docs triage judges (knowledge-base fact files and a docs-root README included; `archive/`, dot folders, `INDEX.md`, `REGISTRY.md` excluded; the check also skips the root `reports/` folder, hewtd's own generated output). A doc with a ledger entry is unreviewed unless the entry is a verdict on its current content. A doc with no entry (a fresh clone, worktree, CI or another developer: the ledger is local and gitignored) is unreviewed when it has no `last_verified`, has uncommitted changes, or its latest commit is dated after its `last_verified`. Dates are days, so a same-day edit after the review is not caught without the ledger. Outside git, `last_verified` alone counts as a review. `--changed` takes scope args, `--json`, `--write-review` (clean docs included) and `--status`, and never saves the ledger. A repo that never ran reconcile will see every doc without `last_verified` listed as new.
+
+Safety net: `hewtd audit` warns `DOCS_UNREVIEWED` with the count (advisory, never fails `--strict`). `hewtd reconcile --changed --check [--cached]` is what the pre-commit hook runs (`hewtd hooks install`; an older block is upgraded in place). It exits 1 only when `reconcile.require_review` is `true` (default `false`); otherwise it warns. The check is skipped (exit 0, one-line note) when `HEWTD_REVIEWED_COMMIT` is set: hewtd sets it on the commits it makes itself (`--apply` batches), whose ledger entry is written just after the commit.
 
 ## Lanes
 

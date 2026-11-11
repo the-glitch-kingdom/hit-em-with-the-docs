@@ -17,7 +17,14 @@ import { get_cold_prefix, is_in_cold } from '../reconcile/rotation.js';
 const CACHE_FILE = '.hewtd/graph-cache.json';
 const GRAPH_FILE = '.hewtd/graph.json';
 const CACHE_VERSION = 2;
-const hewtd_version = (createRequire(import.meta.url)('../../../package.json') as { version: string }).version;
+/** hewtd's version, read on first use: the action bundle (ncc) replaces createRequire, so reading it at import time crashed any bundle that imports this module. */
+let cached_version: string | undefined;
+function get_hewtd_version(): string {
+  if (cached_version === undefined) {
+    try { cached_version = (createRequire(import.meta.url)('../../../package.json') as { version: string }).version; } catch { cached_version = 'unknown'; }
+  }
+  return cached_version;
+}
 
 export interface Fingerprint { value: string; graph_hash: string }
 export interface StalenessCache { head: string; entries: Record<string, StalenessSignal> }
@@ -113,7 +120,7 @@ export function compute_fingerprint(options: { git_top: string; docs_root: strin
         return `${entry}\0${content}`;
       });
     const ledger = existsSync(options.ledger_path) ? hash_text(readFileSync(options.ledger_path, 'utf-8')) : '';
-    return hash_text(JSON.stringify([hewtd_version, head, dirty, ledger, config, options.docs_root, options.docs, list_bins(git_top)]));
+    return hash_text(JSON.stringify([get_hewtd_version(), head, dirty, ledger, config, options.docs_root, options.docs, list_bins(git_top)]));
   } catch { return null; }
 }
 
@@ -174,6 +181,6 @@ export function compute_code_snapshot(options: { git_top: string; docs_root: str
       try { content = hash_text(readFileSync(join(git_top, file), 'utf-8')); } catch { /* deleted */ }
       dirty[file] = `${status}\0${content}`;
     }
-    return { state: hash_text(JSON.stringify([hewtd_version, config, options.docs_root])), head, dirty, bins: list_bins(git_top) };
+    return { state: hash_text(JSON.stringify([get_hewtd_version(), config, options.docs_root])), head, dirty, bins: list_bins(git_top) };
   } catch { return null; }
 }

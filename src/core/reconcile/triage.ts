@@ -17,6 +17,8 @@ import { compute_content_hash, is_reviewed, build_ledger_entry, type Ledger } fr
 import { find_section } from '../links/anchors.js';
 import { find_duplicates, type Duplicate } from './duplicates.js';
 import { time_stage } from '../graph/timing.js';
+import { find_file_dates } from '../graph/dates.js';
+import { resolve_git_top } from './outside.js';
 import { find_secrets, scan_file, type SecretFinding } from './secrets.js';
 import { get_cold_prefix, is_in_cold } from './rotation.js';
 
@@ -140,6 +142,43 @@ export async function list_markdown_files(dir_path: string): Promise<string[]> {
   return found;
 }
 
+/** `last_verified` as YYYY-MM-DD, or '' when absent. */
+const get_verified_day = (frontmatter: Record<string, unknown>): string => {
+  const value = frontmatter.last_verified;
+  return value instanceof Date ? value.toISOString().slice(0, 10) : value ? String(value).slice(0, 10) : '';
+};
+
+/**
+ * THE rule for "created or changed since the last review" (#98); `--changed`, audit's DOCS_UNREVIEWED and the
+ * pre-commit check all call it, over the docs triage judges (`list_markdown_files`), or `doc_paths` narrowed from them.
+ * A doc with a ledger entry is unreviewed unless the entry is a verdict on its current content. A doc with no entry
+ * (fresh clone, worktree, CI: the ledger is local and gitignored) is unreviewed when it has no `last_verified`, has
+ * uncommitted changes, or its latest commit is dated after `last_verified`. A same-day edit after the review is not
+ * caught without the ledger (dates are days). Outside git, `last_verified` alone counts as a review.
+ */
+export async function find_unreviewed_docs(options: { docs_root: string; ledger: Ledger; doc_paths?: string[] }): Promise<string[]> {
+  const { docs_root, ledger } = options;
+  // shortcut: root reports/ (hewtd's own generated audit output) is skipped, as the audit corpus scan skips it; triage by scope still lists it
+  const all = (await list_markdown_files(docs_root)).map((file) => format_posix_path(relative(docs_root, file))).filter((doc_path) => !doc_path.startsWith('reports/')).sort();
+  const wanted = options.doc_paths ? new Set(options.doc_paths) : undefined;
+  const git_top = resolve_git_top(docs_root);
+  const dated = find_file_dates(git_top);
+  let dirty = new Set<string>();
+  // eslint-disable-next-line id-denylist -- child_process option name
+  try { dirty = new Set(execFileSync('git', ['-c', 'core.quotepath=off', 'status', '--porcelain', '-z', '--no-renames', '-uall', '--', docs_root], { cwd: git_top, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 1 << 28 }).split('\0').filter(Boolean).map((line) => line.slice(3))); } catch { /* not a repo */ }
+  return all.filter((doc_path) => {
+    if (wanted && !wanted.has(doc_path)) return false;
+    const text = readFileSync(join(docs_root, doc_path), 'utf-8');
+    const entry = ledger.entries[doc_path];
+    if (is_reviewed(entry, compute_content_hash(text))) return false;
+    if (entry) return true;
+    const verified = get_verified_day(parse_frontmatter<Record<string, unknown>>(text).data);
+    if (!verified) return true;
+    const repo_path = format_posix_path(relative(git_top, join(docs_root, doc_path)));
+    return dirty.has(repo_path) || (dated?.dates.get(repo_path) ?? '') > verified;
+  });
+}
+
 /**
  * Scope args: a file, a folder or a domain name (a folder under the docs path).
  * With `next`, only the first N docs the ledger has not reviewed (or that changed since).
@@ -212,6 +251,8 @@ export async function triage_docs(options: {
   duplicates?: Map<string, Duplicate[]>;
   /** Code-derived symbol answers kept between runs (graph export), valid for one code state. */
   symbol_table?: SymbolTable;
+  /** Repo-relative docs that are the same doc as one under triage (integrate's source copy): not mention evidence (#98). */
+  ignore_mentions?: string[];
   /** Staged run (#97): the LIVE docs folder whose git history stands in for each staged doc (same relative path); a staged doc with no live counterpart has none. */
   history_docs_root?: string;
 }): Promise<TriageResult> {
@@ -262,7 +303,7 @@ export async function triage_docs(options: {
   let stale_warned = false;
   for (const doc of loaded) {
     const abs_path = join(docs_root, doc.doc_path);
-    const resolved: ResolvedReference[] = await time_stage('resolve refs', () => resolve_references(index, doc.references, { doc_file: abs_path, docs_root: docs_root, related: sibling_repos, external_refs: Array.isArray(doc.data.external_refs) ? doc.data.external_refs.filter((item): item is string => typeof item === 'string') : [] }));
+    const resolved: ResolvedReference[] = await time_stage('resolve refs', () => resolve_references(index, doc.references, { doc_file: abs_path, docs_root: docs_root, related: sibling_repos, external_refs: Array.isArray(doc.data.external_refs) ? doc.data.external_refs.filter((item): item is string => typeof item === 'string') : [], ...(options.ignore_mentions && { ignore_mentions: options.ignore_mentions }) }));
     const sources = Array.isArray(doc.data.sources) ? doc.data.sources.filter((source): source is string => typeof source === 'string') : [];
     // Only path-like sources are checkable; URLs and prose citations are not claims about the repo.
     // `<name>:<path>` names a file in a related repo (read-only); checked there, not in this repo.
@@ -413,6 +454,19 @@ export async function triage_docs(options: {
     schemaFiles: index.schema_files,
     peripheral,
   };
+}
+
+/**
+ * `reconcile --changed` (#98): the docs created or changed since their last review. Not reviewed (see `is_reviewed`) and
+ * either edited after the ledger last saw them, or triaging outside the clean lane (a new doc). Writes nothing, the ledger included:
+ * saving the new hashes would make an edited doc look reviewed. Dirty docs are expected here, so there is no clean-tree check.
+ */
+export async function select_changed(options: { root: string; docs_root: string; config: PluginConfig; ledger: Ledger; scope?: string[] }): Promise<{ doc_paths: string[]; triage: TriageResult }> {
+  const { docs_root, ledger } = options;
+  const everything = options.scope?.length ? await resolve_scope(docs_root, options.scope) : (await list_markdown_files(docs_root)).map((file) => format_posix_path(relative(docs_root, file))).sort();
+  const doc_paths = await find_unreviewed_docs({ docs_root, ledger, doc_paths: everything });
+  const run = (rels: string[]): Promise<TriageResult> => triage_docs({ root: options.root, docs_root, rels, config: options.config, ledger: structuredClone(ledger) });
+  return { doc_paths, triage: await run(doc_paths) };
 }
 
 /** Read-only resolution of some docs for the graph export: no ledger, no dirty-tree check (that lives in the CLI). */

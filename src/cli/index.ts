@@ -374,6 +374,7 @@ program
   .option('--dry-run', 'Preview without writing', false)
   .option('-f, --force', 'Force integration even with duplicates', false)
   .option('-d, --domain <domain>', "Target domain (default: the doc's first declared domain, else detected)")
+  .option('--review', 'Also write the reconcile review skeleton for the new doc', false)
   .action(async (file, options) => {
     const docs_root = resolve(process.cwd(), options.path);
     const file_path = resolve(process.cwd(), file);
@@ -385,6 +386,7 @@ program
       dry_run: options.dryRun,
       force: options.force,
       domain: options.domain,
+      review: options.review,
     });
 
     if (!result.success) {
@@ -1168,6 +1170,9 @@ program
   .option('--undo <generation>', 'Restore a cold generation as the live docs, byte for byte; the rejected tree moves to a new stage under .hewtd/stage. Needs --confirm', undefined)
   .option('--generations', 'List the cold generations with path, date, checksum status (ok / CHANGED / MISSING) and secret finding count; with --json, machine-readable', false)
   .option('--confirm', 'Required to carry out --promote or --undo', false)
+  .option('--changed', 'Reconcile the docs created or changed since their last review (new, edited, or never reviewed) instead of naming a scope; scope args narrow it. Writes no ledger state', false)
+  .option('--check', 'With --changed: advisory check for hooks and CI. Prints the unreviewed docs and exits 0, or 1 when reconcile.require_review is true', false)
+  .option('--cached', 'With --changed --check: look only at docs staged for commit (the git index)', false)
   .option('--gaps <file>', 'Classify missed search queries (gaps.v1 file or one question per line) into user_phrase proposals, new-doc candidates and open questions; writes only .hewtd/reconcile/gaps-report-<date>.md', undefined)
   .action(async (scope: string[], options, command: Command) => {
     const { load_plugin_config } = await import('../utils/config.js');
@@ -1251,6 +1256,23 @@ program
         logger.info(`  next: hewtd reconcile --staged ${relative(process.cwd(), made.stage_dir) || '.'} <scope> --write-review`);
       } catch (entry) {
         logger.error((entry as Error).message);
+        process.exitCode = 1;
+      }
+      return;
+    }
+    if (options.changed && options.check) {
+      if (process.env.HEWTD_REVIEWED_COMMIT) { logger.info('reconcile --changed --check: skipped, this commit is hewtd\'s own (HEWTD_REVIEWED_COMMIT).'); return; }
+      const { find_unreviewed_docs } = await import('../core/reconcile/triage.js');
+      let unreviewed: string[] = [];
+      try {
+        const cached_docs = options.cached ? (await import('../core/reconcile/hooks.js')).list_staged_docs(repo_root, docs_root) : undefined;
+        unreviewed = await find_unreviewed_docs({ docs_root, ledger: await load_ledger(ledger_file), ...(cached_docs && { doc_paths: cached_docs }) });
+      } catch { /* no docs tree or not a git repo: nothing to check, never break a commit */ }
+      if (!unreviewed.length) return;
+      const shown = unreviewed.slice(0, 10).join(', ') + (unreviewed.length > 10 ? `, +${unreviewed.length - 10} more` : '');
+      logger.warn(`${unreviewed.length} doc(s) not reviewed since they were created or changed: ${shown}. Run \`hewtd reconcile --changed --write-review\`, judge each entry, then \`hewtd reconcile --apply <file>\`.`);
+      if (config.reconcile.require_review) {
+        logger.error('Blocked: reconcile.require_review is true. Review the docs, or set it to false to only warn.');
         process.exitCode = 1;
       }
       return;
@@ -1369,26 +1391,28 @@ program
       return;
     }
     if (!options.status) {
-      const { resolve_scope, find_dirty_in_scope: dirty_in_scope, triage_docs: triage } = await import('../core/reconcile/triage.js');
+      const { resolve_scope, find_dirty_in_scope: dirty_in_scope, triage_docs: triage, select_changed } = await import('../core/reconcile/triage.js');
       const { write_ledger: save_ledger } = await import('../core/reconcile/ledger.js');
       try {
         if (options.serial && options.team) throw new Error('--serial and --team are mutually exclusive');
         const ledger = await load_ledger(ledger_file);
         const next = options.next ? parseInt(options.next, 10) || undefined : undefined;
-        const doc_paths = await resolve_scope(docs_root, scope, { ...(next && { next }), ledger });
-        const dirty = dirty_in_scope(docs_root, doc_paths);
+        // --changed: dirty docs are the point, so no clean-tree check; apply commits them with the batch. The ledger is not saved.
+        const selected = options.changed ? await select_changed({ root: repo_root, docs_root, config, ledger, scope }) : undefined;
+        const doc_paths = selected?.doc_paths ?? await resolve_scope(docs_root, scope, { ...(next && { next }), ledger });
+        const dirty = selected ? [] : dirty_in_scope(docs_root, doc_paths);
         if (dirty.length) {
           throw new Error(`Refusing to start: uncommitted changes in scope (commit or stash first):\n${dirty.map((doc) => `  ${doc}`).join('\n')}`);
         }
-        const result = await triage({
+        const result = selected?.triage ?? await triage({
           root: repo_root, docs_root: docs_root, rels: doc_paths, config, ledger,
           ...(staged && { history_docs_root: resolve(repo_root, staged.docs_path) }), // a stage is untracked: git history comes from the live counterpart
           ...((options.serial && { mode: 'serial' }) || (options.team && { mode: 'team' }) || {}),
         });
-        await save_ledger(ledger_file, ledger);
+        if (!selected) await save_ledger(ledger_file, ledger);
         if (options.writeReview) {
           const { write_review_skeletons } = await import('../core/reconcile/review.js');
-          const files = await write_review_skeletons({ root: repo_root, docs_root: docs_root, triage: result, scope: scope.join(' ') || `next ${options.next}`, batch: options.batch, include_clean: scope.length > 0 && !options.next });
+          const files = await write_review_skeletons({ root: repo_root, docs_root: docs_root, triage: result, scope: options.changed ? ['changed', ...scope].join(' ') : scope.join(' ') || `next ${options.next}`, batch: options.batch, include_clean: (scope.length > 0 || !!options.changed) && !options.next });
           files.forEach((file) => logger.info(`  wrote ${relative(repo_root, file)}`));
         }
         if (options.json) {
@@ -1422,6 +1446,11 @@ program
     logger.info(`  reviewed ${st.reviewed} of ${st.total}`);
     for (const [key, value] of Object.entries(st.by_lane)) logger.info(`  lane ${key}: ${value}`);
     for (const [key, value] of Object.entries(st.by_verdict)) logger.info(`  verdict ${key}: ${value}`);
+    if (options.changed) {
+      const { select_changed } = await import('../core/reconcile/triage.js');
+      const { doc_paths: changed_paths } = await select_changed({ root: repo_root, docs_root, config, ledger, scope });
+      logger.info(`  changed or new since review: ${changed_paths.length}${changed_paths.length ? ` (${changed_paths.join(', ')})` : ''}`);
+    }
     if (st.metadata_updated) logger.info(`  reviewed, metadata updated since: ${st.metadata_updated}`);
     if (st.next_unreviewed.length) logger.info(`  next unreviewed:\n${st.next_unreviewed.map((path_text) => `    ${path_text}`).join('\n')}`);
     // Cheap: the last graph export plus each reviewed doc's frontmatter; never runs triage.

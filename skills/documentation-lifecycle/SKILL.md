@@ -22,9 +22,12 @@ Run every command with `npx hit-em-with-the-docs …` (or `hewtd …`).
 Write the markdown wherever is convenient, then:
 
 ```bash
-hewtd integrate path/to/new-doc.md          # classifies + moves + registers it
+hewtd integrate path/to/new-doc.md          # classifies + copies + registers it
 hewtd integrate path/to/new-doc.md --dry-run  # preview the chosen domain first
+hewtd integrate path/to/new-doc.md --review   # also write the reconcile review skeleton
 ```
+
+Start from `templates/doc.template.md` (title, tier, domains, `purpose`, `symptoms`, `sources`, optional `external_refs`).
 
 `integrate` also refuses any input that contains a secret (masked findings, not bypassed by `--force`; fix the value or use `hewtd secrets --baseline-add`). For a new doc it records up to `integrate.sources_max` file-level `sources`, never `last_verified`.
 
@@ -32,19 +35,45 @@ hewtd integrate path/to/new-doc.md --dry-run  # preview the chosen domain first
 ("already in the docs tree"); use `maintain --fix` or `metadata-sync` for it.
 
 `integrate` picks the domain from `--domain <id>` if given, else the doc's own
-first `domains:` entry, else by keyword-matching the content. It moves the file
-into `.documentation/<domain>/`, stamps frontmatter (`status: draft`, `tier:
+first `domains:` entry, else by keyword-matching the content. With `--domain`
+the doc gets that domain plus any your own frontmatter lists, never a detected
+extra. It **copies** the file into `.documentation/<domain>/` (the original stays
+where it was; delete it yourself, unless you integrated a file already in place, which is rewritten, not copied; it refuses to overwrite a different doc of the same name), stamps frontmatter (`status: draft`, `tier:
 guide`, `version: 1.0.0`, `last_updated`, `word_count`), and regenerates the
 indexes. It never overwrites frontmatter you wrote yourself — it only fills what
 is missing.
 
+It then prints the new doc's reconcile lane (a new doc lands in `check`, since
+nothing is verified yet), each missing or unverified reference (fix the doc, or
+list the name under `external_refs`), and the next step: commit the doc, then
+`/hit-em-with-the-docs:reconcile <doc>`. `--review` writes the review skeleton
+for it at once; the skeleton needs no commit, but reconcile refuses to start on an
+uncommitted doc.
+
 Write `purpose:` (one sentence: the question the doc answers) and `symptoms:`
 (plain strings: how a person would describe the problem, or the exact error
-text) on every new doc. `integrate` does not invent a purpose; a missing one
-shows up as a warning. Titles must name the specific subject.
+text) on every new doc. `integrate` does not invent a purpose (it never copies the first paragraph); a
+missing one shows up as an audit warning. Titles must name the specific subject.
+
+After `integrate` (or a direct write), finish with the one ending below.
 
 A markdown file left outside `.documentation/` is invisible to hewtd: not
 indexed, not link-checked, not validated. Don't hand-create `docs/` folders.
+
+### The one ending for every create or update
+
+A doc you write or edit with hewtd (a new file, `integrate`, or an edit to a reviewed doc) is not finished until it has been through reconcile, so it ends with
+`last_verified`, a `verify` verdict in the ledger, every missing ref decided (fix it, or `external_refs`), a `purpose`, `symptoms`, and a commit. You are the judge:
+
+```bash
+hewtd reconcile --changed --write-review   # lists docs created or changed since their last review, writes one review file
+# for each entry: check the doc against the code, set "verdict": "verify", fill "sources",
+# "external_refs", and "frontmatter" (purpose, symptoms); tick "- [x] accept"
+hewtd reconcile --apply .hewtd/reconcile/review-<batch>-*.md   # stamps last_verified, records the verdict, commits
+```
+
+`--changed` needs no commit first; apply commits the docs it touches in one batch. `hewtd audit` warns (`DOCS_UNREVIEWED`) with the count while any are left, and the opt-in pre-commit hook
+(`hewtd hooks install`) warns about staged ones (hewtd's own `--apply` commits are exempt via `HEWTD_REVIEWED_COMMIT`; without the local ledger a doc is unreviewed when it has no `last_verified`, is uncommitted, or was committed after its `last_verified` day); set `reconcile.require_review: true` to make the hook block the commit instead. `integrate --review` is the single-doc form of the same step.
 
 ### The `status` vocabulary is extensible
 
@@ -68,6 +97,8 @@ Edit the document normally, then:
 hewtd maintain --quick     # regenerate indexes + sync metadata
 hewtd maintain --fix       # also auto-fix what it can
 ```
+
+Then run the one ending below: an edited doc drops its earlier review until it is reviewed again.
 
 Never hand-edit `INDEX.md` or `REGISTRY.md` — a `PreToolUse` guard denies it.
 

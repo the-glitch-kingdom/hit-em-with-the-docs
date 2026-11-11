@@ -183,6 +183,10 @@ Apply is serial, one commit per batch, archives through the normal archive path,
 
 Then suggest `hewtd audit` and `hewtd link-check`, and `hewtd reconcile --status` to see progress; `--next N` continues with the next unreviewed docs. Two runs on an unchanged scope produce no changes.
 
+## After creating or updating docs (`--changed`)
+
+When you wrote or edited docs yourself (a new file, `hewtd integrate`, an edit to a reviewed doc), you are the judge. Run `hewtd reconcile --changed --write-review` (scope args are optional; dirty docs are expected, no commit first). It writes one review file with exactly the docs created or changed since their last review. For each entry check the doc against the code and set `"verdict": "verify"`, fill `sources`, decide each `missing` ref (a `patch`, or `external_refs`), put `purpose` and `symptoms` under `frontmatter`, tick accept, then `--apply`. Apply stamps `last_verified`, records the verdict and commits the batch. A second `--changed` lists none. `hewtd reconcile --changed --check [--cached]` is the advisory check the pre-commit hook and CI run: it exits 1 only when `reconcile.require_review` is true.
+
 ## What NOT to do
 
 - Do not edit docs, frontmatter or folders directly. Everything goes through a review file and `--apply`.

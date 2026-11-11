@@ -60,6 +60,12 @@ hewtd hooks uninstall       # removes exactly that block (byte-exact)
   `exec` cannot skip it. A hook that is a symlink or not a POSIX shell script is
   refused with a one-line snippet to add yourself. Uninstall removes exactly the
   block and deletes a hook file it created.
+- The same block also runs `hewtd reconcile --changed --check --cached` (3.2.0): it warns about
+  staged docs not yet reviewed and blocks only when `reconcile.require_review` is `true`.
+  hewtd's own commits (`reconcile --apply`) set `HEWTD_REVIEWED_COMMIT=1` and skip this check; the secrets scan still runs.
+  Without the local ledger (fresh clone, CI) a doc counts as unreviewed when it has no `last_verified`, has
+  uncommitted changes, or was committed after its `last_verified` day (a same-day edit is not caught).
+  `hooks install` upgrades an older block of ours in place; `uninstall` removes either version.
 - The hook fails closed: if `hewtd` cannot run (not installed), the commit is
   refused; uninstall the hook to bypass it deliberately.
 - Baseline entries need a fingerprint and a reason; others are ignored with a warning.
@@ -83,6 +89,15 @@ cites, so a later `reconcile` has something to check.
 - integrate never writes `last_verified`: a fresh doc triages to `check`
   until someone verifies it.
 - `sources` is for verification only. Search does not index it.
+
+## integrate hands the new doc to reconcile (#98)
+
+integrate copies the source (the original stays, unless it already sits at the target and is rewritten in place; a different doc already at the target is never overwritten, even with `--force`), then prints the new doc's reconcile
+lane, each missing or unverified reference and the next step
+(`/hit-em-with-the-docs:reconcile <doc>`). `--review` also writes the review skeleton.
+It does not fill `purpose` from the first paragraph (a missing purpose stays missing, so
+`audit` warns), and `-d <domain>` gives the doc only that domain plus any its own
+frontmatter lists. `templates/doc.template.md` is the starting point for a new doc.
 
 ## No backfill
 
@@ -111,6 +126,11 @@ Same fix as above, then re-stage. To stop the hook, run `hewtd hooks uninstall`.
 
 ### "maintain rewrote my dates or quotes"
 Fixed in 3.1.0: only owned keys are rewritten. Upgrade, then `git diff` should show only the keys the command meant to change.
+
+### "my new doc is in the check lane right away"
+Expected: integrate never writes `last_verified`. Fix or list (`external_refs`) any
+reference it printed, then run `hewtd reconcile --changed --write-review`, judge the entry
+and `--apply` it. `hewtd audit` shows `DOCS_UNREVIEWED` until you do.
 
 ### "integrate recorded no sources"
 The doc cited nothing that resolves to a tracked file, `integrate.sources_max`

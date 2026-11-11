@@ -464,8 +464,11 @@ Verdicts: `verify`, `rewrite`, `archive`, `unverifiable`, `fields`, `secret`,
   (`rolled back: <msg>`).
 - **Exit code**: 1 on any error outcome (also for rollback and for entries
   resolving outside the project root), with a summary line; 0 otherwise.
-- A landed `rewrite` is still recorded with verdict `rewrite`, so the ledger counts the
-  doc as unreviewed and `--next` offers it again. Re-judge it, or mark it `verify`.
+- A landed `rewrite` is recorded with verdict `rewrite` and the post-apply content hash, and
+  counts as reviewed (3.2.2, #103): `--next`, `--changed`, audit's `DOCS_UNREVIEWED`, the
+  pre-commit check and the promote warning skip it until the doc is edited. This includes a
+  rewrite applied on a stage (no commit). A `rewrite` entry recorded before 3.1.6
+  (`reviewed_on` before 2026-11-10) never landed its draft and stays unreviewed.
 
 ## Staged reconcile (cold rotation, #97)
 

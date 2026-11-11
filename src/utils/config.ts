@@ -231,6 +231,8 @@ export const cold_generation_schema = z.object({
   disk_checksum: z.string().optional(),
   secrets_findings: z.array(z.string()).catch([]),
   untracked_files: z.array(z.string()).catch([]),
+  /** Scanner configs the promote edited or created to allowlist the cold root (#101); undo reverts them. */
+  scanner_allowlists: z.array(z.string()).catch([]),
 });
 export type ColdGeneration = z.infer<typeof cold_generation_schema>;
 export const DEFAULT_COLD_ROOT = '.documentation-cold';
@@ -247,6 +249,8 @@ const reconcile_config_schema = z
     schema_sources: z.array(z.string()).catch(DEFAULT_RECONCILE_SCHEMA_SOURCES),
     /** Where `reconcile --promote` keeps cold generations (#97): repo-relative, outside the docs root. */
     cold_root: z.string().min(1).catch(DEFAULT_COLD_ROOT),
+    /** `--promote` allowlists the cold root in the repo's secret scanner configs (.gitleaks.toml, .secrets.baseline); false leaves them alone (#101). */
+    cold_scanner_allowlist: z.boolean().catch(true),
     related_repos: lenient_related_repos,
     secrets: secrets_config_schema,
     /** Optional doc search hook (#59): argv template with a `{query}` placeholder; stdout lines are doc paths. */
@@ -273,6 +277,7 @@ const reconcile_config_schema = z
     ledger_path: '.hewtd/reconcile.json',
     schema_sources: DEFAULT_RECONCILE_SCHEMA_SOURCES,
     cold_root: DEFAULT_COLD_ROOT,
+    cold_scanner_allowlist: true,
     related_repos: [] as Array<{ name: string; path: string }>,
     secrets: { allow: [] as SecretAllow[], disabled_rules: [] as string[] },
     require_review: false,

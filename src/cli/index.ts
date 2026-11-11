@@ -35,6 +35,7 @@ import { write_report_stamps } from '../generators/stamp-reports.js';
 import { write_raw_config } from '../utils/config.js';
 import { get_status_values } from '../core/metadata/status-registry.js';
 import { resolve_docs_path } from '../utils/docs-root.js';
+import { get_cold_regex } from '../core/reconcile/scanner-allowlist.js';
 
 export const program = new Command();
 
@@ -1166,7 +1167,7 @@ program
   .option('--apply <files...>', 'Apply the accepted entries of review files (serial, one commit per batch)')
   .option('--stage <dir>', 'Snapshot the live docs working tree (archive/ and gitignored files included) into <dir>/docs for a staged reconcile; <dir> must be empty or new, inside the repo, outside the docs tree and on its filesystem (use .hewtd/<name>); never commit it', undefined)
   .option('--staged <dir>', 'Run any mode on the stage made by --stage: its docs, ledger.json and reconcile/ review files; the live tree, ledger and git are untouched (no commits). Not with -p', undefined)
-  .option('--promote', 'With --staged <dir>: swap the reconciled copy in as the live docs and keep the old tree as a committed, read-only, dated cold generation (reconcile.cold_root). Prints the plan and changes nothing without --confirm', false)
+  .option('--promote', 'With --staged <dir>: swap the reconciled copy in as the live docs and keep the old tree as a committed, read-only, dated cold generation (reconcile.cold_root), allowlisting the cold root in .gitleaks.toml / .secrets.baseline unless reconcile.cold_scanner_allowlist is false. Prints the plan and changes nothing without --confirm', false)
   .option('--undo <generation>', 'Restore a cold generation as the live docs, byte for byte; the rejected tree moves to a new stage under .hewtd/stage. Needs --confirm', undefined)
   .option('--generations', 'List the cold generations with path, date, checksum status (ok / CHANGED / MISSING) and secret finding count; with --json, machine-readable', false)
   .option('--confirm', 'Required to carry out --promote or --undo', false)
@@ -1204,6 +1205,19 @@ program
     const ledger_file = staged && !live_of_stage ? staged.ledger_file : resolve(repo_root, config.reconcile.ledger_path);
     if (staged && !live_of_stage) (await import('../core/reconcile/review.js')).set_review_dir(staged.review_dir);
     if (options.promote || options.undo || options.generations) {
+      const cold_root_of = (plan: import('../core/reconcile/rotation.js').RotationPlan): string => plan.cold_path.slice(0, plan.cold_path.lastIndexOf('/'));
+      const print_rotation_warnings = (plan: import('../core/reconcile/rotation.js').RotationPlan, done = false): void => {
+        const scanner = plan.scanner_edits.map((edit) => `${edit.file}${edit.before === null ? ' (created)' : ''}`).join(', ');
+        if (plan.flagged_files) {
+          const cold_root = cold_root_of(plan);
+          const tail = scanner ? `allowlisted in ${scanner}` : plan.scanner_covered.length ? `already allowlisted in ${plan.scanner_covered.join(', ')}` : config.reconcile.cold_scanner_allowlist ? 'no scanner config hewtd can edit' : 'reconcile.cold_scanner_allowlist is false, so the promote commit will re-add them and a secret scan over it reports them as new';
+          logger.warn(`  ${plan.flagged_files} file(s) in the outgoing tree contain strings secret scanners commonly flag (hewtd found ${plan.secrets_findings.length}); they are re-added under ${cold_root}; ${tail}`);
+        } else if (scanner) logger.info(`  ${cold_root_of(plan)} allowlisted in ${scanner}`);
+        if (plan.scanner_manual.length) logger.warn(`  ${plan.scanner_manual.join(', ')} defines its allowlist in a form hewtd does not edit; add ${get_cold_regex(cold_root_of(plan))} to its allowlist paths by hand`);
+        if (plan.unreviewed_docs) logger.warn(done
+          ? `  ${plan.unreviewed_docs} doc(s) show as unreviewed (DOCS_UNREVIEWED): the stage ledger had no review for them; review them with reconcile --changed`
+          : `  after promote, ${plan.unreviewed_docs} doc(s) will show as unreviewed (DOCS_UNREVIEWED) because the stage ledger has no review for them; put the reviewing ledger at ${plan.ledger_note} first`);
+      };
       try {
         const rotation = await import('../core/reconcile/rotation.js');
         if (options.generations) {
@@ -1221,6 +1235,8 @@ program
           logger.header('hewtd reconcile --undo');
           logger.info(`  restored generation ${done.generation} as ${relative(repo_root, docs_root)} (${done.commit})`);
           if (done.disk_only_absent) logger.warn(`  ${done.disk_only_absent} gitignored (disk-only) file(s) of that generation are absent here and were not restored (a fresh clone does not have them)`);
+          if (done.scanner_kept_for) logger.info(`  the cold-root scanner allowlist stays: generation ${done.scanner_kept_for} is still cold (its undo removes it)`);
+          if (done.scanner_left.length) logger.warn(`  ${done.scanner_left.join(', ')} changed since the promote, so its cold-root allowlist was left in place; remove it by hand`);
           logger.info(`  the rejected tree is in ${done.rejected_stage}/docs (a stage: reconcile it with --staged, or discard it)`);
           await export_graph(docs_root, false);
         } else if (staged) {
@@ -1231,6 +1247,7 @@ program
             logger.info(`  ${plan.docs_path} -> ${plan.cold_path} (read-only, committed as a cold generation)`);
             logger.info(`  ${plan.stage_path}/docs -> ${plan.docs_path}`);
             logger.info(`  ${plan.secrets_findings.length} secret finding(s) in the outgoing tree (recorded as path:line in cold_storage, never values)`);
+            print_rotation_warnings(plan);
             logger.info(`  ${plan.untracked_files.length} gitignored file(s) stay on disk only (listed in cold_storage)`);
             logger.info('  nothing was changed. Re-run with --confirm to rotate.');
             return;
@@ -1238,6 +1255,7 @@ program
           const done = await rotation.run_promote({ repo_root, docs_root, config, stage: staged });
           logger.info(`  promoted ${done.stage_path}; the previous tree is cold generation ${done.generation} at ${done.cold_path} (${done.commit})`);
           logger.info(`  ${done.secrets_findings.length} secret finding(s) in it are recorded in cold_storage; rotate those credentials, they stay in git history`);
+          print_rotation_warnings(done, true);
           await export_graph(docs_root, false);
         }
       } catch (entry) {

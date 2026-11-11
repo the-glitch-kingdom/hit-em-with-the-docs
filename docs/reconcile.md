@@ -515,8 +515,9 @@ outgoing tree stay in git history: rotate those credentials.
 
 A cold generation is history, never current docs: reconcile's reference index, mention search,
 outside lane and symbol search, `hewtd secrets --staged` and `hewtd audit` skip or only check it
-(audit warns, never errors, when a generation's checksum changed). Config: `reconcile.cold_root`
-and `cold_storage` (written by hewtd).
+(audit warns, never errors, when a generation's checksum changed). Config: `reconcile.cold_root`,
+`reconcile.cold_scanner_allowlist` (default `true`: promote allowlists the cold root in `.gitleaks.toml` and
+`.secrets.baseline`, undo reverts it; see [cold-rotation.md](cold-rotation.md)) and `cold_storage` (written by hewtd).
 
 ## Search gaps (2.21.0)
 

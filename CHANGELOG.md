@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.2.1] — 2026-11-11
+
+Fixes #101: a cold promote re-added every baselined secret finding under a new path, so the promote PR failed the project's secret scan. No existing key changes; `reconcile.cold_scanner_allowlist` (default `true`) and the manifest field `scanner_allowlists` are additive.
+
+- reconcile `--promote` allowlists the cold root (only that path) in `.gitleaks.toml` (created with `[extend] useDefault = true` when absent) and in `.secrets.baseline` when present, in the single promote commit. The original text and a hash of the edited text are saved in `<cold_root>/.generations/<gen>/scanners.json`; undo restores the original bytes, or deletes a file promote created, and leaves a file edited since alone with a warning. Undoing an older generation while a newer one is still cold keeps the allowlist (the newer generation's undo removes it). A `.gitleaks.toml` whose root allowlist uses dotted keys or an inline table is left alone and the plan says to add the path by hand. Opt out with `reconcile.cold_scanner_allowlist: false` (scanner files are then not part of the clean-tree check). Other scanners (trufflehog) need a hand-made path exclude.
+- The promote plan and result warn about files holding strings scanners commonly flag, about a scanner config that already allowlists the cold root, and about staged docs that audit will report as `DOCS_UNREVIEWED` after promote (counted with audit's own rule).
+- Promote and undo batch the per-doc git history reads: 1,000 docs went from 23.5 s to 3.7 s (promote) and 3.2 s (undo). Scopes under 20 docs keep the single `--follow` walk.
+- Docs: `docs/cold-rotation.md` (new Secret scanners section), `docs/reconcile.md`, LLM guide, help, reconcile command, README.
+
 ## [3.2.0] — 2026-11-10
 
 Adds cold rotation (#97) and makes every new or changed doc end reconciled (#98). No existing JSON key changes. New config keys are additive: `reconcile.cold_root` (default `.documentation-cold`), `cold_storage` (written by hewtd) and `reconcile.require_review` (default false). One behaviour change: `integrate` no longer fills `purpose` from the first paragraph (#98).

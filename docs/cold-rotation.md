@@ -46,11 +46,38 @@ hewtd reconcile --undo <generation> --confirm                 # 6. roll back
 | `<cold_root>/<YYYY-MM-DD>/` (`-2`, `-3` on a clash) | an old docs tree, files read-only (0444-style) | yes |
 | `<cold_root>/.generations/<gen>/ledger.json` | the outgoing ledger | yes |
 | `<cold_root>/.generations/<gen>/modes.json` | every file's original mode (`path -> octal`), put back on undo | yes |
+| `<cold_root>/.generations/<gen>/scanners.json` | the scanner configs promote edited: original text and a hash of the edited text (only when it edited any) | yes |
 | `<cold_root>/.gitignore` | lists each generation's gitignored files | yes |
+| `.gitleaks.toml`, `.secrets.baseline` | cold root allowlisted for secret scanners (see below) | yes |
 
 `reconcile.cold_root` defaults to `.documentation-cold`. It must not be inside the docs tree, be
 ignored by git or sit on another filesystem. The live ledger is committed only when git does not
 ignore it (the default `.hewtd/reconcile.json` is ignored, so it stays on disk).
+
+## Secret scanners (#101)
+
+The promote commit re-adds the whole old tree under `<cold_root>/<gen>/`, so a PR scan over it (gitleaks
+fingerprints are `commit:file:rule:line`) would report every already-baselined finding as new. Promote
+therefore allowlists the cold root in the scanner configs at the repo root, in the same commit, and records
+the files in the manifest entry (`scanner_allowlists`):
+
+- `.gitleaks.toml`: the path is added to `[allowlist] paths` (or a `[[allowlists]]` block if the file uses that
+  form). A repo without one gets a new file with `[extend] useDefault = true` (so gitleaks' default rules stay on)
+  plus the allowlist.
+- `.secrets.baseline` (detect-secrets, only if present): the path is added to the `should_exclude_file` filter
+  (`exclude.files` in the older format).
+
+Only the cold root is allowlisted. A `.gitleaks.toml` that sets its root allowlist with dotted keys
+(`allowlist.paths = [...]`) or an inline table is left alone (a second `[allowlist]` would be invalid TOML); the plan
+says to add the path by hand. One entry covers every generation, so a later promote finds it in place and edits
+nothing. Undo puts each file back byte for byte (deleting one promote created) when it undoes the last cold generation;
+undoing an older generation while a newer one is still cold keeps the allowlist and hands the record to the newer
+generation, whose undo removes it. A file edited since the promote is left alone and undo says so. Set `reconcile.cold_scanner_allowlist: false` to touch
+no scanner file (an uncommitted scanner file then does not block promote or undo); the plan then warns that the promote commit will re-add the flagged strings. The plan and the
+promote result also say how many files hold strings scanners commonly flag, and how many staged docs will show as
+unreviewed (`DOCS_UNREVIEWED`, by the same rule audit uses: no review on the current content, and without a ledger
+entry no `last_verified` on or after the promote day) because `<stage>/ledger.json` has no review for them: put the reviewing ledger
+there before promoting (without it a promote reports every doc as unreviewed; `reconcile --changed --write-review` on the live tree afterwards clears them). Other scanners (trufflehog, say) are not edited: add a path exclude by hand, for trufflehog a line `^\.documentation-cold/` in the file passed to `--exclude-paths` (use your `reconcile.cold_root`). Undo needs the generation name: `--undo <gen> --confirm`. Promote and undo batch the git history reads, so about 1,000 docs take seconds.
 
 ## Committed versus disk-only
 

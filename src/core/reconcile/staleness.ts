@@ -13,13 +13,13 @@ export type StalenessSignal =
   | { status: 'none' } // doc not in git (new/uncommitted) or no git repo
   | { status: 'unknown'; warning: string }; // shallow clone: history is incomplete
 
-function run_git(repo_root: string, args: string[]): string {
+function run_git(repo_root: string, args: string[], max_buffer = 64 * 1024 * 1024): string {
   return execFileSync('git', args, {
     // eslint-disable-next-line id-denylist -- child_process option name
     cwd: repo_root,
     encoding: 'utf-8',
     stdio: ['ignore', 'pipe', 'ignore'],
-    maxBuffer: 64 * 1024 * 1024,
+    maxBuffer: max_buffer,
   }).trim();
 }
 
@@ -110,6 +110,66 @@ function walk_body_change(repo_root: string, doc_path: string): { commit: string
     match = candidate;
   }
   return { commit: match.sha, date: match.date };
+}
+
+interface WalkCommit { sha: string; date: string; path: string }
+
+/**
+ * Fill the body-change memo for many docs with one `git log` pass and one `git cat-file` per round, instead of a
+ * `git log --follow` plus a cat-file per doc (#101). Same answer as `find_body_change`: the history is followed
+ * through renames (`-M`), newest first, capped at MAX_WALK commits. Best effort: on any git failure the memo is left
+ * as it was and `find_body_change` walks each doc itself. Fewer than `min_docs` docs are not worth a full-history pass.
+ */
+export function prefetch_body_changes(repo_root: string, doc_paths: string[], min_docs = 20): void {
+  const keyed = (doc_path: string): string => JSON.stringify([repo_root, doc_path]);
+  const wanted = [...new Set(doc_paths)].filter((doc_path) => !body_change_memo.has(keyed(doc_path)));
+  if (wanted.length < min_docs) return; // shortcut: a full-history pass costs more than a few --follow walks
+  const walks = new Map<string, WalkCommit[]>();
+  const active = new Map<string, { doc_path: string; commits: WalkCommit[] }>(); // current name of the file -> its doc
+  for (const doc_path of wanted) { const state = { doc_path, commits: [] as WalkCommit[] }; walks.set(doc_path, state.commits); active.set(doc_path, state); }
+  try {
+    const tokens = run_git(repo_root, ['-c', 'core.quotepath=off', 'log', '-z', '--name-status', '-M', '--format=%x01%H%x09%cI'], 1 << 30).split('\0');
+    let commit: { sha: string; date: string } | undefined;
+    for (let i = 0; i < tokens.length && active.size; i++) {
+      const token = tokens[i]!.replace(/^\n/, '');
+      if (token.startsWith('\x01')) { const [sha = '', date = ''] = token.slice(1).split('\t'); commit = { sha, date }; continue; }
+      if (!commit || !token) continue;
+      const renamed = /^[RC]/.test(token);
+      const old_name = renamed ? tokens[++i]! : '';
+      const name = tokens[++i]!;
+      const state = active.get(name);
+      if (!state) continue;
+      state.commits.push({ ...commit, path: name });
+      if (state.commits.length >= MAX_WALK) active.delete(name);
+      else if (token[0] === 'R' && !active.has(old_name)) { active.delete(name); active.set(old_name, state); } // keep following the file under its old name
+    }
+  } catch { return; }
+  const current = new Map<string, string | null>();
+  const pending = new Map<string, number>(); // doc -> index of the next commit to compare; absent once settled
+  for (const [doc_path, commits] of walks) {
+    if (!commits.length) { body_change_memo.set(keyed(doc_path), null); continue; }
+    let body: string | null = null;
+    try { body = get_body(readFileSync(join(repo_root, doc_path), 'utf-8')); } catch { /* unreadable: newest commit */ }
+    current.set(doc_path, body);
+    if (body === null) { body_change_memo.set(keyed(doc_path), { commit: commits[0]!.sha, date: commits[0]!.date }); continue; }
+    pending.set(doc_path, 0);
+  }
+  try {
+    while (pending.size) {
+      const round = [...pending.keys()];
+      const blobs = read_blobs(repo_root, round.map((doc_path) => `${walks.get(doc_path)![pending.get(doc_path)!]!.sha}:${walks.get(doc_path)![pending.get(doc_path)!]!.path}`));
+      for (const [i, doc_path] of round.entries()) {
+        const commits = walks.get(doc_path)!;
+        const at = pending.get(doc_path)!;
+        const blob = blobs[i];
+        const matches = blob !== null && blob !== undefined && get_body(blob) === current.get(doc_path);
+        if (matches && at + 1 < commits.length) { pending.set(doc_path, at + 1); continue; }
+        const match = commits[matches ? at : Math.max(at - 1, 0)]!; // the oldest commit whose body still equals the current one (the newest when none does)
+        body_change_memo.set(keyed(doc_path), { commit: match.sha, date: match.date });
+        pending.delete(doc_path);
+      }
+    }
+  } catch { for (const doc_path of pending.keys()) body_change_memo.delete(keyed(doc_path)); }
 }
 
 /**

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import { execFileSync, spawnSync } from 'child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 
@@ -360,5 +360,63 @@ describe('review fixes (#106)', () => {
     expect(missing.status).toBe(0);
     expect(missing.stdout + missing.stderr).not.toMatch(/not a git checkout/);
     expect(missing.stdout + missing.stderr).toMatch(/nowhere/);
+  });
+});
+
+describe('re-check fixes (#106)', () => {
+  const outside_dir = () => mkdtempSync(join(tmpdir(), 'finish-106-out-'));
+  it('a symlinked .hewtd or .hewtd/reconcile is not followed: nothing outside the repo is listed, rewritten or removed', () => {
+    const outside = outside_dir();
+    try {
+      put('.env.hewtd', `HEWTD_KEY_A=${SECRET_A}\n`);
+      put('rejected-x/stage.json', stage_manifest('0'.repeat(40)), outside); put('rejected-x/f', 'keep\n', outside);
+      put('reconcile/review-b.md', `quote ${SECRET_A}\n`, outside);
+      symlinkSync(outside, join(root, '.hewtd'));
+      hewtd(['reconcile', '--finish', '--fix', '--confirm']);
+      expect(existsSync(join(outside, 'rejected-x/f'))).toBe(true);
+      expect(read('reconcile/review-b.md', outside)).toContain(SECRET_A);
+      rmSync(join(root, '.hewtd'));
+      mkdirSync(join(root, '.hewtd')); symlinkSync(join(outside, 'reconcile'), join(root, '.hewtd/reconcile'));
+      hewtd(['reconcile', '--finish', '--fix', '--confirm']);
+      expect(read('reconcile/review-b.md', outside)).toContain(SECRET_A);
+    } finally { rmSync(outside, { recursive: true, force: true }); }
+  });
+  it('a symlinked review file is neither listed nor written through', () => {
+    const outside = outside_dir();
+    try {
+      put('.env.hewtd', `HEWTD_KEY_A=${SECRET_A}\n`);
+      put('ext.md', `outside ${SECRET_A}\n`, outside);
+      mkdirSync(join(root, '.hewtd/reconcile'), { recursive: true }); symlinkSync(join(outside, 'ext.md'), join(root, '.hewtd/reconcile/review-link.md'));
+      expect(JSON.parse(hewtd(['reconcile', '--finish', '--json']).stdout).review_files.count).toBe(0);
+      hewtd(['reconcile', '--finish', '--fix', '--confirm']);
+      expect(read('ext.md', outside)).toContain(SECRET_A);
+    } finally { rmSync(outside, { recursive: true, force: true }); }
+  });
+  it('--fix --confirm never deletes a git-tracked review file', () => {
+    put('.env.hewtd', `HEWTD_KEY_A=${SECRET_A}\n`); put('.gitignore', 'node_modules/\n.env.hewtd\n');
+    put('.hewtd/reconcile/review-tracked.md', `quote ${SECRET_A}\n`);
+    g(root, 'add', '.gitignore', '.hewtd/reconcile/review-tracked.md'); g(root, 'commit', '-qm', 'tracked review');
+    hewtd(['reconcile', '--finish', '--fix', '--confirm']);
+    expect(existsSync(join(root, '.hewtd/reconcile/review-tracked.md'))).toBe(true);
+  });
+  it('the kept files stay visible even when the .gitignore already had their ! line, or the ledger is in a subfolder', () => {
+    put('.gitignore', 'node_modules/\n!.hewtd/reconcile.json\n');
+    put('.hewtd/reconcile.json', '{}\n'); put('.hewtd/graph-cache.json', '{}');
+    hewtd(['reconcile', '--finish', '--fix']);
+    let status = g(root, 'status', '--porcelain', '--untracked-files=all');
+    expect(status).toContain('.hewtd/reconcile.json');
+    expect(status).not.toContain('graph-cache');
+    put(config_file, JSON.stringify({ updatePolicy: 'nudge', reconcile: { ledger_path: '.hewtd/sub/l.json' } }, null, 2) + '\n');
+    put('.gitignore', 'node_modules/\n'); put('.hewtd/sub/l.json', '{}\n'); put('.hewtd/sub/other.json', '{}\n');
+    hewtd(['reconcile', '--finish', '--fix']);
+    status = g(root, 'status', '--porcelain', '--untracked-files=all');
+    expect(status).toContain('.hewtd/sub/l.json');
+    expect(status).not.toContain('other.json');
+  });
+  it('redaction is one pass: a value inside the placeholder text does not nest placeholders', () => {
+    put('.env.hewtd', `HEWTD_KEY_A=${SECRET_A}\nHEWTD_FILE=see .env.hewtd\n`);
+    put('.hewtd/reconcile/review-1.md', `quote ${SECRET_A} and see .env.hewtd end\n`);
+    hewtd(['reconcile', '--finish', '--fix']);
+    expect(read('.hewtd/reconcile/review-1.md')).toBe('quote <secret: HEWTD_KEY_A, see .env.hewtd> and <secret: HEWTD_FILE, see .env.hewtd> end\n');
   });
 });

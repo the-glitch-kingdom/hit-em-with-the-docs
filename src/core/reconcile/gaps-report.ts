@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import type { SecretsConfig } from '../../utils/config.js';
 import type { GapsClassification } from './gaps.js';
+import { resolve_review_dir } from './review.js';
 import { validate_no_secrets } from './secrets.js';
 
 export function render_gaps_report(classification: GapsClassification, config: SecretsConfig, date = new Date().toISOString().slice(0, 10)): string {
@@ -29,7 +30,7 @@ export function render_gaps_report(classification: GapsClassification, config: S
 }
 
 export async function write_gaps_report(repo_root: string, text: string, date = new Date().toISOString().slice(0, 10)): Promise<string> {
-  const file = join(repo_root, '.hewtd/reconcile', `gaps-report-${date}.md`);
+  const file = join(resolve_review_dir(repo_root), `gaps-report-${date}.md`);
   await mkdir(dirname(file), { recursive: true });
   await writeFile(file, text);
   return file;

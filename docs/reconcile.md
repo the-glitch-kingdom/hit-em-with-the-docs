@@ -450,6 +450,24 @@ Verdicts: `verify`, `rewrite`, `archive`, `unverifiable`, `fields`, `secret`,
 - A landed `rewrite` is still recorded with verdict `rewrite`, so the ledger counts the
   doc as unreviewed and `--next` offers it again. Re-judge it, or mark it `verify`.
 
+## Staged reconcile (cold rotation, #97)
+
+`hewtd reconcile --stage <dir>` snapshots the live docs working tree (`archive/`, gitignored
+and untracked files included; only `.git` is skipped) into `<dir>/docs/` and writes
+`<dir>/stage.json` (`format`, `docs_path`, `source_commit`, `staged_at`, `live_checksum`).
+It refuses, with nothing written, when `<dir>` exists and is not empty, is inside (or contains)
+the docs tree, is outside the repo, or is on another filesystem than the docs tree (a later
+swap must be an atomic rename). Use `.hewtd/<name>`: it is git-ignored. Never commit a stage.
+
+`hewtd reconcile --staged <dir> ...` runs any mode on the copy: triage, `--status`, `--next`,
+`--write-review`, `--apply`, `--secrets`, `--outside`, `--overview`, `--gaps`. The docs are
+`<dir>/docs`, the ledger is `<dir>/ledger.json` (it starts empty) and review files and reports are
+under `<dir>/reconcile/`. Code references still resolve against the real repo. The live tree, its
+ledger, `.hewtd/graph.json` and git stay untouched: `--apply` makes no commit, writes no graph
+and stops an entry with `error` if it would write outside the copy (the `secret` verdict, which
+writes `.env.hewtd` in the repo, and outside-lane entries). A stage that went wrong is discarded
+by hand and staged again. `--staged` cannot be combined with `-p`.
+
 ## Search gaps (2.21.0)
 
 `hewtd reconcile --gaps <file> [--json] [--write-review] [--batch <id>]` turns missed

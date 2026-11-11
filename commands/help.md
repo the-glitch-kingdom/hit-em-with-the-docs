@@ -61,7 +61,7 @@ Common options (run `hewtd <cmd> --help` for each command's full list):
 - `unarchive <file>` — restore an archived doc to its domain folder (2.7.0+)
 - `archive-candidates` — advisory list of docs worth retiring (2.7.0+)
 - `index` (alias `reindex`) `[--dry-run|--no-graph|-d <domain>]` — regenerate every domain + root INDEX/REGISTRY from the docs on disk and write the `.hewtd/graph.json` export
-- `reconcile <scope> [--json|--write-review|--apply <files>|--status|--next N|--serial|--team|--outside|--secrets|--overview "<q>"|--gaps <file>]` — deterministic triage, review files and serial apply for the reconcile pass (the judging is the slash command)
+- `reconcile <scope> [--json|--write-review|--apply <files>|--status|--next N|--serial|--team|--outside|--secrets|--overview "<q>"|--gaps <file>|--stage <dir>|--staged <dir>]` — deterministic triage, review files and serial apply for the reconcile pass (the judging is the slash command)
 - `secrets [--staged|--baseline-add <file:line> --reason "..."|--baseline-prune]` — secret scan baseline; `--staged` scans only the lines a staged diff adds (exit 1 on a finding). Never prints a value
 - `hooks install|uninstall` — add or remove the opt-in pre-commit block that runs `hewtd secrets --staged`; never overwrites an existing hook
 - `find-citers <fact-id>` — list the playbooks and incidents that cite a fact

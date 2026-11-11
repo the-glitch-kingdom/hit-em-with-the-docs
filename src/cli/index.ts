@@ -1160,23 +1160,51 @@ program
   .option('--overview <question>', 'Propose a cross-domain member list for a flow or question; writes only .hewtd/reconcile/overview-<slug>.json. With --write-review: the members file to turn into an overview review skeleton', undefined)
   .option('--limit <n>', 'With --overview: member cap (default 12)')
   .option('--apply <files...>', 'Apply the accepted entries of review files (serial, one commit per batch)')
+  .option('--stage <dir>', 'Snapshot the live docs working tree (archive/ and gitignored files included) into <dir>/docs for a staged reconcile; <dir> must be empty or new, inside the repo, outside the docs tree and on its filesystem (use .hewtd/<name>); never commit it', undefined)
+  .option('--staged <dir>', 'Run any mode on the stage made by --stage: its docs, ledger.json and reconcile/ review files; the live tree, ledger and git are untouched (no commits). Not with -p', undefined)
   .option('--gaps <file>', 'Classify missed search queries (gaps.v1 file or one question per line) into user_phrase proposals, new-doc candidates and open questions; writes only .hewtd/reconcile/gaps-report-<date>.md', undefined)
-  .action(async (scope: string[], options) => {
+  .action(async (scope: string[], options, command: Command) => {
     const { load_plugin_config } = await import('../utils/config.js');
     const { load_ledger, get_ledger_status: ledger_status, compute_content_hash: hash_content } = await import('../core/reconcile/ledger.js');
     const { list_glob_matches: glob } = await import('../utils/glob.js');
     const { resolve_git_top: project_root_of } = await import('../core/reconcile/outside.js');
-    const docs_root = resolve(process.cwd(), options.docsPath);
+    let staged: import('../core/reconcile/rotation.js').Stage | undefined;
+    try {
+      const { load_stage } = await import('../core/reconcile/rotation.js');
+      if (options.stage && options.staged) throw new Error('--stage and --staged are mutually exclusive');
+      if (options.staged && command.getOptionValueSource('docsPath') === 'cli') throw new Error('--staged and -p/--docs-path cannot be combined: the stage records its own docs folder');
+      if (options.staged) staged = load_stage(resolve(process.cwd(), options.staged));
+    } catch (entry) {
+      logger.error((entry as Error).message);
+      process.exitCode = 1;
+      return;
+    }
+    const docs_root = staged ? staged.docs_root : resolve(process.cwd(), options.docsPath);
     // State (ledger, review files, config) lives at the project root, so a run from a subdirectory shares it.
     const repo_root = project_root_of(docs_root);
     const config = await load_plugin_config(repo_root);
-    const ledger_file = resolve(repo_root, config.reconcile.ledger_path);
+    const ledger_file = staged ? staged.ledger_file : resolve(repo_root, config.reconcile.ledger_path);
+    if (staged) (await import('../core/reconcile/review.js')).set_review_dir(staged.review_dir);
+    if (options.stage) {
+      try {
+        const { create_stage } = await import('../core/reconcile/rotation.js');
+        const made = await create_stage({ repo_root, docs_root, stage_dir: resolve(process.cwd(), options.stage) });
+        if (options.json) { console.log(JSON.stringify({ stage: relative(repo_root, made.stage_dir), docs_path: made.docs_path, source_commit: made.source_commit, staged_at: made.staged_at, live_checksum: made.live_checksum }, null, 2)); return; }
+        logger.header('hewtd reconcile --stage');
+        logger.info(`  staged ${made.docs_path} at ${made.source_commit.slice(0, 7)} into ${relative(repo_root, made.stage_dir)}/docs`);
+        logger.info(`  next: hewtd reconcile --staged ${relative(process.cwd(), made.stage_dir) || '.'} <scope> --write-review`);
+      } catch (entry) {
+        logger.error((entry as Error).message);
+        process.exitCode = 1;
+      }
+      return;
+    }
     if (options.apply) {
       try {
         const { apply_reviews } = await import('../core/reconcile/apply.js');
         const result = await apply_reviews({
           root: repo_root, docs_root: docs_root, ledger: await load_ledger(ledger_file), ledger_file,
-          files: (options.apply as string[]).map((file) => resolve(repo_root, file)),
+          files: (options.apply as string[]).map((file) => resolve(repo_root, file)), ...(staged && { staged: true }),
         });
         logger.header('hewtd reconcile --apply');
         for (const outcome of result.outcomes) logger.info(`  [${outcome.status}] ${outcome.path}${outcome.detail ? ` - ${outcome.detail}` : ''}`);
@@ -1185,7 +1213,7 @@ program
         const count_outcomes = (st: string) => result.outcomes.filter((outcome) => outcome.status === st).length;
         logger.info(`applied ${count_outcomes('applied')}, stale ${count_outcomes('stale')}, rejected ${count_outcomes('rejected')}, error ${count_outcomes('error')}`);
         if (count_outcomes('error')) process.exitCode = 1;
-        if (count_outcomes('applied')) await export_graph(docs_root, false); // a rolled-back batch has no 'applied' outcome
+        if (count_outcomes('applied') && !staged) await export_graph(docs_root, false); // a rolled-back batch has no 'applied' outcome
         const after = await load_ledger(ledger_file);
         if (result.outcomes.some((outcome) => outcome.status === 'applied' && after.entries[outcome.path]?.env_names?.length)) {
           const { build_secrets_report, write_secrets_report } = await import('../core/reconcile/secrets-report.js');
@@ -1343,14 +1371,14 @@ program
     const { is_reviewed, get_external_refs_status } = await import('../core/reconcile/ledger.js');
     // the graph lives at the docs' git top-level (write_graph), which can differ from where the command ran
     const { find_git_top: find_graph_top } = await import('../core/reconcile/triage.js');
-    const graph_top = find_graph_top(docs_root);
+    const graph_top = staged ? undefined : find_graph_top(docs_root);
     let graph_text: string | undefined;
     try {
       graph_text = graph_top ? await readFile(join(graph_top, '.hewtd', 'graph.json'), 'utf-8') : undefined;
     } catch { /* absent: the hint below says why */ }
     if (graph_text === undefined) {
       const { load_plugin_config: load_status_config } = await import('../utils/config.js');
-      const why = !graph_top ? 'the docs are not in a git checkout, so no graph is written'
+      const why = staged ? 'a staged copy has no graph (the live .hewtd/graph.json describes the live tree)' : !graph_top ? 'the docs are not in a git checkout, so no graph is written'
         : !(await load_status_config(repo_root)).graph_export ? 'graph_export is off in the plugin config, so no graph is written'
         : 'no .hewtd/graph.json yet (run `hewtd index` to write it)';
       logger.info(`  refs in reviewed docs: ${why}`);

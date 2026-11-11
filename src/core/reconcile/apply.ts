@@ -336,13 +336,15 @@ export async function apply_reviews(options: {
   ledger: Ledger;
   ledger_file: string;
   today?: string;
+  /** #97: `docs_root` is a staged copy: no git writes at all, and nothing outside it (secret moves, outside-lane entries) is touched. */
+  staged?: boolean;
 }): Promise<ApplyResult> {
   const { root: repo_root, docs_root: docs_root, ledger } = options;
   const today = options.today ?? format_date(new Date());
   const config = await load_plugin_config(repo_root);
   const secrets_config = config.reconcile.secrets;
   const reviews = await Promise.all(options.files.map((file) => load_review(file)));
-  const start_git_top = find_git_top(repo_root);
+  const start_git_top = options.staged ? undefined : find_git_top(repo_root);
   const snap = start_git_top ? load_snapshot(start_git_top, relative(start_git_top, docs_root) || '.') : new Map<string, Buffer>();
 
   // Merge shards; the same doc in two files is a hard error before anything is written.
@@ -378,6 +380,10 @@ export async function apply_reviews(options: {
       const repo_path = relative(repo_root, abs_path);
       if (repo_path === '..' || repo_path.startsWith('../') || repo_path.startsWith('..\\') || isAbsolute(repo_path)) {
         outcomes.push({ path: entry.path, status: 'error', detail: 'path resolves outside the project root' });
+        continue;
+      }
+      if (options.staged && (entry.outside || entry.verdict === 'secret')) {
+        outcomes.push({ path: entry.path, status: 'error', detail: `${entry.outside ? 'outside-lane entries' : 'the secret verdict'} write outside the staged copy: run them on the live tree, not with --staged` });
         continue;
       }
       if (entry.outside) {
@@ -492,7 +498,7 @@ export async function apply_reviews(options: {
   const result: ApplyResult = { outcomes, touched: [] };
   if (!applied.length) return result;
 
-  const git_top = find_git_top(repo_root);
+  const git_top = options.staged ? undefined : find_git_top(repo_root);
   let commit: string | undefined;
   const index_files: string[] = [];
   const first = reviews[0]!;

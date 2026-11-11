@@ -97,7 +97,7 @@ describe('templates/doc.template.md (#98)', () => {
     put('.documentation/devops/deploying.md', filled);
     hewtd(['index']); // a bare tree has no INDEX/REGISTRY yet; that is index-drift, not a template problem
     const r = hewtd(['audit', '--strict']);
-    expect(r.stdout + r.stderr).not.toMatch(/MISSING_PURPOSE|WEAK_PURPOSE|MISSING_SYMPTOMS|error/i);
+    expect(r.stdout + r.stderr).not.toMatch(/MISSING_PURPOSE|WEAK_PURPOSE|MISSING_SYMPTOMS|[1-9]\d* errors/i);
     expect(r.status).toBe(0);
   });
 });

@@ -55,8 +55,25 @@ Write `purpose:` (one sentence: the question the doc answers) and `symptoms:`
 text) on every new doc. `integrate` does not invent a purpose (it never copies the first paragraph); a
 missing one shows up as an audit warning. Titles must name the specific subject.
 
+After `integrate` (or a direct write), finish with the one ending below.
+
 A markdown file left outside `.documentation/` is invisible to hewtd: not
 indexed, not link-checked, not validated. Don't hand-create `docs/` folders.
+
+### The one ending for every create or update
+
+A doc you write or edit with hewtd (a new file, `integrate`, or an edit to a reviewed doc) is not finished until it has been through reconcile, so it ends with
+`last_verified`, a `verify` verdict in the ledger, every missing ref decided (fix it, or `external_refs`), a `purpose`, `symptoms`, and a commit. You are the judge:
+
+```bash
+hewtd reconcile --changed --write-review   # lists docs created or changed since their last review, writes one review file
+# for each entry: check the doc against the code, set "verdict": "verify", fill "sources",
+# "external_refs", and "frontmatter" (purpose, symptoms); tick "- [x] accept"
+hewtd reconcile --apply .hewtd/reconcile/review-<batch>-*.md   # stamps last_verified, records the verdict, commits
+```
+
+`--changed` needs no commit first; apply commits the docs it touches in one batch. `hewtd audit` warns (`DOCS_UNREVIEWED`) with the count while any are left, and the opt-in pre-commit hook
+(`hewtd hooks install`) warns about staged ones; set `reconcile.require_review: true` to make the hook block the commit instead. `integrate --review` is the single-doc form of the same step.
 
 ### The `status` vocabulary is extensible
 
@@ -80,6 +97,8 @@ Edit the document normally, then:
 hewtd maintain --quick     # regenerate indexes + sync metadata
 hewtd maintain --fix       # also auto-fix what it can
 ```
+
+Then run the one ending below: an edited doc drops its earlier review until it is reviewed again.
 
 Never hand-edit `INDEX.md` or `REGISTRY.md` — a `PreToolUse` guard denies it.
 

@@ -7,5 +7,6 @@ exit 1
 ✓ Audit complete!
 ℹ Passed: 0/6
 ℹ Health Score: 40.0/100
-⚠ Issues: 6 errors, 18 warnings
+⚠ Issues: 6 errors, 19 warnings
+⚠ DOCS_UNREVIEWED: 6 doc(s) created or changed since their last review: frontend/ui.md, backend/old.md, backend/leak.md, backend/deploy.md, backend/creds.md, +1 more. Run `hewtd reconcile --changed --write-review`, judge each entry, then `hewtd reconcile --apply <file>`.
 ✓ Report saved: <ROOT>/.documentation/reports/audit-<TS>.md

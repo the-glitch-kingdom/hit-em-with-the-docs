@@ -1,5 +1,5 @@
 import { readFile } from 'fs/promises';
-import { relative, basename, join } from 'path';
+import { relative, basename, join, resolve } from 'path';
 import { find_markdown_files } from '../../utils/glob.js';
 import { list_domain_doc_files } from '../../generators/regenerate.js';
 import { parse_frontmatter } from '../../utils/frontmatter.js';
@@ -17,6 +17,7 @@ import { is_valid_domain, get_all_domains } from '../domains/registry.js';
 import { load_plugin_config } from '../../utils/config.js';
 import { load_retrieval_docs, check_retrieval } from './retrieval.js';
 import { check_overview } from './overview.js';
+import { find_unreviewed_docs, load_ledger } from '../reconcile/ledger.js';
 import { check_naming_convention, check_file_placement } from './rules.js';
 
 export interface AuditOptions {
@@ -78,7 +79,7 @@ export interface DomainAuditStats {
  */
 /** Issues that should count toward CI failure: advisory RETRIEVAL_* (#50) and OVERVIEW_* (#51) warnings never do. */
 export function count_actionable_issues(issues: { rule: string }[]): number {
-  return issues.filter((i) => !/^(RETRIEVAL|OVERVIEW|LINK_BROKEN_ANCHOR)(_|$)/.test(i.rule)).length;
+  return issues.filter((i) => !/^(RETRIEVAL|OVERVIEW|LINK_BROKEN_ANCHOR|DOCS_UNREVIEWED)(_|$)/.test(i.rule)).length;
 }
 
 export async function check_documentation(options: AuditOptions): Promise<AuditResult> {
@@ -201,6 +202,18 @@ export async function check_documentation(options: AuditOptions): Promise<AuditR
   result.issues.push(...check_retrieval(retrieval_docs, retrieval_cfg));
   result.issues.push(...(await check_overview(docs_root, plugin_cfg.overview)));
 
+  // Docs created or changed since their last reconcile review (#98): one advisory warning, no `code`.
+  try {
+    const unreviewed = find_unreviewed_docs(await load_ledger(resolve(options.repo_root ?? process.cwd(), plugin_cfg.reconcile.ledger_path)), docs_root, files.map((file) => relative(docs_root, file).split('\\').join('/')));
+    if (unreviewed.length) {
+      result.issues.push({
+        file: '.', rule: 'DOCS_UNREVIEWED', severity: 'warning', fixable: false,
+        message: `${unreviewed.length} doc(s) created or changed since their last review: ${unreviewed.slice(0, 5).join(', ')}${unreviewed.length > 5 ? `, +${unreviewed.length - 5} more` : ''}`,
+        suggestion: 'Run `hewtd reconcile --changed --write-review`, judge each entry, then `hewtd reconcile --apply <file>`.',
+      });
+    }
+  } catch { /* no ledger or unreadable doc: nothing to report */ }
+
   // Calculate stats
   result.stats.metadataCompliance = (metadata_compliant / files.length) * 100 || 0;
   result.stats.namingCompliance = (naming_compliant / files.length) * 100 || 0;
@@ -235,6 +248,8 @@ export async function check_documentation(options: AuditOptions): Promise<AuditR
       const warnings = result.issues.filter((i) => i.severity === 'warning').length;
       logger.warn(`Issues: ${errors} errors, ${warnings} warnings`);
     }
+    const unreviewed = result.issues.find((i) => i.rule === 'DOCS_UNREVIEWED');
+    if (unreviewed) logger.warn(`DOCS_UNREVIEWED: ${unreviewed.message}. ${unreviewed.suggestion}`);
   }
 
   return result;

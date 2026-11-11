@@ -317,7 +317,7 @@ async function report_triage(
   for (const reference of missing) logger.warn(`  missing reference: ${reference} (fix the doc, or list it under external_refs if it is fine)`);
   for (const reference of unknown) logger.info(`  unverified reference: ${reference} (not found in the code index; check it, or list it under external_refs)`);
   if (result.review_file) logger.info(`  wrote ${result.review_file}`);
-  logger.info(`Next: write purpose and symptoms, commit the doc, then run /hit-em-with-the-docs:reconcile ${doc_path}`);
+  logger.info(`Next: write purpose and symptoms, then \`hewtd reconcile --changed --write-review\` (no commit needed), judge the entry and --apply; or commit and run /hit-em-with-the-docs:reconcile ${doc_path}`);
 }
 
 /**

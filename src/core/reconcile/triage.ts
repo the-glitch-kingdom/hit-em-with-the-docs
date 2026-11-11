@@ -413,6 +413,24 @@ export async function triage_docs(options: {
   };
 }
 
+/**
+ * `reconcile --changed` (#98): the docs created or changed since their last review. Not reviewed (see `is_reviewed`) and
+ * either edited after the ledger last saw them, or triaging outside the clean lane (a new doc). Writes nothing, the ledger included:
+ * saving the new hashes would make an edited doc look reviewed. Dirty docs are expected here, so there is no clean-tree check.
+ */
+export async function select_changed(options: { root: string; docs_root: string; config: PluginConfig; ledger: Ledger; scope?: string[] }): Promise<{ doc_paths: string[]; triage: TriageResult }> {
+  const { docs_root, ledger } = options;
+  const everything = options.scope?.length ? await resolve_scope(docs_root, options.scope) : (await list_markdown_files(docs_root)).map((file) => format_posix_path(relative(docs_root, file))).sort();
+  const hash_of = (doc_path: string): string => compute_content_hash(readFileSync(join(docs_root, doc_path), 'utf-8'));
+  const candidates = everything.filter((doc_path) => !is_reviewed(ledger.entries[doc_path], hash_of(doc_path)));
+  const run = (rels: string[]): Promise<TriageResult> => triage_docs({ root: options.root, docs_root, rels, config: options.config, ledger: structuredClone(ledger) });
+  let triage = await run(candidates);
+  const lane = new Map(triage.docs.map((doc) => [doc.path, doc.lane]));
+  const doc_paths = candidates.filter((doc_path) => lane.get(doc_path) !== 'clean' || (ledger.entries[doc_path] && ledger.entries[doc_path]!.content_hash !== hash_of(doc_path)));
+  if (doc_paths.length !== candidates.length) triage = await run(doc_paths);
+  return { doc_paths, triage };
+}
+
 /** Read-only resolution of some docs for the graph export: no ledger, no dirty-tree check (that lives in the CLI). */
 export async function resolve_docs(options: { root: string; docs_root: string; rels: string[]; config: PluginConfig; ledger?: Ledger; staleness_cache?: { entries: Record<string, StalenessSignal> }; duplicates?: Map<string, Duplicate[]>; symbol_table?: SymbolTable }): Promise<TriageDoc[]> {
   // A copy, so the ledger-driven reasons (pointer target / member changed) fire without recording anything.

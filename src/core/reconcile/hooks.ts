@@ -39,7 +39,8 @@ function resolve_header_path(header_text: string): string {
 
 const START = '# >>> hewtd secrets >>>';
 const END = '# <<< hewtd secrets <<<';
-const BLOCK = `${START}\nnpx --no-install hewtd secrets --staged || exit 1\n${END}\n`;
+const BLOCK = `${START}\nnpx --no-install hewtd secrets --staged || exit 1\nnpx --no-install hewtd reconcile --changed --check --staged || exit 1\n${END}\n`;
+const BLOCK_RE = new RegExp(`${START}[\\s\\S]*?${END}\\n`);
 const SHEBANG = '#!/bin/sh\n';
 
 function resolve_hook_path(repo_root: string): string {
@@ -60,7 +61,11 @@ export async function install_hook(repo_root: string): Promise<{ path: string; c
   const path = resolve_hook_path(repo_root);
   let cur: string | null = null;
   try { cur = await readFile(path, 'utf-8'); } catch { /* absent */ }
-  if (cur?.includes(START)) return { path, changed: false };
+  if (cur?.includes(START)) {
+    if (cur.includes(BLOCK)) return { path, changed: false };
+    await writeFile(path, cur.replace(BLOCK_RE, BLOCK)); // our own block from an older version: add the review check
+    return { path, changed: true };
+  }
   if (cur !== null) {
     if ((await lstat(path)).isSymbolicLink()) throw new Error(`${path} is a symlink; add this line to the hook it points at yourself: npx --no-install hewtd secrets --staged || exit 1`);
     const shebang = /^#!.*$/m.exec(cur.split('\n')[0] ?? '')?.[0];
@@ -83,8 +88,17 @@ export async function uninstall_hook(repo_root: string): Promise<{ path: string;
   try { cur = await readFile(path, 'utf-8'); } catch { return { path, changed: false }; }
   if (!cur.includes(START)) return { path, changed: false };
   // Exact inverse of install (block inserted verbatim after the shebang or at the top).
-  const next = cur.replace(BLOCK, '');
+  const next = cur.replace(BLOCK_RE, '');
   if (next === `${SHEBANG}\n` || next === '') await unlink(path); // a hook hewtd created
   else await writeFile(path, next);
   return { path, changed: true };
+}
+
+/** Docs (docs-relative posix paths) staged as added or modified under `docs_root`, for the review check in the pre-commit hook (#98). */
+export function list_staged_docs(repo_root: string, docs_root: string): string[] {
+  const docs_rel = relative(repo_root, docs_root).split('\\').join('/');
+  const result = run_git(repo_root, ['diff', '--cached', '--name-only', '--diff-filter=ACMR', '-z', '--', docs_rel || '.']);
+  if (result.status !== 0) throw new Error(`git diff --cached failed: ${result.stderr.trim()}`);
+  return result.stdout.split('\0').filter((file) => /\.md$/.test(file) && !/(^|\/)(INDEX|REGISTRY)\.md$/.test(file) && !/\/archive\//.test(`/${file}`))
+    .map((file) => (docs_rel ? file.slice(docs_rel.length + 1) : file));
 }

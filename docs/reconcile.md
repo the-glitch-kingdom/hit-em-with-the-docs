@@ -24,6 +24,8 @@ hewtd reconcile security --write-review    # write review-file skeletons
 hewtd reconcile --apply .hewtd/reconcile/review-1-1.md
 hewtd reconcile --status [--next 10]       # ledger progress
 hewtd reconcile --outside [--write-review] # docs outside the docs root
+hewtd reconcile --changed [--json|--write-review|--status]  # docs created or changed since their last review (3.2.0)
+hewtd reconcile --changed --check [--staged]  # advisory: exit 1 only if reconcile.require_review is true
 hewtd reconcile --secrets [scope] [--json] # masked secret scan (2.17.0)
 hewtd reconcile --overview "<question>" [--limit N] [--json]  # seed an overview (2.18.0)
 hewtd reconcile --write-review --overview <members-file>      # overview review skeleton

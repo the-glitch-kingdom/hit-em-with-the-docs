@@ -72,7 +72,7 @@ edited since the promote is left alone and undo says so. Set `reconcile.cold_sca
 no scanner file; the plan then warns that the promote commit will re-add the flagged strings. The plan and the
 promote result also say how many files hold strings scanners commonly flag, and how many staged docs will show as
 unreviewed (`DOCS_UNREVIEWED`) because `<stage>/ledger.json` has no review for them: put the reviewing ledger
-there before promoting. Promote and undo batch the git history reads, so about 1,000 docs take seconds.
+there before promoting (without it a promote reports every doc as unreviewed; `reconcile --changed --write-review` on the live tree afterwards clears them). Other scanners (trufflehog, say) are not edited: add a path exclude by hand, for trufflehog a line `^\.documentation-cold/` in the file passed to `--exclude-paths` (use your `reconcile.cold_root`). Undo needs the generation name: `--undo <gen> --confirm`. Promote and undo batch the git history reads, so about 1,000 docs take seconds.
 
 ## Committed versus disk-only
 

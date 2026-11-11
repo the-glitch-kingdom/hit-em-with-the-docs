@@ -12,6 +12,7 @@ import type { PluginConfig } from '../../utils/config.js';
 import type { StalenessSignal } from '../reconcile/staleness.js';
 import type { TriageDoc } from '../reconcile/triage.js';
 import type { SymbolTable } from '../reconcile/references.js';
+import { get_cold_prefix, is_in_cold } from '../reconcile/rotation.js';
 
 const CACHE_FILE = '.hewtd/graph-cache.json';
 const GRAPH_FILE = '.hewtd/graph.json';
@@ -68,7 +69,8 @@ export function list_committed_changes(git_top: string, from: string, to: string
     if (from === to) return new Set();
     run_git(git_top, ['merge-base', '--is-ancestor', from, to]);
     const range = `${from}..${to}`;
-    return new Set([...run_git(git_top, ['diff', '--name-only', '--no-renames', '-z', from, to]).split('\0'), ...run_git(git_top, ['log', '--name-only', '--no-renames', '-z', '--format=', range]).split('\0')].filter(Boolean));
+    const cold_prefix = get_cold_prefix(git_top); // a cold generation is never cited, so its moves invalidate nothing
+    return new Set([...run_git(git_top, ['diff', '--name-only', '--no-renames', '-z', from, to]).split('\0'), ...run_git(git_top, ['log', '--name-only', '--no-renames', '-z', '--format=', range]).split('\0')].filter((file) => file && !is_in_cold(file, cold_prefix)));
   } catch { return null; }
 }
 

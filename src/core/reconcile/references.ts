@@ -10,6 +10,7 @@ import { dirname, join, relative, resolve } from 'path';
 import { extract_links } from '../../utils/markdown.js';
 import { check_single_link } from '../links/checker.js';
 import { parse_python_orm } from './orm-schema.js';
+import { get_cold_pathspec, get_cold_prefix, is_in_cold } from './rotation.js';
 
 export type RefKind = 'path' | 'symbol' | 'env' | 'command' | 'table' | 'column' | 'doc-link';
 export type RefStatus = 'ok' | 'missing' | 'unknown';
@@ -227,7 +228,8 @@ export function parse_prisma(source: string, schema: Schema): void {
 
 /** Build every per-run index: tracked files, package scripts, Makefile targets, parsed schema. */
 export function build_repo_index(repo_root: string, schema_sources: string[] = []): RepoIndex {
-  const files = new Set(run_git(repo_root, ['ls-files', '-z']).split('\0').filter(Boolean));
+  const cold_prefix = get_cold_prefix(repo_root); // a cold generation (#97) is history: no path may resolve into it
+  const files = new Set(run_git(repo_root, ['ls-files', '-z']).split('\0').filter((file) => file && !is_in_cold(file, cold_prefix)));
   const read_repo_file = (path_text: string): string => { try { return readFileSync(join(repo_root, path_text), 'utf-8'); } catch { return ''; } };
   let package_info: Record<string, Record<string, unknown> | string> = {};
   try { package_info = JSON.parse(read_repo_file('package.json') || '{}'); } catch { /* unreadable package.json: no scripts */ }
@@ -327,7 +329,8 @@ export function find_md_mentions(repo_root: string, names: string[]): Map<string
   const mentions = new Map<string, Set<string>>();
   if (!names.length) return mentions;
   let tracked: string[] = [];
-  try { tracked = run_git(repo_root, ['ls-files', '-z']).split('\0').filter((file) => /\.mdx?$/.test(file)); } catch { return mentions; }
+  const cold_prefix = get_cold_prefix(repo_root);
+  try { tracked = run_git(repo_root, ['ls-files', '-z']).split('\0').filter((file) => /\.mdx?$/.test(file) && !is_in_cold(file, cold_prefix)); } catch { return mentions; }
   const pending = new Set(names);
   for (const file of tracked) {
     if (!pending.size) break;
@@ -373,7 +376,7 @@ export function add_known_symbols(index: RepoIndex, names: Iterable<string>, tab
     writeFileSync(patterns_file, chunk.join('\n') + '\n');
     const want = new Set(chunk);
     try {
-      const code = ['--', '.', ':!*.md', ':!*.mdx', ':(exclude,glob)**/.hewtd/**']; // hewtd's own output is never a symbol source
+      const code = ['--', '.', ':!*.md', ':!*.mdx', ':(exclude,glob)**/.hewtd/**', ...get_cold_pathspec(index.root)]; // hewtd's own output is never a symbol source
       const candidates = run_git_in_index(['grep', '-I', '-l', '-w', '-F', '-f', patterns_file, ...code]).split('\n').filter(Boolean).sort();
       const small: string[] = [];
       const big: string[] = [];

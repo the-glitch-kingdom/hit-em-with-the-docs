@@ -18,6 +18,7 @@ import { find_section } from '../links/anchors.js';
 import { find_duplicates, type Duplicate } from './duplicates.js';
 import { time_stage } from '../graph/timing.js';
 import { find_secrets, scan_file, type SecretFinding } from './secrets.js';
+import { get_cold_prefix, is_in_cold } from './rotation.js';
 
 export type Lane = 'clean' | 'fields-only' | 'check' | 'archive-candidate' | 'secret';
 
@@ -99,7 +100,8 @@ export async function scan_peripheral(repo_root: string, docs_root: string, conf
     const docs_rel = format_posix_path(relative(git_top, docs_root));
     // eslint-disable-next-line id-denylist -- child_process option name
     const tracked = execFileSync('git', ['ls-files', '*.md'], { cwd: git_top, encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }).split('\n');
-    for (const file of tracked) if (file && !(docs_rel && (file === docs_rel || file.startsWith(`${docs_rel}/`)))) files.set(join(git_top, file), file);
+    const cold_prefix = get_cold_prefix(git_top); // cold generations are historical; their findings are in the manifest
+    for (const file of tracked) if (file && !is_in_cold(file, cold_prefix) && !(docs_rel && (file === docs_rel || file.startsWith(`${docs_rel}/`)))) files.set(join(git_top, file), file);
   } catch { /* not a git repo: no outside lane */ }
   const found: SecretFinding[] = [];
   for (const [abs_path, label] of [...files].sort((a, b) => a[1].localeCompare(b[1]))) {
@@ -210,6 +212,8 @@ export async function triage_docs(options: {
   duplicates?: Map<string, Duplicate[]>;
   /** Code-derived symbol answers kept between runs (graph export), valid for one code state. */
   symbol_table?: SymbolTable;
+  /** Staged run (#97): the LIVE docs folder whose git history stands in for each staged doc (same relative path); a staged doc with no live counterpart has none. */
+  history_docs_root?: string;
 }): Promise<TriageResult> {
   const { docs_root: docs_root, rels: doc_paths, config } = options;
   const git_top = find_git_top(docs_root) ?? options.root;
@@ -305,7 +309,7 @@ export async function triage_docs(options: {
     }
 
     let stale_commits: number | undefined;
-    const repo_path = format_posix_path(relative(git_top, abs_path));
+    const repo_path = format_posix_path(relative(git_top, options.history_docs_root ? join(options.history_docs_root, doc.doc_path) : abs_path));
     const find_signal = (): StalenessSignal => {
       const entries = options.staleness_cache?.entries;
       if (!entries) return find_staleness_signal(git_top, repo_path, cited);

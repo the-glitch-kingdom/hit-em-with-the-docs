@@ -59,7 +59,9 @@ export function get_graph_block_state(hook_text: string): 'current' | 'old' | 'c
   const block = found.endsWith('\n') ? found : `${found}\n`;
   if (block === GRAPH_BLOCK) return 'current';
   if (OLD_GRAPH_BLOCKS.includes(block)) return 'old';
-  return /&\s*(?:fi\s*)?(?:#.*)?$/m.test(block) || /\bnohup\b|\bsetsid\b/.test(block) ? 'custom-background' : 'custom-foreground';
+  // a line (comments stripped) ending in a lone `&`, optionally followed by `fi`; `&&`, `2>&1` and `&` in a comment do not count
+  const lines = block.split('\n').map((line) => line.replace(/(^|\s)#.*$/, '').trimEnd());
+  return lines.some((line) => /(?:^|[^&>])&\s*(?:;?\s*fi)?$/.test(line)) || /\bnohup\b|\bsetsid\b/.test(block) ? 'custom-background' : 'custom-foreground';
 }
 export const GRAPH_HOOKS = ['post-merge', 'post-checkout'] as const;
 const SHEBANG = '#!/bin/sh\n';

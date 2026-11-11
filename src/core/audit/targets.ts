@@ -88,7 +88,7 @@ export async function compute_targets(options: { repo_root: string; docs_root: s
   const secret_docs = triage.docs.filter((doc) => doc.lane === 'secret').map((doc) => doc.path);
   count_row('secrets', 'docs holding credential-shaped values', targets.secrets.max, secret_docs.filter((doc_path) => !held.has(doc_path)), secret_docs.filter((doc_path) => held.has(doc_path)).length, 'hewtd reconcile --secrets');
 
-  const unreviewed = await find_unreviewed_docs({ docs_root, ledger });
+  const unreviewed = await find_unreviewed_docs({ docs_root, ledger, doc_paths: active }); // the same active set as every other target
   const is_held = (doc_path: string): boolean => held.has(doc_path) || secret_docs.includes(doc_path); // a secret-lane doc waits on its secret, not on a review
   count_row('unreviewed', 'docs created or changed since their last review', targets.unreviewed.max, unreviewed.filter((doc_path) => !is_held(doc_path)), unreviewed.filter(is_held).length, 'hewtd reconcile --changed --write-review');
 

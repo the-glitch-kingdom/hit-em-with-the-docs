@@ -95,6 +95,11 @@ describe('#109 audit Targets section', () => {
     set_config({ targets: { purpose_real: { min: 0.5, reason: 'r' } } });
     expect(rows().purpose_real!.met).toBe(true);
   });
+  it('counts unreviewed docs over the same active set as the other targets (a draft is not counted)', () => {
+    const before = rows().unreviewed!;
+    put('.documentation/drafts/wip.md', doc('Wip', 'Explains a draft that is not active yet and should not be counted.', 'Draft body.'));
+    expect(rows().unreviewed).toMatchObject({ value: before.value, total: before.total });
+  });
   it('counts a secret-lane doc, and counts a held one apart from the failures', () => {
     put('.documentation/backend/leak.md', doc('Leak', 'Explains how the deploy token is injected into the runner.', `VAULT_TOKEN=${SECRET}`));
     expect(rows().secrets).toMatchObject({ value: 1, met: false });

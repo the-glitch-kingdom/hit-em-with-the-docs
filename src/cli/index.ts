@@ -255,7 +255,7 @@ async function export_graph(docs_root: string, dry_run: boolean, quiet = false):
     else if (result.status === 'disabled') logger.info('Graph export is off (graph_export: false in the plugin config).');
     else if (result.status === 'written') logger.info('Graph export written: .hewtd/graph.json');
     else if (result.status === 'would-write') logger.info('Would update .hewtd/graph.json');
-    if (result.hint) logger.info('Tip: .hewtd/graph.json is not git-ignored; add it to .gitignore unless you want it committed.');
+    if (result.hint) logger.info('Tip: .hewtd/ is not git-ignored (graph.json, its cache and lock files live there); add `.hewtd/*` to .gitignore, or run `hewtd reconcile --finish --fix`, unless you want graph.json committed.');
   } catch (entry) {
     logger.warn(`Graph export failed: ${(entry as Error).message}`);
   }

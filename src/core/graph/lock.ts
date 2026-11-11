@@ -2,6 +2,8 @@
  * One `hewtd graph` at a time per repo (#108): the hook runs it in the background, so pulls and checkouts in a row can
  * start several. A run that finds the lock held leaves a pending marker and exits; the holder runs again while one is
  * left, so the graph still reaches the newest HEAD. A lock whose process is gone, or older than 30 minutes, is taken over.
+ * shortcut: only the pid is checked, so after a crash a reused pid can hold refreshes off for up to 30 minutes; store the
+ * process start time too if that matters.
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs';
 import { join } from 'path';
@@ -32,8 +34,11 @@ export async function run_with_graph_lock(state_dir: string, run: () => Promise<
     writeFileSync(pending_file, '');
     if (!take_lock(lock_file)) return 'queued'; // the holder may have finished between the two checks
   }
-  try {
-    do { rmSync(pending_file, { force: true }); await run(); } while (existsSync(pending_file));
-  } finally { rmSync(lock_file, { force: true }); }
-  return 'ran';
+  for (;;) {
+    try {
+      do { rmSync(pending_file, { force: true }); await run(); } while (existsSync(pending_file));
+    } finally { rmSync(lock_file, { force: true }); }
+    // a run may have queued itself between the last check and the unlock: if so, take the lock back and run for it
+    if (!existsSync(pending_file) || !take_lock(lock_file)) return 'ran';
+  }
 }

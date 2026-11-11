@@ -3,6 +3,7 @@ import { execFileSync, spawn, spawnSync } from 'child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
+import { get_graph_block_state } from '../../src/core/reconcile/hooks';
 
 // #108: the graph hook runs in the background (git returns at once), `hewtd graph` serialises itself with a lock and a
 // pending marker, and hooks install / upgrade-check upgrade only hewtd's own older block, leaving a backgrounded custom one alone.
@@ -101,5 +102,26 @@ describe('only hewtd\'s own older block is upgraded (#108)', () => {
     expect(upgrade_item('hook:post-checkout')).toMatchObject({ status: 'action', fixable: false });
     hewtd(['upgrade-check', '--fix']); hewtd(['hooks', 'install']);
     expect(read('.git/hooks/post-checkout')).toBe(`#!/bin/sh\n${CUSTOM_FOREGROUND}`);
+  });
+});
+
+describe('background detection (#108 review)', () => {
+  const wrap = (body: string) => `# >>> hewtd graph >>>\n${body}\n# <<< hewtd graph <<<\n`;
+  it('a line ending in && or a comment holding & is foreground; a lone & (or & fi, nohup, setsid) is background', () => {
+    expect(get_graph_block_state(wrap('npx --no-install hewtd graph --quiet &&\necho done'))).toBe('custom-foreground');
+    expect(get_graph_block_state(wrap('npx --no-install hewtd graph --quiet # runs in fg, not &'))).toBe('custom-foreground');
+    expect(get_graph_block_state(wrap('npx --no-install hewtd graph --quiet >/dev/null 2>&1'))).toBe('custom-foreground');
+    expect(get_graph_block_state(wrap('npx --no-install hewtd graph --quiet -p docs &'))).toBe('custom-background');
+    expect(get_graph_block_state(wrap('if true; then (npx --no-install hewtd graph -p docs || true) >/dev/null 2>&1 & fi'))).toBe('custom-background');
+    expect(get_graph_block_state(wrap('nohup npx --no-install hewtd graph -p docs >/dev/null 2>&1'))).toBe('custom-background');
+  });
+});
+
+describe('graph tip (#108 review)', () => {
+  it('the not-ignored tip names the whole .hewtd/ folder (lock files too)', () => {
+    put('.gitignore', 'node_modules/\n'); g(root, 'add', '-A'); g(root, 'commit', '-qm', 'no ignore');
+    const first = hewtd(['graph']).stdout; // the tip prints when graph.json is first created
+    expect(first).toMatch(/Tip: \.hewtd\/ is not git-ignored/);
+    expect(first).not.toMatch(/\.hewtd\/graph\.json is not git-ignored/);
   });
 });

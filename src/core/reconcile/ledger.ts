@@ -3,10 +3,8 @@
  * A doc whose content hash changed since review counts as unreviewed again.
  */
 import { createHash } from 'crypto';
-import { readFileSync } from 'fs';
 import { mkdir, readFile, rename, writeFile } from 'fs/promises';
-import { dirname, join } from 'path';
-import { parse_frontmatter } from '../../utils/frontmatter.js';
+import { dirname } from 'path';
 import { validate_no_secrets } from './secrets.js';
 
 export interface LedgerEntry {
@@ -63,20 +61,6 @@ export function is_reviewed(entry: LedgerEntry | undefined, current_hash: string
   // A clean doc needs no judgment pass: triage alone settles it, so --next moves past it.
   // A rewrite verdict only records the draft: the doc stays in the queue until the rewrite lands.
   return !!entry && ((!!entry.verdict && entry.verdict !== 'rewrite') || entry.lane === 'clean') && entry.content_hash === current_hash;
-}
-
-/**
- * Docs (docs-relative paths) created or changed since their last review, read from disk, no triage (#98):
- * an entry whose hash differs or has no verdict, or no entry at all unless the doc already carries `last_verified`
- * (so a legacy tree that never ran reconcile is not flagged wholesale).
- */
-export function find_unreviewed_docs(ledger: Ledger, docs_root: string, doc_paths: string[]): string[] {
-  return doc_paths.filter((doc_path) => {
-    const text = readFileSync(join(docs_root, doc_path), 'utf-8');
-    const entry = ledger.entries[doc_path];
-    if (is_reviewed(entry, compute_content_hash(text))) return false;
-    return entry !== undefined || !parse_frontmatter<Record<string, unknown>>(text).data.last_verified;
-  });
 }
 
 /** Record a doc's current state; a changed hash drops the old verdict. */

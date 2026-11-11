@@ -204,7 +204,10 @@ export async function integrate_document(
 
     // Never overwrite a different doc; --force only bypasses the duplicate check.
     if (copied && (await is_path_present(target_path))) {
-      result.error = `${relative(docs_root, target_path)} already exists and is a different doc; give the file another name or use --domain. Nothing was written.`;
+      const same_body = parse_frontmatter(await readFile(target_path, 'utf-8')).content.trim() === parse_frontmatter(content).content.trim();
+      result.error = same_body
+        ? `${relative(docs_root, target_path)} is already integrated (same content apart from the frontmatter hewtd added). Nothing was written.`
+        : `${relative(docs_root, target_path)} already exists and is a different doc; give the file another name or use --domain. Nothing was written.`;
       return result;
     }
 
@@ -317,7 +320,9 @@ async function report_triage(
   for (const reference of missing) logger.warn(`  missing reference: ${reference} (fix the doc, or list it under external_refs if it is fine)`);
   for (const reference of unknown) logger.info(`  unverified reference: ${reference} (not found in the code index; check it, or list it under external_refs)`);
   if (result.review_file) logger.info(`  wrote ${result.review_file}`);
-  logger.info(`Next: write purpose and symptoms, then \`hewtd reconcile --changed --write-review\` (no commit needed), judge the entry and --apply; or commit and run /hit-em-with-the-docs:reconcile ${doc_path}`);
+  logger.info(result.review_file
+    ? `Next: fill ${result.review_file} (verdict, sources, external_refs, purpose, symptoms), then \`hewtd reconcile --apply ${result.review_file}\`; or commit and run /hit-em-with-the-docs:reconcile ${doc_path}`
+    : `Next: write purpose and symptoms, then \`hewtd reconcile --changed --write-review\` (no commit needed), judge the entry and --apply; or commit and run /hit-em-with-the-docs:reconcile ${doc_path}`);
 }
 
 /**

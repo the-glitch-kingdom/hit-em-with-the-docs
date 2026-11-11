@@ -73,7 +73,7 @@ hewtd reconcile --apply .hewtd/reconcile/review-<batch>-*.md   # stamps last_ver
 ```
 
 `--changed` needs no commit first; apply commits the docs it touches in one batch. `hewtd audit` warns (`DOCS_UNREVIEWED`) with the count while any are left, and the opt-in pre-commit hook
-(`hewtd hooks install`) warns about staged ones; set `reconcile.require_review: true` to make the hook block the commit instead. `integrate --review` is the single-doc form of the same step.
+(`hewtd hooks install`) warns about staged ones (hewtd's own `--apply` commits are exempt via `HEWTD_REVIEWED_COMMIT`; without the local ledger a doc is unreviewed when it has no `last_verified`, is uncommitted, or was committed after its `last_verified` day); set `reconcile.require_review: true` to make the hook block the commit instead. `integrate --review` is the single-doc form of the same step.
 
 ### The `status` vocabulary is extensible
 

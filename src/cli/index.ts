@@ -1177,13 +1177,12 @@ program
     const config = await load_plugin_config(repo_root);
     const ledger_file = resolve(repo_root, config.reconcile.ledger_path);
     if (options.changed && options.check) {
-      const { find_unreviewed_docs } = await import('../core/reconcile/ledger.js');
-      const { list_markdown_files } = await import('../core/reconcile/triage.js');
+      if (process.env.HEWTD_REVIEWED_COMMIT) { logger.info('reconcile --changed --check: skipped, this commit is hewtd\'s own (HEWTD_REVIEWED_COMMIT).'); return; }
+      const { find_unreviewed_docs } = await import('../core/reconcile/triage.js');
       let unreviewed: string[] = [];
       try {
-        const everything = (await list_markdown_files(docs_root)).map((file) => relative(docs_root, file).split('\\').join('/'));
-        const staged = options.staged ? new Set((await import('../core/reconcile/hooks.js')).list_staged_docs(repo_root, docs_root)) : undefined;
-        unreviewed = find_unreviewed_docs(await load_ledger(ledger_file), docs_root, everything.filter((doc_path) => !staged || staged.has(doc_path)));
+        const staged = options.staged ? (await import('../core/reconcile/hooks.js')).list_staged_docs(repo_root, docs_root) : undefined;
+        unreviewed = await find_unreviewed_docs({ docs_root, ledger: await load_ledger(ledger_file), ...(staged && { doc_paths: staged }) });
       } catch { /* no docs tree or not a git repo: nothing to check, never break a commit */ }
       if (!unreviewed.length) return;
       const shown = unreviewed.slice(0, 10).join(', ') + (unreviewed.length > 10 ? `, +${unreviewed.length - 10} more` : '');
@@ -1328,7 +1327,7 @@ program
         if (!selected) await save_ledger(ledger_file, ledger);
         if (options.writeReview) {
           const { write_review_skeletons } = await import('../core/reconcile/review.js');
-          const files = await write_review_skeletons({ root: repo_root, docs_root: docs_root, triage: result, scope: scope.join(' ') || `next ${options.next}`, batch: options.batch, include_clean: (scope.length > 0 || !!options.changed) && !options.next });
+          const files = await write_review_skeletons({ root: repo_root, docs_root: docs_root, triage: result, scope: options.changed ? ['changed', ...scope].join(' ') : scope.join(' ') || `next ${options.next}`, batch: options.batch, include_clean: (scope.length > 0 || !!options.changed) && !options.next });
           files.forEach((file) => logger.info(`  wrote ${relative(repo_root, file)}`));
         }
         if (options.json) {

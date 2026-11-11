@@ -62,6 +62,9 @@ hewtd hooks uninstall       # removes exactly that block (byte-exact)
   block and deletes a hook file it created.
 - The same block also runs `hewtd reconcile --changed --check --staged` (3.2.0): it warns about
   staged docs not yet reviewed and blocks only when `reconcile.require_review` is `true`.
+  hewtd's own commits (`reconcile --apply`) set `HEWTD_REVIEWED_COMMIT=1` and skip this check; the secrets scan still runs.
+  Without the local ledger (fresh clone, CI) a doc counts as unreviewed when it has no `last_verified`, has
+  uncommitted changes, or was committed after its `last_verified` day (a same-day edit is not caught).
   `hooks install` upgrades an older block of ours in place; `uninstall` removes either version.
 - The hook fails closed: if `hewtd` cannot run (not installed), the commit is
   refused; uninstall the hook to bypass it deliberately.

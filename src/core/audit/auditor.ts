@@ -17,7 +17,8 @@ import { is_valid_domain, get_all_domains } from '../domains/registry.js';
 import { load_plugin_config } from '../../utils/config.js';
 import { load_retrieval_docs, check_retrieval } from './retrieval.js';
 import { check_overview } from './overview.js';
-import { find_unreviewed_docs, load_ledger } from '../reconcile/ledger.js';
+import { load_ledger } from '../reconcile/ledger.js';
+import { find_unreviewed_docs } from '../reconcile/triage.js';
 import { check_naming_convention, check_file_placement } from './rules.js';
 
 export interface AuditOptions {
@@ -204,7 +205,7 @@ export async function check_documentation(options: AuditOptions): Promise<AuditR
 
   // Docs created or changed since their last reconcile review (#98): one advisory warning, no `code`.
   try {
-    const unreviewed = find_unreviewed_docs(await load_ledger(resolve(options.repo_root ?? process.cwd(), plugin_cfg.reconcile.ledger_path)), docs_root, files.map((file) => relative(docs_root, file).split('\\').join('/')));
+    const unreviewed = await find_unreviewed_docs({ docs_root, ledger: await load_ledger(resolve(options.repo_root ?? process.cwd(), plugin_cfg.reconcile.ledger_path)) });
     if (unreviewed.length) {
       result.issues.push({
         file: '.', rule: 'DOCS_UNREVIEWED', severity: 'warning', fixable: false,

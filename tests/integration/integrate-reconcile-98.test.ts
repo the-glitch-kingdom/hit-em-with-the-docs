@@ -158,3 +158,20 @@ describe('integrate pass-1 review fixes (#98)', () => {
     expect(entry.missing).toEqual([]); // the tracked original is a mention for reconcile
   });
 });
+
+describe('integrate next step and re-run (#98 review fixes)', () => {
+  it('--review points at the review file it wrote, not at a second --changed --write-review', () => {
+    const r = hewtd(['integrate', NEW, '-a', '-d', 'api', '--review']);
+    const next = (r.stdout + r.stderr).split('\n').find((line) => line.includes('Next:'))!;
+    expect(next).toMatch(/fill \S*review-\S+\.md .*hewtd reconcile --apply \S*review-\S+\.md/);
+    expect(next).not.toMatch(/--changed --write-review/);
+  });
+
+  it('re-running on an unchanged source says the doc is already integrated', () => {
+    expect(hewtd(['integrate', NEW, '-a', '-d', 'api']).status).toBe(0);
+    const again = hewtd(['integrate', NEW, '-a', '-d', 'api']);
+    expect(again.status).not.toBe(0);
+    expect(again.stdout + again.stderr).toMatch(/already integrated/);
+    expect(again.stdout + again.stderr).not.toMatch(/different doc/);
+  });
+});

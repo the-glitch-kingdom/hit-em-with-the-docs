@@ -39,11 +39,12 @@ describe('hewtd reconcile --gaps (built CLI)', () => {
     const review = join(root, out.review);
     writeFileSync(review, readFileSync(review, 'utf-8').replace('- [ ] accept', '- [x] accept'));
     const before = g('rev-parse', 'HEAD');
-    const audit_before = hewtd(['audit']).stdout;
+    const strip = (text: string) => text.replace(/^.*DOCS_UNREVIEWED.*\n/m, ''); // the review verdict legitimately clears one doc from that count
+    const audit_before = strip(hewtd(['audit']).stdout);
     expect(hewtd(['reconcile', '--apply', review]).status).toBe(0);
     expect(g('rev-parse', 'HEAD')).not.toBe(before);
     expect(readFileSync(join(root, '.documentation/backend/release.md'), 'utf-8')).toContain('how do I roll back a bad deploy');
-    expect(hewtd(['audit']).stdout).toBe(audit_before); // apply adds no audit finding
+    expect(strip(hewtd(['audit']).stdout)).toBe(audit_before); // apply adds no audit finding
     // the phrase now exists, so the same file proposes nothing
     expect(gaps_json(['gaps.json']).out.proposals).toEqual([]);
     const head = g('rev-parse', 'HEAD');

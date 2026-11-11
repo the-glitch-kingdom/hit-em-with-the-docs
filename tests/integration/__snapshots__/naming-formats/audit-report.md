@@ -40,7 +40,7 @@ status: active
 tier: admin
 title: Documentation Audit Report
 version: '1.0.0'
-| . | DOCS_UNREVIEWED | 6 doc(s) created or changed since their last review: frontend/ui.md, backend/old.md, backend/leak.md, backend/deploy.md, backend/creds.md, +1 more |
+| . | DOCS_UNREVIEWED | 6 doc(s) created or changed since their last review: backend/auth.md, backend/creds.md, backend/deploy.md, backend/leak.md, backend/old.md, +1 more |
 | Category | Score |
 | Domain | Files | Issues | Health |
 | Errors | 6 |

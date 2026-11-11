@@ -101,3 +101,29 @@ describe('templates/doc.template.md (#98)', () => {
     expect(r.status).toBe(0);
   });
 });
+
+describe('hewtd integrate edge cases (#98)', () => {
+  it('without --review writes no skeleton and still prints the next step', () => {
+    const r = hewtd(['integrate', NEW, '-a']);
+    expect(r.status).toBe(0);
+    expect(r.stdout + r.stderr).toMatch(/Next: .*\/hit-em-with-the-docs:reconcile/);
+    expect(existsSync(join(root, '.hewtd/reconcile'))).toBe(false);
+  });
+
+  it('a doc from outside the repo is integrated, copied, and left in place', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'integrate-98-out-'));
+    try {
+      writeFileSync(join(outside, 'ext.md'), '# External\n\nBody text for the doc.\n');
+      const r = hewtd(['integrate', join(outside, 'ext.md'), '-a', '-d', 'api']);
+      expect(r.status).toBe(0);
+      expect(existsSync(join(outside, 'ext.md'))).toBe(true);
+      const { data } = parse_frontmatter<Record<string, unknown>>(readFileSync(join(root, '.documentation/api/ext.md'), 'utf8'));
+      expect(data.purpose).toBeUndefined();
+    } finally { rmSync(outside, { recursive: true, force: true }); }
+  });
+
+  it('--dry-run writes nothing', () => {
+    expect(hewtd(['integrate', NEW, '-a', '-d', 'api', '--dry-run']).status).toBe(0);
+    expect(existsSync(join(root, '.documentation/api', NEW))).toBe(false);
+  });
+});

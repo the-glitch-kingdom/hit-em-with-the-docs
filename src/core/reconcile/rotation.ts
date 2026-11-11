@@ -13,6 +13,8 @@ import { basename, dirname, isAbsolute, join, normalize, relative, resolve } fro
 import { load_plugin_config_sync, resolve_config_file_path, type ColdGeneration, type PluginConfig } from '../../utils/config.js';
 import { regenerate_indexes } from '../../generators/regenerate.js';
 import { scan_file } from './secrets.js';
+import { compute_content_hash, is_reviewed, load_ledger } from './ledger.js';
+import { add_baseline_exclude, add_gitleaks_allowlist, get_cold_regex, serialize_like } from './scanner-allowlist.js';
 
 export interface StageManifest {
   format: 1;
@@ -118,6 +120,40 @@ export interface RotationPlan {
   untracked_files: string[];
   /** the old tree's committed files, relative to the docs folder (what the manifest `checksum` covers) */
   tracked_files: string[];
+  /** scanner configs the promote will edit or create so the cold root is allowlisted (empty when `reconcile.cold_scanner_allowlist` is false) */
+  scanner_edits: ScannerEdit[];
+  /** distinct files holding the `secrets_findings` */
+  flagged_files: number;
+  /** staged docs with no review in the ledger that will be live after the promote (DOCS_UNREVIEWED), and the ledger file they are judged by */
+  unreviewed_docs: number;
+  ledger_note: string;
+}
+
+export interface ScannerEdit { file: string; before: string | null; after: string }
+/** Repo-root secret scanner configs a promote knows how to allowlist the cold root in (#101). */
+const SCANNER_FILES = ['.gitleaks.toml', '.secrets.baseline'];
+
+/** The edits that allowlist the cold root: `.gitleaks.toml` is created when absent (extending gitleaks' default rules), `.secrets.baseline` only edited when present. */
+function plan_scanner_edits(repo_root: string, cold_prefix: string): ScannerEdit[] {
+  const cold_regex = get_cold_regex(cold_prefix);
+  return SCANNER_FILES.flatMap((file) => {
+    const before = existsSync(join(repo_root, file)) ? readFileSync(join(repo_root, file), 'utf-8') : null;
+    const after = file === '.gitleaks.toml' ? add_gitleaks_allowlist(before, cold_regex) : before === null ? null : add_baseline_exclude(before, cold_regex);
+    return after === null ? [] : [{ file, before, after }];
+  });
+}
+
+/** Docs of the staged tree that no review in the ledger covers: promote does not mark them reviewed, so audit will flag them. */
+async function count_unreviewed_docs(repo_root: string, stage: Stage, config: PluginConfig): Promise<{ count: number; ledger_note: string }> {
+  const { list_markdown_files } = await import('./triage.js'); // triage imports this module
+  const ledger_file = existsSync(stage.ledger_file) ? stage.ledger_file : resolve(repo_root, config.reconcile.ledger_path);
+  const ledger = await load_ledger(ledger_file);
+  let count = 0;
+  for (const abs_path of await list_markdown_files(stage.docs_root)) {
+    const doc_path = format_posix_path(relative(stage.docs_root, abs_path));
+    if (!doc_path.startsWith('reports/') && !is_reviewed(ledger.entries[doc_path], compute_content_hash(readFileSync(abs_path, 'utf-8')))) count++;
+  }
+  return { count, ledger_note: format_posix_path(relative(repo_root, stage.ledger_file)) };
 }
 
 interface RotationContext { repo_root: string; docs_root: string; config: PluginConfig }
@@ -199,7 +235,7 @@ function check_cold_root(context: RotationContext): { cold_prefix: string; cold_
 /** Nothing the rotation commit would sweep up may be uncommitted: the docs, the cold root, the config, the ledger, the index. */
 function check_clean(context: RotationContext, cold_prefix: string): void {
   const { repo_root, docs_root, config } = context;
-  const paths = [relative(repo_root, docs_root), cold_prefix, relative(repo_root, resolve_config_file_path(repo_root)), config.reconcile.ledger_path].map(format_posix_path);
+  const paths = [relative(repo_root, docs_root), cold_prefix, relative(repo_root, resolve_config_file_path(repo_root)), config.reconcile.ledger_path, ...SCANNER_FILES].map(format_posix_path);
   const dirty = read_git(repo_root, ['status', '--porcelain', '--', ...paths]).split('\n').filter(Boolean);
   const staged = read_git(repo_root, ['diff', '--cached', '--name-only']).split('\n').filter(Boolean);
   if (dirty.length || staged.length) throw new Error(`uncommitted changes (commit or stash first):\n${[...dirty.map((line) => `  ${line}`), ...staged.map((file) => `  staged: ${file}`)].slice(0, 20).join('\n')}`);
@@ -242,7 +278,14 @@ export async function plan_promote(context: RotationContext & { stage: Stage }):
   if (newline_name !== undefined) throw new Error(`a gitignored file has a newline in its name (${JSON.stringify(newline_name)}); it cannot be listed in ${cold_prefix}/.gitignore. Rename or delete it first`);
   const untracked_files = disk_only.map((file) => `${cold_path}${file.slice(docs_path.length)}`);
   const tracked_files = list_git_paths(repo_root, ['ls-files', '-z', '--', docs_path]).map((file) => file.slice(docs_path.length + 1));
-  return { generation, cold_path, stage_path: format_posix_path(relative(repo_root, stage.stage_dir)), docs_path, source_commit: stage.source_commit, secrets_findings: await scan_tree_secrets(docs_root, config), untracked_files, tracked_files };
+  const secrets_findings = await scan_tree_secrets(docs_root, config);
+  const unreviewed = await count_unreviewed_docs(repo_root, stage, config);
+  return {
+    generation, cold_path, stage_path: format_posix_path(relative(repo_root, stage.stage_dir)), docs_path, source_commit: stage.source_commit, secrets_findings, untracked_files, tracked_files,
+    scanner_edits: config.reconcile.cold_scanner_allowlist ? plan_scanner_edits(repo_root, cold_prefix) : [],
+    flagged_files: new Set(secrets_findings.map((finding) => finding.slice(0, finding.lastIndexOf(':')))).size,
+    unreviewed_docs: unreviewed.count, ledger_note: unreviewed.ledger_note,
+  };
 }
 
 /** Escape a path as an anchored .gitignore line. */
@@ -298,13 +341,6 @@ function read_config(repo_root: string): { text: string | null; data: Record<str
   return { text, data: data as Record<string, unknown> };
 }
 
-/** JSON text in the style of `original` (indent kept, one line stays one line, trailing newline as it was). */
-function serialize_like(original: string | null, data: unknown): string {
-  if (original === null) return JSON.stringify(data, null, 2) + '\n';
-  const indent = /^[ \t]+(?=")/m.exec(original)?.[0];
-  return JSON.stringify(data, null, indent) + (original.endsWith('\n') ? '\n' : '');
-}
-
 /** Write the config text, or remove the file when `text` is null (a rollback of a config that did not exist). */
 async function write_config_text(config_file: string, text: string | null): Promise<void> {
   if (text === null) { if (existsSync(config_file)) await unlink(config_file); return; }
@@ -323,6 +359,7 @@ export async function run_promote(context: RotationContext & { stage: Stage; ren
   const config_file = resolve_config_file_path(repo_root);
   const ignore_file = join(cold_root_dir, '.gitignore');
   const modes_file = join(generations_dir, 'modes.json');
+  const scanners_file = join(generations_dir, 'scanners.json');
   const made_dirs: string[] = [];
   const ensure_dir = async (dir_path: string): Promise<void> => { const existing = find_existing_ancestor(dir_path); await mkdir(dir_path, { recursive: true }); for (let current = dir_path; current !== existing; current = dirname(current)) made_dirs.push(current); };
   const inverses: Inverse[] = [];
@@ -339,6 +376,11 @@ export async function run_promote(context: RotationContext & { stage: Stage; ren
 
     await ensure_dir(generations_dir);
     await writeFile(modes_file, JSON.stringify(modes, null, 2) + '\n', 'utf-8'); inverses.push(() => unlink(modes_file));
+    if (plan.scanner_edits.length) {
+      const record = Object.fromEntries(plan.scanner_edits.map((edit) => [edit.file, { before: edit.before, after_sha256: sha256(edit.after) }]));
+      await writeFile(scanners_file, JSON.stringify(record, null, 2) + '\n', 'utf-8'); inverses.push(() => unlink(scanners_file));
+      for (const edit of plan.scanner_edits) { const previous = await replace_text_file(join(repo_root, edit.file), edit.after); inverses.push(async () => { await replace_text_file(join(repo_root, edit.file), previous); }); }
+    }
     const had_ledger = existsSync(ledger_file);
     if (had_ledger) { await copyFile(ledger_file, join(generations_dir, 'ledger.json')); inverses.push(() => unlink(join(generations_dir, 'ledger.json'))); }
     if (existsSync(stage.ledger_file)) {
@@ -350,12 +392,12 @@ export async function run_promote(context: RotationContext & { stage: Stage; ren
       const previous = await replace_text_file(ignore_file, (existsSync(ignore_file) ? readFileSync(ignore_file, 'utf-8').replace(/\n?$/, '\n') : '') + plan.untracked_files.map((file) => format_ignore_line(relative(cold_root_dir, join(repo_root, file)))).join('\n') + '\n');
       inverses.push(async () => { await replace_text_file(ignore_file, previous); });
     }
-    const entry: ColdGeneration = { generation: plan.generation, path: plan.cold_path, source_commit: stage.source_commit, rotated_at: new Date().toISOString(), checksum, disk_checksum, secrets_findings: plan.secrets_findings, untracked_files: plan.untracked_files };
+    const entry: ColdGeneration = { generation: plan.generation, path: plan.cold_path, source_commit: stage.source_commit, rotated_at: new Date().toISOString(), checksum, disk_checksum, secrets_findings: plan.secrets_findings, untracked_files: plan.untracked_files, scanner_allowlists: plan.scanner_edits.map((edit) => edit.file) };
     await ensure_dir(dirname(config_file));
     inverses.push(() => write_config_text(config_file, config_before.text)); // the original bytes, or no file at all
     await write_config_text(config_file, serialize_like(config_before.text, { ...config_before.data, cold_storage: [...get_manifest(config_before.data), entry] }));
     await regenerate_indexes({ docs_root, silent: true });
-    const commit = commit_rotation(repo_root, `docs(rotate): promote ${plan.stage_path} and keep ${plan.generation} cold`, [plan.docs_path, relative(repo_root, cold_root_dir), relative(repo_root, config_file), config.reconcile.ledger_path].map(format_posix_path), plan.tracked_files.map((file) => `${plan.cold_path}/${file}`));
+    const commit = commit_rotation(repo_root, `docs(rotate): promote ${plan.stage_path} and keep ${plan.generation} cold`, [plan.docs_path, relative(repo_root, cold_root_dir), relative(repo_root, config_file), config.reconcile.ledger_path, ...plan.scanner_edits.map((edit) => edit.file)].map(format_posix_path), plan.tracked_files.map((file) => `${plan.cold_path}/${file}`));
     return { ...plan, commit };
   } catch (error) {
     inverses.push(async () => { run_git(repo_root, ['reset', '-q']); });
@@ -396,7 +438,7 @@ export async function plan_undo(context: RotationContext & { generation: string 
   return entry;
 }
 
-export async function run_undo(context: RotationContext & { generation: string }): Promise<{ generation: string; rejected_stage: string; commit: string; disk_only_absent: number }> {
+export async function run_undo(context: RotationContext & { generation: string }): Promise<{ generation: string; rejected_stage: string; commit: string; disk_only_absent: number; scanner_left: string[] }> {
   const entry = await plan_undo(context);
   const { repo_root, docs_root, config } = context;
   const cold_dir = resolve(repo_root, entry.path);
@@ -410,6 +452,10 @@ export async function run_undo(context: RotationContext & { generation: string }
   const modes_file = join(generations_dir, 'modes.json');
   let modes: Record<string, string> | undefined;
   if (existsSync(modes_file)) { try { modes = JSON.parse(readFileSync(modes_file, 'utf-8')); } catch { throw new Error(`${relative(repo_root, modes_file)} is not valid JSON; nothing was changed`); } }
+  const scanners_file = join(generations_dir, 'scanners.json');
+  let scanner_record: Record<string, { before: string | null; after_sha256: string }> = {};
+  if (existsSync(scanners_file)) { try { scanner_record = JSON.parse(readFileSync(scanners_file, 'utf-8')); } catch { throw new Error(`${relative(repo_root, scanners_file)} is not valid JSON; nothing was changed`); } }
+  const scanner_left: string[] = [];
   const disk_only_absent = get_generation_state(repo_root, entry).disk_only_absent;
   // the generation's committed files come back tracked even if a .gitignore pattern matches them at the docs path
   const generation_tracked = list_git_paths(repo_root, ['ls-files', '-z', '--', `:(literal)${entry.path}`]).map((file) => `${docs_path}${file.slice(entry.path.length)}`);
@@ -427,7 +473,14 @@ export async function run_undo(context: RotationContext & { generation: string }
     if (existsSync(generation_ledger)) { await copyFile(generation_ledger, ledger_file); inverses.push(async () => { await unlink(ledger_file); }); }
     const stage_manifest: StageManifest = { format: 1, docs_path, source_commit: read_git(repo_root, ['rev-parse', 'HEAD']).trim(), staged_at: new Date().toISOString(), live_checksum: compute_tree_checksum(docs_root) };
     await writeFile(join(rejected_dir, 'stage.json'), JSON.stringify(stage_manifest, null, 2) + '\n', 'utf-8'); inverses.push(() => unlink(join(rejected_dir, 'stage.json')));
-    for (const generation_file of [generation_ledger, modes_file]) {
+    for (const file of entry.scanner_allowlists) { // exact inverse of the promote's edit, unless the file was changed since
+      const record = scanner_record[file];
+      const abs_path = join(repo_root, file);
+      const current = existsSync(abs_path) ? readFileSync(abs_path, 'utf-8') : null;
+      if (!record || current === null || sha256(current) !== record.after_sha256) { scanner_left.push(file); continue; }
+      await replace_text_file(abs_path, record.before); inverses.push(async () => { await replace_text_file(abs_path, current); });
+    }
+    for (const generation_file of [generation_ledger, modes_file, scanners_file]) {
       if (!existsSync(generation_file)) continue;
       const kept = await readFile(generation_file);
       await unlink(generation_file);
@@ -447,8 +500,8 @@ export async function run_undo(context: RotationContext & { generation: string }
     inverses.push(() => write_config_text(config_file, config_before.text));
     await write_config_text(config_file, serialize_like(config_before.text, { ...config_before.data, cold_storage: get_manifest(config_before.data).filter((item) => (item as { generation?: unknown })?.generation !== entry.generation) }));
     // no index regeneration: the generation's own INDEX/REGISTRY come back byte for byte
-    const commit = commit_rotation(repo_root, `docs(rotate): undo ${entry.generation}`, [docs_path, format_posix_path(relative(repo_root, cold_root_dir)), relative(repo_root, config_file), config.reconcile.ledger_path].map(format_posix_path), generation_tracked);
-    return { generation: entry.generation, rejected_stage: format_posix_path(relative(repo_root, rejected_dir)), commit, disk_only_absent };
+    const commit = commit_rotation(repo_root, `docs(rotate): undo ${entry.generation}`, [docs_path, format_posix_path(relative(repo_root, cold_root_dir)), relative(repo_root, config_file), config.reconcile.ledger_path, ...entry.scanner_allowlists.filter((file) => !scanner_left.includes(file))].map(format_posix_path), generation_tracked);
+    return { generation: entry.generation, rejected_stage: format_posix_path(relative(repo_root, rejected_dir)), commit, disk_only_absent, scanner_left };
   } catch (error) {
     inverses.push(async () => { run_git(repo_root, ['reset', '-q']); });
     throw fail_with_rollback(error, await run_inverses(inverses), `generation ${entry.generation} is at ${entry.path} or at ${docs_path}, the rejected tree at ${relative(repo_root, rejected_dir)}/docs`);

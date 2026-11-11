@@ -129,7 +129,7 @@ Use Bash to run these. They're all available via `npx --no @theglitchking/hit-em
 | `hewtd audit --strict` | CI gate. Exits 1 on any error OR any KB-coded violation. Stylistic warnings (naming, placement) don't fail strict. |
 | `hewtd link-check` | Validate internal links. Run after moves/renames. |
 | `hewtd metadata-sync --fix` | Backfill missing frontmatter fields. |
-| `hewtd integrate <file>` | Auto-classify and place a raw markdown file. |
+| `hewtd integrate <file>` | Auto-classify and copy a raw markdown file into the tree (the original stays); prints its reconcile lane, missing refs and next step. `--review` also writes the review skeleton. Never invents a `purpose`; start from `templates/doc.template.md`. |
 | `hewtd discover patterns` | Extract coding patterns from source code (`--language`, `--root`, `--category` such as `security` or `testing`). |
 | `hewtd discover anti-patterns` | Detect anti-patterns in source code. |
 | `hewtd report {health\|audit\|links}` | Generate a saved report. |

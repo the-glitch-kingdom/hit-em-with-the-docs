@@ -372,6 +372,7 @@ program
   .option('--dry-run', 'Preview without writing', false)
   .option('-f, --force', 'Force integration even with duplicates', false)
   .option('-d, --domain <domain>', "Target domain (default: the doc's first declared domain, else detected)")
+  .option('--review', 'Also write the reconcile review skeleton for the new doc', false)
   .action(async (file, options) => {
     const docs_root = resolve(process.cwd(), options.path);
     const file_path = resolve(process.cwd(), file);
@@ -383,6 +384,7 @@ program
       dry_run: options.dryRun,
       force: options.force,
       domain: options.domain,
+      review: options.review,
     });
 
     if (!result.success) {

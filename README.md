@@ -375,6 +375,13 @@ refused ("already in the docs tree"; nothing is written): use
 `.documentation` by walking up from the current directory (stopping at the
 git root); an explicit `-p` is taken as given.
 
+`integrate` **copies** the file (the original stays where it was), never fills
+`purpose` from the first paragraph, and with `-d <domain>` adds no detected extra
+domain. It then prints the new doc's reconcile lane, each missing or unverified
+reference (fix it, or list it under `external_refs`) and the next step: commit the
+doc, then `/hit-em-with-the-docs:reconcile <doc>`. `--review` also writes the
+review skeleton. A general starting point lives in `templates/doc.template.md`.
+
 **When to use it**: When you have markdown files outside the `.documentation` folder that you want to organize.
 
 **What to use it on**: Individual markdown (.md) files or a folder of markdown files.
@@ -762,7 +769,7 @@ Would you like me to load these files and explain the rate limiting implementati
 
 **When to use it**: When you have a markdown file that needs to be added to the documentation system.
 
-**What to expect**: Claude reads the file, determines the best category, adds metadata, and moves it to the correct location.
+**What to expect**: Claude reads the file, determines the best category, adds metadata, and copies it to the correct location.
 
 ---
 

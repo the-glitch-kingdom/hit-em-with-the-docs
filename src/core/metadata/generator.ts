@@ -9,6 +9,8 @@ export interface GeneratorOptions {
   content: string;
   docs_root?: string;
   existing_metadata?: PartialDocumentMetadata;
+  /** Copy the first paragraph into a missing `purpose` (default true). `integrate` passes false: a purpose is the question the doc answers, not its opening line (#98). */
+  infer_purpose?: boolean;
 }
 
 export interface GeneratedMetadata extends Partial<DocumentMetadata> {
@@ -27,6 +29,7 @@ export function generate_metadata(options: GeneratorOptions): GeneratedMetadata 
     content,
     docs_root = '.documentation',
     existing_metadata = {},
+    infer_purpose = true,
   } = options;
 
   const generated: GeneratedMetadata = {
@@ -123,7 +126,7 @@ export function generate_metadata(options: GeneratorOptions): GeneratedMetadata 
   generated._generated.confidence['last_validated'] = 1.0;
 
   // Generate purpose if missing
-  if (!existing_metadata.purpose) {
+  if (infer_purpose && !existing_metadata.purpose) {
     const purpose = generate_purpose(content);
     if (purpose) {
       generated.purpose = purpose;

@@ -44,7 +44,7 @@ CLI (via `npx --no @theglitchking/hit-em-with-the-docs <cmd>` or `hewtd <cmd>` i
 
 Common options (run `hewtd <cmd> --help` for each command's full list):
 - `-p, --path <path>` (`-p, --docs-path` on `reconcile`, `secrets`, `hooks`, `fix-retrieval-fields`): the docs folder, default `.documentation`
-- `-d, --domain <domain>`: limit the command to one domain (`audit`, `index`, `metadata-sync`, `link-check`), or pick the target domain (`integrate`)
+- `-d, --domain <domain>`: limit the command to one domain (`audit`, `index`, `metadata-sync`, `link-check`), or pick the target domain (`integrate`, which then adds no detected extra domain)
 - `--force`: override the command's safety check. It means something different per command: overwrite existing files (`init`), integrate despite duplicates (`integrate`), archive a doc active docs still link to (`archive`), migrate onto an existing folder (`migrate-incident`)
 
 - `init` — scaffold a `.documentation/` tree
@@ -52,7 +52,7 @@ Common options (run `hewtd <cmd> --help` for each command's full list):
 - `audit [--strict]` — compliance check
 - `link-check` — internal link validation
 - `metadata-sync` — backfill missing frontmatter fields
-- `integrate <file>` — auto-classify and place a raw markdown file
+- `integrate <file>` — auto-classify and copy a raw markdown file into the tree (the original stays), then report its reconcile lane, missing refs and next step; `--review` also writes the review skeleton. Never invents a `purpose`. Start new docs from `templates/doc.template.md`
 - `discover patterns|anti-patterns|standards|dependencies` — extract conventions from source code (`discover patterns --category <cat> --language <lang> --root <path>` narrows the scan)
 - `report health|audit|links` — generate detailed reports
 - `list` — list the built-in domains

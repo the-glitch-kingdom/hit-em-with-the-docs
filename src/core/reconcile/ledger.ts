@@ -56,11 +56,18 @@ export async function write_ledger(file: string, ledger: Ledger): Promise<void> 
   await rename(temp_path, file);
 }
 
+/**
+ * First day an applied rewrite landed its draft (3.1.6, #86); before it, apply recorded the verdict and left the body.
+ * shortcut: a rewrite applied with 3.1.5 or older on this same day counts as landed; a ledger marker would be exact, add one if that day matters.
+ */
+const REWRITE_LANDS_SINCE = '2026-11-10';
+
 /** Reviewed = has a verdict and the doc is unchanged since. */
 export function is_reviewed(entry: LedgerEntry | undefined, current_hash: string): boolean {
   // A clean doc needs no judgment pass: triage alone settles it, so --next moves past it.
-  // A rewrite verdict only records the draft: the doc stays in the queue until the rewrite lands.
-  return !!entry && ((!!entry.verdict && entry.verdict !== 'rewrite') || entry.lane === 'clean') && entry.content_hash === current_hash;
+  // A rewrite is a review once its draft landed (#103); not applied_commit, which a staged apply never records.
+  const landed = entry?.verdict !== 'rewrite' || (entry.reviewed_on ?? '') >= REWRITE_LANDS_SINCE;
+  return !!entry && ((!!entry.verdict && landed) || entry.lane === 'clean') && entry.content_hash === current_hash;
 }
 
 /** Record a doc's current state; a changed hash drops the old verdict. */

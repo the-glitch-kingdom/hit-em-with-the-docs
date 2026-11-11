@@ -210,6 +210,8 @@ export async function triage_docs(options: {
   duplicates?: Map<string, Duplicate[]>;
   /** Code-derived symbol answers kept between runs (graph export), valid for one code state. */
   symbol_table?: SymbolTable;
+  /** Repo-relative docs that are the same doc as one under triage (integrate's source copy): not mention evidence (#98). */
+  ignore_mentions?: string[];
 }): Promise<TriageResult> {
   const { docs_root: docs_root, rels: doc_paths, config } = options;
   const git_top = find_git_top(docs_root) ?? options.root;
@@ -258,7 +260,7 @@ export async function triage_docs(options: {
   let stale_warned = false;
   for (const doc of loaded) {
     const abs_path = join(docs_root, doc.doc_path);
-    const resolved: ResolvedReference[] = await time_stage('resolve refs', () => resolve_references(index, doc.references, { doc_file: abs_path, docs_root: docs_root, related: sibling_repos, external_refs: Array.isArray(doc.data.external_refs) ? doc.data.external_refs.filter((item): item is string => typeof item === 'string') : [] }));
+    const resolved: ResolvedReference[] = await time_stage('resolve refs', () => resolve_references(index, doc.references, { doc_file: abs_path, docs_root: docs_root, related: sibling_repos, external_refs: Array.isArray(doc.data.external_refs) ? doc.data.external_refs.filter((item): item is string => typeof item === 'string') : [], ...(options.ignore_mentions && { ignore_mentions: options.ignore_mentions }) }));
     const sources = Array.isArray(doc.data.sources) ? doc.data.sources.filter((source): source is string => typeof source === 'string') : [];
     // Only path-like sources are checkable; URLs and prose citations are not claims about the repo.
     // `<name>:<path>` names a file in a related repo (read-only); checked there, not in this repo.

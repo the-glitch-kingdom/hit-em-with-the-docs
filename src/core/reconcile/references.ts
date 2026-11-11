@@ -430,9 +430,9 @@ export function drop_changed_symbols(repo_root: string, table: SymbolTable, chan
 
 // ---------- resolution ----------
 
-function is_mentioned_elsewhere(index: RepoIndex, name: string, self: string | undefined): boolean {
+function is_mentioned_elsewhere(index: RepoIndex, name: string, ignored: (string | undefined)[]): boolean {
   const files = index.md_names.get(name);
-  return !!files && [...files].some((file) => file !== self);
+  return !!files && [...files].some((file) => !ignored.includes(file));
 }
 
 /** A sibling checkout, read-only. `idx` is built lazily, only when a ref misses locally. */
@@ -455,6 +455,8 @@ export interface ResolveOptions {
   docs_root?: string;
   /** refs the doc declares external (frontmatter `external_refs`): never checkable, so `unknown` */
   external_refs?: string[];
+  /** repo-relative docs that are the same doc (an integrate source copy): never mention evidence */
+  ignore_mentions?: string[];
 }
 
 /** Names to look up for these refs: symbols and env vars, plus each env var's lowercase form (pydantic settings read env case-insensitively). */
@@ -564,7 +566,7 @@ export async function resolve_references(index: RepoIndex, references: Reference
           if (where) where_kind = index.symbol_kinds.get(found_name!);
         }
         // Only another doc's mention makes a code-less name `unknown` (an external name); the citing doc itself proves nothing.
-        status = where ? 'ok' : is_mentioned_elsewhere(index, reference.ref, self) ? 'unknown' : 'missing';
+        status = where ? 'ok' : is_mentioned_elsewhere(index, reference.ref, [self, ...(options.ignore_mentions ?? [])]) ? 'unknown' : 'missing';
         break;
       case 'command': {
         const [tool, name] = [reference.ref.split(' ')[0]!, reference.ref.replace(/^\S+( run)? /, '')];

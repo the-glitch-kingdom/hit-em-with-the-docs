@@ -127,3 +127,34 @@ describe('hewtd integrate edge cases (#98)', () => {
     expect(existsSync(join(root, '.documentation/api', NEW))).toBe(false);
   });
 });
+
+describe('integrate pass-1 review fixes (#98)', () => {
+  it('rewriting a doc in place does not tell the author to delete the only copy', () => {
+    put('.documentation/devops/inplace.md', '# In place\n\nThis paragraph describes the in place document body text.\n');
+    const r = hewtd(['integrate', '.documentation/devops/inplace.md', '--force']);
+    expect(r.status).toBe(0);
+    expect(r.stdout + r.stderr).not.toMatch(/copied, not moved|delete it yourself/);
+    expect(existsSync(join(root, '.documentation/devops/inplace.md'))).toBe(true);
+  });
+
+  it('refuses to overwrite a different doc at the target, even with --force', () => {
+    put('.documentation/api/new-guide.md', '# Other\n\nSome other doc.\n');
+    for (const extra of [[], ['--force']]) {
+      const r = hewtd(['integrate', NEW, '-a', '-d', 'api', ...extra]);
+      expect(r.status).not.toBe(0);
+      expect(r.stdout + r.stderr).toMatch(/already exists and is a different doc/);
+      expect(readFileSync(join(root, '.documentation/api/new-guide.md'), 'utf8')).toBe('# Other\n\nSome other doc.\n');
+    }
+  });
+
+  it('a tracked original is not mention evidence for integrate, and the output says reconcile still counts it', () => {
+    g('add', NEW); g('commit', '-qm', 'track draft');
+    const r = hewtd(['integrate', NEW, '-a', '-d', 'api']);
+    expect(r.status).toBe(0);
+    expect(r.stdout + r.stderr).toMatch(/missing reference: loadUserV1/);
+    expect(r.stdout + r.stderr).toMatch(/tracked original, reconcile counts it/);
+    g('add', '-A'); g('commit', '-qm', 'add copy');
+    const entry = JSON.parse(hewtd(['reconcile', 'api', '--json']).stdout).docs.find((d: { path: string }) => d.path === 'api/new-guide.md');
+    expect(entry.missing).toEqual([]); // the tracked original is a mention for reconcile
+  });
+});

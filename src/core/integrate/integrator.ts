@@ -200,6 +200,13 @@ export async function integrate_document(
     const file_name = basename(file_path);
     const target_path = join(docs_root, target_domain, file_name);
     result.target_path = target_path;
+    const copied = resolve(file_path) !== resolve(target_path);
+
+    // Never overwrite a different doc; --force only bypasses the duplicate check.
+    if (copied && (await is_path_present(target_path))) {
+      result.error = `${relative(docs_root, target_path)} already exists and is a different doc; give the file another name or use --domain. Nothing was written.`;
+      return result;
+    }
 
     // A doc already in the tree must not be copied (that leaves two). Moving it
     // would break inbound links, so only the in-place rewrite is allowed.
@@ -253,9 +260,12 @@ export async function integrate_document(
     if (!silent) {
       logger.newline();
       logger.success('Document integrated successfully!');
-      logger.info('The original file was copied, not moved: delete it yourself if you no longer need it.');
+      if (copied) {
+        logger.info('The original file was copied, not moved: delete it yourself if you no longer need it.');
+        if (is_tracked(file_path)) logger.info('Until you remove or archive the tracked original, reconcile counts it as another mention of the names in this doc.');
+      }
     }
-    await report_triage(result, { repo_root, docs_root, config, review, silent });
+    await report_triage(result, { repo_root, docs_root, config, review, silent, source: copied ? file_path : undefined });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     result.error = message;
@@ -268,16 +278,25 @@ export async function integrate_document(
   return result;
 }
 
+/** True when git tracks the file (an untracked draft is not mention evidence for reconcile). */
+function is_tracked(file_path: string): boolean {
+  try {
+    // eslint-disable-next-line id-denylist -- child_process option name
+    execFileSync('git', ['ls-files', '--error-unmatch', '--', basename(file_path)], { cwd: dirname(resolve(file_path)), stdio: 'ignore' });
+    return true;
+  } catch { return false; }
+}
+
 /** Say where the new doc stands in reconcile triage and what to do next (#98); best effort, never fails the integrate. */
 async function report_triage(
   result: IntegrateResult,
-  context: { repo_root: string; docs_root: string; config: PluginConfig; review: boolean; silent: boolean }
+  context: { repo_root: string; docs_root: string; config: PluginConfig; review: boolean; silent: boolean; source?: string | undefined }
 ): Promise<void> {
-  const { repo_root, docs_root, config, review, silent } = context;
+  const { repo_root, docs_root, config, review, silent, source } = context;
   if (silent && !review) return; // triage builds the repo index: batch callers (reconcile --outside) skip it
   const doc_path = relative(docs_root, result.target_path!).replace(/\\/g, '/');
   try {
-    const triaged = await triage_docs({ root: repo_root, docs_root, rels: [doc_path], config });
+    const triaged = await triage_docs({ root: repo_root, docs_root, rels: [doc_path], config, ...(source && { ignore_mentions: [relative(find_git_top(docs_root) ?? repo_root, resolve(source)).replace(/\\/g, '/')] }) });
     const doc = triaged.docs[0];
     if (!doc) return;
     // eslint-disable-next-line id-denylist -- serialized key (triage JSON)

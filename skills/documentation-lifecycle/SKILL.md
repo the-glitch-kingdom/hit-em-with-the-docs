@@ -38,7 +38,7 @@ Start from `templates/doc.template.md` (title, tier, domains, `purpose`, `sympto
 first `domains:` entry, else by keyword-matching the content. With `--domain`
 the doc gets that domain plus any your own frontmatter lists, never a detected
 extra. It **copies** the file into `.documentation/<domain>/` (the original stays
-where it was; delete it yourself), stamps frontmatter (`status: draft`, `tier:
+where it was; delete it yourself, unless you integrated a file already in place, which is rewritten, not copied; it refuses to overwrite a different doc of the same name), stamps frontmatter (`status: draft`, `tier:
 guide`, `version: 1.0.0`, `last_updated`, `word_count`), and regenerates the
 indexes. It never overwrites frontmatter you wrote yourself — it only fills what
 is missing.

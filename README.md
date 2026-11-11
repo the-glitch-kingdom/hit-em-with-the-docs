@@ -375,7 +375,7 @@ refused ("already in the docs tree"; nothing is written): use
 `.documentation` by walking up from the current directory (stopping at the
 git root); an explicit `-p` is taken as given.
 
-`integrate` **copies** the file (the original stays where it was), never fills
+`integrate` **copies** the file (the original stays where it was, unless you integrate a file already at its target, which is rewritten in place), refuses to overwrite a different doc of the same name (`--force` does not bypass that), never fills
 `purpose` from the first paragraph, and with `-d <domain>` adds no detected extra
 domain. It then prints the new doc's reconcile lane, each missing or unverified
 reference (fix it, or list it under `external_refs`) and the next step: commit the

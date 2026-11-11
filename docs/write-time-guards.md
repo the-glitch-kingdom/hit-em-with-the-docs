@@ -86,7 +86,7 @@ cites, so a later `reconcile` has something to check.
 
 ## integrate hands the new doc to reconcile (#98)
 
-integrate copies the source (the original stays), then prints the new doc's reconcile
+integrate copies the source (the original stays, unless it already sits at the target and is rewritten in place; a different doc already at the target is never overwritten, even with `--force`), then prints the new doc's reconcile
 lane, each missing or unverified reference and the next step
 (`/hit-em-with-the-docs:reconcile <doc>`). `--review` also writes the review skeleton.
 It does not fill `purpose` from the first paragraph (a missing purpose stays missing, so

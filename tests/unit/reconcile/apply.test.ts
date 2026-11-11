@@ -208,11 +208,13 @@ describe('applyReviews', () => {
     } finally { rmSync(outside, { recursive: true, force: true }); }
   });
 
-  it('a landed rewrite is recorded with the new hash and the doc stays in the queue', async () => {
-    const res = await run([review('review-1-1.md', [entry('backend/a.md', { verdict: 'rewrite', draft: 'new' })])]);
+  it('a landed rewrite is recorded with the new hash and counts as reviewed until the doc changes (#103)', async () => {
+    const files = [review('review-1-1.md', [entry('backend/a.md', { verdict: 'rewrite', draft: 'new' })])];
+    const res = await apply_reviews({ root, docs_root: docs, files, ledger: await load_ledger(ledger_file), ledger_file, today: '2026-11-11' });
     expect(res.outcomes[0].status).toBe('applied');
     const l = (await load_ledger(ledger_file)).entries['backend/a.md'];
     expect(l?.verdict).toBe('rewrite');
-    expect(is_reviewed(l, compute_content_hash(read('backend/a.md')))).toBe(false);
+    expect(is_reviewed(l, compute_content_hash(read('backend/a.md')))).toBe(true);
+    expect(is_reviewed(l, compute_content_hash(read('backend/a.md') + 'edit\n'))).toBe(false);
   });
 });

@@ -138,14 +138,14 @@ describe('hewtd reconcile (built CLI)', () => {
     expect(hewtd(['reconcile', '--status']).stdout).toMatch(/graph\.json is malformed/);
   });
 
-  it('an error entry exits 1 with a summary line; a rewrite doc stays in --next', () => {
+  it('an error entry exits 1 with a summary line; an applied rewrite leaves --next (#103)', () => {
     hewtd(['reconcile', 'backend', '--write-review']);
     const f = review_files()[0]!;
     fill(f, (p) => (p === 'backend/a.md' ? { verdict: 'rewrite', draft: 'x' } : p === 'backend/b.md' ? { verdict: 'integrate' } : null));
     const r = hewtd(['reconcile', '--apply', f]);
     expect(r.status).toBe(1);
     expect(r.stdout).toMatch(/applied 1, stale 0, rejected 1, error 1/);
-    expect(triage_json('--next', '3').docs.map((d: { path: string }) => d.path)).toContain('backend/a.md');
+    expect(triage_json('--next', '3').docs.map((d: { path: string }) => d.path)).not.toContain('backend/a.md');
   });
 
   it('a doc edited after the review is stale: skipped, nothing overwritten', () => {

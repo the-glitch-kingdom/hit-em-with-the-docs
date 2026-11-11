@@ -63,6 +63,22 @@ describe('apply through the CLI (#85 #86)', () => {
     expect(hewtd('reconcile', '--apply', ...review_files()).stdout).toMatch(/stale/i);
   });
 
+  it('an applied rewrite is reviewed: --changed and audit skip it until the doc is edited (#103)', () => {
+    hewtd('reconcile', 'backend', '--write-review');
+    fill((p) => ({
+      'backend/a.md': { verdict: 'verify' },
+      'backend/b.md': { verdict: 'verify' },
+      'backend/r.md': { verdict: 'rewrite', draft: '# r rewritten\n\nNew body about `src/c.ts`.\n', sources: ['src/c.ts'] },
+    } as Record<string, Record<string, unknown>>)[p] ?? null);
+    expect(hewtd('reconcile', '--apply', ...review_files()).status).toBe(0);
+    const changed = () => (JSON.parse(hewtd('reconcile', '--changed', '--json').stdout).docs as { path: string }[]).map((d) => d.path);
+    expect(changed()).toEqual([]);
+    const audit = hewtd('audit');
+    expect(audit.stdout + audit.stderr).not.toMatch(/DOCS_UNREVIEWED/);
+    put('.documentation/backend/r.md', read('backend/r.md') + '\nhand edit\n');
+    expect(changed()).toEqual(['backend/r.md']);
+  });
+
   it('--write-review on a named clean-lane doc writes its entry', () => {
     hewtd('reconcile', 'backend', '--write-review');
     expect(review_files().map((f) => readFileSync(f, 'utf-8')).join('')).toContain('## backend/a.md');

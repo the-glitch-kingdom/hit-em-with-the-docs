@@ -179,14 +179,14 @@ describe('field test #58 fixture (built CLI)', () => {
     expect(text).toMatch(/moved_from: notes\/design\.md/);
   });
 
-  it('#8 apply: a rewrite stays queued, an error exits 1 with a summary, YAML diff is limited to the changed field', () => {
+  it('#8 apply: an applied rewrite leaves the queue (#103), an error exits 1 with a summary, YAML diff is limited to the changed field', () => {
     const yaml_before = readFileSync(join(docs, 'alpha-ops/yaml.md'), 'utf-8');
     const f = review('alpha-ops', 'beta-ops', 'gamma-ops', '--serial')[0]!;
     fill(f, (p) => (p === 'beta-ops/ext.md' ? { verdict: 'rewrite', draft: 'x' } : p === 'alpha-ops/yaml.md' ? { verdict: 'fields', frontmatter: { purpose: 'Explains how the yaml fixture keeps its list indentation intact' } } : p === 'gamma-ops/f1.md' ? { verdict: 'integrate' } : null));
     const r = hewtd(['reconcile', '--apply', f]);
     expect(r.status).toBe(1);
     expect(r.stdout).toMatch(/error 1/);
-    expect(JSON.parse(hewtd(['reconcile', '--next', '10', '--json']).stdout).docs.map((d: D) => d.path)).toContain('beta-ops/ext.md');
+    expect(JSON.parse(hewtd(['reconcile', '--next', '10', '--json']).stdout).docs.map((d: D) => d.path)).not.toContain('beta-ops/ext.md');
     const yaml_after = readFileSync(join(docs, 'alpha-ops/yaml.md'), 'utf-8');
     expect(yaml_after).toContain('tags:\n- one\n- two\n'); // unindented list kept
     const changed = yaml_after.split('\n').filter((l) => !yaml_before.split('\n').includes(l));

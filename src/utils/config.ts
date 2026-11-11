@@ -301,6 +301,43 @@ const integrate_config_schema = z
   .catch({ sources_max: 10 })
   .default({});
 
+/**
+ * Docs targets (#109): what a healthy tree looks like. Advisory: `hewtd audit` reports them, never fails on them.
+ * Lenient like `retrieval`: an invalid value falls back to its default. `held` docs (a secret that cannot move, an
+ * archive candidate kept on purpose) are counted apart from the failures; each needs a reason.
+ */
+export const DEFAULT_TARGETS = {
+  purpose_real: { min: 0.9, reason: 'the field retrieval leans on hardest for paraphrase questions' },
+  verified: { min: 0.8, reason: 'what search returns was checked against the code (last_verified in the window, or a review on the current content)' },
+  no_missing_refs: { min: 0.9, reason: 'dead file, symbol and table references are the most common wrong claim' },
+  unreviewed: { max: 0, reason: 'every new or changed doc ends reviewed (3.2.0)' },
+  secrets: { max: 0, reason: 'credential-shaped values do not belong in docs' },
+  archive_candidates: { max: 0, reason: 'stale docs outrank current ones in search' },
+  flows: [] as string[],
+  flows_reason: 'multi-doc questions are the weakest retrieval tier; each named flow needs an overview doc',
+  held: [] as Array<{ path: string; reason: string }>,
+};
+const min_target = (key: 'purpose_real' | 'verified' | 'no_missing_refs') =>
+  z.object({ min: z.number().min(0).max(1).catch(DEFAULT_TARGETS[key].min), reason: z.string().catch(DEFAULT_TARGETS[key].reason) })
+    .catch({ ...DEFAULT_TARGETS[key] }).default({ ...DEFAULT_TARGETS[key] });
+const max_target = (key: 'unreviewed' | 'secrets' | 'archive_candidates') =>
+  z.object({ max: z.number().int().nonnegative().catch(DEFAULT_TARGETS[key].max), reason: z.string().catch(DEFAULT_TARGETS[key].reason) })
+    .catch({ ...DEFAULT_TARGETS[key] }).default({ ...DEFAULT_TARGETS[key] });
+const targets_object_schema = z
+  .object({
+    purpose_real: min_target('purpose_real'),
+    verified: min_target('verified'),
+    no_missing_refs: min_target('no_missing_refs'),
+    unreviewed: max_target('unreviewed'),
+    secrets: max_target('secrets'),
+    archive_candidates: max_target('archive_candidates'),
+    flows: z.array(z.string().min(1)).catch([]),
+    flows_reason: z.string().catch(DEFAULT_TARGETS.flows_reason),
+    held: z.array(z.object({ path: z.string().min(1), reason: z.string().min(1) })).catch([]),
+  });
+const targets_config_schema = targets_object_schema.catch(() => targets_object_schema.parse({})).default({});
+export type TargetsConfig = z.infer<typeof targets_config_schema>;
+
 export const plugin_config_schema = z
   .object({
     /**
@@ -321,6 +358,8 @@ export const plugin_config_schema = z
     /** Cold generations kept by `reconcile --promote` (#97), listed for indexers; written by hewtd, not by hand. */
     cold_storage: lenient_cold_storage,
     integrate: integrate_config_schema,
+    /** Docs targets (#109), written by `hewtd init`; advisory, reported by `hewtd audit`. */
+    targets: targets_config_schema,
     /** Write `.hewtd/graph.json` on `hewtd index` and after `reconcile --apply` (#65). */
     graph_export: z.boolean().catch(true).default(true),
     /** The hewtd version `hewtd upgrade-check --fix` last cleared (#104); written by hewtd. */

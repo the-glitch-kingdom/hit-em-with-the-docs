@@ -4,7 +4,7 @@ import { spawnSync } from 'child_process';
 import { parse as parse_yaml } from 'yaml';
 import { load_plugin_config_sync, write_raw_config, resolve_config_file_path, resolve_docs_root } from '../../utils/config.js';
 import { partial_metadata_schema } from '../metadata/schema.js';
-import { BLOCK, START, GRAPH_BLOCK, GRAPH_HOOKS, GRAPH_START, install_graph_hook, install_hook, resolve_hook_path } from '../reconcile/hooks.js';
+import { BLOCK, START, GRAPH_BLOCK, GRAPH_HOOKS, GRAPH_START, get_graph_block_state, install_graph_hook, install_hook, resolve_hook_path } from '../reconcile/hooks.js';
 import { FIRST_NOTED_VERSION, compare_versions, list_crossed_versions, load_upgrade_notes, type UpgradeNotes } from './notes.js';
 
 const PACKAGE_NAME = '@theglitchking/hit-em-with-the-docs';
@@ -135,6 +135,11 @@ function check_hook(options: UpgradeCheckOptions, notes: UpgradeNotes, crossed: 
   const hook_note = crossed.map((version) => notes[version]!.hook_block).filter(Boolean);
   if (current?.includes(start)) {
     if (current.includes(block)) return { id, status: 'ok', title: `${name} block is current (${shown})`, detail: [], fixable: false };
+    if (is_graph) { // only a block hewtd wrote is upgraded; one the user edited is left alone (#108)
+      const state = get_graph_block_state(current);
+      if (state === 'custom-background') return { id, status: 'ok', title: `${name} block is your own and runs in the background (${shown})`, detail: ['left as it is; --fix and `hewtd hooks install` never rewrite it'], fixable: false };
+      if (state === 'custom-foreground') return { id, status: 'action', fixable: false, title: `${name} block is your own and runs in the foreground (${shown})`, detail: ['git waits for it: a graph rebuild can take minutes. Background it, for example:', ...block.trimEnd().split('\n').map((line) => `  ${line}`), 'hewtd never rewrites a block you edited'] };
+    }
     return { id, status: 'action', fixable: true, title: `${name} block is out of date (${shown})`, detail: [...hook_note.map(String), '`hewtd hooks install` (or --fix) upgrades it in place'] };
   }
   // eslint-disable-next-line id-denylist -- child_process option name

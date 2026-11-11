@@ -39,7 +39,7 @@ describe('hewtd reconcile --gaps (built CLI)', () => {
     const review = join(root, out.review);
     writeFileSync(review, readFileSync(review, 'utf-8').replace('- [ ] accept', '- [x] accept'));
     const before = g('rev-parse', 'HEAD');
-    const strip = (text: string) => text.replace(/^.*DOCS_UNREVIEWED.*\n/m, ''); // the review verdict legitimately clears one doc from that count
+    const strip = (text: string) => text.replace(/^.*DOCS_UNREVIEWED.*\n/m, '').replace(/━━━ Targets[\s\S]*$/, ''); // the review verdict legitimately clears one doc from that count and moves the advisory Targets table
     const audit_before = strip(hewtd(['audit']).stdout);
     expect(hewtd(['reconcile', '--apply', review]).status).toBe(0);
     expect(g('rev-parse', 'HEAD')).not.toBe(before);

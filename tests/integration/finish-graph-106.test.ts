@@ -19,6 +19,7 @@ const fake_value = (tag: string): string => ['sk', 'live', tag, 'Zq81LmN0pQr5'].
 const config_file = '.claude/hit-em-with-the-docs.json';
 const SECRET_A = fake_value('alpha');
 const SECRET_B = fake_value('bravo');
+const OLD_GRAPH_BLOCK_330 = '# >>> hewtd graph >>>\nif [ "${3:-1}" != "0" ]; then npx --no-install hewtd graph --quiet || true; fi\n# <<< hewtd graph <<<\n';
 const stage_manifest = (source_commit: string) => JSON.stringify({ format: 1, docs_path: '.documentation', source_commit, staged_at: '2026-01-01T00:00:00Z', live_checksum: 'x' });
 
 beforeAll(() => { if (!existsSync(CLI)) throw new Error('run `npm run build` before the integration tests'); });
@@ -229,11 +230,11 @@ describe('graph hooks', () => {
   it('upgrades an old graph block in place', () => {
     hewtd(['hooks', 'install']);
     const current = read('.git/hooks/post-merge');
-    put('.git/hooks/post-merge', current.replace('hewtd graph --quiet', 'hewtd graph --old'));
+    put('.git/hooks/post-merge', current.replace(/# >>> hewtd graph >>>[\s\S]*?# <<< hewtd graph <<<\n/, OLD_GRAPH_BLOCK_330)); // the block 3.3.0 wrote
     hewtd(['hooks', 'install']);
     expect(read('.git/hooks/post-merge')).toBe(current);
   });
-  it('after a pull, graph.json source_commit equals HEAD (a real hook run)', () => {
+  it('after a pull, graph.json source_commit equals HEAD (a real hook run)', async () => {
     const clone = join(mkdtempSync(join(tmpdir(), 'finish-106-clone-')), 'c');
     try {
       execFileSync('git', ['clone', '-q', root, clone]);
@@ -245,13 +246,18 @@ describe('graph hooks', () => {
       put('src/new.ts', 'export const added = 3;\n'); g(root, 'add', '-A'); g(root, 'commit', '-qm', 'upstream');
       const pulled = spawnSync('git', ['-c', 'user.name=Ann', '-c', 'user.email=t@t', 'pull', '-q', '--no-rebase', 'origin'], { cwd: clone, encoding: 'utf8', env: { ...process.env, ...env } });
       expect(pulled.status, pulled.stderr).toBe(0);
-      expect(JSON.parse(read('.hewtd/graph.json', clone)).source_commit).toBe(g(clone, 'rev-parse', 'HEAD'));
+      const source_commit = (): string | undefined => { try { return JSON.parse(read('.hewtd/graph.json', clone)).source_commit; } catch { return undefined; } };
+      const reaches = async (want: string): Promise<boolean> => { for (let i = 0; i < 150 && source_commit() !== want; i++) await new Promise((done) => setTimeout(done, 200)); return source_commit() === want; }; // the hook runs in the background (#108)
+      expect(await reaches(g(clone, 'rev-parse', 'HEAD'))).toBe(true);
       const head = g(clone, 'rev-parse', 'HEAD');
-      g(clone, 'checkout', '-q', '-b', 'side'); put('src/side.ts', 'export const side = 4;\n', clone); g(clone, 'add', '-A'); g(clone, 'commit', '-qm', 'side');
+      g(clone, 'checkout', '-q', '-b', 'side'); put('src/side.ts', 'export const side = 4;\n', clone); g(clone, 'add', 'src/side.ts'); g(clone, 'commit', '-qm', 'side');
+      const side = g(clone, 'rev-parse', 'HEAD'); // a commit runs no hook: the graph is still at `head`
+      g(clone, 'checkout', '-q', '--detach', side); // a branch switch onto a commit the graph has not seen
+      expect(await reaches(side)).toBe(true);
       g(clone, 'checkout', '-q', head);
-      expect(JSON.parse(read('.hewtd/graph.json', clone)).source_commit).toBe(head);
+      expect(await reaches(head)).toBe(true);
     } finally { rmSync(resolve(clone, '..'), { recursive: true, force: true }); }
-  });
+  }, 60000);
 });
 
 describe('upgrade-check reports the graph hook blocks', () => {
@@ -268,7 +274,7 @@ describe('upgrade-check reports the graph hook blocks', () => {
   it('--fix upgrades an out-of-date graph block', () => {
     hewtd(['hooks', 'install']);
     const current = read('.git/hooks/post-checkout');
-    put('.git/hooks/post-checkout', current.replace('hewtd graph --quiet', 'hewtd graph --old'));
+    put('.git/hooks/post-checkout', current.replace(/# >>> hewtd graph >>>[\s\S]*?# <<< hewtd graph <<<\n/, OLD_GRAPH_BLOCK_330));
     hewtd(['upgrade-check', '--fix']);
     expect(read('.git/hooks/post-checkout')).toBe(current);
   });
@@ -278,7 +284,7 @@ describe('upgrade-check reports the graph hook blocks', () => {
     for (const name of ['post-merge', 'post-checkout']) {
       expect(text).toContain(`add these lines to .githooks/${name}:`);
     }
-    expect(text).toContain('        # >>> hewtd graph >>>\n        if [ "${3:-1}" != "0" ]; then npx --no-install hewtd graph --quiet || true; fi\n        # <<< hewtd graph <<<');
+    expect(text).toContain('        # >>> hewtd graph >>>\n        if [ "${3:-1}" != "0" ]; then (npx --no-install hewtd graph --quiet || true) >/dev/null 2>&1 </dev/null & fi\n        # <<< hewtd graph <<<');
     expect(existsSync(join(root, '.githooks'))).toBe(false);
   });
   it('upgrade-notes.json 3.3.0 names the hooks', () => {

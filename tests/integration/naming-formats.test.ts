@@ -60,7 +60,7 @@ describe('serialized formats are stable across the rename', () => {
     check('reconcile-next.json', json(['reconcile', '--next', '1000', '--json']));
     check('reconcile-secrets.json', json(['reconcile', '--secrets', '--json']));
     const audit = hewtd(['audit', '-r']);
-    check('audit.txt', `exit ${audit.status}\n${audit.stdout}`);
+    check('audit.txt', `exit ${audit.status}\n${audit.stdout.replace(/\n━━━ Targets[\s\S]*?\(semantic-memory\)\.\n/, '')}`); // the advisory Targets section (#109) is covered by docs-targets-109.test.ts
     const reports = join(root, '.documentation/reports');
     const report = readdirSync(reports).find((f) => f.startsWith('audit-'));
     // Row order depends on file-read timing, so compare the sorted lines.

@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.4.0] — 2026-11-11
+
+Fixes #108 and adds docs targets (#109). #108: the 3.3.0 graph hook ran `hewtd graph` in the foreground, so a pull or checkout could wait from seconds to minutes. No key changes.
+
+- The `post-merge` / `post-checkout` block runs it in the background: `(npx --no-install hewtd graph --quiet || true) >/dev/null 2>&1 </dev/null &`. The redirects are on the subshell; with them only inside it, git still waits for the background job's output.
+- `hewtd graph` runs one at a time per repo: `.hewtd/graph.lock` (pid), and a run that finds it held leaves `.hewtd/graph.pending` and exits; the holder runs again while one is left, so the newest HEAD wins. A dead or 30-minute-old lock is taken over.
+- `hewtd hooks install` and `upgrade-check --fix` upgrade only the block hewtd wrote in 3.3.0; a block you edited is left alone. `upgrade-check` reports your own block `[ok]` when it runs in the background and `[action]` (never rewritten) when it runs in the foreground.
+- #109, docs targets: `hewtd init` writes a `targets` block (defaults, each with a reason) into `.claude/hit-em-with-the-docs.json`, and `upgrade-check --fix` adds it (new config key `targets`; `targets.flows` and `targets.held` default to `[]`). `hewtd audit` ends with an advisory Targets section (real purpose, verified, no missing refs, unreviewed, secrets, archive candidates, flows with an overview doc): value, target, met, held and one next command per unmet target; it never fails `--strict`. New `hewtd audit --json`. Held docs are counted apart. The retrieval-eval coverage-misses import is deferred until semantic-memory#96 defines an export. See `docs/docs-targets.md`.
+- `upgrade-notes.json` 3.4.0; `docs/upgrade-check.md` notes that the first `hewtd graph` after an upgrade rebuilds its cache and can take minutes.
+
 ## [3.3.0] — 2026-11-11
 
 Adds `hewtd upgrade-check` (#104). Additive: the config key `last_upgrade_check` is written by hewtd; nothing else changes.

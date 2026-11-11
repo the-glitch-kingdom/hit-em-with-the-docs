@@ -20,6 +20,7 @@ import { check_overview } from './overview.js';
 import { load_ledger } from '../reconcile/ledger.js';
 import { find_unreviewed_docs } from '../reconcile/triage.js';
 import { list_generations } from '../reconcile/rotation.js';
+import { compute_targets, type TargetsReport } from './targets.js';
 import { check_naming_convention, check_file_placement } from './rules.js';
 
 export interface AuditOptions {
@@ -45,6 +46,8 @@ export interface AuditResult {
   issues: AuditIssue[];
   stats: AuditStats;
   health_score: number;
+  /** Docs targets (#109): advisory, never an issue; absent when it could not be computed. */
+  targets?: TargetsReport;
 }
 
 export interface AuditIssue {
@@ -224,6 +227,8 @@ export async function check_documentation(options: AuditOptions): Promise<AuditR
       });
     }
   } catch { /* no ledger or unreadable doc: nothing to report */ }
+  // Docs targets (#109): advisory, shown beside the issues, never one of them (so --strict and the exit code are unaffected).
+  try { result.targets = await compute_targets({ repo_root: options.repo_root ?? process.cwd(), docs_root, config: plugin_cfg }); } catch { /* not a repo or unreadable: no targets */ }
 
   // Calculate stats
   result.stats.metadataCompliance = (metadata_compliant / files.length) * 100 || 0;
@@ -261,6 +266,12 @@ export async function check_documentation(options: AuditOptions): Promise<AuditR
     }
     const unreviewed = result.issues.find((i) => i.rule === 'DOCS_UNREVIEWED');
     if (unreviewed) logger.warn(`DOCS_UNREVIEWED: ${unreviewed.message}. ${unreviewed.suggestion}`);
+    if (result.targets) {
+      logger.header('Targets (advisory)');
+      logger.table(['Metric', 'Value', 'Target', 'Met', 'Held'], result.targets.rows.map((row) => [row.label, `${row.value}/${row.total}`, row.target, row.met ? 'met' : 'NOT MET', String(row.held)]));
+      for (const row of result.targets.rows.filter((candidate) => !candidate.met)) logger.info(`  ${row.id}: ${row.next}${row.missing ? ` (${row.missing.join(', ')})` : ''}`);
+      logger.info(result.targets.note);
+    }
   }
 
   return result;

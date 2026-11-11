@@ -21,7 +21,7 @@ Each item prints `[ok]`, `[info]` or `[action]` (needs a human). `(--fix)` marks
 |---|---|
 | Version skew | hewtd copies that differ from the installed version: plugin cache, global CLI, npx cache, `node_modules` |
 | Config keys | keys new since your last check that are not set in `.claude/hit-em-with-the-docs.json`, with defaults; changed defaults |
-| Graph hooks | the `post-merge` / `post-checkout` blocks (`hewtd graph --quiet`) missing or out of date; custom `core.hooksPath` prints the lines (3.3.0) |
+| Graph hooks | the `post-merge` / `post-checkout` blocks (`hewtd graph --quiet`, backgrounded since 3.4.0) missing or out of date; custom `core.hooksPath` prints the lines (3.3.0). Only a block hewtd wrote is upgraded: one you edited is `[ok]` when it runs in the background and `[action]` (never rewritten) when it runs in the foreground |
 | Pre-commit hook | the hewtd block missing or out of date. With a custom `core.hooksPath` the exact lines to add are printed |
 | Skill symlinks | `.claude/skills/` links that are missing or do not point at the installed package |
 | Doc template | a repo `doc.template.md` that differs from `templates/doc.template.md` (never overwritten) |
@@ -75,3 +75,9 @@ creates a hook on a custom `core.hooksPath`, and never updates the other hewtd c
 ## Testing
 
 Tests use a temp `HOME`. `HEWTD_NPM_ROOT` overrides the global npm root (empty means none); these are test seams.
+
+## The first graph run after an upgrade
+
+The first `hewtd graph` after upgrading hewtd rebuilds its cache and can take minutes on a large docs tree
+(about 2.5 minutes on 590 docs); later runs reuse it (well under a second when the graph is already at HEAD).
+The hook runs it in the background (3.4.0), so git does not wait for it.

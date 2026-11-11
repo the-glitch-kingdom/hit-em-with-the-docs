@@ -743,7 +743,7 @@ recommendation each; read-only unless you pass a flag. `--promote --confirm` end
 - **Review files**: `.hewtd/reconcile/review-*.md` and each stage's `reconcile/review-*.md`: how many, and which quote a
   value from `.env.hewtd` (read as `NAME=value`, `export NAME=...`, quoted or not, LF or CRLF). `--fix` replaces the
   value with its pointer `<secret: NAME, see .env.hewtd>` in place.
-- **Graph files**: `.hewtd/graph.json` and `graph-cache.json`.
+- **Graph files**: `.hewtd/graph.json` and `graph-cache.json`. Since 3.4.0 the graph hook runs `hewtd graph` in the background and `hewtd graph` holds `.hewtd/graph.lock` (a run that finds it held leaves `.hewtd/graph.pending`); both are runtime files.
 - **Git hygiene**: hewtd working files git does not ignore (`.hewtd/reconcile.json` and `secrets-baseline.json` are meant
   to be committed and are left alone). `--fix` appends `.hewtd/*` (with `!` lines keeping those two visible) and `.env.hewtd` to `.gitignore`, so files
   hewtd writes later are covered too. To commit `graph.json` after that, `git add -f .hewtd/graph.json` once.

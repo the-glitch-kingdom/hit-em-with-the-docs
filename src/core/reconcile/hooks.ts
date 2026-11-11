@@ -43,8 +43,26 @@ const END = '# <<< hewtd secrets <<<';
 export const BLOCK = `${START}\nnpx --no-install hewtd secrets --staged || exit 1\nnpx --no-install hewtd reconcile --changed --check --cached || exit 1\n${END}\n`;
 export const GRAPH_START = '# >>> hewtd graph >>>';
 const GRAPH_END = '# <<< hewtd graph <<<';
-/** Refreshes .hewtd/graph.json after a pull or a branch switch (#106); never fails the git command. `$3` is 0 for a single-file checkout, unset for post-merge. */
-export const GRAPH_BLOCK = `${GRAPH_START}\nif [ "\${3:-1}" != "0" ]; then npx --no-install hewtd graph --quiet || true; fi\n${GRAPH_END}\n`;
+/**
+ * Refreshes .hewtd/graph.json after a pull or a branch switch (#106), in the background so git returns at once (#108);
+ * never fails the git command. `$3` is 0 for a single-file checkout, unset for post-merge. `hewtd graph` locks itself.
+ * The redirects are on the subshell: if it kept git's stdout/stderr open, git would wait for it anyway.
+ */
+export const GRAPH_BLOCK = `${GRAPH_START}\nif [ "\${3:-1}" != "0" ]; then (npx --no-install hewtd graph --quiet || true) >/dev/null 2>&1 </dev/null & fi\n${GRAPH_END}\n`;
+/** Blocks earlier releases wrote: only these are upgraded in place; any other text between the markers is the user's. */
+const OLD_GRAPH_BLOCKS = [`${GRAPH_START}\nif [ "\${3:-1}" != "0" ]; then npx --no-install hewtd graph --quiet || true; fi\n${GRAPH_END}\n`]; // 3.3.0, foreground
+
+/** How a hook's graph block stands: hewtd's current one, an older one hewtd wrote, or the user's own (backgrounded or not). */
+export function get_graph_block_state(hook_text: string): 'current' | 'old' | 'custom-background' | 'custom-foreground' | 'absent' {
+  const found = new RegExp(`${GRAPH_START}[\\s\\S]*?${GRAPH_END}(?:\\n|$)`).exec(hook_text)?.[0];
+  if (!found) return 'absent';
+  const block = found.endsWith('\n') ? found : `${found}\n`;
+  if (block === GRAPH_BLOCK) return 'current';
+  if (OLD_GRAPH_BLOCKS.includes(block)) return 'old';
+  // a line (comments stripped) ending in a lone `&`, optionally followed by `fi`; `&&`, `2>&1` and `&` in a comment do not count
+  const lines = block.split('\n').map((line) => line.replace(/(^|\s)#.*$/, '').trimEnd());
+  return lines.some((line) => /(?:^|[^&>])&\s*(?:;?\s*fi)?$/.test(line)) || /\bnohup\b|\bsetsid\b/.test(block) ? 'custom-background' : 'custom-foreground';
+}
 export const GRAPH_HOOKS = ['post-merge', 'post-checkout'] as const;
 const SHEBANG = '#!/bin/sh\n';
 
@@ -73,6 +91,8 @@ async function install_block(repo_root: string, hook: HookBlock): Promise<{ path
   try { cur = await readFile(path, 'utf-8'); } catch { /* absent */ }
   if (cur?.includes(hook.start)) {
     if (cur.includes(hook.block)) return { path, changed: false };
+    // graph blocks: only one hewtd wrote is upgraded; a block the user edited (backgrounded, other flags) stays theirs (#108)
+    if (hook.start === GRAPH_START && get_graph_block_state(cur) !== 'old') return { path, changed: false };
     await writeFile(path, cur.replace(block_regex(hook), hook.block)); // our own block from an older version
     return { path, changed: true };
   }

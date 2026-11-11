@@ -10,10 +10,9 @@ import { BASELINE_PATH } from './secrets.js';
 
 const ENV = '.env.hewtd';
 const MIN_VALUE_LENGTH = 8; // shorter values are ordinary words; redacting them would damage the review text
-const SKIP_DIRS = new Set(['node_modules', '.git']);
 
 export interface FinishKey { name: string; rotated: boolean; rotated_on?: string }
-export interface FinishStage { path: string; size: number; kind: 'rejected' | 'abandoned' | 'promoted' | 'active'; source_commit: string | null }
+export interface FinishStage { path: string; size: number; kind: 'rejected' | 'promoted' | 'open'; source_commit: string | null }
 export interface FinishReport {
   credentials: { exists: boolean; size: number; mode: string; tracked: boolean; keys: FinishKey[]; not_rotated: string[] };
   stages: FinishStage[];
@@ -44,52 +43,61 @@ function load_environment(repo_root: string): Map<string, string> {
   const found = new Map<string, string>();
   let text: string;
   try { text = readFileSync(join(repo_root, ENV), 'utf-8'); } catch { return found; }
-  for (const line of text.split('\n')) {
-    const match = /^([A-Za-z_]\w*)=(.*)$/.exec(line);
+  for (const line of text.split(/\r?\n/)) {
+    const match = /^\s*(?:export\s+)?([A-Za-z_]\w*)\s*=\s*(.*?)\s*$/.exec(line);
     if (!match) continue;
     let value = match[2]!;
     if (value.startsWith('"')) { try { value = JSON.parse(value); } catch { /* keep raw */ } }
+    else if (/^'.*'$/.test(value)) value = value.slice(1, -1);
     found.set(match[1]!, value);
   }
   return found;
 }
 
-/** Every `stage.json` directory under the repo (not node_modules, .git, the docs tree or the cold root). */
-function list_stage_dirs(repo_root: string, skip: string[]): string[] {
+/** A hewtd stage manifest (what `--stage` writes and `load_stage` accepts): its source commit, or undefined when it is not one. */
+function read_stage_manifest(dir: string): { source_commit: string | null } | undefined {
+  try {
+    const manifest = JSON.parse(readFileSync(join(dir, 'stage.json'), 'utf-8')) as { format?: unknown; docs_path?: unknown; source_commit?: unknown };
+    if (manifest.format !== 1 || typeof manifest.docs_path !== 'string') return undefined;
+    return { source_commit: typeof manifest.source_commit === 'string' ? manifest.source_commit : null };
+  } catch { return undefined; }
+}
+
+/**
+ * Stages hewtd made: directories under `.hewtd/` (two levels: `.hewtd/<name>`, `.hewtd/stage/<name>`) holding a valid stage
+ * manifest and no git-tracked file. Never the repo root, never anything elsewhere: --confirm deletes what this returns.
+ */
+function list_stage_dirs(repo_root: string): string[] {
   const found: string[] = [];
   const walk = (dir: string, depth: number): void => {
     let entries: import('fs').Dirent[];
     try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
-    if (entries.some((entry) => entry.isFile() && entry.name === 'stage.json')) { found.push(dir); return; }
-    if (depth >= 6) return;
     for (const entry of entries) {
-      if (!entry.isDirectory() || SKIP_DIRS.has(entry.name)) continue; // a symlink is not a directory entry here: never followed
+      if (!entry.isDirectory()) continue; // a symlink is not a directory entry here: never followed
       const child = join(dir, entry.name);
-      if (!skip.includes(format_posix_path(relative(repo_root, child)))) walk(child, depth + 1);
+      if (read_stage_manifest(child)) { if (!run_git(repo_root, ['ls-files', '--', format_posix_path(relative(repo_root, child))]).stdout.trim()) found.push(child); }
+      else if (depth < 1) walk(child, depth + 1);
     }
   };
-  walk(repo_root, 0);
+  walk(join(repo_root, '.hewtd'), 0);
   return found;
 }
 
-function classify_stage(dir: string, head: string): FinishStage['kind'] {
+/** rejected (made by --undo), promoted (its docs are live now) or open: in progress, or abandoned, which hewtd cannot tell apart, so never removed. */
+function classify_stage(dir: string): FinishStage['kind'] {
   if (/^rejected-/.test(dir.split(/[\\/]/).pop()!)) return 'rejected';
-  if (!existsSync(join(dir, 'docs'))) return 'promoted'; // the promote moved the docs out
-  return read_source_commit(dir) === head ? 'active' : 'abandoned';
+  return existsSync(join(dir, 'docs')) ? 'open' : 'promoted';
 }
 
-function read_source_commit(dir: string): string | null {
-  try { const manifest = JSON.parse(readFileSync(join(dir, 'stage.json'), 'utf-8')) as { source_commit?: unknown }; return typeof manifest.source_commit === 'string' ? manifest.source_commit : null; } catch { return null; }
+/** Review files hewtd wrote: `.hewtd/reconcile/review-*.md` and each stage's `reconcile/review-*.md` (repo-relative). */
+function list_review_files(repo_root: string, stage_dirs: string[]): string[] {
+  return [join(repo_root, '.hewtd', 'reconcile'), ...stage_dirs.map((dir) => join(dir, 'reconcile'))]
+    .flatMap((dir) => (existsSync(dir) ? readdirSync(dir).filter((name) => /^review-.*\.md$/.test(name)).map((name) => format_posix_path(relative(repo_root, join(dir, name)))) : []));
 }
 
-/** Repo-relative ignore line for an untracked hewtd working file: its stage/reconcile folder, else the file. */
-function get_ignore_line(file: string): string {
-  const folder = /^(\.hewtd\/(?:stage|reconcile)\/)/.exec(file);
-  return folder ? folder[1]! : file;
-}
 
-export async function build_finish_report(options: { repo_root: string; docs_root: string; config?: PluginConfig }): Promise<FinishReport> {
-  const { repo_root, docs_root } = options;
+export async function build_finish_report(options: { repo_root: string; config?: PluginConfig }): Promise<FinishReport> {
+  const { repo_root } = options;
   const config = options.config ?? await load_plugin_config(repo_root);
   const rotated = new Map((config.reconcile.secrets.rotated ?? []).map((item) => [item.env, item.rotated_on]));
   const environment = load_environment(repo_root);
@@ -98,28 +106,27 @@ export async function build_finish_report(options: { repo_root: string; docs_roo
   const keys: FinishKey[] = [...environment.keys()].map((name) => ({ name, rotated: rotated.has(name), ...(rotated.has(name) && { rotated_on: rotated.get(name)! }) }));
   const env_tracked = env_exists && run_git(repo_root, ['ls-files', '--error-unmatch', ENV]).status === 0;
 
-  const head = run_git(repo_root, ['rev-parse', 'HEAD']).stdout.trim();
-  const skip = [format_posix_path(relative(repo_root, docs_root)), config.reconcile.cold_root.replace(/\/+$/, '')];
-  const stages = list_stage_dirs(repo_root, skip).map((dir): FinishStage => ({ path: format_posix_path(relative(repo_root, dir)), size: get_size(dir), kind: classify_stage(dir, head), source_commit: read_source_commit(dir) }))
+  const stage_dirs = list_stage_dirs(repo_root);
+  const stages = stage_dirs.map((dir): FinishStage => ({ path: format_posix_path(relative(repo_root, dir)), size: get_size(dir), kind: classify_stage(dir), source_commit: read_stage_manifest(dir)!.source_commit }))
     .sort((a, b) => (a.path < b.path ? -1 : 1));
 
   const reconcile_dir = join(repo_root, '.hewtd', 'reconcile');
-  const names = existsSync(reconcile_dir) ? readdirSync(reconcile_dir) : [];
-  const reviews = names.filter((name) => /^review-.*\.md$/.test(name));
-  const reports = names.filter((name) => /^secrets-report-.*\.md$/.test(name));
-  const with_secrets = reviews.filter((name) => list_quoted_values(readFileSync(join(reconcile_dir, name), 'utf-8'), environment).length).map((name) => `.hewtd/reconcile/${name}`);
+  const reports = (existsSync(reconcile_dir) ? readdirSync(reconcile_dir) : []).filter((name) => /^secrets-report-.*\.md$/.test(name));
+  const reviews = list_review_files(repo_root, stage_dirs);
+  const with_secrets = reviews.filter((file) => list_quoted_values(readFileSync(join(repo_root, file), 'utf-8'), environment).length);
 
   const graph = ['.hewtd/graph.json', '.hewtd/graph-cache.json'].filter((file) => existsSync(join(repo_root, file))).map((file) => ({ path: file, size: get_size(join(repo_root, file)), removable: file.endsWith('cache.json') }));
 
   const kept = new Set([format_posix_path(config.reconcile.ledger_path), BASELINE_PATH]); // hewtd means these to be committed
   const status = run_git(repo_root, ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--', '.hewtd', ENV]).stdout.split('\0').filter((entry) => entry.startsWith('?? ')).map((entry) => entry.slice(3));
   const unignored = status.filter((file) => !kept.has(file));
-  const add_lines = [...new Set(unignored.map(get_ignore_line))].sort();
+  // the whole folder, so files hewtd writes later (graph, caches, stages) are covered too; the kept files stay visible
+  const add_lines = unignored.length ? [...(unignored.some((file) => file.startsWith('.hewtd/')) ? ['.hewtd/*', ...[...kept].filter((file) => file.startsWith('.hewtd/') && !file.slice(7).includes('/')).map((file) => `!${file}`)] : []), ...(unignored.includes(ENV) ? [ENV] : [])] : [];
 
   return {
     credentials: { exists: env_exists, size: env_exists ? get_size(env_path) : 0, mode: env_exists ? (statSync(env_path).mode & 0o777).toString(8) : '', tracked: env_tracked, keys, not_rotated: keys.filter((key) => !key.rotated).map((key) => key.name) },
     stages,
-    review_files: { count: reviews.length, size: reviews.reduce((sum, name) => sum + get_size(join(reconcile_dir, name)), 0), with_secrets },
+    review_files: { count: reviews.length, size: reviews.reduce((sum, file) => sum + get_size(join(repo_root, file)), 0), with_secrets },
     secrets_reports: { count: reports.length, size: reports.reduce((sum, name) => sum + get_size(join(reconcile_dir, name)), 0) },
     graph, git: { unignored, add_lines }, actions: [],
   };
@@ -161,16 +168,15 @@ export async function record_rotated(repo_root: string, names: string[], today =
 /** Replaces env values quoted in review files with their env pointer; returns the redacted files (repo-relative). */
 export function redact_review_files(repo_root: string): string[] {
   const environment = load_environment(repo_root);
-  const dir = join(repo_root, '.hewtd', 'reconcile');
   const done: string[] = [];
-  for (const name of existsSync(dir) ? readdirSync(dir).filter((entry) => /^review-.*\.md$/.test(entry)) : []) {
-    const file = join(dir, name);
+  for (const review_file of list_review_files(repo_root, list_stage_dirs(repo_root))) {
+    const file = join(repo_root, review_file);
     let text = readFileSync(file, 'utf-8');
     const quoted = list_quoted_values(text, environment);
     if (!quoted.length) continue;
     for (const { name: env_name, value, escaped } of quoted) text = text.split(value).join(`<secret: ${env_name}, see ${ENV}>`).split(escaped).join(`<secret: ${env_name}, see ${ENV}>`);
     writeFileSync(file, text);
-    done.push(`.hewtd/reconcile/${name}`);
+    done.push(review_file);
   }
   return done;
 }
@@ -187,11 +193,11 @@ export function add_ignore_lines(repo_root: string, lines: string[]): string[] {
   return fresh;
 }
 
-/** Removes rejected and abandoned stages, the graph cache and the review files `redacted` in this run. Never .env.hewtd, graph.json, cold generations or anything under the docs tree. */
+/** Removes rejected and promoted stages, the graph cache and the review files `redacted` in this run. Never an open stage, .env.hewtd, graph.json, cold generations or anything under the docs tree. */
 export function remove_leftovers(repo_root: string, report: FinishReport, redacted: string[]): string[] {
   const removed: string[] = [];
   for (const file of redacted) if (file.startsWith('.hewtd/reconcile/review-')) { rmSync(join(repo_root, file), { force: true }); removed.push(file); }
-  for (const stage of report.stages) if (stage.kind === 'rejected' || stage.kind === 'abandoned') { rmSync(join(repo_root, stage.path), { recursive: true, force: true }); removed.push(stage.path); }
+  for (const stage of report.stages) if (stage.kind === 'rejected' || stage.kind === 'promoted') { rmSync(join(repo_root, stage.path), { recursive: true, force: true }); removed.push(stage.path); }
   for (const item of report.graph) if (item.removable) { rmSync(join(repo_root, item.path), { force: true }); removed.push(item.path); }
   return removed;
 }
@@ -208,7 +214,7 @@ export function format_finish_report(report: FinishReport): string {
   }
   lines.push('', 'Stages');
   if (!report.stages.length) lines.push('  none');
-  const advice = { rejected: '--confirm removes it', abandoned: '--confirm removes it (source commit is not HEAD)', promoted: 'consumed by a promote; remove by hand when you like', active: 'source commit is HEAD, so it may be in use; kept' } as const;
+  const advice = { rejected: '--confirm removes it', promoted: 'consumed by a promote (its docs are live); --confirm removes it', open: 'in progress or abandoned (hewtd cannot tell); kept: remove it by hand once you are done with it' } as const;
   for (const stage of report.stages) lines.push(`  ${stage.path} (${format_size(stage.size)}) ${stage.kind}, source ${stage.source_commit?.slice(0, 7) ?? 'unknown'}: ${advice[stage.kind]}`);
   lines.push('', 'Review files');
   lines.push(`  ${report.review_files.count} review file(s) (${format_size(report.review_files.size)}); ${report.review_files.with_secrets.length} quote a secret-lane value${report.review_files.with_secrets.length ? ' (--fix redacts them in place)' : ''}`);

@@ -736,16 +736,20 @@ recommendation each; read-only unless you pass a flag. `--promote --confirm` end
   rotation with `hewtd reconcile --finish --rotated <ENV_NAME>` (repeatable); it is stored as
   `reconcile.secrets.rotated: [{env, rotated_on}]` in the plugin config, names only. A config that is not valid JSON is
   refused, never rewritten. hewtd never deletes `.env.hewtd`.
-- **Stages**: every directory with a `stage.json` (under `.hewtd/stage` or elsewhere in the repo): `rejected` (from
-  `--undo`), `abandoned` (source commit is not HEAD), `promoted` (docs moved out) or `active`.
-- **Review files**: how many, and which quote a value from `.env.hewtd`. `--fix` replaces the value with its pointer
-  `<secret: NAME, see .env.hewtd>` in place.
+- **Stages**: directories under `.hewtd/` (`.hewtd/<name>` or `.hewtd/stage/<name>`) holding a valid hewtd `stage.json`
+  and no git-tracked file: `rejected` (from `--undo`), `promoted` (its docs are live now) or `open` (in progress or
+  abandoned; hewtd cannot tell, so it never removes one: delete it by hand when you are done). A stage you made
+  elsewhere in the repo is not listed.
+- **Review files**: `.hewtd/reconcile/review-*.md` and each stage's `reconcile/review-*.md`: how many, and which quote a
+  value from `.env.hewtd` (read as `NAME=value`, `export NAME=...`, quoted or not, LF or CRLF). `--fix` replaces the
+  value with its pointer `<secret: NAME, see .env.hewtd>` in place.
 - **Graph files**: `.hewtd/graph.json` and `graph-cache.json`.
 - **Git hygiene**: hewtd working files git does not ignore (`.hewtd/reconcile.json` and `secrets-baseline.json` are meant
-  to be committed and are left alone). `--fix` appends the missing lines to `.gitignore`.
-- `--confirm` removes only rejected and abandoned stages, the graph cache and the review files `--fix` redacted in the
+  to be committed and are left alone). `--fix` appends `.hewtd/*` (with `!` lines keeping those two visible) and `.env.hewtd` to `.gitignore`, so files
+  hewtd writes later are covered too. To commit `graph.json` after that, `git add -f .hewtd/graph.json` once.
+- `--confirm` removes only rejected and promoted stages, the graph cache and the review files `--fix` redacted in the
   same run. Never `.env.hewtd`, `graph.json`, cold generations or anything under the docs tree. `--json` prints the report.
 
-`hewtd graph [--quiet]` writes only `.hewtd/graph.json` (no index). `hewtd hooks install` also adds marked `post-merge` and
+`hewtd graph [--quiet] [-p <docs>]` writes only `.hewtd/graph.json` (no index); without `-p` it uses `docs_root` from the plugin config. `hewtd hooks install` also adds marked `post-merge` and
 `post-checkout` blocks that run `hewtd graph --quiet`, so the graph is at HEAD after a pull or a branch switch; with a custom
-`core.hooksPath` add the lines yourself (`hewtd upgrade-check` prints them).
+`core.hooksPath` (`~` is expanded as git does) add the lines yourself (`hewtd upgrade-check` prints them).

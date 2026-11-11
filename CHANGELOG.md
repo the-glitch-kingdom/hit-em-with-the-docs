@@ -11,7 +11,7 @@ Adds `hewtd upgrade-check` (#104). Additive: the config key `last_upgrade_check`
 - `/hit-em-with-the-docs:update` runs it after the update; `/hit-em-with-the-docs:status` suggests it; new `/hit-em-with-the-docs:upgrade-check`.
 - `--record` records `last_upgrade_check` once a human has handled the remaining items. A config file that is not valid JSON is reported and never rewritten. Superseded plugin-cache versions are not counted as skew, and a never-installed hook is `[info]`. Versions with a `v` prefix or a prerelease tag compare by their numbers.
 - Docs: `docs/upgrade-check.md`, LLM guide, help, README.
-- #106: `hewtd reconcile --finish [--rotated <ENV>] [--fix] [--confirm] [--json]` inventories what a reconcile leaves behind (`.env.hewtd` key names and rotation, stages, review files, graph files, git hygiene); `--promote --confirm` ends with it. New config key `reconcile.secrets.rotated`. `hewtd graph [--quiet]` and `hewtd hooks install` adds `post-merge` / `post-checkout` graph-refresh blocks; `upgrade-check` reports them.
+- #106: `hewtd reconcile --finish [--rotated <ENV>] [--fix] [--confirm] [--json]` inventories what a reconcile leaves behind (`.env.hewtd` key names and rotation, stages, review files, graph files, git hygiene); `--promote --confirm` ends with it. New config key `reconcile.secrets.rotated`. `hewtd graph [--quiet]` and `hewtd hooks install` adds `post-merge` / `post-checkout` graph-refresh blocks; `upgrade-check` reports them. `--confirm` removes only rejected and promoted stages under `.hewtd/` (an open stage is never removed: hewtd cannot tell in-progress from abandoned); `hewtd graph` without `-p` uses the configured `docs_root`.
 
 ## [3.2.2] — 2026-11-11
 

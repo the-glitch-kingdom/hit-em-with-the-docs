@@ -189,7 +189,7 @@ When you wrote or edited docs yourself (a new file, `hewtd integrate`, an edit t
 
 ## When the reconcile is done (`--finish`)
 
-After a whole-tree reconcile (and after `--promote --confirm`), run `hewtd reconcile --finish` and show the user the inventory: credentials in `.env.hewtd` (names only), stages, review files, graph files, git hygiene. Never delete `.env.hewtd` yourself, and never print a value from it. When the user says they rotated a credential, record it with `hewtd reconcile --finish --rotated <ENV_NAME>`. `--fix` redacts secret values quoted in review files and adds missing `.gitignore` lines; `--confirm` removes only rejected/abandoned stages, the graph cache and redacted review files: run either only with the user's say-so.
+After a whole-tree reconcile (and after `--promote --confirm`), run `hewtd reconcile --finish` and show the user the inventory: credentials in `.env.hewtd` (names only), stages, review files, graph files, git hygiene. Never delete `.env.hewtd` yourself, and never print a value from it. When the user says they rotated a credential, record it with `hewtd reconcile --finish --rotated <ENV_NAME>`. `--fix` redacts secret values quoted in review files and adds missing `.gitignore` lines; `--confirm` removes only rejected and promoted stages, the graph cache and redacted review files (never an open stage: tell the user to delete one by hand when they are done with it): run either only with the user's say-so.
 
 ## What NOT to do
 

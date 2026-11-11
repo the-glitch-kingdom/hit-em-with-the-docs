@@ -262,11 +262,20 @@ async function export_graph(docs_root: string, dry_run: boolean, quiet = false):
 program
   .command('graph')
   .description('Write .hewtd/graph.json only (no index); --quiet is for git hooks')
-  .option('-p, --docs-path <path>', 'Documentation path', '.documentation')
+  .option('-p, --docs-path <path>', 'Documentation path (default: docs_root from the plugin config, else .documentation)')
   .option('--quiet', 'Print nothing unless the export fails; always exit 0 (git hooks)', false)
   .option('--dry-run', 'Report whether graph.json would change; write nothing', false)
   .action(async (options) => {
-    await export_graph(resolve(process.cwd(), options.docsPath), options.dryRun, options.quiet);
+    let docs_root: string;
+    if (options.docsPath) docs_root = resolve(process.cwd(), options.docsPath);
+    else { // the hook runs it with no path, so a repo whose docs live elsewhere is still refreshed
+      const { load_plugin_config, resolve_docs_root } = await import('../utils/config.js');
+      const { resolve_git_top: project_root_of } = await import('../core/reconcile/outside.js');
+      const repo_root = project_root_of(process.cwd());
+      docs_root = resolve_docs_root(repo_root, await load_plugin_config(repo_root));
+    }
+    if (!existsSync(docs_root)) { if (!options.quiet) logger.warn(`Graph export skipped: no docs folder at ${relative(process.cwd(), docs_root) || '.'} (pass -p or set docs_root)`); return; }
+    await export_graph(docs_root, options.dryRun, options.quiet);
   });
 
 /** How many document rows a generated INDEX.md currently lists (0 if absent). */
@@ -1235,14 +1244,14 @@ program
         const redacted = options.fix ? finish.redact_review_files(repo_root) : [];
         if (redacted.length) actions.push(`redacted secret-lane values in ${redacted.join(', ')}`);
         if (options.fix) {
-          const added = finish.add_ignore_lines(repo_root, (await finish.build_finish_report({ repo_root, docs_root })).git.add_lines);
+          const added = finish.add_ignore_lines(repo_root, (await finish.build_finish_report({ repo_root })).git.add_lines);
           if (added.length) actions.push(`added to .gitignore: ${added.join(', ')}`);
         }
         if (options.confirm) {
-          const removed = finish.remove_leftovers(repo_root, await finish.build_finish_report({ repo_root, docs_root }), redacted);
+          const removed = finish.remove_leftovers(repo_root, await finish.build_finish_report({ repo_root }), redacted);
           actions.push(...removed.map((path) => `removed ${path}`));
         }
-        const report = await finish.build_finish_report({ repo_root, docs_root });
+        const report = await finish.build_finish_report({ repo_root });
         report.actions = actions;
         if (options.json) console.log(JSON.stringify(report, null, 2)); else logger.info(finish.format_finish_report(report));
       } catch (entry) {
@@ -1304,7 +1313,7 @@ program
           logger.info(`  ${done.secrets_findings.length} secret finding(s) in it are recorded in cold_storage; rotate those credentials, they stay in git history`);
           print_rotation_warnings(done, true);
           await export_graph(docs_root, false);
-          try { const finish = await import('../core/reconcile/finish.js'); logger.info(`\n${finish.format_finish_report(await finish.build_finish_report({ repo_root, docs_root }))}`); } catch (entry) { logger.warn(`could not list what is left behind: ${(entry as Error).message}`); }
+          try { const finish = await import('../core/reconcile/finish.js'); logger.info(`\n${finish.format_finish_report(await finish.build_finish_report({ repo_root }))}`); } catch (entry) { logger.warn(`could not list what is left behind: ${(entry as Error).message}`); }
         }
       } catch (entry) {
         logger.error((entry as Error).message);

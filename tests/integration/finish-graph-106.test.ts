@@ -57,7 +57,7 @@ describe('reconcile --finish inventory', () => {
     expect(out).toMatch(/HEWTD_KEY_A\s+NOT rotated/);
     expect(out).toContain('.hewtd/stage/rejected-x');
     expect(out).toMatch(/rejected-x.*rejected/);
-    expect(out).toMatch(/old-one.*abandoned/);
+    expect(out).toMatch(/old-one.*open/);
     expect(out).toContain('graph-cache.json');
     expect(out).toMatch(/2 review file/);
     expect(out).toContain('review-1.md');
@@ -80,13 +80,9 @@ describe('reconcile --finish inventory', () => {
     const report = JSON.parse(result.stdout);
     expect(report.credentials.keys.map((key: { name: string }) => key.name)).toEqual(['HEWTD_KEY_A', 'HEWTD_KEY_B']);
     expect(report.credentials.keys[0].rotated).toBe(false);
-    expect(report.stages.map((stage: { kind: string }) => stage.kind).sort()).toEqual(['abandoned', 'rejected']);
+    expect(report.stages.map((stage: { kind: string }) => stage.kind).sort()).toEqual(['open', 'rejected']);
     expect(report.review_files.count).toBe(2);
     expect(report.review_files.with_secrets).toEqual(['.hewtd/reconcile/review-1.md']);
-  });
-  it('finds a stage.json outside .hewtd too', () => {
-    put('work/stage-z/stage.json', stage_manifest('0'.repeat(40))); put('work/stage-z/docs/a.md', 'old\n');
-    expect(hewtd(['reconcile', '--finish']).stdout).toContain('work/stage-z');
   });
   it('flags .hewtd working files that git does not ignore', () => {
     leave_leftovers();
@@ -158,14 +154,14 @@ describe('--fix', () => {
 
 describe('--confirm', () => {
   it('needs --finish', () => { expect(hewtd(['reconcile', '--confirm']).status).toBe(1); });
-  it('removes only rejected/abandoned stages and graph caches; never .env.hewtd, graph.json, the docs tree or a live stage', () => {
+  it('removes only rejected and promoted stages and graph caches; never .env.hewtd, graph.json, the docs tree or an open stage', () => {
     leave_leftovers();
     put('.hewtd/stage/live/stage.json', stage_manifest(g(root, 'rev-parse', 'HEAD'))); put('.hewtd/stage/live/docs/a.md', 'wip\n');
     const docs_before = read('.documentation/backend/a.md');
     const result = hewtd(['reconcile', '--finish', '--confirm']);
     expect(result.status).toBe(0);
     expect(existsSync(join(root, '.hewtd/stage/rejected-x'))).toBe(false);
-    expect(existsSync(join(root, '.hewtd/stage/old-one'))).toBe(false);
+    expect(existsSync(join(root, '.hewtd/stage/old-one/docs/a.md'))).toBe(true);
     expect(existsSync(join(root, '.hewtd/graph-cache.json'))).toBe(false);
     expect(existsSync(join(root, '.hewtd/stage/live/docs/a.md'))).toBe(true);
     expect(existsSync(join(root, '.hewtd/graph.json'))).toBe(true);
@@ -289,5 +285,80 @@ describe('upgrade-check reports the graph hook blocks', () => {
     const notes = JSON.parse(readFileSync(join(resolve(__dirname, '../..'), 'upgrade-notes.json'), 'utf8'));
     expect(notes['3.3.0'].hook_block).toMatch(/post-merge/);
     expect(notes['3.3.0'].config_keys.map((key: { key: string }) => key.key)).toContain('reconcile.secrets.rotated');
+  });
+});
+
+describe('review fixes (#106)', () => {
+  it('only valid hewtd stages under .hewtd/ are stages: a tracked folder (or the repo root) with a stage.json is never listed or removed', () => {
+    put('fixtures/s/stage.json', '{"env":"stage"}'); put('fixtures/s/docs/f.md', 'mine\n');
+    put('stage.json', stage_manifest('0'.repeat(40))); put('docs/x.md', 'root docs\n');
+    put('work/stage-z/stage.json', stage_manifest('0'.repeat(40))); put('work/stage-z/docs/a.md', 'old\n');
+    g(root, 'add', '-A'); g(root, 'commit', '-qm', 'fixtures');
+    put('.hewtd/stage/bad/stage.json', '{ not json'); put('.hewtd/stage/bad/docs/a.md', 'wip\n');
+    const report = JSON.parse(hewtd(['reconcile', '--finish', '--json']).stdout);
+    expect(report.stages).toEqual([]);
+    expect(hewtd(['reconcile', '--finish', '--confirm']).status).toBe(0);
+    for (const file of ['fixtures/s/docs/f.md', 'docs/x.md', 'work/stage-z/docs/a.md', '.hewtd/stage/bad/docs/a.md', 'stage.json']) expect(existsSync(join(root, file)), file).toBe(true);
+    expect(g(root, 'status', '--porcelain', '--', 'fixtures', 'docs', 'work', 'stage.json')).toBe('');
+  });
+  it('a stage taken at an older commit is still in progress: --confirm keeps it; a promoted stage is removed', () => {
+    put('.hewtd/stage/work/stage.json', stage_manifest('0'.repeat(40))); put('.hewtd/stage/work/docs/a.md', 'reviewed\n'); put('.hewtd/stage/work/ledger.json', '{}');
+    put('.hewtd/stage/done/stage.json', stage_manifest('0'.repeat(40))); put('.hewtd/stage/done/reconcile/review-1-1.md', 'old review\n');
+    const report = JSON.parse(hewtd(['reconcile', '--finish', '--json']).stdout);
+    expect(Object.fromEntries(report.stages.map((stage: { path: string; kind: string }) => [stage.path, stage.kind]))).toEqual({ '.hewtd/stage/done': 'promoted', '.hewtd/stage/work': 'open' });
+    hewtd(['reconcile', '--finish', '--confirm']);
+    expect(existsSync(join(root, '.hewtd/stage/work/docs/a.md'))).toBe(true);
+    expect(existsSync(join(root, '.hewtd/stage/done'))).toBe(false);
+  });
+  it('reads a CRLF .env.hewtd (and export / single-quoted lines) and redacts its values', () => {
+    put('.env.hewtd', `HEWTD_KEY_A=${SECRET_A}\r\nexport HEWTD_KEY_B='${SECRET_B}'\r\n`);
+    put('.hewtd/reconcile/review-1.md', `old: ${SECRET_A} and ${SECRET_B}\r\n`);
+    const report = JSON.parse(hewtd(['reconcile', '--finish', '--json']).stdout);
+    expect(report.credentials.keys.map((key: { name: string }) => key.name)).toEqual(['HEWTD_KEY_A', 'HEWTD_KEY_B']);
+    expect(report.review_files.with_secrets).toEqual(['.hewtd/reconcile/review-1.md']);
+    hewtd(['reconcile', '--finish', '--fix']);
+    const text = read('.hewtd/reconcile/review-1.md');
+    expect(text).not.toContain(SECRET_A); expect(text).not.toContain(SECRET_B);
+    expect(text).toContain('\r\n');
+  });
+  it('review files inside a stage are inventoried and redacted too', () => {
+    put('.env.hewtd', `HEWTD_KEY_A=${SECRET_A}\n`);
+    put('.hewtd/stage/s1/stage.json', stage_manifest(g(root, 'rev-parse', 'HEAD'))); put('.hewtd/stage/s1/docs/a.md', 'x\n');
+    put('.hewtd/stage/s1/reconcile/review-1-1.md', `quote ${SECRET_A}\n`);
+    const report = JSON.parse(hewtd(['reconcile', '--finish', '--json']).stdout);
+    expect(report.review_files.count).toBe(1);
+    expect(report.review_files.with_secrets).toEqual(['.hewtd/stage/s1/reconcile/review-1-1.md']);
+    hewtd(['reconcile', '--finish', '--fix']);
+    expect(read('.hewtd/stage/s1/reconcile/review-1-1.md')).not.toContain(SECRET_A);
+  });
+  it('--fix ignores hewtd working files written later too', () => {
+    put('.hewtd/stage/s1/stage.json', stage_manifest('0'.repeat(40))); put('.hewtd/stage/s1/docs/a.md', 'x\n');
+    hewtd(['reconcile', '--finish', '--fix']);
+    expect(hewtd(['graph']).status).toBe(0);
+    put('.hewtd/graph-cache.json', '{}');
+    expect(g(root, 'status', '--porcelain', '--untracked-files=all')).not.toMatch(/\.hewtd\//);
+  });
+  it('a core.hooksPath with ~ is expanded, not created as a literal ~ folder', () => {
+    g(root, 'config', 'core.hooksPath', '~/myhooks');
+    expect(hewtd(['hooks', 'install']).status).toBe(0);
+    expect(existsSync(join(home, 'myhooks/post-merge'))).toBe(true);
+    expect(existsSync(join(root, '~'))).toBe(false);
+  });
+  it('uninstall removes a block whose trailing newline was stripped', () => {
+    hewtd(['hooks', 'install']);
+    put('.git/hooks/post-merge', read('.git/hooks/post-merge').replace(/\n$/, ''));
+    expect(hewtd(['hooks', 'uninstall']).status).toBe(0);
+    expect(existsSync(join(root, '.git/hooks/post-merge')) ? read('.git/hooks/post-merge') : '').not.toContain('hewtd graph');
+  });
+  it('hewtd graph without -p uses the configured docs_root (so the hook works in a repo with docs elsewhere), and a missing docs folder is named', () => {
+    put(config_file, JSON.stringify({ updatePolicy: 'nudge', docs_root: 'docs' }, null, 2) + '\n');
+    put('docs/backend/b.md', fm('b'));
+    g(root, 'add', '-A'); g(root, 'commit', '-qm', 'docs elsewhere');
+    expect(hewtd(['graph', '--quiet']).status).toBe(0);
+    expect(JSON.stringify(JSON.parse(read('.hewtd/graph.json')))).toContain('backend/b.md');
+    const missing = hewtd(['graph', '-p', 'nowhere']);
+    expect(missing.status).toBe(0);
+    expect(missing.stdout + missing.stderr).not.toMatch(/not a git checkout/);
+    expect(missing.stdout + missing.stderr).toMatch(/nowhere/);
   });
 });

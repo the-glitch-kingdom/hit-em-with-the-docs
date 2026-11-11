@@ -138,7 +138,7 @@ function check_hook(options: UpgradeCheckOptions, notes: UpgradeNotes, crossed: 
     return { id, status: 'action', fixable: true, title: `${name} block is out of date (${shown})`, detail: [...hook_note.map(String), '`hewtd hooks install` (or --fix) upgrades it in place'] };
   }
   // eslint-disable-next-line id-denylist -- child_process option name
-  const custom = spawnSync('git', ['config', 'core.hooksPath'], { cwd: options.repo_root, encoding: 'utf8' }).stdout.trim();
+  const custom = spawnSync('git', ['config', '--type=path', 'core.hooksPath'], { cwd: options.repo_root, encoding: 'utf8' }).stdout.trim();
   return {
     id, status: custom ? 'action' : 'info', fixable: false,
     title: custom ? `${name} block missing: this repo uses its own hooks path (${custom})` : `${name} block not installed (opt-in)`,

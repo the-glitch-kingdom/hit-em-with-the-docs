@@ -169,7 +169,7 @@ rollback prints which step failed.
 ## Cleanup after promote (#106)
 
 `--promote --confirm` ends by printing the read-only `hewtd reconcile --finish` inventory: `.env.hewtd` key names and
-rotation state, stages (rejected, abandoned, promoted, active), review files (and which quote a secret-lane value), graph
+rotation state, stages under `.hewtd/` (rejected, promoted, open), review files (and which quote a secret-lane value), graph
 files and git hygiene. Run `hewtd reconcile --finish --fix --confirm` to redact those review files, add missing
-`.gitignore` lines and remove rejected/abandoned stages and the graph cache. It never touches `.env.hewtd`, cold
-generations or the docs tree; record rotated credentials with `--finish --rotated <ENV_NAME>`. See `docs/reconcile.md`.
+`.gitignore` lines and remove rejected and promoted stages and the graph cache. It never touches an open stage, `.env.hewtd`,
+cold generations or the docs tree; record rotated credentials with `--finish --rotated <ENV_NAME>`. See `docs/reconcile.md`.

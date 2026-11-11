@@ -51,10 +51,10 @@ const SHEBANG = '#!/bin/sh\n';
 interface HookBlock { name: string; start: string; end: string; block: string; line: string }
 const PRE_COMMIT: HookBlock = { name: 'pre-commit', start: START, end: END, block: BLOCK, line: 'npx --no-install hewtd secrets --staged || exit 1' };
 const graph_hook = (name: string): HookBlock => ({ name, start: GRAPH_START, end: GRAPH_END, block: GRAPH_BLOCK, line: GRAPH_BLOCK.split('\n')[1]! });
-const block_regex = (hook: HookBlock): RegExp => new RegExp(`${hook.start}[\\s\\S]*?${hook.end}\\n`);
+const block_regex = (hook: HookBlock): RegExp => new RegExp(`${hook.start}[\\s\\S]*?${hook.end}(?:\\n|$)`); // an editor may strip the last newline
 
 export function resolve_hook_path(repo_root: string, name = 'pre-commit'): string {
-  const hooks_path = run_git(repo_root, ['config', 'core.hooksPath']).stdout.trim();
+  const hooks_path = run_git(repo_root, ['config', '--type=path', 'core.hooksPath']).stdout.trim(); // --type=path expands ~ as git does
   if (hooks_path) return join(isAbsolute(hooks_path) ? hooks_path : resolve(repo_root, hooks_path), name);
   const git_path_result = run_git(repo_root, ['rev-parse', '--git-path', 'hooks']);
   if (git_path_result.status !== 0) throw new Error('not a git repository');

@@ -64,6 +64,7 @@ Common options (run `hewtd <cmd> --help` for each command's full list):
 - `index` (alias `reindex`) `[--dry-run|--no-graph|-d <domain>]` — regenerate every domain + root INDEX/REGISTRY from the docs on disk and write the `.hewtd/graph.json` export
 - `reconcile <scope> [--json|--write-review|--apply <files>|--status|--next N|--serial|--team|--outside|--secrets|--overview "<q>"|--gaps <file>|--changed|--check|--cached|--stage <dir>|--staged <dir>|--promote --confirm|--undo <gen> --confirm|--generations]` — deterministic triage, review files and serial apply for the reconcile pass (the judging is the slash command). `--changed` selects the docs created or changed since their last review (scope args optional, no clean-tree check): the one ending for every create or update is `reconcile --changed --write-review`, judge each entry yourself (verify, sources, external_refs, purpose, symptoms), `--apply`; `--changed --check [--cached]` is the advisory form the pre-commit hook runs (exit 1 only with `reconcile.require_review: true`). `--stage <dir>` / `--staged <dir>` / `--promote` / `--undo` / `--generations` are cold rotation (see the `rotation` topic)
 - `secrets [--staged|--baseline-add <file:line> --reason "..."|--baseline-prune]` — secret scan baseline; `--staged` scans only the lines a staged diff adds (exit 1 on a finding). Never prints a value
+- `upgrade-check [--fix] [--json]` — after an update, a read-only checklist of what the repo must change: version skew across the plugin cache, global CLI, npx cache and node_modules; new config keys; the pre-commit block (or the exact lines for a custom hooks path); skill symlinks; the doc template; `vault.schema.yml` against the frontmatter contract; and instruction drift (`file:line` in `CLAUDE.md`, `AGENTS.md`, `.claude/rules/**` naming commands whose behaviour changed). Reads `upgrade-notes.json` (from 3.1.0) from `last_upgrade_check` in `.claude/hit-em-with-the-docs.json`; `--fix` applies only safe items and records `last_upgrade_check` once none need action
 - `hooks install|uninstall` — add or remove the opt-in pre-commit block that runs `hewtd secrets --staged`; never overwrites an existing hook
 - `find-citers <fact-id>` — list the playbooks and incidents that cite a fact
 - `audit-facts [--run-verify <id>|--run-verify-all|--window <days>]` — report facts past their review window; re-run a fact's `verify_command`
@@ -85,6 +86,7 @@ Slash commands (Claude Code):
 - `/hit-em-with-the-docs:status` — installed version, update policy, hook state
 - `/hit-em-with-the-docs:policy [auto|nudge|off]` — get/set update policy
 - `/hit-em-with-the-docs:update` — pull the latest version
+- `/hit-em-with-the-docs:upgrade-check` — what this repo must change after an update
 - `/hit-em-with-the-docs:relink` — re-run skill linker
 - `/hit-em-with-the-docs:help` — this command
 

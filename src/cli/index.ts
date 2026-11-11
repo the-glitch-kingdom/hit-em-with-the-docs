@@ -5,6 +5,7 @@ import { dirname, join, relative, resolve } from 'path';
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { registerUpdateCommands } from '@theglitchking/claude-plugin-runtime';
 import { logger } from '../utils/logger.js';
 
@@ -1575,6 +1576,34 @@ program
       const repo_root = project_root_of(resolve(process.cwd(), options.docsPath));
       const result = await (action === 'install' ? install_hook : uninstall_hook)(repo_root);
       logger.info(`${result.changed ? action + 'ed' : 'unchanged'}: ${relative(repo_root, result.path)}`);
+    } catch (entry) {
+      logger.error((entry as Error).message);
+      process.exitCode = 1;
+    }
+  });
+
+// Compare the repo's setup with the installed version and list what to change (#104)
+program
+  .command('upgrade-check')
+  .description('after an update: list what the repo must change (config keys, hook, version skew, schema, instruction drift); read-only without --fix')
+  .option('--fix', 'Apply only the safe items: relink skills, upgrade an existing hewtd hook block, add new config keys at their defaults', false)
+  .option('--json', 'Print the report as JSON', false)
+  .action(async (options) => {
+    try {
+      const { run_upgrade_check, format_report } = await import('../core/upgrade/check.js');
+      const { homedir } = await import('os');
+      const { spawnSync: spawn_sync } = await import('child_process');
+      const env_root = process.env.HEWTD_NPM_ROOT; // tests point this at a temp dir; unset asks npm
+      const npm_root = env_root !== undefined ? env_root || null : spawn_sync('npm', ['root', '-g'], { encoding: 'utf8' }).stdout.trim() || null;
+      const report = await run_upgrade_check({
+        repo_root: project_root_dir,
+        installed_version: package_info.version,
+        package_root: resolve(dirname(fileURLToPath(import.meta.url)), '../..'),
+        home_dir: homedir(),
+        npm_root,
+        fix: options.fix,
+      });
+      console.log(options.json ? JSON.stringify(report, null, 2) : format_report(report));
     } catch (entry) {
       logger.error((entry as Error).message);
       process.exitCode = 1;

@@ -1,0 +1,134 @@
+{
+  "3.1.0": {
+    "summary": "Fixes from the 3.0.0 field test (#72). No breaking changes.",
+    "config_keys": [],
+    "changed_defaults": [],
+    "behaviour_changes": [
+      { "issue": 72, "note": "reconcile --apply makes a docs(reconcile) commit and, only when an index file changed, a separate docs(index) commit; applied_commit is the docs commit.", "patterns": ["reconcile\\b.*--apply"] },
+      { "issue": 72, "note": "fix-retrieval-fields --apply, maintain --fix, metadata-sync, archive and unarchive rewrite only the frontmatter keys they own.", "patterns": ["maintain\\b.*--fix", "metadata-sync", "fix-retrieval-fields"] }
+    ],
+    "hook_block": null,
+    "template_changes": null
+  },
+  "3.1.1": {
+    "summary": "Follow-up to 3.1.0 (#74): fewer false generic-secret findings, faster hewtd index after a one-doc edit. No breaking changes.",
+    "config_keys": [],
+    "changed_defaults": [],
+    "behaviour_changes": [],
+    "hook_block": null,
+    "template_changes": null
+  },
+  "3.1.2": {
+    "summary": "Follow-up to 3.1.1 (#76): one word test for secret exemptions, per-doc cache keyed on the last code commit. The first run after upgrading is a full rebuild.",
+    "config_keys": [],
+    "changed_defaults": [],
+    "behaviour_changes": [],
+    "hook_block": null,
+    "template_changes": null
+  },
+  "3.1.3": {
+    "summary": "Follow-up to 3.1.2 (#77): speed only, output is byte-identical to a cold build.",
+    "config_keys": [],
+    "changed_defaults": [],
+    "behaviour_changes": [],
+    "hook_block": null,
+    "template_changes": null
+  },
+  "3.1.4": {
+    "summary": "Follow-up to 3.1.3 (#80): structured values such as datetime.utcnow() are no longer generic-secret.",
+    "config_keys": [],
+    "changed_defaults": [],
+    "behaviour_changes": [],
+    "hook_block": null,
+    "template_changes": null
+  },
+  "3.1.5": {
+    "summary": "Follow-up to 3.1.4 (#82): incremental graph index after a code commit; speed only, an old cache is rebuilt once.",
+    "config_keys": [],
+    "changed_defaults": [],
+    "behaviour_changes": [],
+    "hook_block": null,
+    "template_changes": null
+  },
+  "3.1.6": {
+    "summary": "Fixes #84, #85 and #86: not-checkable refs, merged sources on apply, an accepted rewrite replaces the doc body.",
+    "config_keys": [],
+    "changed_defaults": [],
+    "behaviour_changes": [
+      { "issue": 85, "note": "reconcile --apply merges an entry's sources into the doc's existing sources instead of replacing them.", "patterns": ["reconcile\\b.*--apply"] },
+      { "issue": 86, "note": "reconcile --apply of an accepted rewrite replaces the doc body with the draft in the batch commit (before, the draft was only written under .hewtd/reconcile/drafts/).", "patterns": ["reconcile\\b.*--apply"] },
+      { "issue": 85, "note": "reconcile --write-review with explicitly named docs includes docs in the clean lane.", "patterns": ["reconcile\\b.*--write-review"] },
+      { "issue": 84, "note": "refs that could never be repo files (gitignored paths, placeholders, regexes, external_refs) are unknown, not missing.", "patterns": [] }
+    ],
+    "hook_block": null,
+    "template_changes": null
+  },
+  "3.1.7": {
+    "summary": "Fixes #90: external_refs merged on apply, status reports covered refs, help refresh.",
+    "config_keys": [],
+    "changed_defaults": [],
+    "behaviour_changes": [
+      { "issue": 90, "note": "reconcile --apply merges external_refs from a review entry into the doc's frontmatter (existing first, deduped).", "patterns": ["reconcile\\b.*--apply"] },
+      { "issue": 90, "note": "reconcile --write-review gives each non-secret entry a read-only missing list and an empty external_refs list.", "patterns": ["reconcile\\b.*--write-review"] },
+      { "issue": 90, "note": "reconcile --status adds a refs-in-reviewed-docs line read from .hewtd/graph.json.", "patterns": ["reconcile\\b.*--status"] }
+    ],
+    "hook_block": null,
+    "template_changes": null
+  },
+  "3.1.8": {
+    "summary": "Fixes #92 and #93. No breaking changes.",
+    "config_keys": [],
+    "changed_defaults": [],
+    "behaviour_changes": [
+      { "issue": 92, "note": "a metadata-only verdict (fields, phrases) no longer replaces an earlier review on apply; last_verified is neither stamped nor cleared by it.", "patterns": ["reconcile\\b.*--apply"] },
+      { "issue": 92, "note": "reconcile --status prints how many reviewed docs had metadata updated since.", "patterns": ["reconcile\\b.*--status"] },
+      { "issue": 93, "note": "reconcile.schema_sources also reads SQLAlchemy and Django models (.py); a pattern that matches no tracked file gives a triage warning.", "patterns": [] }
+    ],
+    "hook_block": null,
+    "template_changes": null
+  },
+  "3.2.0": {
+    "summary": "Cold rotation (#97) and every new or changed doc ends reconciled (#98).",
+    "config_keys": [
+      { "key": "reconcile.cold_root", "default": ".documentation-cold", "note": "where reconcile --promote keeps cold generations (#97)" },
+      { "key": "reconcile.require_review", "default": false, "note": "the pre-commit reconcile --changed --check blocks, instead of warning, while docs are unreviewed (#98)" }
+    ],
+    "changed_defaults": [],
+    "behaviour_changes": [
+      { "issue": 98, "note": "integrate no longer fills purpose from the first paragraph; every new or changed doc ends with reconcile --changed --write-review, a judged entry, then reconcile --apply (which stamps last_verified).", "patterns": ["(hewtd|hit-em-with-the-docs)\\s+integrate\\b"] },
+      { "issue": 98, "note": "integrate prints the doc's lane and next step, refuses to overwrite a different doc at the target path, and -d means that domain plus the doc's own.", "patterns": [] }
+    ],
+    "hook_block": "The pre-commit block (hewtd hooks install) also runs `hewtd reconcile --changed --check --cached`; hooks install upgrades an older block in place (#98).",
+    "template_changes": "New templates/doc.template.md (title, tier, domains, purpose, symptoms, sources, optional external_refs) (#98)."
+  },
+  "3.2.1": {
+    "summary": "Fixes #101: a cold promote re-added every baselined secret finding under a new path.",
+    "config_keys": [
+      { "key": "reconcile.cold_scanner_allowlist", "default": true, "note": "reconcile --promote allowlists the cold root in .gitleaks.toml and .secrets.baseline (#101)" }
+    ],
+    "changed_defaults": [],
+    "behaviour_changes": [
+      { "issue": 101, "note": "reconcile --promote edits (or creates) .gitleaks.toml and edits .secrets.baseline in the promote commit; opt out with reconcile.cold_scanner_allowlist: false.", "patterns": ["reconcile\\b.*--promote"] }
+    ],
+    "hook_block": null,
+    "template_changes": null
+  },
+  "3.2.2": {
+    "summary": "Fixes #103: an applied rewrite counted as unreviewed forever. No key changes.",
+    "config_keys": [],
+    "changed_defaults": [],
+    "behaviour_changes": [
+      { "issue": 103, "note": "a rewrite whose draft has landed counts as reviewed until the doc is edited again; this changes what reconcile --changed, --next and --status, audit's DOCS_UNREVIEWED and the pre-commit check report.", "patterns": ["reconcile\\b.*--(changed|next|status)"] }
+    ],
+    "hook_block": null,
+    "template_changes": null
+  },
+  "3.3.0": {
+    "summary": "Adds hewtd upgrade-check (#104).",
+    "config_keys": [],
+    "changed_defaults": [],
+    "behaviour_changes": [],
+    "hook_block": null,
+    "template_changes": null
+  }
+}

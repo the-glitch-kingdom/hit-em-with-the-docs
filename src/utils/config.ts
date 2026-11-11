@@ -314,6 +314,8 @@ export const plugin_config_schema = z
     integrate: integrate_config_schema,
     /** Write `.hewtd/graph.json` on `hewtd index` and after `reconcile --apply` (#65). */
     graph_export: z.boolean().catch(true).default(true),
+    /** The hewtd version `hewtd upgrade-check --fix` last cleared (#104); written by hewtd. */
+    last_upgrade_check: z.string().optional().catch(undefined),
     /** Reports directory, relative to the repo root. Unset = `<docs root>/reports`. */
     reports_dir: z.string().min(1).optional().catch(undefined),
   })

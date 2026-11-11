@@ -38,13 +38,13 @@ function resolve_header_path(header_text: string): string {
   return header_path.startsWith('b/') ? header_path.slice(2) : '';
 }
 
-const START = '# >>> hewtd secrets >>>';
+export const START = '# >>> hewtd secrets >>>';
 const END = '# <<< hewtd secrets <<<';
-const BLOCK = `${START}\nnpx --no-install hewtd secrets --staged || exit 1\nnpx --no-install hewtd reconcile --changed --check --cached || exit 1\n${END}\n`;
+export const BLOCK = `${START}\nnpx --no-install hewtd secrets --staged || exit 1\nnpx --no-install hewtd reconcile --changed --check --cached || exit 1\n${END}\n`;
 const BLOCK_RE = new RegExp(`${START}[\\s\\S]*?${END}\\n`);
 const SHEBANG = '#!/bin/sh\n';
 
-function resolve_hook_path(repo_root: string): string {
+export function resolve_hook_path(repo_root: string): string {
   const hooks_path = run_git(repo_root, ['config', 'core.hooksPath']).stdout.trim();
   if (hooks_path) return join(isAbsolute(hooks_path) ? hooks_path : resolve(repo_root, hooks_path), 'pre-commit');
   const git_path_result = run_git(repo_root, ['rev-parse', '--git-path', 'hooks']);

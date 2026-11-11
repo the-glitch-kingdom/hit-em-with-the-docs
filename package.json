@@ -29,6 +29,7 @@
     "hooks",
     "scripts/link-skills.js",
     "action.yml",
+    "upgrade-notes.json",
     "README.md",
     "LICENSE",
     "MIGRATION.md",

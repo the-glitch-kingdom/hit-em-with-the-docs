@@ -53,7 +53,15 @@ releases have no notes. Every release must add an entry (a unit test fails other
 `last_upgrade_check` in `.claude/hit-em-with-the-docs.json` is the version last checked. Only releases
 after it (up to the installed one) are read; when it is unset, reading starts at 3.1.0.
 `--fix` writes it only when no `[action]` item is left, so the open items are listed again on the
-next run instead of being hidden.
+next run instead of being hidden. Once a human has handled (or accepted) the remaining items, run
+`hewtd upgrade-check --record` to record the installed version; later runs then start after it.
+Neither `--fix` nor `--record` writes a config file that is not valid JSON (comments, trailing
+commas): that is reported as an `[action]` item to fix by hand, and the file is left as it is.
+
+Version skew counts only the copies in use: Claude Code keeps earlier plugin versions next to the
+active one in its cache, and those are listed as `old plugin cache, unused`, not as skew. A pre-commit
+hook that was never installed is `[info]` (the hook is opt-in); a custom `core.hooksPath` without the
+block is `[action]` with the exact lines to add.
 
 ## What `--fix` does, and never does
 

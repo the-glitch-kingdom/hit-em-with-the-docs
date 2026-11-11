@@ -2,7 +2,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSy
 import { dirname, join, relative } from 'path';
 import { spawnSync } from 'child_process';
 import { parse as parse_yaml } from 'yaml';
-import { load_plugin_config_sync, load_raw_config, write_raw_config, resolve_docs_root } from '../../utils/config.js';
+import { load_plugin_config_sync, write_raw_config, resolve_config_file_path, resolve_docs_root } from '../../utils/config.js';
 import { partial_metadata_schema } from '../metadata/schema.js';
 import { BLOCK, START, install_hook, resolve_hook_path } from '../reconcile/hooks.js';
 import { FIRST_NOTED_VERSION, compare_versions, list_crossed_versions, load_upgrade_notes, type UpgradeNotes } from './notes.js';
@@ -21,8 +21,10 @@ export interface UpgradeCheckOptions {
   /** Overrides `last_upgrade_check` from the plugin config. */
   recorded_version?: string | null;
   fix?: boolean;
+  /** Record `last_upgrade_check` now, after a human handled the remaining items. */
+  record?: boolean;
 }
-export interface UpgradeCopy { kind: 'plugin' | 'global' | 'npx' | 'node_modules'; path: string; version: string; used_by: string[] }
+export interface UpgradeCopy { kind: 'plugin' | 'global' | 'npx' | 'node_modules'; path: string; version: string; used_by: string[]; superseded?: boolean }
 export interface UpgradeItem { id: string; status: 'ok' | 'info' | 'action'; title: string; detail: string[]; fixable: boolean }
 export interface UpgradeDrift { file: string; line: number; issue: number; release: string; note: string; text: string }
 export interface UpgradeReport {
@@ -54,22 +56,26 @@ function list_copies(options: UpgradeCheckOptions): UpgradeCopy[] {
   for (const hash of list_dirs(npx_cache)) add('npx', join(npx_cache, hash, 'node_modules', PACKAGE_NAME), read_version(join(npx_cache, hash, 'node_modules', PACKAGE_NAME, 'package.json')));
   const plugin_cache = join(options.home_dir, '.claude/plugins/cache');
   for (const marketplace of list_dirs(plugin_cache)) for (const plugin of list_dirs(join(plugin_cache, marketplace)).filter((name) => name.startsWith(PLUGIN_NAME))) {
-    for (const version of list_dirs(join(plugin_cache, marketplace, plugin))) {
-      const dir = join(plugin_cache, marketplace, plugin, version);
-      add('plugin', dir, read_version(join(dir, '.claude-plugin/plugin.json')) ?? (/^\d+\.\d+\.\d+$/.test(version) ? version : null));
-    }
+    const versions = list_dirs(join(plugin_cache, marketplace, plugin)).map((name) => {
+      const dir = join(plugin_cache, marketplace, plugin, name);
+      return { dir, version: read_version(join(dir, '.claude-plugin/plugin.json')) ?? (/^\d+\.\d+\.\d+$/.test(name) ? name : null) };
+    }).filter((entry): entry is { dir: string; version: string } => entry.version !== null).sort((a, b) => compare_versions(b.version, a.version));
+    // Claude Code keeps earlier versions next to the active one; only the newest is in use
+    versions.forEach((entry, index) => found.push({ kind: 'plugin', path: entry.dir, version: entry.version, ...(index > 0 && { superseded: true }) }));
   }
   // `npx --no-install hewtd` (the git hook) and `npx --no <pkg>` (the commands) take repo node_modules, else the PATH install.
   const invoked = found.some((copy) => copy.kind === 'node_modules') ? 'node_modules' : 'global';
-  return found.map((copy) => ({ ...copy, used_by: copy.kind === invoked ? ['git hook', 'slash commands'] : copy.kind === 'plugin' ? ['plugin skills and hooks'] : [] }));
+  return found.map((copy) => ({ ...copy, used_by: copy.kind === invoked ? ['git hook', 'slash commands'] : copy.kind === 'plugin' && !copy.superseded ? ['plugin skills and hooks'] : [] }));
 }
 
 function check_skew(copies: UpgradeCopy[], installed: string): UpgradeItem {
-  const skewed = copies.filter((copy) => copy.version !== installed);
-  const detail = copies.map((copy) => `${copy.kind} ${copy.version}${copy.version === installed ? '' : ' (differs)'} at ${copy.path}${copy.used_by.length ? `, used by: ${copy.used_by.join(', ')}` : ''}`);
-  if (!copies.some((copy) => copy.used_by.includes('git hook'))) detail.push('no repo or global copy found: `npx --no-install hewtd` in the git hook would fail');
+  const skewed = copies.filter((copy) => !copy.superseded && copy.version !== installed);
+  const detail = copies.map((copy) => `${copy.kind} ${copy.version}${copy.superseded ? ' (old plugin cache, unused)' : copy.version === installed ? '' : ' (differs)'} at ${copy.path}${copy.used_by.length ? `, used by: ${copy.used_by.join(', ')}` : ''}`);
+  const no_runnable = !copies.some((copy) => copy.used_by.includes('git hook'));
+  if (no_runnable) detail.push('no repo or global copy found: `npx --no-install hewtd` in the git hook would fail');
   if (skewed.length) detail.push(`update the copies that differ from the running ${installed} (the plugin cache, \`npm -g\`, the npx cache and node_modules are updated separately)`);
-  return { id: 'version-skew', status: skewed.length ? 'action' : 'ok', title: skewed.length ? `${skewed.length} copy(ies) of hewtd differ from ${installed}` : `hewtd copies agree on ${installed}`, detail, fixable: false };
+  if (skewed.length) return { id: 'version-skew', status: 'action', title: `${skewed.length} copy(ies) of hewtd differ from ${installed}`, detail, fixable: false };
+  return { id: 'version-skew', status: no_runnable ? 'info' : 'ok', title: no_runnable ? 'no repo or global copy of hewtd found' : `hewtd copies agree on ${installed}`, detail, fixable: false };
 }
 
 function get_nested(data: Record<string, unknown>, key: string): unknown {
@@ -87,16 +93,27 @@ function set_nested(data: Record<string, unknown>, key: string, value: unknown):
   node[parts.at(-1)!] = value;
 }
 
-async function check_config_keys(options: UpgradeCheckOptions, notes: UpgradeNotes, crossed: string[]): Promise<UpgradeItem[]> {
-  const config_data = await load_raw_config(options.repo_root);
+/** The plugin config as written, and why it cannot be read when it exists but is not a JSON object (never rewritten then). */
+function read_config_state(repo_root: string): { data: Record<string, unknown>; error: string | null } {
+  let text: string;
+  try { text = readFileSync(resolve_config_file_path(repo_root), 'utf8'); } catch { return { data: {}, error: null }; }
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return { data: parsed as Record<string, unknown>, error: null };
+    return { data: {}, error: 'it is not a JSON object' };
+  } catch (error) { return { data: {}, error: (error as Error).message }; }
+}
+
+function check_config_keys(options: UpgradeCheckOptions, notes: UpgradeNotes, crossed: string[]): UpgradeItem[] {
+  const { data: config_data, error } = read_config_state(options.repo_root);
   const seen = new Set<string>();
-  const items: UpgradeItem[] = [];
+  const items: UpgradeItem[] = error ? [{ id: 'config-file', status: 'action', fixable: false, title: `${relative(options.repo_root, resolve_config_file_path(options.repo_root))} is not valid JSON, so hewtd ignores it`, detail: [error, 'fix it by hand (comments and trailing commas are not allowed); --fix and --record never write to it while it is broken'] }] : [];
   for (const version of crossed) for (const entry of notes[version]!.config_keys) {
     if (seen.has(entry.key)) continue;
     seen.add(entry.key);
     const is_set = get_nested(config_data, entry.key) !== undefined;
     items.push({
-      id: `config:${entry.key}`, status: is_set ? 'ok' : 'info', fixable: !is_set,
+      id: `config:${entry.key}`, status: is_set ? 'ok' : 'info', fixable: !is_set && !error,
       title: is_set ? `${entry.key} is set` : `${entry.key} is not set (added in ${version})`,
       detail: [`${entry.note}`, `default: ${JSON.stringify(entry.default)}${is_set ? '' : ' (applies until you set it; --fix writes it)'}`],
     });
@@ -121,7 +138,7 @@ function check_hook(options: UpgradeCheckOptions, notes: UpgradeNotes, crossed: 
   // eslint-disable-next-line id-denylist -- child_process option name
   const custom = spawnSync('git', ['config', 'core.hooksPath'], { cwd: options.repo_root, encoding: 'utf8' }).stdout.trim();
   return {
-    id: 'hook', status: 'action', fixable: false,
+    id: 'hook', status: custom ? 'action' : 'info', fixable: false,
     title: custom ? `pre-commit block missing: this repo uses its own hooks path (${custom})` : 'pre-commit block not installed (opt-in)',
     detail: [...hook_note.map(String), `add these lines to ${shown}${custom ? '' : ' (or run `hewtd hooks install`)'}:`, ...BLOCK.trimEnd().split('\n').map((line) => `  ${line}`)],
   };
@@ -217,7 +234,7 @@ async function collect(options: UpgradeCheckOptions, notes: UpgradeNotes, record
   const messages = recorded === null ? [`no recorded version (last_upgrade_check is unset): reading release notes from ${FIRST_NOTED_VERSION}, the first release they cover; older releases have no notes`] : [];
   const items: UpgradeItem[] = [
     check_skew(copies, options.installed_version),
-    ...(await check_config_keys(options, notes, crossed)),
+    ...check_config_keys(options, notes, crossed),
     check_hook(options, notes, crossed),
     check_skills(options.repo_root),
     check_template(options, notes, crossed),
@@ -230,13 +247,23 @@ async function collect(options: UpgradeCheckOptions, notes: UpgradeNotes, record
 /** Compares the repo with the installed hewtd. Read-only unless `fix`, which applies only the safe items. */
 export async function run_upgrade_check(options: UpgradeCheckOptions): Promise<UpgradeReport> {
   const notes = load_upgrade_notes(options.package_root);
-  const config_data = await load_raw_config(options.repo_root);
-  const recorded = options.recorded_version !== undefined ? options.recorded_version : typeof config_data.last_upgrade_check === 'string' ? config_data.last_upgrade_check : null;
+  const config_state = read_config_state(options.repo_root);
+  const recorded = options.recorded_version !== undefined ? options.recorded_version : typeof config_state.data.last_upgrade_check === 'string' ? config_state.data.last_upgrade_check : null;
   const first = await collect(options, notes, recorded);
-  if (!options.fix) return { ...first, fixed: [], recorded: false };
+  const record = async (report: Omit<UpgradeReport, 'fixed' | 'recorded'>, fixed: string[]): Promise<UpgradeReport> => {
+    const latest = read_config_state(options.repo_root);
+    if (latest.error || compare_versions(options.installed_version, recorded ?? FIRST_NOTED_VERSION) < 0) return { ...report, fixed, recorded: false };
+    if (recorded !== options.installed_version) {
+      latest.data.last_upgrade_check = options.installed_version;
+      await write_raw_config(options.repo_root, latest.data);
+      fixed.push(`recorded last_upgrade_check ${options.installed_version}`);
+    }
+    return { ...report, fixed, recorded: true };
+  };
+  if (!options.fix) return options.record ? record(first, []) : { ...first, fixed: [], recorded: false };
 
   const fixed: string[] = [];
-  const config = await load_raw_config(options.repo_root);
+  const config = config_state.data;
   let config_changed = false;
   for (const entry of first.items.filter((candidate) => candidate.id.startsWith('config:') && candidate.fixable)) {
     const key = entry.id.slice('config:'.length);
@@ -250,15 +277,9 @@ export async function run_upgrade_check(options: UpgradeCheckOptions): Promise<U
   if (config_changed) await write_raw_config(options.repo_root, config);
 
   const after = await collect(options, notes, recorded);
-  // Recorded only when nothing is left for a human: the crossed releases' items must stay listed until then.
+  // --fix records only when nothing is left for a human, so the crossed releases' items stay listed; --record acknowledges them
   const clear = !after.items.some((entry) => entry.status === 'action');
-  if (clear && recorded !== options.installed_version && compare_versions(options.installed_version, recorded ?? FIRST_NOTED_VERSION) >= 0) {
-    const latest = await load_raw_config(options.repo_root);
-    latest.last_upgrade_check = options.installed_version;
-    await write_raw_config(options.repo_root, latest);
-    fixed.push(`recorded last_upgrade_check ${options.installed_version}`);
-  }
-  return { ...after, fixed, recorded: clear };
+  return clear || options.record ? record(after, fixed) : { ...after, fixed, recorded: false };
 }
 
 /** Plain-text checklist for the terminal. */
@@ -270,6 +291,6 @@ export function format_report(report: UpgradeReport): string {
   }
   if (report.fixed.length) lines.push('', 'fixed:', ...report.fixed.map((line) => `  ${line}`));
   const open = report.items.filter((entry) => entry.status === 'action').length;
-  lines.push('', open ? `${open} item(s) need action.` : 'Nothing needs action.');
+  lines.push('', open ? `${open} item(s) need action.${report.recorded ? '' : ' Once a human has handled them, `hewtd upgrade-check --record` records this version so later runs start after it.'}` : 'Nothing needs action.');
   return lines.join('\n');
 }

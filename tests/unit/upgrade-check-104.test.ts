@@ -4,7 +4,7 @@ import { execFileSync } from 'child_process';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 import { run_upgrade_check, type UpgradeReport } from '../../src/core/upgrade/check';
-import { load_upgrade_notes, list_crossed_versions } from '../../src/core/upgrade/notes';
+import { load_upgrade_notes, list_crossed_versions, compare_versions } from '../../src/core/upgrade/notes';
 
 const package_root = resolve(__dirname, '../..');
 const package_name = '@theglitchking/hit-em-with-the-docs';
@@ -83,9 +83,9 @@ describe('hook block (acceptance 2)', () => {
     expect(readFileSync(hook, 'utf8')).toContain('reconcile --changed --check --cached');
     expect(item(await check(), 'hook').status).toBe('ok');
   });
-  it('no hook at all is a human item (the hook is opt-in), never installed by --fix', async () => {
+  it('no hook at all is info (the hook is opt-in), never installed by --fix, and does not block recording', async () => {
     const report = await check({ fix: true });
-    expect(item(report, 'hook')).toMatchObject({ status: 'action', fixable: false });
+    expect(item(report, 'hook')).toMatchObject({ status: 'info', fixable: false });
   });
 });
 
@@ -189,5 +189,52 @@ describe('read-only by default (acceptance 5) and --fix (acceptance 4)', () => {
     const clean = await check({ recorded_version: '3.1.8', fix: true });
     expect(clean.items.filter((entry) => entry.status === 'action')).toEqual([]);
     expect(JSON.parse(readFileSync(config_path(), 'utf8')).last_upgrade_check).toBe('3.2.1');
+  });
+});
+
+describe('review fixes (#104)', () => {
+  it('an unparseable config is an action item, and --fix never writes it or records', async () => {
+    const broken = '{ "docs_root": "docs", // a comment\n  "updatePolicy": "nudge",\n}\n';
+    write(config_path(), broken);
+    const report = await check({ recorded_version: '3.1.8', fix: true });
+    expect(item(report, 'config-file')).toMatchObject({ status: 'action', fixable: false });
+    expect(readFileSync(config_path(), 'utf8')).toBe(broken);
+    expect(report.recorded).toBe(false);
+  });
+  it('--record writes last_upgrade_check even with human items left, and the next run starts after it', async () => {
+    write(join(root, '.claude/rules/docs.md'), 'then hewtd integrate\n');
+    write(config_path(), JSON.stringify({ updatePolicy: 'nudge' }, null, 2) + '\n');
+    const first = await check({ record: true });
+    expect(first.recorded).toBe(true);
+    const config = JSON.parse(readFileSync(config_path(), 'utf8'));
+    expect(config).toMatchObject({ updatePolicy: 'nudge', last_upgrade_check: '3.2.1' });
+    const next = await check();
+    expect(next.recorded_version).toBe('3.2.1');
+    expect(next.crossed).toEqual([]);
+  });
+  it('--record refuses an unparseable config', async () => {
+    write(config_path(), '{ broken');
+    const report = await check({ record: true });
+    expect(report.recorded).toBe(false);
+    expect(readFileSync(config_path(), 'utf8')).toBe('{ broken');
+  });
+  it('old plugin-cache versions are not skew: only the newest one per plugin counts', async () => {
+    fake_copy(join(root, 'node_modules', package_name), '3.2.1');
+    write(join(home, '.claude/plugins/cache/mk/hit-em-with-the-docs/3.2.0/.claude-plugin/plugin.json'), JSON.stringify({ version: '3.2.0' }));
+    write(join(home, '.claude/plugins/cache/mk/hit-em-with-the-docs/3.2.1/.claude-plugin/plugin.json'), JSON.stringify({ version: '3.2.1' }));
+    const report = await check({ npm_root: null });
+    expect(item(report, 'version-skew').status).toBe('ok');
+    expect(item(report, 'version-skew').detail.join('\n')).toMatch(/3\.2\.0.*unused/);
+  });
+  it('no copy anywhere is not reported as ok', async () => {
+    const report = await check({ npm_root: null });
+    expect(item(report, 'version-skew').status).not.toBe('ok');
+  });
+  it('versions with a v prefix or a prerelease suffix compare by their numbers; an invalid recorded value counts as unrecorded', () => {
+    const notes = load_upgrade_notes(package_root);
+    expect(compare_versions('v3.2.0', '3.2.0')).toBe(0);
+    expect(list_crossed_versions(notes, 'v3.2.0', '3.2.1')).toEqual(['3.2.1']);
+    expect(list_crossed_versions(notes, '3.2.0', '3.3.0-beta.1')).toEqual(['3.2.1', '3.2.2', '3.3.0']);
+    expect(list_crossed_versions(notes, 'garbage', '3.1.1')).toEqual(['3.1.0', '3.1.1']);
   });
 });

@@ -1587,6 +1587,7 @@ program
   .command('upgrade-check')
   .description('after an update: list what the repo must change (config keys, hook, version skew, schema, instruction drift); read-only without --fix')
   .option('--fix', 'Apply only the safe items: relink skills, upgrade an existing hewtd hook block, add new config keys at their defaults', false)
+  .option('--record', 'Record last_upgrade_check as the installed version after a human handled the remaining items (never writes an unparseable config)', false)
   .option('--json', 'Print the report as JSON', false)
   .action(async (options) => {
     try {
@@ -1602,6 +1603,7 @@ program
         home_dir: homedir(),
         npm_root,
         fix: options.fix,
+        record: options.record,
       });
       console.log(options.json ? JSON.stringify(report, null, 2) : format_report(report));
     } catch (entry) {

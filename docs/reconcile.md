@@ -466,7 +466,9 @@ under `<dir>/reconcile/`. Code references still resolve against the real repo. T
 ledger, `.hewtd/graph.json` and git stay untouched: `--apply` makes no commit, writes no graph
 and stops an entry with `error` if it would write outside the copy (the `secret` verdict, which
 writes `.env.hewtd` in the repo, and outside-lane entries). A stage that went wrong is discarded
-by hand and staged again. `--staged` cannot be combined with `-p`.
+by hand and staged again. `--staged` cannot be combined with `-p`. A staged triage takes each doc's git history (the staleness
+signal, the body-change date) from the same relative path in the live docs, so a stage gets the lanes
+the live tree would; a staged doc with no live counterpart has no history, as a new doc.
 
 ### Promote, undo and cold generations
 
@@ -474,9 +476,9 @@ Full workflow, layout, manifest and recovery: [`cold-rotation.md`](./cold-rotati
 
 `hewtd reconcile --promote --staged <dir>` swaps the reconciled copy in as the live docs and
 keeps the old tree as a **cold generation**: `<cold_root>/<YYYY-MM-DD>` (`-2`, `-3` on a clash),
-read-only on disk, committed to git, and listed in `cold_storage` in
+files read-only on disk (directories keep their mode), committed to git, and listed in `cold_storage` in
 `.claude/hit-em-with-the-docs.json` (`generation`, `path`, `source_commit`, `rotated_at`,
-`checksum`, `secrets_findings` as `path:line` never values, `untracked_files`). Without `--confirm`
+`checksum` over the committed files, `disk_checksum` over every file, `secrets_findings` as `path:line` never values, `untracked_files`). A plugin config that is not valid JSON makes promote and undo refuse; on failure the config's exact bytes come back. Without `--confirm`
 it prints the plan and changes nothing. It refuses, with nothing changed, when the live docs
 changed since the stage (it lists the drifted paths), when the docs, cold root, config or ledger
 have uncommitted changes, or when `reconcile.cold_root` (default `.documentation-cold`) is inside
@@ -488,10 +490,10 @@ with it on disk but are not committed (a fresh clone has the generation without 
 listed in `untracked_files` and ignored through `<cold_root>/.gitignore`.
 
 `hewtd reconcile --undo <gen> --confirm` restores the generation as the live tree byte for byte
-(it refuses when its checksum no longer matches or the tree is dirty), moves the rejected tree to
+(it refuses when its committed-files checksum no longer matches or the tree is dirty; it restores what exists and warns when gitignored files are absent, as in a fresh clone; file modes come back exactly), moves the rejected tree to
 a new stage `.hewtd/stage/rejected-<timestamp>`, restores its ledger, drops the manifest entry and
 commits `docs(rotate): undo <gen>`. `hewtd reconcile --generations [--json]` lists generations with
-checksum status (`ok`, `CHANGED`, `MISSING`) and secret finding counts. The secret findings of the
+checksum status (`ok`, `ok (disk-only files absent: N)`, `CHANGED`, `MISSING`) and secret finding counts. The secret findings of the
 outgoing tree stay in git history: rotate those credentials.
 
 A cold generation is history, never current docs: reconcile's reference index, mention search,

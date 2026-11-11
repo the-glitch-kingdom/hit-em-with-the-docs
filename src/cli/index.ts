@@ -329,9 +329,11 @@ program
   )
   .action(async (options) => {
     const docs_root = resolve(process.cwd(), options.path);
+    const git_top = (await import('../core/reconcile/triage.js')).find_git_top(docs_root); // cold generations are found from any subfolder or -p
 
     const result = await check_documentation({
       docs_root: docs_root,
+      ...(git_top && { repo_root: git_top }),
       domain: options.domain,
       issues_only: options.issuesOnly,
       strict: options.strict,
@@ -1204,7 +1206,7 @@ program
           if (options.json) { console.log(JSON.stringify(rows, null, 2)); return; }
           logger.header('hewtd reconcile --generations');
           if (!rows.length) logger.info('  no cold generations');
-          for (const row of rows) logger.info(`  ${row.generation}  ${row.path}  rotated ${row.rotated_at.slice(0, 10)}  checksum ${row.status}  ${row.secrets_findings} secret finding(s)`);
+          for (const row of rows) logger.info(`  ${row.generation}  ${row.path}  rotated ${row.rotated_at.slice(0, 10)}  checksum ${row.status}${row.disk_only_absent ? ` (disk-only files absent: ${row.disk_only_absent})` : ''}  ${row.secrets_findings} secret finding(s)`);
         } else if (options.undo) {
           if (!options.confirm) {
             const entry = await rotation.plan_undo({ repo_root, docs_root, config, generation: options.undo });
@@ -1213,6 +1215,7 @@ program
           const done = await rotation.run_undo({ repo_root, docs_root, config, generation: options.undo });
           logger.header('hewtd reconcile --undo');
           logger.info(`  restored generation ${done.generation} as ${relative(repo_root, docs_root)} (${done.commit})`);
+          if (done.disk_only_absent) logger.warn(`  ${done.disk_only_absent} gitignored (disk-only) file(s) of that generation are absent here and were not restored (a fresh clone does not have them)`);
           logger.info(`  the rejected tree is in ${done.rejected_stage}/docs (a stage: reconcile it with --staged, or discard it)`);
           await export_graph(docs_root, false);
         } else if (staged) {
@@ -1379,6 +1382,7 @@ program
         }
         const result = await triage({
           root: repo_root, docs_root: docs_root, rels: doc_paths, config, ledger,
+          ...(staged && { history_docs_root: resolve(repo_root, staged.docs_path) }), // a stage is untracked: git history comes from the live counterpart
           ...((options.serial && { mode: 'serial' }) || (options.team && { mode: 'team' }) || {}),
         });
         await save_ledger(ledger_file, ledger);

@@ -73,7 +73,7 @@ describe('cold rotation end to end (#97)', () => {
     expect(done.status, done.stdout + done.stderr).toBe(0);
     const [entry] = manifest();
     const cold = join(root, entry!.path);
-    expect(entry).toMatchObject({ generation: today, checksum: live_before });
+    expect(entry).toMatchObject({ generation: today, disk_checksum: live_before });
     expect(compute_tree_checksum(cold)).toBe(live_before);
     expect(existsSync(join(cold, 'reports/run.md'))).toBe(true); // gitignored file kept
     expect(statSync(join(cold, 'backend/a.md')).mode & 0o222).toBe(0);

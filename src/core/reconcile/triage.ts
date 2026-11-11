@@ -212,6 +212,8 @@ export async function triage_docs(options: {
   duplicates?: Map<string, Duplicate[]>;
   /** Code-derived symbol answers kept between runs (graph export), valid for one code state. */
   symbol_table?: SymbolTable;
+  /** Staged run (#97): the LIVE docs folder whose git history stands in for each staged doc (same relative path); a staged doc with no live counterpart has none. */
+  history_docs_root?: string;
 }): Promise<TriageResult> {
   const { docs_root: docs_root, rels: doc_paths, config } = options;
   const git_top = find_git_top(docs_root) ?? options.root;
@@ -307,7 +309,7 @@ export async function triage_docs(options: {
     }
 
     let stale_commits: number | undefined;
-    const repo_path = format_posix_path(relative(git_top, abs_path));
+    const repo_path = format_posix_path(relative(git_top, options.history_docs_root ? join(options.history_docs_root, doc.doc_path) : abs_path));
     const find_signal = (): StalenessSignal => {
       const entries = options.staleness_cache?.entries;
       if (!entries) return find_staleness_signal(git_top, repo_path, cited);

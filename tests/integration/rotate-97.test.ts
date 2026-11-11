@@ -74,12 +74,12 @@ describe('reconcile --promote (#97, acceptance)', () => {
 
     const [entry] = manifest();
     const today = new Date().toISOString().slice(0, 10);
-    expect(entry).toMatchObject({ generation: today, path: `.documentation-cold/${today}`, checksum: live_before, source_commit: expect.any(String) });
+    expect(entry).toMatchObject({ generation: today, path: `.documentation-cold/${today}`, disk_checksum: live_before, checksum: expect.stringMatching(/^[0-9a-f]{64}$/), source_commit: expect.any(String) });
     const cold = join(root, entry!.path as string);
     expect(compute_tree_checksum(cold)).toBe(live_before);
     expect(readFileSync(join(cold, 'reports/run.md'), 'utf8')).toContain('gitignored');
     expect(statSync(join(cold, 'backend/a.md')).mode & 0o222).toBe(0);
-    expect(statSync(join(cold, 'backend')).mode & 0o222).toBe(0);
+    expect(statSync(join(cold, 'backend')).mode & 0o200).not.toBe(0); // files are locked, directories are not (git checkout must unlink)
     expect(entry!.secrets_findings).toEqual([expect.stringMatching(/^backend\/a\.md:\d+$/)]);
     expect(entry!.untracked_files).toEqual([`.documentation-cold/${today}/reports/run.md`]);
     expect(JSON.stringify(entry)).not.toContain(fake_key());

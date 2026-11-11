@@ -11,6 +11,10 @@ Adds cold rotation (#97). No breaking changes; no existing JSON key changes. New
 - reconcile `--undo <generation> --confirm`: restores a generation byte for byte; the rejected tree moves to a new stage under `.hewtd/stage`.
 - reconcile `--generations [--json]`: lists generations with checksum status and secret finding counts.
 - The cold root is left out of reference, mention and symbol search, the outside lane, the peripheral secrets scan, the integrator search, the staged-secrets hook scan and graph invalidation. `hewtd audit` warns when a generation is CHANGED or MISSING.
+- Cold generations lock files only (directories keep their mode, so `git checkout`, `git clean` and CI cleanup work); each file's original mode is saved in `<cold_root>/.generations/<gen>/modes.json` and restored exactly on undo and on a rolled-back promote.
+- The manifest has two checksums: `checksum` over the committed files and `disk_checksum` over every file. A fresh clone reports `ok (disk-only files absent: N)`, not CHANGED, and undo works there.
+- Promote and undo refuse a plugin config that is not valid JSON, keep its style when they write the manifest and restore its exact bytes on rollback. Git paths are read with `-z` (names with quotes, backslashes or tabs are ignored exactly). Undo removes a cold root it leaves empty.
+- The outside lane's config and non-markdown searches skip the cold root; a staged triage reads git staleness from the live counterpart of each doc; `audit` finds cold generations from a subfolder or with `-p`.
 - Docs: new `docs/cold-rotation.md`; help, reconcile command, LLM guide, README and skill updated.
 
 ## [3.1.8] — 2026-11-10

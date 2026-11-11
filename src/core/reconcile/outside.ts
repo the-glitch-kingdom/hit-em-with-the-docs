@@ -16,7 +16,7 @@ import { build_glob_regex } from './references.js';
 import { find_git_top } from './triage.js';
 import { compute_content_hash } from './ledger.js';
 import { find_next_batch, render_review, resolve_review_dir, type ReviewEntry } from './review.js';
-import { get_cold_prefix, is_in_cold } from './rotation.js';
+import { get_cold_pathspec, get_cold_prefix, is_in_cold } from './rotation.js';
 
 export type OutsideClass = 'tool-read' | 'junk' | 'not-a-doc' | 'misplaced';
 export interface OutsideDoc { path: string; cls: OutsideClass; reason: string; }
@@ -59,6 +59,7 @@ const count_words = (raw_text: string): number => (parse_frontmatter(raw_text).c
 export async function discover_outside(docs_root: string, keep_in_place: string[]): Promise<OutsideDoc[]> {
   const git_top = resolve_git_top(docs_root);
   const docs_rel = relative(git_top, docs_root).split('\\').join('/');
+  const cold_pathspec = get_cold_pathspec(git_top);
   const cold_prefix = get_cold_prefix(git_top); // a cold generation is never offered to integrate or delete
   const files = run_git(git_top, ['ls-files', '*.md']).split('\n').filter((file) => file && !is_in_cold(file, cold_prefix) && !(docs_rel && (file === docs_rel || file.startsWith(`${docs_rel}/`))));
   const in_tree = new Set<string>();
@@ -84,7 +85,7 @@ export async function discover_outside(docs_root: string, keep_in_place: string[
   if (rest.length) {
     try {
       const patterns = rest.map((outside_doc) => outside_doc.path).join('\n'); // `./path` contains `path`
-      for (const line of run_git(git_top, ['grep', '-IF', '-f', '-', '--', ...CONFIG_FILES], patterns).split('\n')) {
+      for (const line of run_git(git_top, ['grep', '-IF', '-f', '-', '--', ...CONFIG_FILES, ...cold_pathspec], patterns).split('\n')) {
         const i = line.indexOf(':');
         const file = line.slice(0, i), text = line.slice(i + 1);
         for (const outside_doc of rest) if (!referenced.has(outside_doc.path) && is_path_named(text, outside_doc.path)) referenced.set(outside_doc.path, file);
@@ -92,7 +93,7 @@ export async function discover_outside(docs_root: string, keep_in_place: string[
     } catch { /* git grep exits 1 when nothing matches */ }
     try {
       const patterns = rest.flatMap((outside_doc) => [outside_doc.path, basename(outside_doc.path)]).join('\n');
-      for (const line of run_git(git_top, ['grep', '-nF', '-f', '-', '--', '.', ':!*.md'], patterns).split('\n')) {
+      for (const line of run_git(git_top, ['grep', '-nF', '-f', '-', '--', '.', ':!*.md', ...cold_pathspec], patterns).split('\n')) {
         if (!OUTPUT_VERB.test(line)) continue;
         for (const outside_doc of rest) if (is_path_named(line, outside_doc.path) || is_path_named(line, basename(outside_doc.path), true)) written.add(outside_doc.path);
       }

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { execFileSync } from 'child_process';
-import { mkdtempSync, writeFileSync, rmSync, mkdirSync, existsSync } from 'fs';
+import { mkdtempSync, writeFileSync, rmSync, mkdirSync, existsSync, cpSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { load_plugin_config } from '../../../src/utils/config';
@@ -289,5 +289,28 @@ describe('triage refs and resolveDocs (#65)', () => {
     expect(out[0]!.lane).toBe('check');
     expect(out[0]!.refs.some((x) => x.ref === 'src/nope.ts' && x.status === 'missing')).toBe(true);
     expect(existsSync(join(dir, '.hewtd'))).toBe(false);
+  });
+});
+
+describe('staged triage keeps the git staleness signal (#97 review)', () => {
+  it('the same fixture gets the same lane and staleCommits live and staged; a new staged doc gets no history', async () => {
+    put('ops/old.md', fm() + 'See `src/a.ts`.\n');
+    g('add', '-A'); g('commit', '-m', 'doc');
+    for (let i = 0; i < 11; i++) { writeFileSync(join(dir, 'src/a.ts'), `export const widgetRetry = ${i + 2};\n`); g('commit', '-am', `change ${i}`); }
+    const live = (await run(['ops/old.md'])).docs[0]!;
+    expect(live.lane).toBe('check');
+    expect(live.staleCommits).toBeGreaterThanOrEqual(10);
+
+    const stage_docs = join(dir, '.hewtd/stage/docs');
+    mkdirSync(join(dir, '.hewtd/stage'), { recursive: true });
+    cpSync(docs, stage_docs, { recursive: true });
+    writeFileSync(join(stage_docs, 'ops/brand-new.md'), fm() + 'See `src/a.ts`.\n');
+    const config = await load_plugin_config(dir);
+    const staged = await triage_docs({ root: dir, docs_root: stage_docs, rels: ['ops/old.md', 'ops/brand-new.md'], config, history_docs_root: docs });
+    const old = staged.docs.find((doc) => doc.path === 'ops/old.md')!;
+    expect(old.lane).toBe(live.lane);
+    expect(old.staleCommits).toBe(live.staleCommits);
+    const fresh = staged.docs.find((doc) => doc.path === 'ops/brand-new.md')!;
+    expect(fresh.staleCommits).toBeUndefined();
   });
 });

@@ -225,7 +225,10 @@ export const cold_generation_schema = z.object({
   path: z.string().min(1),
   source_commit: z.string(),
   rotated_at: z.string(),
+  /** sha256 over the committed (tracked) files of the generation; what a fresh clone can verify */
   checksum: z.string().min(1),
+  /** sha256 over every file incl. gitignored disk-only ones */
+  disk_checksum: z.string().optional(),
   secrets_findings: z.array(z.string()).catch([]),
   untracked_files: z.array(z.string()).catch([]),
 });

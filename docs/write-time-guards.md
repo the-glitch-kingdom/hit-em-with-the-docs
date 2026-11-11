@@ -84,6 +84,15 @@ cites, so a later `reconcile` has something to check.
   until someone verifies it.
 - `sources` is for verification only. Search does not index it.
 
+## integrate hands the new doc to reconcile (#98)
+
+integrate copies the source (the original stays), then prints the new doc's reconcile
+lane, each missing or unverified reference and the next step
+(`/hit-em-with-the-docs:reconcile <doc>`). `--review` also writes the review skeleton.
+It does not fill `purpose` from the first paragraph (a missing purpose stays missing, so
+`audit` warns), and `-d <domain>` gives the doc only that domain plus any its own
+frontmatter lists. `templates/doc.template.md` is the starting point for a new doc.
+
 ## No backfill
 
 Upgrading hewtd changes no existing doc. Only integrate on a new doc writes
@@ -111,6 +120,10 @@ Same fix as above, then re-stage. To stop the hook, run `hewtd hooks uninstall`.
 
 ### "maintain rewrote my dates or quotes"
 Fixed in 3.1.0: only owned keys are rewritten. Upgrade, then `git diff` should show only the keys the command meant to change.
+
+### "my new doc is in the check lane right away"
+Expected: integrate never writes `last_verified`. Fix or list (`external_refs`) any
+reference it printed, then run `/hit-em-with-the-docs:reconcile <doc>`.
 
 ### "integrate recorded no sources"
 The doc cited nothing that resolves to a tracked file, `integrate.sources_max`

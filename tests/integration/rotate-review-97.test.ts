@@ -214,3 +214,25 @@ describe('#9 audit finds the cold generations from a subdirectory', () => {
     expect(readFileSync(report!, 'utf8')).toContain(`cold generation ${done.generation} changed`);
   });
 });
+
+// lead review: a file the old tree TRACKED must stay tracked in the generation even when a .gitignore pattern
+// matches its cold path (here `build/`, force-added in the docs tree), and come back tracked on undo.
+describe('tracked files whose cold path a .gitignore pattern matches', () => {
+  it('are committed in the generation, a fresh clone reports ok, and undo keeps them tracked', async () => {
+    put('.gitignore', '.hewtd/\n.documentation/reports/\nbuild/\n');
+    put('.documentation/build/notes.md', '# build notes\n');
+    g('add', '-f', '.documentation/build/notes.md'); g('add', '-A'); g('commit', '-qm', 'tracked under an ignored name');
+    const done = await promote();
+    expect(g('ls-files', `${done.cold_path}/build/notes.md`)).toBe(`${done.cold_path}/build/notes.md`);
+    expect(g('status', '--porcelain')).toBe('');
+    const clone = mkdtempSync(join(tmpdir(), 'rotate-clone-'));
+    try {
+      rmSync(clone, { recursive: true });
+      execFileSync('git', ['clone', '-q', root, clone]);
+      expect(list_generations(clone, manifest() as any)[0]).toMatchObject({ status: 'ok', disk_only_absent: 0 });
+    } finally { writable(clone); rmSync(clone, { recursive: true, force: true }); }
+    await run_undo({ ...(await ctx()), generation: done.generation });
+    expect(g('ls-files', '.documentation/build/notes.md')).toBe('.documentation/build/notes.md');
+    expect(g('status', '--porcelain')).toBe('');
+  });
+});

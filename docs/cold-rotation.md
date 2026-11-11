@@ -54,7 +54,9 @@ ignore it (the default `.hewtd/reconcile.json` is ignored, so it stays on disk).
 
 ## Committed versus disk-only
 
-Everything tracked in the old tree is committed in the cold generation. Files the old tree had that
+Everything tracked in the old tree is committed in the cold generation, force-added, so a `.gitignore`
+pattern that happens to match a file's cold path (an unanchored `build/`, say) never drops it; undo
+force-adds the generation's files back the same way. Files the old tree had that
 git ignores move with it on disk but are not committed; they are listed in `untracked_files` and
 ignored through `<cold_root>/.gitignore` (git is read with `-z`, so names with quotes, backslashes or tabs
 are listed and ignored exactly; a name with a newline refuses the promote). **A fresh clone has the

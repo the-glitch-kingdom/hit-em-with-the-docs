@@ -248,11 +248,17 @@ export async function plan_promote(context: RotationContext & { stage: Stage }):
 /** Escape a path as an anchored .gitignore line. */
 const format_ignore_line = (path_text: string): string => `/${path_text.replace(/[\\*?[\]]/g, '\\$&').replace(/ $/, '\\ ')}`;
 
-/** Stage and commit exactly these paths (the index was verified empty); throws with git's message on failure. */
-function commit_rotation(repo_root: string, message: string, paths: string[]): string {
+/**
+ * Stage and commit exactly these paths (the index was verified empty); throws with git's message on failure.
+ * `tracked` are files that were tracked before the move: they are force-added, so a .gitignore pattern that happens to
+ * match their new path never drops them from git (they would otherwise exist only on disk and fail a clone's checksum).
+ */
+function commit_rotation(repo_root: string, message: string, paths: string[], tracked: string[] = []): string {
   const live = paths.filter((path_text) => run_git(repo_root, ['check-ignore', '-q', '--', path_text]).status !== 0);
   const present = live.filter((path_text) => existsSync(join(repo_root, path_text)));
   if (present.length) read_git(repo_root, ['add', '-A', '--', ...present]);
+  const kept = tracked.filter((path_text) => existsSync(join(repo_root, path_text)));
+  for (let i = 0; i < kept.length; i += 500) read_git(repo_root, ['add', '-f', '--', ...kept.slice(i, i + 500).map((path_text) => `:(literal)${path_text}`)]);
   const gone = live.filter((path_text) => !present.includes(path_text));
   if (gone.length) read_git(repo_root, ['rm', '-r', '-q', '--cached', '--ignore-unmatch', '--', ...gone]);
   const committed = run_git(repo_root, ['commit', '-q', '-m', message]);
@@ -347,7 +353,7 @@ export async function run_promote(context: RotationContext & { stage: Stage; ren
     inverses.push(() => write_config_text(config_file, config_before.text)); // the original bytes, or no file at all
     await write_config_text(config_file, serialize_like(config_before.text, { ...config_before.data, cold_storage: [...get_manifest(config_before.data), entry] }));
     await regenerate_indexes({ docs_root, silent: true });
-    const commit = commit_rotation(repo_root, `docs(rotate): promote ${plan.stage_path} and keep ${plan.generation} cold`, [plan.docs_path, relative(repo_root, cold_root_dir), relative(repo_root, config_file), config.reconcile.ledger_path].map(format_posix_path));
+    const commit = commit_rotation(repo_root, `docs(rotate): promote ${plan.stage_path} and keep ${plan.generation} cold`, [plan.docs_path, relative(repo_root, cold_root_dir), relative(repo_root, config_file), config.reconcile.ledger_path].map(format_posix_path), plan.tracked_files.map((file) => `${plan.cold_path}/${file}`));
     return { ...plan, commit };
   } catch (error) {
     inverses.push(async () => { run_git(repo_root, ['reset', '-q']); });
@@ -403,6 +409,8 @@ export async function run_undo(context: RotationContext & { generation: string }
   let modes: Record<string, string> | undefined;
   if (existsSync(modes_file)) { try { modes = JSON.parse(readFileSync(modes_file, 'utf-8')); } catch { throw new Error(`${relative(repo_root, modes_file)} is not valid JSON; nothing was changed`); } }
   const disk_only_absent = get_generation_state(repo_root, entry).disk_only_absent;
+  // the generation's committed files come back tracked even if a .gitignore pattern matches them at the docs path
+  const generation_tracked = list_git_paths(repo_root, ['ls-files', '-z', '--', `:(literal)${entry.path}`]).map((file) => `${docs_path}${file.slice(entry.path.length)}`);
   const config_before = read_config(repo_root);
   const ledger_file = resolve(repo_root, config.reconcile.ledger_path);
   const config_file = resolve_config_file_path(repo_root);
@@ -437,7 +445,7 @@ export async function run_undo(context: RotationContext & { generation: string }
     inverses.push(() => write_config_text(config_file, config_before.text));
     await write_config_text(config_file, serialize_like(config_before.text, { ...config_before.data, cold_storage: get_manifest(config_before.data).filter((item) => (item as { generation?: unknown })?.generation !== entry.generation) }));
     // no index regeneration: the generation's own INDEX/REGISTRY come back byte for byte
-    const commit = commit_rotation(repo_root, `docs(rotate): undo ${entry.generation}`, [docs_path, format_posix_path(relative(repo_root, cold_root_dir)), relative(repo_root, config_file), config.reconcile.ledger_path].map(format_posix_path));
+    const commit = commit_rotation(repo_root, `docs(rotate): undo ${entry.generation}`, [docs_path, format_posix_path(relative(repo_root, cold_root_dir)), relative(repo_root, config_file), config.reconcile.ledger_path].map(format_posix_path), generation_tracked);
     return { generation: entry.generation, rejected_stage: format_posix_path(relative(repo_root, rejected_dir)), commit, disk_only_absent };
   } catch (error) {
     inverses.push(async () => { run_git(repo_root, ['reset', '-q']); });

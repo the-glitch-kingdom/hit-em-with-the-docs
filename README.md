@@ -10,6 +10,9 @@
 > You still need to remember to use this plugin when creating documentation! As projects grow, documentation needs to be created and maintained. You'll need to invoke this plugin or ask an LLM to create documentation for your features, workflows, or infrastructure. This plugin must be invoked to create, update, or maintain your docs.
 
 > [!NOTE]
+> **3.4.0** fixes #108 (the `post-merge` / `post-checkout` graph hook now runs `hewtd graph` in the background and `hewtd graph` locks itself, so a pull never waits) and adds docs targets (#109): `hewtd init` writes a `targets` block, and `hewtd audit` ends with an advisory Targets section that never fails `--strict`. See [`docs/docs-targets.md`](./docs/docs-targets.md) and [`docs/write-time-guards.md`](./docs/write-time-guards.md).
+
+> [!NOTE]
 > **3.3.0** adds `hewtd upgrade-check [--fix] [--record] [--json]`: after an update it lists what your repo must change (config keys, pre-commit hook, skill links, template, schema, instruction drift). See [`docs/upgrade-check.md`](./docs/upgrade-check.md).
 >
 > **3.3.0** adds `hewtd upgrade-check` (#104) and `hewtd reconcile --finish [--rotated <ENV>] [--fix] [--confirm]` (#106, lists and cleans what a reconcile leaves behind), `hewtd graph`, and `post-merge` / `post-checkout` graph hooks via `hewtd hooks install`. See [`docs/reconcile.md`](./docs/reconcile.md).

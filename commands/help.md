@@ -17,6 +17,7 @@ If `$ARGUMENTS` matches one of the topics below, focus the orientation on that t
 - `knowledge-base` / `kb` — explain the 3 KB tiers + symptoms field; config `vault.root`, `vault.playbook_paths` (globs `find-citers`, `audit-facts` scan for playbooks) and `vault.audit_window_days` (default 90; `audit-facts --window <days>` overrides it); point at `docs/knowledge-base-primitives.md` and `templates/knowledge-base/`
 - `commands` — list every `hewtd` CLI command with a one-line purpose
 - `audit` — explain `hewtd audit` + `--strict`; explain when to use each
+- `targets` — explain docs targets (3.4.0): the `targets` config block, the advisory Targets section that ends `hewtd audit` (never fails `--strict`; `audit --json` carries it), `targets.flows` and `targets.held`, and that the retrieval-eval coverage import is deferred; point at `docs/docs-targets.md`
 - `integrate` — explain `hewtd integrate <file>` and when to use it
 - `templates` — list available templates with paths
 - `domains` — explain the 15 built-in domains + custom domains (`hewtd domain add/remove/list`, 2.6.0+)

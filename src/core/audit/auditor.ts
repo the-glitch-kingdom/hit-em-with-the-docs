@@ -19,6 +19,7 @@ import { load_retrieval_docs, check_retrieval } from './retrieval.js';
 import { check_overview } from './overview.js';
 import { load_ledger } from '../reconcile/ledger.js';
 import { find_unreviewed_docs } from '../reconcile/triage.js';
+import { list_generations } from '../reconcile/rotation.js';
 import { check_naming_convention, check_file_placement } from './rules.js';
 
 export interface AuditOptions {
@@ -80,7 +81,7 @@ export interface DomainAuditStats {
  */
 /** Issues that should count toward CI failure: advisory RETRIEVAL_* (#50) and OVERVIEW_* (#51) warnings never do. */
 export function count_actionable_issues(issues: { rule: string }[]): number {
-  return issues.filter((i) => !/^(RETRIEVAL|OVERVIEW|LINK_BROKEN_ANCHOR|DOCS_UNREVIEWED)(_|$)/.test(i.rule)).length;
+  return issues.filter((i) => !/^(RETRIEVAL|OVERVIEW|COLD_GENERATION|LINK_BROKEN_ANCHOR|DOCS_UNREVIEWED)(_|$)/.test(i.rule)).length;
 }
 
 export async function check_documentation(options: AuditOptions): Promise<AuditResult> {
@@ -203,6 +204,15 @@ export async function check_documentation(options: AuditOptions): Promise<AuditR
   result.issues.push(...check_retrieval(retrieval_docs, retrieval_cfg));
   result.issues.push(...(await check_overview(docs_root, plugin_cfg.overview)));
 
+  // Cold generations (#97): locked history. A changed or missing one is a warning, never an error.
+  for (const row of list_generations(options.repo_root ?? process.cwd(), plugin_cfg.cold_storage)) {
+    if (row.status === 'ok') continue;
+    result.issues.push({
+      file: row.path, rule: `COLD_GENERATION_${row.status}`, severity: 'warning', fixable: false,
+      message: `cold generation ${row.generation} ${row.status === 'CHANGED' ? 'changed since it was rotated (its checksum no longer matches)' : 'is missing from disk'}`,
+      suggestion: 'Cold generations are read-only history; restore it from git, or run `hewtd reconcile --undo` only if it is intact',
+    });
+  }
   // Docs created or changed since their last reconcile review (#98): one advisory warning, no `code`.
   try {
     const unreviewed = await find_unreviewed_docs({ docs_root, ledger: await load_ledger(resolve(options.repo_root ?? process.cwd(), plugin_cfg.reconcile.ledger_path)) });

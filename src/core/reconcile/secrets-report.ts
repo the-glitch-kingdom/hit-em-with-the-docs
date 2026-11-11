@@ -8,6 +8,7 @@ import { mkdir, readFile, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import type { SecretsConfig } from '../../utils/config.js';
 import type { Ledger } from './ledger.js';
+import { resolve_review_dir } from './review.js';
 import { validate_no_secrets, find_secrets, compute_fingerprint, format_masked, type SecretFinding } from './secrets.js';
 
 export interface ReportEntry {
@@ -120,7 +121,7 @@ export async function build_secrets_report(options: {
 }
 
 export async function write_secrets_report(repo_root: string, text: string, date = new Date().toISOString().slice(0, 10)): Promise<string> {
-  const file = join(repo_root, '.hewtd/reconcile', `secrets-report-${date}.md`);
+  const file = join(resolve_review_dir(repo_root), `secrets-report-${date}.md`);
   await mkdir(dirname(file), { recursive: true });
   await writeFile(file, text);
   return file;

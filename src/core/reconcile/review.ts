@@ -93,7 +93,10 @@ export function get_environment_names(text: string, doc: string, raws: RawSecret
   return found;
 }
 
-export const resolve_review_dir = (repo_root: string): string => join(repo_root, '.hewtd', 'reconcile');
+let review_dir_override: string | undefined;
+/** `reconcile --staged` (#97): review files and reports go under the stage, not the live `.hewtd/reconcile/`. Set once per CLI run. */
+export const set_review_dir = (dir_path: string | undefined): void => { review_dir_override = dir_path; };
+export const resolve_review_dir = (repo_root: string): string => review_dir_override ?? join(repo_root, '.hewtd', 'reconcile');
 
 export function render_review(meta: { batch: string; shard: number; scope: string }, entries: ReviewEntry[]): string {
   const body = entries

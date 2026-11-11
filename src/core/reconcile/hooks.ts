@@ -3,6 +3,7 @@ import { join, relative, resolve, isAbsolute, dirname } from 'path';
 import { spawnSync } from 'child_process';
 import { scan_text, type SecretFinding } from './secrets.js';
 import type { SecretsConfig } from '../../utils/config.js';
+import { get_cold_pathspec } from './rotation.js';
 
 // eslint-disable-next-line id-denylist -- child_process option name
 const run_git = (repo_root: string, args: string[]) => spawnSync('git', ['-c', 'core.quotepath=off', ...args], { cwd: repo_root, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
@@ -10,7 +11,7 @@ const run_git = (repo_root: string, args: string[]) => spawnSync('git', ['-c', '
 /** Secret findings on lines the staged diff ADDS under `docs_root` (legacy lines are never scanned). Masked only. */
 export function scan_staged(repo_root: string, docs_root: string, config: SecretsConfig): SecretFinding[] {
   const doc_path = relative(repo_root, docs_root).split('\\').join('/') || '.';
-  const result = run_git(repo_root, ['diff', '--cached', '-U0', '--no-color', '--diff-filter=ACMR', '--', doc_path]);
+  const result = run_git(repo_root, ['diff', '--cached', '-U0', '--no-color', '--diff-filter=ACMR', '--', doc_path, ...get_cold_pathspec(repo_root)]); // cold generations hold historical values, recorded in the manifest
   if (result.status !== 0) throw new Error(`git diff --cached failed: ${result.stderr.trim()}`);
   const found: SecretFinding[] = [];
   let file = '';

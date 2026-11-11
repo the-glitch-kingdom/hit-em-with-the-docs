@@ -329,9 +329,11 @@ program
   )
   .action(async (options) => {
     const docs_root = resolve(process.cwd(), options.path);
+    const git_top = (await import('../core/reconcile/triage.js')).find_git_top(docs_root); // cold generations are found from any subfolder or -p
 
     const result = await check_documentation({
       docs_root: docs_root,
+      ...(git_top && { repo_root: git_top }),
       domain: options.domain,
       issues_only: options.issuesOnly,
       strict: options.strict,
@@ -1162,27 +1164,109 @@ program
   .option('--overview <question>', 'Propose a cross-domain member list for a flow or question; writes only .hewtd/reconcile/overview-<slug>.json. With --write-review: the members file to turn into an overview review skeleton', undefined)
   .option('--limit <n>', 'With --overview: member cap (default 12)')
   .option('--apply <files...>', 'Apply the accepted entries of review files (serial, one commit per batch)')
+  .option('--stage <dir>', 'Snapshot the live docs working tree (archive/ and gitignored files included) into <dir>/docs for a staged reconcile; <dir> must be empty or new, inside the repo, outside the docs tree and on its filesystem (use .hewtd/<name>); never commit it', undefined)
+  .option('--staged <dir>', 'Run any mode on the stage made by --stage: its docs, ledger.json and reconcile/ review files; the live tree, ledger and git are untouched (no commits). Not with -p', undefined)
+  .option('--promote', 'With --staged <dir>: swap the reconciled copy in as the live docs and keep the old tree as a committed, read-only, dated cold generation (reconcile.cold_root). Prints the plan and changes nothing without --confirm', false)
+  .option('--undo <generation>', 'Restore a cold generation as the live docs, byte for byte; the rejected tree moves to a new stage under .hewtd/stage. Needs --confirm', undefined)
+  .option('--generations', 'List the cold generations with path, date, checksum status (ok / CHANGED / MISSING) and secret finding count; with --json, machine-readable', false)
+  .option('--confirm', 'Required to carry out --promote or --undo', false)
   .option('--changed', 'Reconcile the docs created or changed since their last review (new, edited, or never reviewed) instead of naming a scope; scope args narrow it. Writes no ledger state', false)
   .option('--check', 'With --changed: advisory check for hooks and CI. Prints the unreviewed docs and exits 0, or 1 when reconcile.require_review is true', false)
-  .option('--staged', 'With --changed --check: look only at docs staged for commit', false)
+  .option('--cached', 'With --changed --check: look only at docs staged for commit (the git index)', false)
   .option('--gaps <file>', 'Classify missed search queries (gaps.v1 file or one question per line) into user_phrase proposals, new-doc candidates and open questions; writes only .hewtd/reconcile/gaps-report-<date>.md', undefined)
-  .action(async (scope: string[], options) => {
+  .action(async (scope: string[], options, command: Command) => {
     const { load_plugin_config } = await import('../utils/config.js');
     const { load_ledger, get_ledger_status: ledger_status, compute_content_hash: hash_content } = await import('../core/reconcile/ledger.js');
     const { list_glob_matches: glob } = await import('../utils/glob.js');
     const { resolve_git_top: project_root_of } = await import('../core/reconcile/outside.js');
-    const docs_root = resolve(process.cwd(), options.docsPath);
+    let staged: import('../core/reconcile/rotation.js').Stage | undefined;
+    try {
+      const { load_stage } = await import('../core/reconcile/rotation.js');
+      if (options.stage && options.staged) throw new Error('--stage and --staged are mutually exclusive');
+      if (options.staged && command.getOptionValueSource('docsPath') === 'cli') throw new Error('--staged and -p/--docs-path cannot be combined: the stage records its own docs folder');
+      const rotating = [options.promote, options.undo, options.generations].filter(Boolean).length;
+      if (rotating > 1) throw new Error('--promote, --undo and --generations are mutually exclusive');
+      if (options.promote && !options.staged) throw new Error('--promote needs --staged <dir>');
+      if ((options.undo || options.generations) && (options.staged || options.stage)) throw new Error('--undo and --generations do not take --stage/--staged');
+      if (options.confirm && !options.promote && !options.undo) throw new Error('--confirm only goes with --promote or --undo');
+      if (options.staged) staged = load_stage(resolve(process.cwd(), options.staged));
+    } catch (entry) {
+      logger.error((entry as Error).message);
+      process.exitCode = 1;
+      return;
+    }
+    // --promote works on the LIVE tree the stage was taken from; every other --staged mode works on the copy.
+    const live_of_stage = staged && options.promote ? resolve(project_root_of(staged.stage_dir), staged.docs_path) : undefined;
+    const docs_root = live_of_stage ?? (staged ? staged.docs_root : resolve(process.cwd(), options.docsPath));
     // State (ledger, review files, config) lives at the project root, so a run from a subdirectory shares it.
     const repo_root = project_root_of(docs_root);
     const config = await load_plugin_config(repo_root);
-    const ledger_file = resolve(repo_root, config.reconcile.ledger_path);
+    const ledger_file = staged && !live_of_stage ? staged.ledger_file : resolve(repo_root, config.reconcile.ledger_path);
+    if (staged && !live_of_stage) (await import('../core/reconcile/review.js')).set_review_dir(staged.review_dir);
+    if (options.promote || options.undo || options.generations) {
+      try {
+        const rotation = await import('../core/reconcile/rotation.js');
+        if (options.generations) {
+          const rows = rotation.list_generations(repo_root, config.cold_storage);
+          if (options.json) { console.log(JSON.stringify(rows, null, 2)); return; }
+          logger.header('hewtd reconcile --generations');
+          if (!rows.length) logger.info('  no cold generations');
+          for (const row of rows) logger.info(`  ${row.generation}  ${row.path}  rotated ${row.rotated_at.slice(0, 10)}  checksum ${row.status}${row.disk_only_absent ? ` (disk-only files absent: ${row.disk_only_absent})` : ''}  ${row.secrets_findings} secret finding(s)`);
+        } else if (options.undo) {
+          if (!options.confirm) {
+            const entry = await rotation.plan_undo({ repo_root, docs_root, config, generation: options.undo });
+            throw new Error(`refusing without --confirm. Would move ${relative(repo_root, docs_root)} to a new stage under .hewtd/stage and restore ${entry.path} as the live docs. Re-run with --confirm`);
+          }
+          const done = await rotation.run_undo({ repo_root, docs_root, config, generation: options.undo });
+          logger.header('hewtd reconcile --undo');
+          logger.info(`  restored generation ${done.generation} as ${relative(repo_root, docs_root)} (${done.commit})`);
+          if (done.disk_only_absent) logger.warn(`  ${done.disk_only_absent} gitignored (disk-only) file(s) of that generation are absent here and were not restored (a fresh clone does not have them)`);
+          logger.info(`  the rejected tree is in ${done.rejected_stage}/docs (a stage: reconcile it with --staged, or discard it)`);
+          await export_graph(docs_root, false);
+        } else if (staged) {
+          logger.header('hewtd reconcile --promote');
+          if (!options.confirm) {
+            const plan = await rotation.plan_promote({ repo_root, docs_root, config, stage: staged });
+            logger.info(`  stage ${plan.stage_path} (taken at ${plan.source_commit.slice(0, 7)}); the live docs are unchanged since`);
+            logger.info(`  ${plan.docs_path} -> ${plan.cold_path} (read-only, committed as a cold generation)`);
+            logger.info(`  ${plan.stage_path}/docs -> ${plan.docs_path}`);
+            logger.info(`  ${plan.secrets_findings.length} secret finding(s) in the outgoing tree (recorded as path:line in cold_storage, never values)`);
+            logger.info(`  ${plan.untracked_files.length} gitignored file(s) stay on disk only (listed in cold_storage)`);
+            logger.info('  nothing was changed. Re-run with --confirm to rotate.');
+            return;
+          }
+          const done = await rotation.run_promote({ repo_root, docs_root, config, stage: staged });
+          logger.info(`  promoted ${done.stage_path}; the previous tree is cold generation ${done.generation} at ${done.cold_path} (${done.commit})`);
+          logger.info(`  ${done.secrets_findings.length} secret finding(s) in it are recorded in cold_storage; rotate those credentials, they stay in git history`);
+          await export_graph(docs_root, false);
+        }
+      } catch (entry) {
+        logger.error((entry as Error).message);
+        process.exitCode = 1;
+      }
+      return;
+    }
+    if (options.stage) {
+      try {
+        const { create_stage } = await import('../core/reconcile/rotation.js');
+        const made = await create_stage({ repo_root, docs_root, stage_dir: resolve(process.cwd(), options.stage) });
+        if (options.json) { console.log(JSON.stringify({ stage: relative(repo_root, made.stage_dir), docs_path: made.docs_path, source_commit: made.source_commit, staged_at: made.staged_at, live_checksum: made.live_checksum }, null, 2)); return; }
+        logger.header('hewtd reconcile --stage');
+        logger.info(`  staged ${made.docs_path} at ${made.source_commit.slice(0, 7)} into ${relative(repo_root, made.stage_dir)}/docs`);
+        logger.info(`  next: hewtd reconcile --staged ${relative(process.cwd(), made.stage_dir) || '.'} <scope> --write-review`);
+      } catch (entry) {
+        logger.error((entry as Error).message);
+        process.exitCode = 1;
+      }
+      return;
+    }
     if (options.changed && options.check) {
       if (process.env.HEWTD_REVIEWED_COMMIT) { logger.info('reconcile --changed --check: skipped, this commit is hewtd\'s own (HEWTD_REVIEWED_COMMIT).'); return; }
       const { find_unreviewed_docs } = await import('../core/reconcile/triage.js');
       let unreviewed: string[] = [];
       try {
-        const staged = options.staged ? (await import('../core/reconcile/hooks.js')).list_staged_docs(repo_root, docs_root) : undefined;
-        unreviewed = await find_unreviewed_docs({ docs_root, ledger: await load_ledger(ledger_file), ...(staged && { doc_paths: staged }) });
+        const cached_docs = options.cached ? (await import('../core/reconcile/hooks.js')).list_staged_docs(repo_root, docs_root) : undefined;
+        unreviewed = await find_unreviewed_docs({ docs_root, ledger: await load_ledger(ledger_file), ...(cached_docs && { doc_paths: cached_docs }) });
       } catch { /* no docs tree or not a git repo: nothing to check, never break a commit */ }
       if (!unreviewed.length) return;
       const shown = unreviewed.slice(0, 10).join(', ') + (unreviewed.length > 10 ? `, +${unreviewed.length - 10} more` : '');
@@ -1198,7 +1282,7 @@ program
         const { apply_reviews } = await import('../core/reconcile/apply.js');
         const result = await apply_reviews({
           root: repo_root, docs_root: docs_root, ledger: await load_ledger(ledger_file), ledger_file,
-          files: (options.apply as string[]).map((file) => resolve(repo_root, file)),
+          files: (options.apply as string[]).map((file) => resolve(repo_root, file)), ...(staged && { staged: true }),
         });
         logger.header('hewtd reconcile --apply');
         for (const outcome of result.outcomes) logger.info(`  [${outcome.status}] ${outcome.path}${outcome.detail ? ` - ${outcome.detail}` : ''}`);
@@ -1207,7 +1291,7 @@ program
         const count_outcomes = (st: string) => result.outcomes.filter((outcome) => outcome.status === st).length;
         logger.info(`applied ${count_outcomes('applied')}, stale ${count_outcomes('stale')}, rejected ${count_outcomes('rejected')}, error ${count_outcomes('error')}`);
         if (count_outcomes('error')) process.exitCode = 1;
-        if (count_outcomes('applied')) await export_graph(docs_root, false); // a rolled-back batch has no 'applied' outcome
+        if (count_outcomes('applied') && !staged) await export_graph(docs_root, false); // a rolled-back batch has no 'applied' outcome
         const after = await load_ledger(ledger_file);
         if (result.outcomes.some((outcome) => outcome.status === 'applied' && after.entries[outcome.path]?.env_names?.length)) {
           const { build_secrets_report, write_secrets_report } = await import('../core/reconcile/secrets-report.js');
@@ -1322,6 +1406,7 @@ program
         }
         const result = selected?.triage ?? await triage({
           root: repo_root, docs_root: docs_root, rels: doc_paths, config, ledger,
+          ...(staged && { history_docs_root: resolve(repo_root, staged.docs_path) }), // a stage is untracked: git history comes from the live counterpart
           ...((options.serial && { mode: 'serial' }) || (options.team && { mode: 'team' }) || {}),
         });
         if (!selected) await save_ledger(ledger_file, ledger);
@@ -1372,14 +1457,14 @@ program
     const { is_reviewed, get_external_refs_status } = await import('../core/reconcile/ledger.js');
     // the graph lives at the docs' git top-level (write_graph), which can differ from where the command ran
     const { find_git_top: find_graph_top } = await import('../core/reconcile/triage.js');
-    const graph_top = find_graph_top(docs_root);
+    const graph_top = staged ? undefined : find_graph_top(docs_root);
     let graph_text: string | undefined;
     try {
       graph_text = graph_top ? await readFile(join(graph_top, '.hewtd', 'graph.json'), 'utf-8') : undefined;
     } catch { /* absent: the hint below says why */ }
     if (graph_text === undefined) {
       const { load_plugin_config: load_status_config } = await import('../utils/config.js');
-      const why = !graph_top ? 'the docs are not in a git checkout, so no graph is written'
+      const why = staged ? 'a staged copy has no graph (the live .hewtd/graph.json describes the live tree)' : !graph_top ? 'the docs are not in a git checkout, so no graph is written'
         : !(await load_status_config(repo_root)).graph_export ? 'graph_export is off in the plugin config, so no graph is written'
         : 'no .hewtd/graph.json yet (run `hewtd index` to write it)';
       logger.info(`  refs in reviewed docs: ${why}`);

@@ -139,6 +139,10 @@ In an overview, propose merge-then-point for members marked `duplicates` alongsi
 
 If the owner is in a sibling repo (`reconcile.related_repos`), the holder keeps a short summary and a cross-link to that repo's doc, as a `point` entry whose `target` is the path inside that repo plus `#anchor`. Read the owner to check the anchor and the no-loss expectations, and list it in `sources` as `<name>:<path>`. Never copy, move or edit anything in the sibling repo; there is no merge into it, so the details must already be there.
 
+## 3b. Staged run and rotation (3.2.0)
+
+To reconcile without touching the live docs, work on a copy: `hewtd reconcile --stage .hewtd/<name>`, then run every mode with `--staged .hewtd/<name>` (triage, `--write-review`, `--apply`, `--secrets`). Apply on a stage makes no commit and reports `secret` and outside-lane entries as `error`. When the user accepts the result, show the plan with `hewtd reconcile --promote --staged <dir>` and run it with `--confirm` only after the user agrees; it keeps the old tree as a read-only committed cold generation. Never promote or undo on your own. If the user wants it rolled back: `hewtd reconcile --undo <generation> --confirm`. Cold generations are history: never judge, cite or open files under `reconcile.cold_root`. Credentials listed in a generation's `secrets_findings` stay in git history, so tell the user to rotate them. See `docs/cold-rotation.md`.
+
 ## 4. Domains
 
 If docs fit no existing domain, add a proposal to the report (name, keywords, which docs). Never create or move folders. If the user wants it, point them at `/hit-em-with-the-docs:domain`.

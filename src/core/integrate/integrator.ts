@@ -17,6 +17,7 @@ import { find_git_top, triage_docs, type TriageDoc } from '../reconcile/triage.j
 import { build_repo_index, extract_references, resolve_references, type RelatedRepo } from '../reconcile/references.js';
 import { write_review_skeletons } from '../reconcile/review.js';
 import { execFileSync } from 'child_process';
+import { get_cold_pathspec } from '../reconcile/rotation.js';
 
 export interface IntegrateOptions {
   file_path: string;
@@ -387,7 +388,7 @@ const NOT_CODE = ['*.md', '*.mdx', '*.json', '*.jsonl', '*.csv', '*.tsv', '*.txt
 function find_unique_file(repo_root: string, name: string): string | undefined {
   try {
     // eslint-disable-next-line id-denylist -- child_process/glob option name
-    const found = execFileSync('git', ['grep', '-I', '-l', '-w', '-F', '-e', name, '--', '.', ...NOT_CODE.map((graph) => `:!${graph}`)], { cwd: repo_root, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const found = execFileSync('git', ['grep', '-I', '-l', '-w', '-F', '-e', name, '--', '.', ...NOT_CODE.map((graph) => `:!${graph}`), ...get_cold_pathspec(repo_root)], { cwd: repo_root, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
     const files = found.split('\n').filter(Boolean);
     return files.length === 1 ? files[0] : undefined;
   } catch {

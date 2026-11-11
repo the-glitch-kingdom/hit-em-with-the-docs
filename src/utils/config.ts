@@ -219,12 +219,34 @@ const secrets_config_schema = z
   .catch({ allow: [] as SecretAllow[], disabled_rules: [] as string[] })
   .default({});
 
+/** One cold generation (#97): a whole docs tree kept read-only and dated. Never printed values: findings are `path:line`. */
+export const cold_generation_schema = z.object({
+  generation: z.string().min(1),
+  path: z.string().min(1),
+  source_commit: z.string(),
+  rotated_at: z.string(),
+  /** sha256 over the committed (tracked) files of the generation; what a fresh clone can verify */
+  checksum: z.string().min(1),
+  /** sha256 over every file incl. gitignored disk-only ones */
+  disk_checksum: z.string().optional(),
+  secrets_findings: z.array(z.string()).catch([]),
+  untracked_files: z.array(z.string()).catch([]),
+});
+export type ColdGeneration = z.infer<typeof cold_generation_schema>;
+export const DEFAULT_COLD_ROOT = '.documentation-cold';
+const lenient_cold_storage = z
+  .array(z.unknown())
+  .transform((a) => a.flatMap((item) => { const result = cold_generation_schema.safeParse(item); return result.success ? [result.data] : []; }))
+  .catch([] as ColdGeneration[]);
+
 /** Reconcile (#54). Lenient like `retrieval`: any invalid key falls back to its default. */
 const reconcile_config_schema = z
   .object({
     keep_in_place: z.array(z.string()).catch(DEFAULT_RECONCILE_KEEP_IN_PLACE),
     ledger_path: z.string().min(1).catch('.hewtd/reconcile.json'),
     schema_sources: z.array(z.string()).catch(DEFAULT_RECONCILE_SCHEMA_SOURCES),
+    /** Where `reconcile --promote` keeps cold generations (#97): repo-relative, outside the docs root. */
+    cold_root: z.string().min(1).catch(DEFAULT_COLD_ROOT),
     related_repos: lenient_related_repos,
     secrets: secrets_config_schema,
     /** Optional doc search hook (#59): argv template with a `{query}` placeholder; stdout lines are doc paths. */
@@ -250,6 +272,7 @@ const reconcile_config_schema = z
     keep_in_place: DEFAULT_RECONCILE_KEEP_IN_PLACE,
     ledger_path: '.hewtd/reconcile.json',
     schema_sources: DEFAULT_RECONCILE_SCHEMA_SOURCES,
+    cold_root: DEFAULT_COLD_ROOT,
     related_repos: [] as Array<{ name: string; path: string }>,
     secrets: { allow: [] as SecretAllow[], disabled_rules: [] as string[] },
     require_review: false,
@@ -281,6 +304,8 @@ export const plugin_config_schema = z
     retrieval: retrieval_config_schema,
     overview: overview_config_schema,
     reconcile: reconcile_config_schema,
+    /** Cold generations kept by `reconcile --promote` (#97), listed for indexers; written by hewtd, not by hand. */
+    cold_storage: lenient_cold_storage,
     integrate: integrate_config_schema,
     /** Write `.hewtd/graph.json` on `hewtd index` and after `reconcile --apply` (#65). */
     graph_export: z.boolean().catch(true).default(true),

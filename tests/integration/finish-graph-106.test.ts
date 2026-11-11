@@ -276,6 +276,15 @@ describe('upgrade-check reports the graph hook blocks', () => {
     hewtd(['upgrade-check', '--fix']);
     expect(read('.git/hooks/post-checkout')).toBe(current);
   });
+  it('a custom core.hooksPath gets the exact graph lines to add, and nothing is written there', () => {
+    g(root, 'config', 'core.hooksPath', '.githooks');
+    const text = hewtd(['upgrade-check']).stdout;
+    for (const name of ['post-merge', 'post-checkout']) {
+      expect(text).toContain(`add these lines to .githooks/${name}:`);
+    }
+    expect(text).toContain('        # >>> hewtd graph >>>\n        if [ "${3:-1}" != "0" ]; then npx --no-install hewtd graph --quiet || true; fi\n        # <<< hewtd graph <<<');
+    expect(existsSync(join(root, '.githooks'))).toBe(false);
+  });
   it('upgrade-notes.json 3.3.0 names the hooks', () => {
     const notes = JSON.parse(readFileSync(join(resolve(__dirname, '../..'), 'upgrade-notes.json'), 'utf8'));
     expect(notes['3.3.0'].hook_block).toMatch(/post-merge/);

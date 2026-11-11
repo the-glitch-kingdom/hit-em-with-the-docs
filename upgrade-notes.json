@@ -124,11 +124,15 @@
     "template_changes": null
   },
   "3.3.0": {
-    "summary": "Adds hewtd upgrade-check (#104) and the config key last_upgrade_check, written by hewtd. No existing key changes.",
-    "config_keys": [],
+    "summary": "Adds hewtd upgrade-check (#104) and the config key last_upgrade_check, written by hewtd. Adds reconcile --finish (#106), hewtd graph and post-merge / post-checkout graph hooks. No existing key changes.",
+    "config_keys": [
+      { "key": "reconcile.secrets.rotated", "default": [], "note": "Credentials in .env.hewtd you rotated, as [{env, rotated_on}] (names only), written by `hewtd reconcile --finish --rotated <ENV_NAME>`; --finish warns about keys not listed." }
+    ],
     "changed_defaults": [],
-    "behaviour_changes": [],
-    "hook_block": null,
+    "behaviour_changes": [
+      { "issue": 106, "note": "reconcile --promote --confirm now ends by printing the read-only --finish inventory (.env.hewtd keys, stages, review files, graph files, git hygiene).", "patterns": ["reconcile\\b.*--promote"] }
+    ],
+    "hook_block": "hewtd hooks install now also adds a marked post-merge and post-checkout block that runs `hewtd graph --quiet`, keeping .hewtd/graph.json at HEAD after a pull or branch switch. Opt-in like the pre-commit block; with a custom core.hooksPath add the lines yourself.",
     "template_changes": null
   }
 }

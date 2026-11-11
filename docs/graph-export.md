@@ -109,3 +109,7 @@ Additive fields keep `version: 1`; consumers ignore fields they do not know. Any
 ## Privacy
 
 Paths, symbol names and dates only. No doc text and no values. Writes go through the secret guard.
+
+## Keeping it current (#106)
+
+`hewtd graph` writes only `.hewtd/graph.json`; `hewtd graph --quiet` prints nothing and is what the `post-merge` / `post-checkout` blocks added by `hewtd hooks install` run, so `source_commit` follows HEAD after a pull or branch switch.

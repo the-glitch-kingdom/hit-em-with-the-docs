@@ -4,7 +4,7 @@ import { spawnSync } from 'child_process';
 import { parse as parse_yaml } from 'yaml';
 import { load_plugin_config_sync, write_raw_config, resolve_config_file_path, resolve_docs_root } from '../../utils/config.js';
 import { partial_metadata_schema } from '../metadata/schema.js';
-import { BLOCK, START, install_hook, resolve_hook_path } from '../reconcile/hooks.js';
+import { BLOCK, START, GRAPH_BLOCK, GRAPH_HOOKS, GRAPH_START, install_graph_hook, install_hook, resolve_hook_path } from '../reconcile/hooks.js';
 import { FIRST_NOTED_VERSION, compare_versions, list_crossed_versions, load_upgrade_notes, type UpgradeNotes } from './notes.js';
 
 const PACKAGE_NAME = '@theglitchking/hit-em-with-the-docs';
@@ -124,23 +124,25 @@ function check_config_keys(options: UpgradeCheckOptions, notes: UpgradeNotes, cr
   return items;
 }
 
-function check_hook(options: UpgradeCheckOptions, notes: UpgradeNotes, crossed: string[]): UpgradeItem {
+function check_hook(options: UpgradeCheckOptions, notes: UpgradeNotes, crossed: string[], name = 'pre-commit'): UpgradeItem {
+  const is_graph = name !== 'pre-commit';
+  const [start, block, id] = is_graph ? [GRAPH_START, GRAPH_BLOCK, `hook:${name}`] : [START, BLOCK, 'hook'];
   let path: string;
-  try { path = resolve_hook_path(options.repo_root); } catch { return { id: 'hook', status: 'info', title: 'not a git repository: no pre-commit hook to check', detail: [], fixable: false }; }
+  try { path = resolve_hook_path(options.repo_root, name); } catch { return { id, status: 'info', title: `not a git repository: no ${name} hook to check`, detail: [], fixable: false }; }
   let current: string | null = null;
   try { current = readFileSync(path, 'utf8'); } catch { /* absent */ }
   const shown = relative(options.repo_root, path);
   const hook_note = crossed.map((version) => notes[version]!.hook_block).filter(Boolean);
-  if (current?.includes(START)) {
-    if (current.includes(BLOCK)) return { id: 'hook', status: 'ok', title: `pre-commit block is current (${shown})`, detail: [], fixable: false };
-    return { id: 'hook', status: 'action', fixable: true, title: `pre-commit block is out of date (${shown})`, detail: [...hook_note.map(String), '`hewtd hooks install` (or --fix) upgrades it in place'] };
+  if (current?.includes(start)) {
+    if (current.includes(block)) return { id, status: 'ok', title: `${name} block is current (${shown})`, detail: [], fixable: false };
+    return { id, status: 'action', fixable: true, title: `${name} block is out of date (${shown})`, detail: [...hook_note.map(String), '`hewtd hooks install` (or --fix) upgrades it in place'] };
   }
   // eslint-disable-next-line id-denylist -- child_process option name
   const custom = spawnSync('git', ['config', 'core.hooksPath'], { cwd: options.repo_root, encoding: 'utf8' }).stdout.trim();
   return {
-    id: 'hook', status: custom ? 'action' : 'info', fixable: false,
-    title: custom ? `pre-commit block missing: this repo uses its own hooks path (${custom})` : 'pre-commit block not installed (opt-in)',
-    detail: [...hook_note.map(String), `add these lines to ${shown}${custom ? '' : ' (or run `hewtd hooks install`)'}:`, ...BLOCK.trimEnd().split('\n').map((line) => `  ${line}`)],
+    id, status: custom ? 'action' : 'info', fixable: false,
+    title: custom ? `${name} block missing: this repo uses its own hooks path (${custom})` : `${name} block not installed (opt-in)`,
+    detail: [...hook_note.map(String), `add these lines to ${shown}${custom ? '' : ' (or run `hewtd hooks install`)'}:`, ...block.trimEnd().split('\n').map((line) => `  ${line}`)],
   };
 }
 
@@ -236,6 +238,7 @@ async function collect(options: UpgradeCheckOptions, notes: UpgradeNotes, record
     check_skew(copies, options.installed_version),
     ...check_config_keys(options, notes, crossed),
     check_hook(options, notes, crossed),
+    ...GRAPH_HOOKS.map((name) => check_hook(options, notes, crossed, name)),
     check_skills(options.repo_root),
     check_template(options, notes, crossed),
     check_schema(options.repo_root),
@@ -273,6 +276,7 @@ export async function run_upgrade_check(options: UpgradeCheckOptions): Promise<U
     config_changed = true;
   }
   if (first.items.find((entry) => entry.id === 'hook')?.fixable) { const result = await install_hook(options.repo_root); fixed.push(`upgraded the hewtd block in ${relative(options.repo_root, result.path)}`); }
+  for (const name of GRAPH_HOOKS) if (first.items.find((entry) => entry.id === `hook:${name}`)?.fixable) { const result = await install_graph_hook(options.repo_root, name); fixed.push(`upgraded the hewtd graph block in ${relative(options.repo_root, result.path)}`); }
   fixed.push(...fix_skills(options.repo_root));
   if (config_changed) await write_raw_config(options.repo_root, config);
 

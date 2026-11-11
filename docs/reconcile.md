@@ -726,3 +726,26 @@ accepted entry. Links from other outside files are not repointed.
   Retune from the ledger's `reviewed_on` dates after real runs.
 - Superseded: the drafting commands deferred in #50 (E) and #51 (section 3)
   are covered by `/reconcile`.
+
+## After a reconcile: `--finish` (#106)
+
+A whole-tree reconcile leaves working files behind. `hewtd reconcile --finish` lists them with sizes and a
+recommendation each; read-only unless you pass a flag. `--promote --confirm` ends by printing the same list.
+
+- **Credentials**: the key names in `.env.hewtd` (never values) and whether each is marked rotated. Record a
+  rotation with `hewtd reconcile --finish --rotated <ENV_NAME>` (repeatable); it is stored as
+  `reconcile.secrets.rotated: [{env, rotated_on}]` in the plugin config, names only. A config that is not valid JSON is
+  refused, never rewritten. hewtd never deletes `.env.hewtd`.
+- **Stages**: every directory with a `stage.json` (under `.hewtd/stage` or elsewhere in the repo): `rejected` (from
+  `--undo`), `abandoned` (source commit is not HEAD), `promoted` (docs moved out) or `active`.
+- **Review files**: how many, and which quote a value from `.env.hewtd`. `--fix` replaces the value with its pointer
+  `<secret: NAME, see .env.hewtd>` in place.
+- **Graph files**: `.hewtd/graph.json` and `graph-cache.json`.
+- **Git hygiene**: hewtd working files git does not ignore (`.hewtd/reconcile.json` and `secrets-baseline.json` are meant
+  to be committed and are left alone). `--fix` appends the missing lines to `.gitignore`.
+- `--confirm` removes only rejected and abandoned stages, the graph cache and the review files `--fix` redacted in the
+  same run. Never `.env.hewtd`, `graph.json`, cold generations or anything under the docs tree. `--json` prints the report.
+
+`hewtd graph [--quiet]` writes only `.hewtd/graph.json` (no index). `hewtd hooks install` also adds marked `post-merge` and
+`post-checkout` blocks that run `hewtd graph --quiet`, so the graph is at HEAD after a pull or a branch switch; with a custom
+`core.hooksPath` add the lines yourself (`hewtd upgrade-check` prints them).

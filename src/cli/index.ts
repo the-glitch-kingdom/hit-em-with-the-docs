@@ -240,14 +240,16 @@ program
   });
 
 /** Write .hewtd/graph.json (#65). Never fails the caller: the export is a side product. */
-async function export_graph(docs_root: string, dry_run: boolean): Promise<void> {
+async function export_graph(docs_root: string, dry_run: boolean, quiet = false): Promise<void> {
   try {
     const { load_plugin_config } = await import('../utils/config.js');
     const { resolve_git_top: project_root_of } = await import('../core/reconcile/outside.js');
     const { write_graph } = await import('../core/graph/export.js');
     const repo_root = project_root_of(docs_root);
     const result = await write_graph({ root: repo_root, docs_root: docs_root, config: await load_plugin_config(repo_root), dry_run });
+    if (quiet) return;
     if (result.status === 'no-git') logger.info('Graph export skipped: not a git checkout.');
+    else if (result.status === 'disabled') logger.info('Graph export is off (graph_export: false in the plugin config).');
     else if (result.status === 'written') logger.info('Graph export written: .hewtd/graph.json');
     else if (result.status === 'would-write') logger.info('Would update .hewtd/graph.json');
     if (result.hint) logger.info('Tip: .hewtd/graph.json is not git-ignored; add it to .gitignore unless you want it committed.');
@@ -255,6 +257,17 @@ async function export_graph(docs_root: string, dry_run: boolean): Promise<void> 
     logger.warn(`Graph export failed: ${(entry as Error).message}`);
   }
 }
+
+// Graph-only export (#106): the fast refresh the post-merge / post-checkout hooks run
+program
+  .command('graph')
+  .description('Write .hewtd/graph.json only (no index); --quiet is for git hooks')
+  .option('-p, --docs-path <path>', 'Documentation path', '.documentation')
+  .option('--quiet', 'Print nothing unless the export fails; always exit 0 (git hooks)', false)
+  .option('--dry-run', 'Report whether graph.json would change; write nothing', false)
+  .action(async (options) => {
+    await export_graph(resolve(process.cwd(), options.docsPath), options.dryRun, options.quiet);
+  });
 
 /** How many document rows a generated INDEX.md currently lists (0 if absent). */
 async function count_indexed_doc_rows(index_path: string): Promise<number> {
@@ -1171,7 +1184,10 @@ program
   .option('--promote', 'With --staged <dir>: swap the reconciled copy in as the live docs and keep the old tree as a committed, read-only, dated cold generation (reconcile.cold_root), allowlisting the cold root in .gitleaks.toml / .secrets.baseline unless reconcile.cold_scanner_allowlist is false. Prints the plan and changes nothing without --confirm', false)
   .option('--undo <generation>', 'Restore a cold generation as the live docs, byte for byte; the rejected tree moves to a new stage under .hewtd/stage. Needs --confirm', undefined)
   .option('--generations', 'List the cold generations with path, date, checksum status (ok / CHANGED / MISSING) and secret finding count; with --json, machine-readable', false)
-  .option('--confirm', 'Required to carry out --promote or --undo', false)
+  .option('--confirm', 'Required to carry out --promote or --undo. With --finish: remove rejected and abandoned stages, the graph cache and the review files --fix redacted in this run (never .env.hewtd, graph.json, cold generations or the docs tree)', false)
+  .option('--finish', 'List what a reconcile leaves behind (.env.hewtd keys and rotation, stages, review files, graph files, git hygiene) with sizes and a recommendation each; read-only without --fix/--confirm/--rotated', false)
+  .option('--rotated <env>', 'With --finish: record that the credential in .env.hewtd under this name was rotated (reconcile.secrets.rotated; names only). Repeatable', (value: string, previous: string[]) => [...previous, value], [] as string[])
+  .option('--fix', 'With --finish: redact secret-lane values quoted in review files (replaced by their env pointer) and add the missing .gitignore lines for hewtd working files', false)
   .option('--changed', 'Reconcile the docs created or changed since their last review (new, edited, or never reviewed) instead of naming a scope; scope args narrow it. Writes no ledger state', false)
   .option('--check', 'With --changed: advisory check for hooks and CI. Prints the unreviewed docs and exits 0, or 1 when reconcile.require_review is true', false)
   .option('--cached', 'With --changed --check: look only at docs staged for commit (the git index)', false)
@@ -1190,7 +1206,9 @@ program
       if (rotating > 1) throw new Error('--promote, --undo and --generations are mutually exclusive');
       if (options.promote && !options.staged) throw new Error('--promote needs --staged <dir>');
       if ((options.undo || options.generations) && (options.staged || options.stage)) throw new Error('--undo and --generations do not take --stage/--staged');
-      if (options.confirm && !options.promote && !options.undo) throw new Error('--confirm only goes with --promote or --undo');
+      if (options.finish && (rotating || options.stage || options.staged)) throw new Error('--finish does not combine with --promote, --undo, --generations, --stage or --staged');
+      if (options.confirm && !options.promote && !options.undo && !options.finish) throw new Error('--confirm only goes with --promote, --undo or --finish');
+      if ((options.fix || options.rotated.length) && !options.finish) throw new Error('--fix and --rotated only go with --finish');
       if (options.staged) staged = load_stage(resolve(process.cwd(), options.staged));
     } catch (entry) {
       logger.error((entry as Error).message);
@@ -1205,6 +1223,34 @@ program
     const config = await load_plugin_config(repo_root);
     const ledger_file = staged && !live_of_stage ? staged.ledger_file : resolve(repo_root, config.reconcile.ledger_path);
     if (staged && !live_of_stage) (await import('../core/reconcile/review.js')).set_review_dir(staged.review_dir);
+    if (options.finish) {
+      try {
+        const finish = await import('../core/reconcile/finish.js');
+        const actions: string[] = [];
+        if (options.rotated.length) {
+          const { unknown_names } = await finish.record_rotated(repo_root, options.rotated);
+          actions.push(`recorded rotated: ${options.rotated.join(', ')}`);
+          for (const name of unknown_names) logger.warn(`  ${name} is not in .env.hewtd (recorded anyway)`);
+        }
+        const redacted = options.fix ? finish.redact_review_files(repo_root) : [];
+        if (redacted.length) actions.push(`redacted secret-lane values in ${redacted.join(', ')}`);
+        if (options.fix) {
+          const added = finish.add_ignore_lines(repo_root, (await finish.build_finish_report({ repo_root, docs_root })).git.add_lines);
+          if (added.length) actions.push(`added to .gitignore: ${added.join(', ')}`);
+        }
+        if (options.confirm) {
+          const removed = finish.remove_leftovers(repo_root, await finish.build_finish_report({ repo_root, docs_root }), redacted);
+          actions.push(...removed.map((path) => `removed ${path}`));
+        }
+        const report = await finish.build_finish_report({ repo_root, docs_root });
+        report.actions = actions;
+        if (options.json) console.log(JSON.stringify(report, null, 2)); else logger.info(finish.format_finish_report(report));
+      } catch (entry) {
+        logger.error((entry as Error).message);
+        process.exitCode = 1;
+      }
+      return;
+    }
     if (options.promote || options.undo || options.generations) {
       const cold_root_of = (plan: import('../core/reconcile/rotation.js').RotationPlan): string => plan.cold_path.slice(0, plan.cold_path.lastIndexOf('/'));
       const print_rotation_warnings = (plan: import('../core/reconcile/rotation.js').RotationPlan, done = false): void => {
@@ -1258,6 +1304,7 @@ program
           logger.info(`  ${done.secrets_findings.length} secret finding(s) in it are recorded in cold_storage; rotate those credentials, they stay in git history`);
           print_rotation_warnings(done, true);
           await export_graph(docs_root, false);
+          try { const finish = await import('../core/reconcile/finish.js'); logger.info(`\n${finish.format_finish_report(await finish.build_finish_report({ repo_root, docs_root }))}`); } catch (entry) { logger.warn(`could not list what is left behind: ${(entry as Error).message}`); }
         }
       } catch (entry) {
         logger.error((entry as Error).message);
@@ -1563,19 +1610,25 @@ program
     }
   });
 
-// Opt-in git pre-commit hook for the staged secret scan
+// Opt-in git hooks: pre-commit (staged secret scan) and post-merge / post-checkout (graph refresh, #106)
 program
   .command('hooks <action>')
-  .description('install | uninstall the opt-in pre-commit hook block (hewtd secrets --staged); never overwrites an existing hook')
+  .description('install | uninstall the opt-in hook blocks: pre-commit (hewtd secrets --staged) and post-merge / post-checkout (hewtd graph --quiet); never overwrites an existing hook')
   .option('-p, --docs-path <path>', 'Documentation path', '.documentation')
   .action(async (action, options) => {
     try {
       if (action !== 'install' && action !== 'uninstall') throw new Error('expected install or uninstall');
       const { resolve_git_top: project_root_of } = await import('../core/reconcile/outside.js');
-      const { install_hook, uninstall_hook } = await import('../core/reconcile/hooks.js');
+      const hooks = await import('../core/reconcile/hooks.js');
       const repo_root = project_root_of(resolve(process.cwd(), options.docsPath));
-      const result = await (action === 'install' ? install_hook : uninstall_hook)(repo_root);
-      logger.info(`${result.changed ? action + 'ed' : 'unchanged'}: ${relative(repo_root, result.path)}`);
+      const install = action === 'install';
+      const steps: Array<() => Promise<{ path: string; changed: boolean }>> = [
+        () => (install ? hooks.install_hook : hooks.uninstall_hook)(repo_root),
+        ...hooks.GRAPH_HOOKS.map((name) => () => (install ? hooks.install_graph_hook : hooks.uninstall_graph_hook)(repo_root, name)),
+      ];
+      for (const step of steps) { // one refused hook (symlink, not a shell script) does not stop the others
+        try { const result = await step(); logger.info(`${result.changed ? action + 'ed' : 'unchanged'}: ${relative(repo_root, result.path)}`); } catch (entry) { logger.error((entry as Error).message); process.exitCode = 1; }
+      }
     } catch (entry) {
       logger.error((entry as Error).message);
       process.exitCode = 1;

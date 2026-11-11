@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.3.0] — 2026-11-11
+
+Adds `hewtd upgrade-check` (#104). Additive: the config key `last_upgrade_check` is written by hewtd; nothing else changes.
+
+- `hewtd upgrade-check [--fix] [--json]` lists what a repo must change after an update, from the shipped `upgrade-notes.json` (3.1.0 onward): version skew across the plugin cache, global CLI, npx cache and `node_modules`; new config keys; the pre-commit block (the exact lines for a custom `core.hooksPath`); skill symlinks; the doc template; `vault.schema.yml` against the frontmatter contract; instruction drift (`file:line` in `CLAUDE.md`, `AGENTS.md`, `.claude/rules/**` plus the release note).
+- Read-only without `--fix`. `--fix` relinks skills, upgrades an existing hook block and adds new config keys at their defaults, and records `last_upgrade_check` only when no item needs action.
+- `/hit-em-with-the-docs:update` runs it after the update; `/hit-em-with-the-docs:status` suggests it; new `/hit-em-with-the-docs:upgrade-check`.
+- Docs: `docs/upgrade-check.md`, LLM guide, help, README.
+
 ## [3.2.2] — 2026-11-11
 
 Fixes #103: an applied `rewrite` counted as unreviewed forever. No key changes.

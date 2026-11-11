@@ -124,7 +124,7 @@
     "template_changes": null
   },
   "3.3.0": {
-    "summary": "Adds hewtd upgrade-check (#104).",
+    "summary": "Adds hewtd upgrade-check (#104) and the config key last_upgrade_check, written by hewtd. No existing key changes.",
     "config_keys": [],
     "changed_defaults": [],
     "behaviour_changes": [],

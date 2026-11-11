@@ -10,6 +10,8 @@
 > You still need to remember to use this plugin when creating documentation! As projects grow, documentation needs to be created and maintained. You'll need to invoke this plugin or ask an LLM to create documentation for your features, workflows, or infrastructure. This plugin must be invoked to create, update, or maintain your docs.
 
 > [!NOTE]
+> **3.3.0** adds `hewtd upgrade-check [--fix] [--json]`: after an update it lists what your repo must change (config keys, pre-commit hook, skill links, template, schema, instruction drift). See [`docs/upgrade-check.md`](./docs/upgrade-check.md).
+>
 > **3.x** — 3.0 is an internal naming standard (no CLI, JSON or file-format change). 3.1.x: faster graph export and incremental index, fewer false secret findings, and reconcile fixes (not-checkable references, `external_refs`, `sources` merge, landed `rewrite` drafts). See [CHANGELOG](./CHANGELOG.md).
 
 > [!NOTE]

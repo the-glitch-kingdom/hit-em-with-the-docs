@@ -143,6 +143,7 @@ Use Bash to run these. They're all available via `npx --no @theglitchking/hit-em
 | `hewtd index` (alias `reindex`) | Regenerate every INDEX/REGISTRY from disk and write `.hewtd/graph.json` (incremental via a cache since 3.1.4/3.1.5; `--no-graph` skips the export, `--dry-run` previews). |
 | `hewtd reconcile <scope>` | Check existing docs against the code (2.15.0+). Deterministic triage; `--write-review` writes review files, `--apply <files>` applies accepted entries, `--status`, `--outside`, `--secrets [scope] [--json]` (masked secret scan, 2.17.0), `--overview "<q>"` (seed an overview from a question) and `--write-review --overview <members-file>` (2.18.0; verdicts `overview`, `merge`, `point` give one owner per fact). `--gaps <file> [--write-review]` (2.21.0; missed search queries become `user_phrase` proposals, new-doc candidates or open questions; format in `docs/gaps-format.md`). Cold rotation (3.2.0): `--stage <dir>`, `--staged <dir>`, `--promote --staged <dir> --confirm`, `--undo <gen> --confirm`, `--generations [--json]` (old files are read-only, directories are not; `checksum` = committed files, `disk_checksum` = all; promote and undo refuse a plugin config that is not valid JSON; a staged triage keeps live git staleness); see `docs/cold-rotation.md`. 3.2.1 (#101): promote allowlists the cold root in `.gitleaks.toml` (created with `[extend] useDefault = true` when absent) and `.secrets.baseline` in the promote commit, recorded as `scanner_allowlists`; undo of the last cold generation restores them (an older one hands the allowlist to the newer); `reconcile.cold_scanner_allowlist: false` opts out; the plan warns about flagged and unreviewed docs. Judging is done by `/hit-em-with-the-docs:reconcile`. See `docs/reconcile.md` and "Reconcile in 3.x" below. |
 | `hewtd secrets --staged` | Scan only lines the staged diff adds for secrets (2.19.0); exit 1 with masked findings. `--baseline-add <file:line> --reason "..."` and `--baseline-prune` manage `.hewtd/secrets-baseline.json`. See `docs/write-time-guards.md`. |
+| `hewtd upgrade-check [--fix] [--json]` | After an update (3.3.0): read-only checklist of what this repo must change, from `upgrade-notes.json` since `last_upgrade_check`: version skew, new config keys, pre-commit block (exact lines for a custom hooks path), skill links, doc template, `vault.schema.yml`, instruction drift (`file:line`). `--fix` does only the safe items and records `last_upgrade_check` once no item needs action. See `docs/upgrade-check.md`. |
 | `hewtd hooks install\|uninstall` | Opt-in pre-commit block running `hewtd secrets --staged` and `hewtd reconcile --changed --check --cached` (warns about staged docs not reviewed; blocks only with `reconcile.require_review: true`). Appended, never overwrites; uninstall is byte-exact. |
 | `hewtd archive-candidates` | Advisory, read-only. List docs that may warrant archiving (score + reasons). Never moves anything. `--json` for machine output. |
 
@@ -171,6 +172,7 @@ Use Bash to run these. They're all available via `npx --no @theglitchking/hit-em
 | `/hit-em-with-the-docs:policy [auto\|nudge\|off]` | Get/set the update policy |
 | `/hit-em-with-the-docs:domain list\|add\|remove` | Manage custom domains (add confirms via dry-run; remove confirms the orphaned-doc count before applying) |
 | `/hit-em-with-the-docs:reconcile <scope>` | Reconcile existing docs with the code; proposes fixes, applies only what you accept (`--next N`, `--status`, `--outside`) |
+| `/hit-em-with-the-docs:upgrade-check` | What this repo must change after an update (3.3.0) |
 | `/hit-em-with-the-docs:archive` | Deprecate/restore docs or list candidates |
 | `/hit-em-with-the-docs:find-citers`, `audit-facts`, `cite`, `extract-facts`, `migrate-incident` | Knowledge-base workflows (prefix each with `/hit-em-with-the-docs:`) |
 | `/hit-em-with-the-docs:update` | Update to the latest version |
@@ -225,6 +227,7 @@ Details: `docs/retrieval-fields.md`.
 
 ## Where to dig deeper
 
+- `docs/upgrade-check.md` — `hewtd upgrade-check`: what a repo must change after an update, the `upgrade-notes.json` format (3.3.0)
 - `docs/reconcile.md` — reconciling existing docs with the code
 - `docs/cold-rotation.md` — stage, reconcile a copy, promote it and keep the old tree as a cold generation, undo (3.2.0)
 - `docs/gaps-format.md` — the `gaps.v1` search-gaps file read by `hewtd reconcile --gaps` (2.21.0)

@@ -44,3 +44,13 @@ describe('find_unreviewed_docs (--changed, audit DOCS_UNREVIEWED, pre-commit che
     expect(await find_unreviewed_docs({ docs_root, ledger })).toEqual(['backend/a.md']);
   });
 });
+
+describe('overview member state agrees: a landed rewrite is reconciled (#103)', () => {
+  it('reconciled while unchanged, stale once edited, unreviewed for a pre-3.1.6 rewrite', async () => {
+    const { get_member_state } = await import('../../../src/core/reconcile/overview');
+    const ledger = (entry: LedgerEntry) => ({ version: 1 as const, entries: { 'a.md': entry } });
+    expect(get_member_state(ledger(rewrite()), 'a.md', hash)).toBe('reconciled');
+    expect(get_member_state(ledger(rewrite()), 'a.md', compute_content_hash('other'))).toBe('stale');
+    expect(get_member_state(ledger(rewrite({ reviewed_on: '2026-11-09' })), 'a.md', hash)).toBe('unreviewed');
+  });
+});

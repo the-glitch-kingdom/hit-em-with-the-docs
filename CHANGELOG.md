@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 Fixes #103: an applied `rewrite` counted as unreviewed forever. No key changes.
 
-- `is_reviewed` treats a `rewrite` ledger entry as a review once its draft has landed, still gated on the content hash, so editing the doc makes it unreviewed again. The one rule covers `reconcile --changed`, `--next`, `--status`, audit's `DOCS_UNREVIEWED`, the pre-commit `--changed --check` (and `reconcile.require_review`) and the promote warning's count.
+- `is_reviewed` treats a `rewrite` ledger entry as a review once its draft has landed, still gated on the content hash, so editing the doc makes it unreviewed again. The one rule covers `reconcile --changed`, `--next`, `--status`, audit's `DOCS_UNREVIEWED`, the pre-commit `--changed --check` (and `reconcile.require_review`) and the promote warning's count. An overview member with a landed rewrite is `reconciled`, like `verify`.
 - "Landed" is decided by `reviewed_on` (on or after 2026-11-10, when 3.1.6 started landing drafts), not by `applied_commit`. A staged apply makes no commit and promote moves the stage ledger live, so `applied_commit` would have left every staged rewrite unreviewed. A `rewrite` entry recorded before 3.1.6 never landed its draft and stays unreviewed.
 - Docs: `docs/reconcile.md`, the reconcile command, the LLM guide and help.
 

@@ -9,7 +9,7 @@ import { dirname, join, posix, relative } from 'path';
 import type { PluginConfig } from '../../utils/config.js';
 import { parse_frontmatter } from '../../utils/frontmatter.js';
 import { extract_links, format_slug } from '../../utils/markdown.js';
-import { compute_content_hash, type Ledger } from './ledger.js';
+import { compute_content_hash, is_reviewed, type Ledger } from './ledger.js';
 import { render_review, resolve_review_dir, find_next_batch } from './review.js';
 import { find_duplicates, type Duplicate } from './duplicates.js';
 import { find_docs } from './search.js';
@@ -52,7 +52,7 @@ export function get_member_state(ledger: Ledger, doc_path: string, hash: string)
   if (entry?.lane === 'secret') return 'secret';
   if (!entry) return 'unreviewed';
   if (entry.content_hash !== hash) return 'stale';
-  return entry.verdict === 'verify' || entry.lane === 'clean' ? 'reconciled' : 'unreviewed';
+  return entry.verdict === 'verify' || (entry.verdict === 'rewrite' && is_reviewed(entry, hash)) || entry.lane === 'clean' ? 'reconciled' : 'unreviewed';
 }
 
 export async function load_overview_seed(options: {

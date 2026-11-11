@@ -297,8 +297,8 @@ judging step fills `draft` and `frontmatter`, then `--apply`.
 
 The `overview` verdict:
 
-- Applies only when every member is **reconciled**: verdict `verify`, or lane
-  `clean`, with a matching content hash. A member that is not yet reconciled needs
+- Applies only when every member is **reconciled**: verdict `verify`, a landed `rewrite`
+  (3.2.2), or lane `clean`, with a matching content hash. A member that is not yet reconciled needs
   `allow_unreviewed: true` and an `(unreviewed)` mark on its link line. A
   secret-lane member is always refused.
 - The target must not exist (`overview target already exists` otherwise).

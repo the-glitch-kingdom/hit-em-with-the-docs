@@ -134,5 +134,15 @@
     ],
     "hook_block": "hewtd hooks install now also adds a marked post-merge and post-checkout block that runs `hewtd graph --quiet`, keeping .hewtd/graph.json at HEAD after a pull or branch switch. Opt-in like the pre-commit block; with a custom core.hooksPath add the lines yourself.",
     "template_changes": null
+  },
+  "3.4.0": {
+    "summary": "The graph hook runs hewtd graph in the background and hewtd graph locks itself (#108). Adds docs targets: a targets block in the plugin config and a Targets section in hewtd audit (#109).",
+    "config_keys": [],
+    "changed_defaults": [],
+    "behaviour_changes": [
+      { "issue": 108, "note": "The post-merge / post-checkout graph block now runs `hewtd graph --quiet` in the background (git returns at once; graph.json reaches HEAD shortly after). A block you edited is never rewritten; a foreground one is reported. The first `hewtd graph` after an upgrade rebuilds its cache and can take minutes.", "patterns": ["hewtd graph\\b"] }
+    ],
+    "hook_block": "The post-merge / post-checkout block changed to `(npx --no-install hewtd graph --quiet || true) >/dev/null 2>&1 </dev/null &`. `hewtd hooks install` or `upgrade-check --fix` upgrades the 3.3.0 block in place; a block you edited is left alone.",
+    "template_changes": null
   }
 }

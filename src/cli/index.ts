@@ -275,7 +275,13 @@ program
       docs_root = resolve_docs_root(repo_root, await load_plugin_config(repo_root));
     }
     if (!existsSync(docs_root)) { if (!options.quiet) logger.warn(`Graph export skipped: no docs folder at ${relative(process.cwd(), docs_root) || '.'} (pass -p or set docs_root)`); return; }
-    await export_graph(docs_root, options.dryRun, options.quiet);
+    if (options.dryRun) { await export_graph(docs_root, true, options.quiet); return; }
+    const { resolve_git_top: project_root_of } = await import('../core/reconcile/outside.js');
+    const { run_with_graph_lock } = await import('../core/graph/lock.js');
+    try {
+      const outcome = await run_with_graph_lock(join(project_root_of(docs_root), '.hewtd'), () => export_graph(docs_root, false, options.quiet));
+      if (outcome === 'queued' && !options.quiet) logger.info('Another `hewtd graph` is running; it will refresh again when it finishes.');
+    } catch (entry) { if (!options.quiet) logger.warn(`Graph export failed: ${(entry as Error).message}`); } // a hook must never fail git
   });
 
 /** How many document rows a generated INDEX.md currently lists (0 if absent). */

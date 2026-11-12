@@ -146,5 +146,13 @@
     ],
     "hook_block": "The post-merge / post-checkout block changed to `(npx --no-install hewtd graph --quiet || true) >/dev/null 2>&1 </dev/null &`. `hewtd hooks install` or `upgrade-check --fix` upgrades the 3.3.0 block in place; a block you edited is left alone.",
     "template_changes": null
+  },
+  "3.4.1": {
+    "summary": "The Targets secrets row counts only docs holding a value themselves; docs that only cite a file with a credential get their own row (#111). No key changes.",
+    "config_keys": [],
+    "changed_defaults": [],
+    "behaviour_changes": [],
+    "hook_block": null,
+    "template_changes": null
   }
 }

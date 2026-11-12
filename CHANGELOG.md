@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.4.1] — 2026-11-12
+
+Fixes #111. No key changes.
+
+- The Targets row "docs holding credential-shaped values" counts only docs with a finding in the doc itself. Docs that only cite a code file holding a credential-shaped value (triage's `cited file blocked:`) get their own row, "docs citing a file with a credential-shaped value", which lists the cited files (`files` in `audit --json`, paths only) and points at the code side: fix the file, or `hewtd secrets --baseline-add <file:line> --reason "<why>"`. Held docs stay counted apart on both rows.
+
 ## [3.4.0] — 2026-11-11
 
 Fixes #108 and adds docs targets (#109). #108: the 3.3.0 graph hook ran `hewtd graph` in the foreground, so a pull or checkout could wait from seconds to minutes. No key changes.

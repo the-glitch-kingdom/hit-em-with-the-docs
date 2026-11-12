@@ -100,6 +100,19 @@ describe('#109 audit Targets section', () => {
     put('.documentation/drafts/wip.md', doc('Wip', 'Explains a draft that is not active yet and should not be counted.', 'Draft body.'));
     expect(rows().unreviewed).toMatchObject({ value: before.value, total: before.total });
   });
+  it('a doc that only cites a file with a credential is not counted as holding one: it gets its own row naming the file (#111)', () => {
+    put('src/deploy-conf.ts', `export const token = '${SECRET}';\n`);
+    put('.documentation/backend/deploy.md', doc('Deploy', 'Explains which variables the deploy reads and where they come from.', 'The variables are listed in `src/deploy-conf.ts`.'));
+    execFileSync('git', ['add', '-A'], { cwd: root }); // references resolve against tracked files
+    execFileSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@t', 'commit', '-qm', 'deploy'], { cwd: root });
+    const report = JSON.parse(hewtd('audit', '--json').stdout).targets.rows as Array<{ id: string; value: number; met: boolean; next?: string; files?: string[] }>;
+    const row = (id: string) => report.find((entry) => entry.id === id)!;
+    expect(row('secrets')).toMatchObject({ value: 0, met: true });
+    expect(row('secrets_cited')).toMatchObject({ value: 1, met: false, files: ['src/deploy-conf.ts'] });
+    expect(row('secrets_cited').next).toMatch(/baseline-add/);
+    expect(hewtd('audit').stdout).toMatch(/docs citing a file with a credential-shaped value/);
+    expect(JSON.stringify(report)).not.toContain(SECRET);
+  });
   it('counts a secret-lane doc, and counts a held one apart from the failures', () => {
     put('.documentation/backend/leak.md', doc('Leak', 'Explains how the deploy token is injected into the runner.', `VAULT_TOKEN=${SECRET}`));
     expect(rows().secrets).toMatchObject({ value: 1, met: false });

@@ -14,7 +14,8 @@ never fails `audit --strict` (like `DOCS_UNREVIEWED`).
 | verified (`last_verified` inside `vault.audit_window_days`, or a ledger review on the current content) | `verified.min` 0.8 | `hewtd reconcile --changed --write-review` |
 | docs citing no missing references (triage) | `no_missing_refs.min` 0.9 | `hewtd reconcile <folder>` (triage lists them) |
 | `DOCS_UNREVIEWED` (the `--changed` rule) | `unreviewed.max` 0 | `hewtd reconcile --changed --write-review` |
-| docs holding credential-shaped values (secret lane) | `secrets.max` 0 | `hewtd reconcile --secrets` |
+| docs holding credential-shaped values (a finding in the doc itself) | `secrets.max` 0 | `hewtd reconcile --secrets` |
+| docs citing a file with a credential-shaped value (the doc holds none; the cited code file does, listed in the row) | `secrets.max` 0 | fix the file, or `hewtd secrets --baseline-add <file:line> --reason "<why>"` for a false positive (3.4.1) |
 | archive candidates still active | `archive_candidates.max` 0 | `hewtd archive-candidates` |
 | named flows with an overview doc | `flows` (default `[]`: not applicable) | write a `kind: overview` doc |
 

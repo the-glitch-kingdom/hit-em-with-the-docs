@@ -269,7 +269,7 @@ export async function check_documentation(options: AuditOptions): Promise<AuditR
     if (result.targets) {
       logger.header('Targets (advisory)');
       logger.table(['Metric', 'Value', 'Target', 'Met', 'Held'], result.targets.rows.map((row) => [row.label, `${row.value}/${row.total}`, row.target, row.met ? 'met' : 'NOT MET', String(row.held)]));
-      for (const row of result.targets.rows.filter((candidate) => !candidate.met)) logger.info(`  ${row.id}: ${row.next}${row.missing ? ` (${row.missing.join(', ')})` : ''}`);
+      for (const row of result.targets.rows.filter((candidate) => !candidate.met)) logger.info(`  ${row.id}: ${row.next}${row.missing ? ` (${row.missing.join(', ')})` : ''}${row.files ? ` (files: ${row.files.join(', ')})` : ''}`);
       logger.info(result.targets.note);
     }
   }

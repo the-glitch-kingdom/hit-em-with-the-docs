@@ -31,6 +31,8 @@ export interface TargetRow {
   missing?: string[];
   /** up to 5 offending docs */
   docs?: string[];
+  /** secrets_cited: the cited code files holding a credential-shaped value (paths only) */
+  files?: string[];
 }
 
 export interface TargetsReport {
@@ -86,7 +88,14 @@ export async function compute_targets(options: { repo_root: string; docs_root: s
   ratio_row('no_missing_refs', 'docs citing no missing references', targets.no_missing_refs.min, triage.docs.filter((doc) => doc.missing.length === 0).map((doc) => doc.path), 'hewtd reconcile <folder>   (triage lists the missing references per doc)');
 
   const secret_docs = triage.docs.filter((doc) => doc.lane === 'secret').map((doc) => doc.path);
-  count_row('secrets', 'docs holding credential-shaped values', targets.secrets.max, secret_docs.filter((doc_path) => !held.has(doc_path)), secret_docs.filter((doc_path) => held.has(doc_path)).length, 'hewtd reconcile --secrets');
+  // #111: the secret lane also holds docs that only cite a code file with a credential; those hold no value themselves
+  const own_secret_docs = triage.docs.filter((doc) => doc.lane === 'secret' && doc.findings?.length).map((doc) => doc.path);
+  count_row('secrets', 'docs holding credential-shaped values', targets.secrets.max, own_secret_docs.filter((doc_path) => !held.has(doc_path)), own_secret_docs.filter((doc_path) => held.has(doc_path)).length, 'hewtd reconcile --secrets');
+  const citing = triage.docs.filter((doc) => doc.lane === 'secret' && !doc.findings?.length);
+  const blocked_files = [...new Set(citing.filter((doc) => !held.has(doc.path)).flatMap((doc) => doc.reasons.map((reason) => /^cited file blocked: (.+?) \(/.exec(reason)?.[1]).filter((file): file is string => !!file)))].sort();
+  count_row('secrets_cited', 'docs citing a file with a credential-shaped value', targets.secrets.max, citing.map((doc) => doc.path).filter((doc_path) => !held.has(doc_path)), citing.filter((doc) => held.has(doc.path)).length,
+    'fix the cited file (move the value to the environment), or baseline a false positive: hewtd secrets --baseline-add <file:line> --reason "<why>"');
+  if (blocked_files.length) rows.at(-1)!.files = blocked_files;
 
   const unreviewed = await find_unreviewed_docs({ docs_root, ledger, doc_paths: active }); // the same active set as every other target
   const is_held = (doc_path: string): boolean => held.has(doc_path) || secret_docs.includes(doc_path); // a secret-lane doc waits on its secret, not on a review

@@ -15,7 +15,7 @@ never fails `audit --strict` (like `DOCS_UNREVIEWED`).
 | docs citing no missing references (triage) | `no_missing_refs.min` 0.9 | `hewtd reconcile <folder>` (triage lists them) |
 | `DOCS_UNREVIEWED` (the `--changed` rule) | `unreviewed.max` 0 | `hewtd reconcile --changed --write-review` |
 | docs holding credential-shaped values (a finding in the doc itself) | `secrets.max` 0 | `hewtd reconcile --secrets` |
-| docs citing a file with a credential-shaped value (the doc holds none; the cited code file does, listed in the row) | `secrets.max` 0 | fix the file, or `hewtd secrets --baseline-add <file:line> --reason "<why>"` for a false positive (3.4.1) |
+| docs citing a file with a credential-shaped value (the doc holds none; the cited code file does, listed in the row; a doc that also holds its own value counts on the row above only) | `secrets.max` 0 | fix the file, or `hewtd secrets --baseline-add <file:line> --reason "<why>"` for a false positive (3.4.1) |
 | archive candidates still active | `archive_candidates.max` 0 | `hewtd archive-candidates` |
 | named flows with an overview doc | `flows` (default `[]`: not applicable) | write a `kind: overview` doc |
 
@@ -40,7 +40,7 @@ default) means the row is not shown.
 
 ```bash
 hewtd audit            # prints the table: metric, value, target, met / not met, held, one next command per unmet target
-hewtd audit --json     # the full result; `targets.rows[]` has id, label, value, total, target, met, held, next, docs, missing
+hewtd audit --json     # the full result; `targets.rows[]` has id, label, value, total, target, met, held, next, docs, missing, files (secrets_cited: the cited code files of the docs it counts, paths only)
 ```
 
 ## What this does not say

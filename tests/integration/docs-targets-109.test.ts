@@ -112,6 +112,10 @@ describe('#109 audit Targets section', () => {
     expect(row('secrets_cited').next).toMatch(/baseline-add/);
     expect(hewtd('audit').stdout).toMatch(/docs citing a file with a credential-shaped value/);
     expect(JSON.stringify(report)).not.toContain(SECRET);
+    set_config({ targets: { held: [{ path: 'backend/deploy.md', reason: 'file fix pending' }] } });
+    const held = (JSON.parse(hewtd('audit', '--json').stdout).targets.rows as Array<{ id: string; files?: string[] }>).find((entry) => entry.id === 'secrets_cited')!;
+    expect(held).toMatchObject({ value: 0, met: true, held: 1 });
+    expect(held.files).toBeUndefined(); // files come only from the docs the row counts
   });
   it('counts a secret-lane doc, and counts a held one apart from the failures', () => {
     put('.documentation/backend/leak.md', doc('Leak', 'Explains how the deploy token is injected into the runner.', `VAULT_TOKEN=${SECRET}`));

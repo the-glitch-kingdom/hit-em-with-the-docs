@@ -174,6 +174,7 @@ When reporting issues, please include:
 - Include tests for new functionality
 - Update documentation as needed
 - Ensure all tests pass
+- Before a release run `npm run gate:gaps` (the `reconcile --gaps` triage gate over `tests/fixtures/gaps-triage-115`; it is part of `prepublishOnly`)
 - Follow existing code style
 
 ## Code of Conduct

@@ -164,5 +164,15 @@
     ],
     "hook_block": null,
     "template_changes": null
+  },
+  "3.6.0": {
+    "summary": "reconcile --gaps coverage triage reworked (#115): target by facet coverage, new docs, weak facets and non-code excluded, drafts state a fact or list it for the judge, new gate:gaps release gate. No key changes.",
+    "config_keys": [],
+    "changed_defaults": [],
+    "behaviour_changes": [
+      { "issue": 115, "note": "reconcile --gaps entries with `facets` pick the target doc by facet coverage (hubs last, never merged), can propose a new doc, and draft a fact only for a simple code constant; other missing facts are listed as `for_judge` (file:line) for the reconcile judge and such entries have verdict null. needs_human entries carry a reason. Files without facets behave as in 3.4.1.", "patterns": ["reconcile\\b.*--gaps"] }
+    ],
+    "hook_block": null,
+    "template_changes": null
   }
 }

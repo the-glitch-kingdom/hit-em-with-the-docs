@@ -10,6 +10,9 @@
 > You still need to remember to use this plugin when creating documentation! As projects grow, documentation needs to be created and maintained. You'll need to invoke this plugin or ask an LLM to create documentation for your features, workflows, or infrastructure. This plugin must be invoked to create, update, or maintain your docs.
 
 > [!NOTE]
+> **3.6.0** (#115) reworks `hewtd reconcile --gaps` triage after a field test: the target doc comes from facet coverage (hubs last, never merged), new docs are proposed, weak facets and non-code files no longer pollute sources, and a draft states a fact only for a simple code constant; every other missing fact is listed with `file:line` for the reconcile judge. `needs_human` entries say why. New release gate `npm run gate:gaps`. See [`docs/reconcile.md`](./docs/reconcile.md).
+
+> [!NOTE]
 > **3.5.0** (#113) teaches `hewtd reconcile --gaps` the retrieval eval's coverage misses (semantic-memory#101 fields or its question-set JSONL): each miss gets one outcome (extend a doc, new doc, covered, instruction file only), misses merge by doc or source, and grounded drafts go to a review file through one security gate (no values, security-sensitive topics left to a human, blind entries need `--include-blind`). Nothing lands without `--apply`. See [`docs/reconcile.md`](./docs/reconcile.md) and [`docs/gaps-format.md`](./docs/gaps-format.md).
 
 > [!NOTE]

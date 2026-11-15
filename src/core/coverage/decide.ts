@@ -21,10 +21,10 @@ export const SPECIFIC_MAX_SOURCES = 5;
 export const HUB_MIN_SOURCES = 15;
 
 /** A doc whose body has at least this many path lines, making up at least PATH_LIST_SHARE of its non-empty lines, is a file map (#118). */
-export const PATH_LIST_MIN_LINES = 5;
-export const PATH_LIST_SHARE = 0.5;
+const PATH_LIST_MIN_LINES = 5;
+const PATH_LIST_SHARE = 0.5;
 /** A citing doc with no facet qualifies as relevant when its title, purpose or path share a distinctive question term, or its body shares this many (and at least half of all of them) (#118). */
-export const RELEVANT_BODY_TERMS = 2;
+const RELEVANT_BODY_TERMS = 2;
 const PATH_TOKEN = /[\w.-]+\/[\w./-]+|\b[\w-]+\.(?:ts|tsx|js|jsx|mjs|cjs|py|rb|go|rs|java|kt|cs|php|sh|ya?ml|json|toml|sql|tf|conf|ini|env)\b/;
 const LIST_LINE = /^\s*(?:[-*+]|\d+[.)]|\|)\s*/;
 
@@ -59,7 +59,7 @@ export interface DocText { path: string; text: string; sources: string[]; /** On
 
 const STOP_TERMS = new Set('a an and are as at be by can do does for from how i if in is it its of on or so that the their there these this to was what when where which who why will with work works used use uses using value values code file files data system service function method class'.split(' '));
 /** Distinctive words of a text: identifiers split, lower-cased, stop and generic words dropped, a plural `s` folded. */
-export function get_distinctive_terms(text: string): Set<string> {
+function get_distinctive_terms(text: string): Set<string> {
   const words = text.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().match(/[a-z][a-z0-9]{2,}/g) ?? [];
   return new Set(words.map((word) => (word.length > 4 && word.endsWith('s') ? word.slice(0, -1) : word)).filter((word) => !STOP_TERMS.has(word)));
 }

@@ -17,7 +17,7 @@ export interface GradeCounts { total: number; absent: number; named: number; exp
 export interface GradeSummary { total: GradeCounts; by_kind: Record<string, GradeCounts>; /** Code area: the first folder of the source file, `.` for the repo root. */ by_area: Record<string, GradeCounts> }
 
 /** A sentence about a surface needs at least this many other words, and a verb (or this many more). */
-export const EXPLAIN_MIN_WORDS = 4;
+const EXPLAIN_MIN_WORDS = 4;
 const EXPLAIN_ANY_WORDS = 7;
 const VERB = /\b(?:is|are|was|runs?|ran|sends?|sent|checks?|deletes?|removes?|revokes?|returns?|retr(?:y|ies)|expires?|triggers?|uses?|calls?|writes?|reads?|fires?|fails?|processe[sd]|cleans?|syncs?|refreshe[sd]|handles?|creates?|updates?|limits?|caps?|sets?|means|ensures?|when|if|every|per|controls?|decides?|determines?|keeps?|prevents?|allows?|marks?|emails?|pages?|logs?|stores?|clears?|prunes?|rotates?|starts?|stops?|waits?|blocks?|rejects?|notifies|alerts?)\b/i;
 const GENERIC_KINDS = new Set<SurfaceKind>(['ci-job', 'cli-command', 'ci-workflow']);

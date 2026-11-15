@@ -26,7 +26,7 @@ export interface CoverageReport {
 }
 
 /** A named surface of these kinds still needs a sentence about what it does or holds. */
-export const BEHAVIOUR_KINDS = new Set<SurfaceKind>(['scheduled-job', 'alert-rule', 'background-task', 'constant']);
+const BEHAVIOUR_KINDS = new Set<SurfaceKind>(['scheduled-job', 'alert-rule', 'background-task', 'constant']);
 const LIST_KIND: Partial<Record<SurfaceKind, { kind: DeclaredList['kind']; what: string }>> = {
   'scheduled-job': { kind: 'schedules', what: 'schedules' }, 'alert-rule': { kind: 'alert-rules', what: 'alert rules' }, 'http-route': { kind: 'routes', what: 'routes' },
   'cli-flag': { kind: 'cli-flags', what: 'CLI flags' }, 'config-key': { kind: 'config-keys', what: 'config keys' },

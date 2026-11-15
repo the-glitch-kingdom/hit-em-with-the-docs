@@ -13,27 +13,32 @@ import { scan_text } from '../reconcile/secrets.js';
 export interface GateFinding { rule: string; file: string; line: number; masked: string }
 
 const UNIT = '(?:ms|s|m|h|d|[KMG]i?B|[kmg]b)';
-const NUMBER = `(?:0x[0-9a-fA-F]+|\\d[\\d_]*(?:\\.\\d+)?(?:e\\d+)?[lLuUfF]{0,2}(?:${UNIT})?)\\b`;
+const NUMBER = `(?:0x[0-9a-fA-F]{1,6}|\\d[\\d_]*(?:\\.\\d+)?(?:e\\d+)?[lLuUfF]{0,2}(?:${UNIT})?)\\b`;
 const UNIT_NAME = '(?:[KMGT]i?B|SECONDS?|MINUTES?|HOURS?|DAYS?|MS)\\b';
 const TERM = `(?:${NUMBER}|${UNIT_NAME}|(?:time\\.)?(?:Nano|Micro|Milli)?(?:second|Second|Minute|Hour)s?\\b|Duration\\.of(?:Millis|Seconds|Minutes|Hours|Days)\\(\\s*${NUMBER}\\s*\\)|timedelta\\(\\s*(?:days|hours|minutes|seconds|milliseconds)\\s*=\\s*${NUMBER}\\s*\\))`;
 const OPERATOR = '(?:<<|\\*\\*|[*+\\-/])';
 const CONSTANT_VALUE = new RegExp(`^\\(*\\s*${TERM}(?:\\s*${OPERATOR}\\s*\\(*\\s*${TERM}\\s*\\)*)*\\s*\\)*$`);
-/** A number, arithmetic of numbers, or a duration or size literal: a code constant (#115), never a host, port, id or default. A bare run of 9+ digits is an id, card or account number shape, not a constant. */
-export const is_constant_value = (value: string): boolean => CONSTANT_VALUE.test(value.trim()) && !/^\d{9,}$/.test(value.trim().replace(/_/g, ''));
+/** A number, arithmetic of numbers, or a duration or size literal: a code constant (#115), never a host, port, id or default. A bare run of 9+ digits is an id, card or account number shape, a hex literal over 6 digits is a key, hash or hex IP; the key-token and value rules run on every value. */
+export const is_constant_value = (value: string): boolean => CONSTANT_VALUE.test(value.trim()) && !/^\d{9,}$/.test(value.trim().replace(/_/g, '')) && !has_key_token(value) && !find_value_findings(value, 'value', false).length;
 const VALUE_NAME = /\b(?:ports?|hosts?|hostnames?|ips?|addr|address|ids?|urls?|uris?|endpoints?|domains?|accounts?|tenants?|keys?|secrets?|tokens?|passwords?|passwd|pass|passes|passcodes?|pwd|pins?|seeds?|ssn|cards?|cvv|cvc|iban|routing|otp|totp|hotp|mfa|nonces?|private|priv|credentials?|creds?|auth|cookies?|sessions?|signatures?|sig|hmac|licen[cs]es?|serials?|phones?|dob|certs?|salts?)\b/i;
 /** A name that holds a host, port, id, url or credential: what it is set to is a value, not a constant to state. */
 export const is_value_name = (name: string): boolean => VALUE_NAME.test(split_words(name));
 // a network name (BIND, RELAY, UPSTREAM) or a well-known port number holds a port unless the name says what it measures
 const NETWORK_NAME = /\b(?:bind|binds|listen|listener|socket|proxy|upstream|relay|gateway|dns|smtp|imap|redis|postgres|mysql|mongo|server|grpc|https?|collector|exporter|broker|sink|agent|otlp|statsd|syslog|prometheus|telemetry|metrics)\b/i;
-const MEASURE_NAME = /\b(?:timeouts?|ttl|interval|delay|size|bytes|max|min|limit|count|retries|retry|attempts|ms|seconds?|minutes?|hours?|days?|batch|pool|workers?|threads?|concurrency|buffer|capacity|depth|length|duration|backoff|window|rate|quota)\b/i;
-const WELL_KNOWN_PORTS = new Set([22, 25, 53, 80, 110, 143, 443, 465, 587, 993, 995, 1433, 1521, 2049, 2379, 3000, 3306, 3389, 5000, 5432, 5672, 5900, 6379, 6443, 8000, 8080, 8081, 8443, 8888, 9000, 9090, 9092, 9200, 9300, 11211, 15672, 27017]);
+const MEASURE_NAME = /\b(?:timeouts?|ttl|interval|delay|size|bytes|max|min|limit|count|retries|retry|attempts|ms|seconds?|minutes?|hours?|days?|batch|pool|workers?|threads?|concurrency|buffer|capacity|depth|length|duration|backoff|window|rate|quota|code|status|digits|decimals|places|precision|ratio|factor|cap|threshold|percent|percentage|priority|weight|score|version)\b/i;
+const WELL_KNOWN_PORTS = new Set([21, 22, 23, 25, 53, 67, 69, 80, 88, 110, 111, 123, 135, 139, 143, 161, 389, 443, 445, 465, 514, 587, 636, 873, 993, 995, 1433, 1521, 2049, 2379, 3000, 3306, 3389, 5000, 5432, 5672, 5900, 6379, 6443, 8000, 8080, 8081, 8443, 8888, 9000, 9090, 9092, 9200, 9300, 11211, 15672, 27017]);
 /** A constant a draft may state (#115): a constant value, under a name that is not a value name, and not a port in disguise. */
 export function is_stateable_constant(name: string, value: string): boolean {
   if (!is_constant_value(value) || is_value_name(name)) return false;
-  if (/^\d+$/.test(value.trim()) && WELL_KNOWN_PORTS.has(Number(value.trim()))) return false; // a port, whatever the name measures
+  const text = value.trim().replace(/(?<=\d)_(?=\d)/g, '');
+  const operands = (text.match(/(?<![\d.])\d+(?![\d.])/g) ?? []).map(Number);
+  // simple integer arithmetic is evaluated (digits, operators and parentheses only, so the expression cannot run code)
+  const result = /^[\d\s+\-*/()<]+$/.test(text) && !/^\d+$/.test(text) ? Number(new Function(`return (${text})`)()) : undefined;
+  if ([...operands, result].some((number) => number !== undefined && WELL_KNOWN_PORTS.has(number))) return false; // a port, whatever the name measures
   const words = split_words(name);
-  // a bare integer that could be a port (1024..65535) is stated only under a name that says what it measures
-  if (/^\d[\d_]*$/.test(value.trim()) && Number(value.trim().replace(/_/g, '')) >= 1024 && Number(value.trim().replace(/_/g, '')) <= 65535) return MEASURE_NAME.test(words);
+  // a bare integer that could be a port (1..65535) is stated only under a name that says what it measures
+  const bare = /^\d+$/.test(text) ? Number(text) : result;
+  if (bare !== undefined && bare >= 1 && bare <= 65535) return MEASURE_NAME.test(words);
   return MEASURE_NAME.test(words) || !NETWORK_NAME.test(words);
 }
 
@@ -61,7 +66,7 @@ const keep_config_value = (match: RegExpMatchArray): boolean => {
 const VALUE_RULES: ValueRule[] = [
   { rule: 'key-material', pattern: /-----BEGIN [A-Z ]+-----|[A-Za-z0-9+/]{80,}={0,2}/g, credential: true },
   { rule: 'connection-string', pattern: /\b[a-z][a-z0-9+.-]*:\/\/[^\s'"`<>]+/gi, credential: true },
-  { rule: 'ip-address', pattern: /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b|\b(?:[0-9a-f]{1,4}:){3,7}[0-9a-f]{1,4}\b/gi },
+  { rule: 'ip-address', pattern: /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b|\b(?:[0-9a-f]{1,4}:){3,7}[0-9a-f]{1,4}\b|(?<![A-Za-z0-9:])(?:[0-9a-f]{1,4}:){0,7}[0-9a-f]{0,4}::(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,6})?(?![A-Za-z0-9:])/gi, keep: (match) => /\d/.test(match[0]) },
   { rule: 'hostname', pattern: /\b(?:[a-z0-9-]+\.)+(?:com|net|org|io|dev|internal|local|cloud|aws|app|co|us|eu|gov|mil|edu|ai|xyz|corp|lan|svc)\b/gi },
   { rule: 'port', pattern: /\bports?\b\W{0,4}\d{2,5}\b/gi },
   { rule: 'host-port', pattern: /\b[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)*:\d{2,5}\b/gi },
@@ -93,13 +98,18 @@ export function check_security_gate(text: string, where: string, secrets_config:
  * with `_` and `-` read as spaces (dashed or underscored digit runs rejoined to a dotted quad), and split at letter,
  * digit and case boundaries, because `sync_to_10.0.0.5` and `High5xxOn10.1.2.3` hide a value from `\b`. Then a key-token check.
  */
-export function find_value_in_name(name: string, secrets_config: SecretsConfig = { allow: [], disabled_rules: [] }): GateFinding | undefined {
-  const spaced = name.replace(/(?<!\d)(\d{1,3})[_-](\d{1,3})[_-](\d{1,3})[_-](\d{1,3})(?!\d)/g, '$1.$2.$3.$4').replace(/[_-]+/g, ' ');
+export function find_value_in_name(name: string, secrets_config: SecretsConfig = { allow: [], disabled_rules: [] }, ignore_rules: string[] = []): GateFinding | undefined {
+  // repeated separators collapse, and digit groups lose their leading zeros, so `010_000__005` reads as `10.0.5`
+  const collapsed = name.replace(/([_-])[_-]+/g, '$1');
+  const spaced = collapsed.replace(/(?<!\d)(\d{1,3})[._-](\d{1,3})[._-](\d{1,3})[._-](\d{1,3})(?!\d)/g, (_all, ...octets: string[]) => octets.slice(0, 4).map(Number).join('.')).replace(/[_-]+/g, ' ');
   const split = spaced.replace(/([a-z])(?=[A-Z\d])|([A-Z])(?=[a-z\d])|(\d)(?=[A-Za-z])/g, (all) => `${all} `);
-  for (const form of [name, spaced, split]) {
-    const finding = check_security_gate(form, 'name', secrets_config)[0];
+  // `_` read as `-` too, so `notify_db_prod_01` is the environment resource `notify-db-prod-01`
+  for (const form of [name, collapsed, spaced, split, name.replace(/_/g, '-')]) {
+    const finding = check_security_gate(form, 'name', secrets_config).find((found) => !ignore_rules.includes(found.rule));
     if (finding) return finding;
   }
+  // a run of 8+ digits (a decimal IP, an id) or 8 hex digits (a hex IP) in a name is an id
+  if (/\d{8,}/.test(name) || name.split(/[^A-Za-z0-9]+/).some((token) => /^[0-9a-f]{8}$/i.test(token) && /\d/.test(token))) return { rule: 'id-run', file: 'name', line: 1, masked: mask(name.length) };
   return has_key_token(name) ? { rule: 'key-token', file: 'name', line: 1, masked: mask(name.length) } : undefined;
 }
 
@@ -108,6 +118,36 @@ export function is_value_line(line: string, secrets_config: SecretsConfig): bool
   if (check_credential_text(line, 'line', secrets_config).length || find_value_findings(line, 'line', false).some((finding) => finding.rule === 'config-value')) return true;
   const assigned = /^\s*(?:export\s+)?(?:(?:const|let|var|final|static|readonly|public|private)\s+)*([A-Za-z_]\w*)\s*(?::[^=]+)?[:=]\s*(.+?)\s*;?$/.exec(line);
   return !!assigned && is_value_name(assigned[1]!) && !is_constant_value(assigned[2]!);
+}
+
+// a literal that is a name, not a value: an import path, an env var name, a route path or a flag
+const NAME_LITERAL_PREFIX = /(?:\b(?:import|from|require|getenv|environ(?:\.get)?|ENV(?:\.fetch)?|process\.env)\s*[[(]?\s*|\bimport\s+[\w*{}, ]+\s+from\s*)$/;
+/**
+ * Where a source line holds values by CONTEXT, not by shape (#118): the spans inside a string literal ('..', "..", `..`),
+ * inside an option argument of a shell line (`-p<x>`, `--password=x`, `--token x`) and inside URL or DSN userinfo
+ * (`user:pw@host`). A literal that is an import path, an env var name, a route path or a flag is a name, not a value.
+ */
+export function find_value_spans(line: string): [number, number][] {
+  const spans: [number, number][] = [];
+  for (let i = 0; i < line.length; i++) {
+    const quote = line[i]!;
+    if (quote !== '"' && quote !== "'" && quote !== '`') continue;
+    let end = i + 1;
+    while (end < line.length && line[end] !== quote) end += line[end] === '\\' ? 2 : 1;
+    if (end >= line.length) break; // unterminated: an apostrophe in prose, not a literal
+    const content = line.slice(i + 1, end);
+    if (!NAME_LITERAL_PREFIX.test(line.slice(0, i)) && !/^(?:\/|--)/.test(content)) spans.push([i + 1, end]);
+    i = end;
+  }
+  for (const token of line.matchAll(/\S+/g)) {
+    const [text, at] = [token[0], token.index!];
+    const short = /^-[A-Za-z]\S/.test(text) ? 2 : 0;
+    const long = /^--[\w-]+=/.exec(text)?.[0].length ?? 0;
+    if (short || long) spans.push([at + (short || long), at + text.length]);
+    else if (/^--?[A-Za-z][\w-]*$/.test(text)) { const next = /^\s+(?!-)(\S+)/.exec(line.slice(at + text.length)); if (next) spans.push([at + text.length + next[0].length - next[1]!.length, at + text.length + next[0].length]); }
+  }
+  for (const found of line.matchAll(/[^\s'"`/@:]+:[^\s'"`@/]*@|:\/\/[^\s/@]*@/g)) spans.push([found.index!, found.index! + found[0].length]);
+  return spans;
 }
 
 /** A source line a draft would cite: only credential-class content blocks it (a host or port in code is not copied, a credential is not even cited). */

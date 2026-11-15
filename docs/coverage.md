@@ -70,8 +70,11 @@ knowledge-base doc is never an extend target (a fact that already states it stil
   material, env or config values and defaults. Names are fine. A code constant (size, timeout, limit) may be
   stated; a number under a credential-like name or a network name (bind, relay, collector, exporter, broker, sink,
   agent, otlp, statsd, syslog...) may not, a well-known port number is never stated, whatever the name measures
-  (`BIND_MAX = 8080`), and a bare integer from 1024 to 65535 is stated only when the name says what it measures
-  (timeout, ttl, interval, size, bytes, max, limit, count...), so `OTLP_COLLECTOR = 4317` goes to the judge.
+  (`BIND_MAX = 8080`), and a bare integer from 1 to 65535 is stated only when the name says what it is (timeout, ttl, interval, size, bytes,
+  max, limit, count, code, digits, ratio...), so `OTLP_COLLECTOR = 4317` and `LEVEL = 3` go to the judge. Underscored numbers
+  (`5_432`) are read as numbers, simple integer arithmetic is evaluated, and the port check runs on the result and on each
+  operand (`8000 + 80`). A hex literal over 6 digits (a key, hash or hex IP) is never a constant, and every constant value also
+  passes the key-token and value rules.
 - **Names are screened too.** Every surface name from every detector passes the gate's value rules and the secrets
   scan, run on the name as written, with `_` and `-` read as spaces (dashed digit runs rejoined to an IP), and split
   at letter, digit and case boundaries, so `sync_to_10.0.0.5`, `High5xxOn10.1.2.3` and `deploy-to-10-0-0-5` are found; a
@@ -80,7 +83,21 @@ knowledge-base doc is never an extend target (a fact that already states it stil
   or id shape) is replaced everywhere (table, `--json` name, key, query, facets, review files) by `<kind> at
   file:line`, for example `scheduled job at deploy/crontab:3`, and the surface is matched by its position, never
   by the value. Route segments that are ids or keys (including key-shaped tokens such as `sk_live_...`) become `:param`. A crontab line that runs a URL (`curl`,
-  `wget`) is named by position, never by the URL.
+  `wget`) is named by position, never by the URL. Names are normalized first (repeated separators collapsed, leading zeros
+  stripped from digit groups: `sync_010_000_000_005`, `10__0__0__5`), IPv6 forms (`fe80::1`, `[::1]`) count, a run of 8 or
+  more digits or an 8-digit hex token in a name is an id (decimal and hex IPs), and `_` is also read as `-` for environment
+  resource names (`notify_db_prod_01`). A cron script name loses only a script extension (`.sh .py .rb .js .ts .php .pl
+  .bash`), so `backup_to_10.0.0.5` keeps its IP and is withheld.
+- **File paths are screened too.** Each path segment (folder, file name and stem) passes the same name screen. A surface
+  whose path holds a value is not graded or drafted: it is held for a human with the reason `value in file path`, shown
+  as `[withheld path]` everywhere, and no doc is ever named from such a stem. Hostname-shaped names such as
+  `config.local.ts` or `docker-compose.dev.yml` are not read as hosts in a path.
+- **Facets by context (`reconcile --gaps`).** A facet is a value, shown as `[redacted facet]` everywhere and never naming a
+  doc, when every match in code sits inside a string literal, inside an option argument of a shell line (`-p<x>`, `-H "..."`,
+  `--password=...`, `--token ...`), inside URL or DSN userinfo, or in a heredoc body; when its text without regex escapes is
+  key-shaped; or when it holds a value by the name screen. A literal that is an import path, an env var name, a route path or
+  a flag is a name. Identifier facets outside literals are unaffected. A gaps question that holds a value is shown as
+  `[redacted question]`. `hewtd coverage` builds its facets from screened names, so only the line-shape rule applies there.
 - **Routing is code-based.** A unit is withheld for a human only when a located line is an auth, crypto or
   credential check, found by code shape across languages (decorators, attributes, middleware and guards naming
   auth, permission, role, login or admin; a token, secret, password, signature or expected value compared;
@@ -126,3 +143,14 @@ get "generate the reference", every stated fact is true at its `file:line`, read
 - **Two surfaces merged into one new-doc draft**: the file name comes from the first facet and the title from
   the first question, so they can differ. Rename before applying.
 - **A constant under a path containing `auth` goes to `for_judge`**: judge it; it is not withheld.
+
+## Known limits
+
+- A heredoc is found only when its `<<TAG` is within 200 lines above; a multi-line string literal other than a heredoc is
+  read line by line, so a value on a continuation line is caught only by the other rules.
+- The literal rule withholds any facet that sits only inside quotes, so a gaps facet that is a plain word in a string
+  (a command name in `.command('serve')`) is redacted and goes to a human; this errs toward withholding.
+- Hostnames in file paths are not screened (`config.local.ts` is not a host); IPs, ids, key shapes and environment resource
+  names are.
+- A bare integer under a name with no measuring or describing word is not stated, even when it is harmless (`LEVEL = 3`).
+- Arithmetic is evaluated for integers, `+ - * / << **` and parentheses only; anything else follows the constant rules as written.

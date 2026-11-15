@@ -43,6 +43,7 @@ export async function list_graded_surfaces(options: { repo_root: string; docs_ro
   const held: HeldSurface[] = [];
   const kept: Surface[] = [];
   for (const surface of all) {
+    if (surface.path_withheld) { held.push({ kind: surface.kind, name: surface.name, file: surface.file, reason: 'value in file path' }); continue; }
     const hold = find_hold(surface);
     if (hold) held.push({ kind: surface.kind, name: surface.name, file: surface.file, ...(hold.reason && { reason: hold.reason }) });
     else kept.push(surface);
@@ -108,7 +109,7 @@ export function render_coverage_table(report: CoverageReport): string {
     `  ${pad(label, 18)}${pad(String(counts.total), 7)}${pad(String(counts.absent), 8)}${pad(String(counts.named), 7)}${pad(String(counts.explained), 10)}${held ? `${held} held` : ''}`.trimEnd();
   const head = `  ${pad('', 18)}${pad('total', 7)}${pad('absent', 8)}${pad('named', 7)}explained`;
   const lines = ['By kind', head, ...Object.entries(report.summary.by_kind).map(([kind, counts]) => row(kind, counts, report.held.by_kind[kind])), row('all', report.summary.total, report.held.total), '', 'By code area', head, ...Object.entries(report.summary.by_area).map(([area, counts]) => row(area, counts))];
-  if (report.held.total) lines.push('', `${report.held.total} surface(s) held by coverage.ignore (counted apart, never missed)`);
+  if (report.held.total) lines.push('', `${report.held.total} surface(s) held, by coverage.ignore or because a file path holds a value (counted apart, never missed)`);
   for (const list of report.generate_reference) lines.push('', `generate the reference first: ${list.suggestion} (${list.absent} of ${list.count} not named in any doc)`);
   return lines.join('\n');
 }

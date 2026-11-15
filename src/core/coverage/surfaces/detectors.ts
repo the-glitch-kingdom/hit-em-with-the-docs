@@ -6,7 +6,7 @@
 import { is_constant_value, is_stateable_constant } from '../../security/gate.js';
 
 export type SurfaceKind = 'scheduled-job' | 'alert-rule' | 'http-route' | 'cli-command' | 'cli-flag' | 'ci-workflow' | 'ci-job' | 'background-task' | 'constant' | 'config-key';
-export interface Surface { kind: SurfaceKind; name: string; file: string; line: number; source_kind: string; /** Constants only, and only when stateable. */ value?: string; /** The name was withheld (it held a value): it is `<kind label> at file:line` and the surface is matched by position. */ placeholder?: boolean }
+export interface Surface { kind: SurfaceKind; name: string; file: string; line: number; source_kind: string; /** Constants only, and only when stateable. */ value?: string; /** The name was withheld (it held a value): it is `<kind label> at file:line` and the surface is matched by position. */ placeholder?: boolean; /** The file path held a value: `file` is WITHHELD_PATH and the surface is only listed for a human. */ path_withheld?: boolean }
 export interface SurfaceDetector { id: string; applies: (file: string) => boolean; detect: (file: string, lines: string[]) => Surface[] }
 
 const CODE = /\.(?:ts|tsx|js|jsx|mjs|cjs|py|rb|go|rs|java|kt|cs|php|sh)$/;
@@ -16,6 +16,8 @@ export const KIND_LABEL: Record<SurfaceKind, string> = {
   'scheduled-job': 'scheduled job', 'alert-rule': 'alert rule', 'http-route': 'route', 'cli-command': 'command', 'cli-flag': 'flag', 'ci-workflow': 'CI workflow',
   'ci-job': 'CI job', 'background-task': 'background task', constant: 'constant', 'config-key': 'config key',
 };
+/** What a file path that held a value is shown as, everywhere. */
+export const WITHHELD_PATH = '[withheld path]';
 /** The neutral name of a surface whose real name held a value. */
 export const placeholder_name = (kind: SurfaceKind, file: string, line: number): string => `${KIND_LABEL[kind]} at ${file}:${line}`;
 const base = (path: string): string => path.split('/').pop() ?? path;
@@ -112,7 +114,7 @@ export function name_cron_command(command: string, user_column = false): string 
         const sub = word === 'rails' && args[0] === 'runner' ? /^[\w.:]+/.exec(unquote(args.slice(1).join(' ')))?.[0] : args[0];
         return sub && /^[\w.:@+-]+$/.test(sub) ? sub : undefined;
       }
-      return word.replace(/\.[^.]+$/, '') || undefined;
+      return word.replace(/\.(?:sh|py|rb|js|ts|php|pl|bash)$/, '') || undefined;
     }
   };
   const name = take(tokens, user_column);

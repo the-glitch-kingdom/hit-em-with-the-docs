@@ -51,7 +51,7 @@ export function name_new_doc(options: { queries: string[]; facets: string[]; sou
   const modules = new Map<string, number>();
   for (const file of options.source_files) {
     const stem = basename(file).replace(/\.[^.]+$/, '');
-    if (!GENERIC_MODULE.has(stem.toLowerCase())) modules.set(stem, (modules.get(stem) ?? 0) + 1);
+    if (!GENERIC_MODULE.has(stem.toLowerCase()) && !find_value_in_name(stem, undefined, ['hostname'])) modules.set(stem, (modules.get(stem) ?? 0) + 1);
   }
   const module_name = [...modules].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
   if (module_name) return make_slug(split_name(module_name));

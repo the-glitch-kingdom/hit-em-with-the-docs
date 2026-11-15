@@ -5,9 +5,9 @@
 import { relative } from 'path';
 import { GENERATED, NOT_CODE, list_tracked_files, read_code_file } from '../locate.js';
 import { find_value_in_name, has_key_token } from '../../security/gate.js';
-import { SURFACE_DETECTORS, placeholder_name, type Surface } from './detectors.js';
+import { SURFACE_DETECTORS, WITHHELD_PATH, placeholder_name, type Surface } from './detectors.js';
 
-export { SURFACE_DETECTORS, KIND_LABEL, placeholder_name, type Surface, type SurfaceKind, type SurfaceDetector } from './detectors.js';
+export { SURFACE_DETECTORS, KIND_LABEL, WITHHELD_PATH, placeholder_name, type Surface, type SurfaceKind, type SurfaceDetector } from './detectors.js';
 
 const TEST_FILE = /(^|\/)(tests?|__tests__|specs?|e2e)\/|\.(?:test|spec)\.[a-z]+$|(^|\/)test_[^/]*\.py$|_test\.(?:py|go)$/;
 
@@ -18,6 +18,10 @@ const ID_SEGMENT = /^(?:\d{5,}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[
 
 /** Every surface name passes find_value_in_name (gate rules on the name as written and as read, secrets scan, key tokens); a name with a finding is replaced by `<kind> at file:line`, and the surface is then matched by position. */
 function screen_name(surface: Surface): Surface {
+  // a file path holds a value (an IP or id in a folder or file name; a hostname-shaped `config.local.ts` is not one): the surface is only listed for a human, and its path is shown as a placeholder
+  if (surface.file.split('/').some((segment) => find_value_in_name(segment, undefined, ['hostname']) || find_value_in_name(segment.replace(/\.[^.]+$/, ''), undefined, ['hostname']))) {
+    return { kind: surface.kind, name: placeholder_name(surface.kind, WITHHELD_PATH, surface.line), file: WITHHELD_PATH, line: surface.line, source_kind: surface.source_kind, placeholder: true, path_withheld: true };
+  }
   const name = surface.kind === 'http-route' ? surface.name.split('/').map((segment) => (ID_SEGMENT.test(segment) || has_key_token(segment) ? ':param' : segment)).join('/') : surface.name;
   if (!find_value_in_name(name)) return { ...surface, name };
   const { value: _value, ...rest } = surface;

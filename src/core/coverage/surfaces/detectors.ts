@@ -6,12 +6,18 @@
 import { is_constant_value, is_stateable_constant } from '../../security/gate.js';
 
 export type SurfaceKind = 'scheduled-job' | 'alert-rule' | 'http-route' | 'cli-command' | 'cli-flag' | 'ci-workflow' | 'ci-job' | 'background-task' | 'constant' | 'config-key';
-export interface Surface { kind: SurfaceKind; name: string; file: string; line: number; source_kind: string; /** Constants only, and only when stateable. */ value?: string }
+export interface Surface { kind: SurfaceKind; name: string; file: string; line: number; source_kind: string; /** Constants only, and only when stateable. */ value?: string; /** The name was withheld (it held a value): it is `<kind label> at file:line` and the surface is matched by position. */ placeholder?: boolean }
 export interface SurfaceDetector { id: string; applies: (file: string) => boolean; detect: (file: string, lines: string[]) => Surface[] }
 
 const CODE = /\.(?:ts|tsx|js|jsx|mjs|cjs|py|rb|go|rs|java|kt|cs|php|sh)$/;
 const YAML = /\.ya?ml$/;
 const WORKFLOW = /^\.github\/workflows\/[^/]+\.ya?ml$/;
+export const KIND_LABEL: Record<SurfaceKind, string> = {
+  'scheduled-job': 'scheduled job', 'alert-rule': 'alert rule', 'http-route': 'route', 'cli-command': 'command', 'cli-flag': 'flag', 'ci-workflow': 'CI workflow',
+  'ci-job': 'CI job', 'background-task': 'background task', constant: 'constant', 'config-key': 'config key',
+};
+/** The neutral name of a surface whose real name held a value. */
+export const placeholder_name = (kind: SurfaceKind, file: string, line: number): string => `${KIND_LABEL[kind]} at ${file}:${line}`;
 const base = (path: string): string => path.split('/').pop() ?? path;
 const stem = (path: string): string => base(path).replace(/\.[^.]+$/, '');
 
@@ -26,7 +32,7 @@ function by_pattern(id: string, kind: SurfaceKind, applies: (file: string) => bo
 }
 
 /** Names of the keys at the first indent below line `from`, until the block ends. */
-function list_block_keys(lines: string[], from: number): { name: string; line: number }[] {
+function list_block_keys(lines: string[], from: number, entry: RegExp = /^\s*['"]?([\w.:-]+)['"]?\s*:\s*(?:\{|#.*)?$/): { name: string; line: number }[] {
   const keys: { name: string; line: number }[] = [];
   let indent: number | undefined;
   for (let i = from + 1; i < lines.length; i++) {
@@ -35,35 +41,108 @@ function list_block_keys(lines: string[], from: number): { name: string; line: n
     const depth = text.length - text.trimStart().length;
     if (indent === undefined) indent = depth;
     if (depth < indent) break;
-    const key = depth === indent ? /^\s*['"]?([\w.:-]+)['"]?\s*:\s*(?:\{|#.*)?$/.exec(text) : null;
+    const key = depth === indent ? entry.exec(text) : null;
     if (key) keys.push({ name: key[1]!, line: i + 1 });
   }
   return keys;
 }
 
-const CRON_LINE = /^\s*[\d*/,-]+\s+[\d*/,-]+\s+[\d*?/,-]+\s+[\w*/,-]+\s+[\w*?/,-]+\s+(\S+)(?:\s+(\S+))?/;
+const CRON_LINE = /^\s*(?:@(?:reboot|hourly|daily|midnight|weekly|monthly|yearly|annually)|[\d*/,-]+\s+[\d*/,-]+\s+[\d*?/,-]+\s+[\w*/,-]+\s+[\w*?/,-]+)\s+(\S.*)$/;
+const WRAPPERS = new Set(['env', 'nice', 'ionice', 'nohup', 'time', 'sudo', 'flock', 'timeout', 'chronic', 'setsid', 'exec', 'command']);
+const INTERPRETERS = /^(?:python[\d.]*|node|nodejs|ruby|perl|php|bash|sh|zsh|dash)$/;
+// a wrapper flag that takes a value: `nice -n 10`, `flock -w 5`, `sudo -u app`
+const takes_value = (flag: string, value = ''): boolean => (/^-[ncwk]$/.test(flag) && /^\d+$/.test(value)) || (flag === '-u' && /^\w+$/.test(value));
+/** The script or executable a cron command runs: wrappers, `cd X &&`, interpreters and `VAR=..` stripped. Undefined when it is not a local program (a URL, curl, wget). */
+export function name_cron_command(command: string): string | undefined {
+  const segment = command.split(/&&|\|\||;|\|/).map((part) => part.trim()).find((part) => part && !/^cd\b/.test(part));
+  const tokens = (segment ?? '').replace(/\s+(?:>>?|2>>?|<)\s*\S*.*$/, '').split(/\s+/).filter(Boolean);
+  const take = (list: string[]): string | undefined => {
+    let rest = list.slice();
+    // a user column (`root /usr/bin/x`): a bare word followed by a path, wrapper or interpreter
+    if (rest.length > 1 && /^[a-z_][\w-]*$/.test(rest[0]!) && !WRAPPERS.has(rest[0]!) && !INTERPRETERS.test(rest[0]!) && (rest[1]!.includes('/') || WRAPPERS.has(rest[1]!) || INTERPRETERS.test(rest[1]!))) rest = rest.slice(1);
+    for (;;) {
+      const head = rest[0];
+      if (!head) return undefined;
+      if (/^\w+=/.test(head)) { rest = rest.slice(1); continue; }
+      if (/^(?:curl|wget)$/.test(base(head)) || /^[a-z][a-z0-9+.-]*:\/\//i.test(head)) return undefined;
+      const word = base(head);
+      if (WRAPPERS.has(word)) {
+        rest = rest.slice(1);
+        while (rest[0]?.startsWith('-') || /^\w+=/.test(rest[0] ?? '')) rest = rest.slice(takes_value(rest[0]!, rest[1]) ? 2 : 1);
+        if ((word === 'flock' || word === 'timeout') && rest[0]) rest = rest.slice(1); // the lock file or the duration
+        continue;
+      }
+      if (INTERPRETERS.test(word)) {
+        rest = rest.slice(1);
+        if (/^(?:ba|z|da)?sh$/.test(word) && /^-\w*c$/.test(rest[0] ?? '')) return take(rest.slice(1).join(' ').replace(/^(['"])(.*)\1$/, '$2').split(/\s+/).filter(Boolean));
+        if (rest[0] === '-m' && rest[1]) return rest[1].split('.').pop();
+        while (rest[0]?.startsWith('-')) rest = rest.slice(1);
+        continue;
+      }
+      return word.replace(/\.[^.]+$/, '') || undefined;
+    }
+  };
+  const name = take(tokens);
+  return name && /^[\w.@+-]+$/.test(name) ? name : undefined;
+}
+
+/** Python decorators and calls span lines: the text from line `from` to the closing parenthesis (at most 8 lines). */
+function read_call(lines: string[], from: number): string {
+  let depth = 0;
+  let text = '';
+  for (let i = from; i < Math.min(lines.length, from + 8); i++) {
+    text += `${lines[i]}\n`;
+    for (const char of lines[i]!) depth += char === '(' ? 1 : char === ')' ? -1 : 0;
+    if (depth <= 0) break;
+  }
+  return text;
+}
 
 export const SURFACE_DETECTORS: SurfaceDetector[] = [
   // scheduled jobs
-  by_pattern('crontab', 'scheduled-job', (file) => /(^|\/)(crontab|cron\.d\/[^/]+|[^/]*\.cron)$/.test(file), CRON_LINE, (match) => base(match[2]?.includes('/') && !match[1]!.includes('/') ? match[2] : match[1]!)),
+  { id: 'crontab', applies: (file) => /(^|\/)(crontab|cron\.d\/[^/]+|[^/]*\.cron)$/.test(file), detect: (file, lines) => lines.flatMap((text, i) => {
+    const match = CRON_LINE.exec(text);
+    if (!match || /^\s*#/.test(text)) return [];
+    const name = name_cron_command(match[1]!);
+    return [{ kind: 'scheduled-job' as const, name: name ?? placeholder_name('scheduled-job', file, i + 1), file, line: i + 1, source_kind: 'crontab', ...(name === undefined && { placeholder: true }) }];
+  }) },
   { id: 'github-schedule', applies: (file) => WORKFLOW.test(file), detect: (file, lines) => { const at = lines.findIndex((text) => /^\s*-\s*cron:/.test(text)); return at < 0 ? [] : [{ kind: 'scheduled-job', name: stem(file), file, line: at + 1, source_kind: 'github-schedule' }]; } },
   { id: 'k8s-cronjob', applies: (file) => YAML.test(file), detect: (file, lines) => lines.flatMap((text, i) => {
     if (!/^kind:\s*CronJob\b/.test(text)) return [];
     const found = lines.slice(i + 1, i + 12).map((next, j) => ({ match: /^\s+name:\s*['"]?([\w.-]+)/.exec(next), line: i + j + 2 })).find((item) => item.match);
     return found ? [{ kind: 'scheduled-job' as const, name: found.match![1]!, file, line: found.line, source_kind: 'k8s-cronjob' }] : [];
   }) },
-  { id: 'celery-beat', applies: (file) => /\.py$/.test(file), detect: (file, lines) => lines.flatMap((text, i) => (/\bbeat_schedule\b.*[={:]\s*\{?\s*$/.test(text) ? list_block_keys(lines, i).map((key) => ({ kind: 'scheduled-job' as const, name: key.name, file, line: key.line, source_kind: 'celery-beat' })) : [])) },
+  { id: 'celery-beat', applies: (file) => /\.py$/.test(file), detect: (file, lines) => lines.flatMap((text, i) => {
+    if (!/beat_schedule\b/i.test(text)) return [];
+    const entries = (found: { name: string; line: number }[]): Surface[] => found.map((key) => ({ kind: 'scheduled-job' as const, name: key.name, file, line: key.line, source_kind: 'celery-beat' }));
+    const inline = /\{\s*\S/.exec(text);
+    // the whole schedule on one line: `beat_schedule = {'a': {...}, 'b': {...}}`
+    if (inline) return entries([...text.slice(inline.index).matchAll(/['"]([\w.:-]+)['"]\s*:\s*\{/g)].map((key) => ({ name: key[1]!, line: i + 1 })));
+    return /[={:(]\s*\{?\s*$/.test(text) ? entries(list_block_keys(lines, i, /^\s*['"]([\w.:-]+)['"]\s*:\s*\{/)) : [];
+  }) },
   by_pattern('apscheduler', 'scheduled-job', (file) => /\.py$/.test(file), /\badd_job\(\s*([\w.]+)([^\n]*)/, (match) => /\bid\s*=\s*['"]([\w.-]+)['"]/.exec(match[2]!)?.[1] ?? match[1]!.split('.').pop()),
   // alert rules
   by_pattern('prometheus', 'alert-rule', (file) => YAML.test(file), /^\s*-?\s*alert:\s*['"]?([\w.:-]+)/),
-  { id: 'grafana', applies: (file) => /(alert|grafana)/i.test(file) && /\.(json|ya?ml)$/.test(file), detect: (file, lines) => (lines.some((text) => /\bcondition\b/.test(text)) ? lines.flatMap((text, i) => { const found = /^\s*(?:[{[,]\s*)*"?title"?\s*:\s*"?([^",\n]+?)"?\s*(?:,|$)/.exec(text) ?? /[{,]\s*"title"\s*:\s*"([^"]+)"/.exec(text); return found ? [{ kind: 'alert-rule' as const, name: found[1]!.trim(), file, line: i + 1, source_kind: 'grafana' }] : []; }) : []) },
+  { id: 'grafana', applies: (file) => /(alert|grafana)/i.test(file) && /\.(json|ya?ml)$/.test(file), detect: (file, lines) => (lines.some((text) => /\bcondition\b/.test(text)) ? lines.flatMap((text, i) => { const found = /^\s*(?:[{[,]\s*)*"?title"?\s*:\s*"?([^",\n]+?)"?\s*(?:,|$)/.exec(text); const titles = found ? [found[1]!] : [...text.matchAll(/[{,]\s*"title"\s*:\s*"([^"]+)"/g)].map((match) => match[1]!); return titles.map((title) => ({ kind: 'alert-rule' as const, name: title.trim(), file, line: i + 1, source_kind: 'grafana' })); }) : []) },
   // HTTP routes
   by_pattern('express-route', 'http-route', (file) => CODE.test(file), /\b(?:app|router|server|api)\.(?:get|post|put|patch|delete)\s*\(\s*['"`](\/[^'"`]*)/g),
   by_pattern('decorator-route', 'http-route', (file) => /\.(?:py|java|kt|ts)$/.test(file), /@(?:\w+\.)?(?:route|get|post|put|patch|delete|Get|Post|Put|Patch|Delete)\(\s*['"`](\/[^'"`]+)/),
   // CLI commands and flags
   by_pattern('argparse', 'cli-flag', (file) => /\.py$/.test(file), /add_argument\(\s*['"](--[\w-]+)/),
   by_pattern('argparse-command', 'cli-command', (file) => /\.py$/.test(file), /\badd_parser\(\s*['"]([\w:-]+)/),
-  by_pattern('click', 'cli-flag', (file) => /\.py$/.test(file), /@click\.option\(.*?['"](--[\w-]+)['"]/),
+  { id: 'click', applies: (file) => /\.py$/.test(file), detect: (file, lines) => lines.flatMap((text, i) => {
+    if (!/^\s*@click\.option\(/.test(text)) return [];
+    const flag = /['"](--[\w-]+)['"]/.exec(read_call(lines, i));
+    return flag ? [{ kind: 'cli-flag' as const, name: flag[1]!, file, line: i + 1, source_kind: 'click' }] : [];
+  }) },
+  { id: 'click-command', applies: (file) => /\.py$/.test(file), detect: (file, lines) => lines.flatMap((text, i) => {
+    const decorator = /^\s*@(?:\w+\.)+command\b/.exec(text);
+    if (!decorator) return [];
+    const explicit = /^\s*(?:name\s*=\s*)?['"]([\w:-]+)['"]/.exec(read_call(lines, i).slice(decorator[0].length).replace(/^\s*\(\s*/, ''));
+    const definition = explicit ? undefined : lines.slice(i + 1, i + 9).map((next) => /^\s*(?:async\s+)?def\s+(\w+)/.exec(next)).find(Boolean);
+    const name = explicit?.[1] ?? definition?.[1]?.replace(/_/g, '-');
+    return name ? [{ kind: 'cli-command' as const, name, file, line: i + 1, source_kind: 'click-command' }] : [];
+  }) },
   by_pattern('commander-flag', 'cli-flag', (file) => /\.(?:ts|js|mjs|cjs)$/.test(file), /\.option\(\s*['"][^'"]*?(--[\w-]+)/g),
   by_pattern('yargs-flag', 'cli-flag', (file) => /\.(?:ts|js|mjs|cjs)$/.test(file), /\.option\(\s*['"]([\w-]+)['"]\s*,\s*\{/g, (match) => `--${match[1]}`),
   by_pattern('cli-command', 'cli-command', (file) => /\.(?:ts|js|mjs|cjs)$/.test(file), /\.command\(\s*['"]([\w:-]+)/g),

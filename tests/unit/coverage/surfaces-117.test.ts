@@ -97,7 +97,7 @@ describe('surface detectors (#117)', () => {
     const again = await detect_surfaces({ repo_root: repo, docs_root: join(repo, '.documentation'), ignore: ['vendor/'] });
     expect(again).toEqual(all);
     const with_vendor = await detect_surfaces({ repo_root: repo, docs_root: join(repo, '.documentation') });
-    expect(JSON.stringify(with_vendor)).toContain('VENDORED_LIMIT');
+    expect(JSON.stringify(with_vendor)).not.toContain('VENDORED_LIMIT'); // vendor/ is skipped by default (#117 review)
   });
   it('ignore entries are prefixes or globs', () => {
     expect(is_ignored('vendor/a/b.ts', ['vendor'])).toBe(true);

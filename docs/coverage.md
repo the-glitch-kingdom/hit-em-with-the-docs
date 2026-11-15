@@ -20,16 +20,17 @@ Detectors live in `src/core/coverage/surfaces/detectors.ts`; adding one is addin
 
 | Kind | Found in |
 |---|---|
-| scheduled job | GitHub workflow `schedule`, Kubernetes `CronJob`, celery beat |
+| scheduled job | crontab and `cron.d` files (named by the script or program the line runs, not by wrappers such as `flock`, `cd X &&`, `nice`, `timeout`, `sh -c`, `python`, `node`, or `VAR=..`; `@daily`, `@reboot` and the like too), GitHub workflow `schedule`, Kubernetes `CronJob`, celery beat (`beat_schedule` in any case, `CELERY_BEAT_SCHEDULE`, one-line entries), APScheduler |
 | alert rule | Prometheus rule files, Grafana alert JSON |
 | HTTP route | web framework route declarations |
-| CLI command and flag | argparse, click, commander style declarations |
+| CLI command and flag | argparse, click (multi-line `@click.option(`, `@click.command`, `@<group>.command`, with or without a name), commander style declarations |
 | CI workflow and job | GitHub workflows, GitLab CI jobs |
 | background task | celery tasks, sidekiq workers |
 | constant | module-level numeric constants (a size, timeout or limit) |
 | config key | declared config keys |
 
-Generated files are skipped. **Known limit:** there is no Go detector, so cobra commands and flags and Go
+Generated files, tests, `vendor/`, `third_party/` and any `archive/` folder are skipped; `coverage.ignore` covers
+the rest. **Known limit:** there is no Go detector, so cobra commands and flags and Go
 constants are not detected. A Go repo shows only its CI, schedules and alert rules.
 
 ## Grades
@@ -63,6 +64,12 @@ code declares; it never proposes rewriting or archiving a knowledge-base fact be
 - **No values** in the table, `--json`, review files or drafts: hosts, IPs, ports, IDs, URLs, credentials, key
   material, env or config values and defaults. Names are fine. A code constant (size, timeout, limit) may be
   stated; a number under a credential-like name or a network name may not.
+- **Names are screened too.** Every surface name from every detector passes the gate's value rules and the secrets
+  scan. A name with a finding (a host, `host:port`, IP, environment resource name such as `sync-prod-eu-west-1`, key
+  or id shape) is replaced everywhere (table, `--json` name, key, query, facets, review files) by `<kind> at
+  file:line`, for example `scheduled job at deploy/crontab:3`, and the surface is matched by its position, never
+  by the value. Route segments that are ids or keys become `:param`. A crontab line that runs a URL (`curl`,
+  `wget`) is named by position, never by the URL.
 - **Routing is code-based.** A unit is withheld for a human only when a located line is an auth, crypto or
   credential check. A topic word alone (login, token, an `auth` folder) keeps it drafted, marked
   "security-adjacent: judge carefully".

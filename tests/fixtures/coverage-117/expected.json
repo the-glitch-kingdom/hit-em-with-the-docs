@@ -216,7 +216,7 @@
   {
    "id": "gitlab-job",
    "kind": "ci-job",
-   "name": "deploy-staging",
+   "name": "CI job at .gitlab-ci.yml:2",
    "file": ".gitlab-ci.yml",
    "line": 2,
    "grade": "absent",

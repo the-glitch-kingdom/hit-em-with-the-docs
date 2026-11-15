@@ -6,12 +6,13 @@
  * Read-only: it returns review entries, it writes nothing.
  */
 import type { CoverageIgnore, PluginConfig } from '../../utils/config.js';
+import { build_position_facet } from './facets.js';
 import { load_doc_texts } from './decide.js';
 import { grade_surfaces, summarize_grades, type GradedSurface, type GradeSummary } from './grade.js';
 import type { LocateResult, FacetHit } from './locate.js';
 import { DECLARED_LIST_MIN, type DeclaredList } from './merge.js';
 import { plan_coverage_misses, type CoveragePlan, type FacetGap } from './plan.js';
-import { detect_surfaces, is_ignored, type Surface, type SurfaceKind } from './surfaces/index.js';
+import { detect_surfaces, is_ignored, KIND_LABEL, type Surface, type SurfaceKind } from './surfaces/index.js';
 
 export interface HeldSurface { kind: SurfaceKind; name: string; file: string; reason?: string }
 export interface GenerateReference extends DeclaredList { /** Entries in it no doc names yet. */ absent: number }
@@ -31,11 +32,6 @@ const LIST_KIND: Partial<Record<SurfaceKind, { kind: DeclaredList['kind']; what:
   'scheduled-job': { kind: 'schedules', what: 'schedules' }, 'alert-rule': { kind: 'alert-rules', what: 'alert rules' }, 'http-route': { kind: 'routes', what: 'routes' },
   'cli-flag': { kind: 'cli-flags', what: 'CLI flags' }, 'config-key': { kind: 'config-keys', what: 'config keys' },
 };
-const KIND_LABEL: Record<SurfaceKind, string> = {
-  'scheduled-job': 'scheduled job', 'alert-rule': 'alert rule', 'http-route': 'route', 'cli-command': 'command', 'cli-flag': 'flag', 'ci-workflow': 'CI workflow',
-  'ci-job': 'CI job', 'background-task': 'background task', constant: 'constant', 'config-key': 'config key',
-};
-
 const escape_regex = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Detect, split off the ignore list (held), grade the rest. */
@@ -58,7 +54,8 @@ export async function list_graded_surfaces(options: { repo_root: string; docs_ro
 function build_miss(surface: GradedSurface): { gap: FacetGap; facet: string } {
   // a yargs flag is declared as `option('name')`, so the dashes are optional in the code and in the docs
   const name = surface.source_kind === 'yargs-flag' ? `(?<![\\w])(?:--)?${escape_regex(surface.name.replace(/^--/, ''))}(?![\\w-])` : `(?<![\\w-])${escape_regex(surface.name)}(?![\\w-])`;
-  const facet = surface.kind === 'constant' && surface.value !== undefined ? `${name}\\s*[:=]\\s*${escape_regex(surface.value).replace(/\\? /g, '\\s*')}` : name;
+  // a placeholder surface has no name to match: its facet is its position, and the located hit is its own line
+  const facet = surface.placeholder ? build_position_facet(surface.file, surface.line) : surface.kind === 'constant' && surface.value !== undefined ? `${name}\\s*[:=]\\s*${escape_regex(surface.value).replace(/\\? /g, '\\s*')}` : name;
   const query = `What does the ${KIND_LABEL[surface.kind]} ${surface.name} do?`;
   return { gap: { id: `${surface.kind}:${surface.name}@${surface.file}`, query, facets: [facet] }, facet };
 }

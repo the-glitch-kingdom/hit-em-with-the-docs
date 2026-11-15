@@ -14,7 +14,7 @@ import type { SecretsConfig } from '../../utils/config.js';
 import { compute_content_hash } from '../reconcile/ledger.js';
 import type { ReviewEntry } from '../reconcile/review.js';
 import { check_credential_text, check_security_gate, find_security_check, find_sensitive_word, is_security_sensitive, is_stateable_constant } from '../security/gate.js';
-import { compile_facet, match_facets } from './facets.js';
+import { compile_facet, match_facets, parse_position_facet } from './facets.js';
 import type { FacetHit } from './locate.js';
 import { FALLBACK_DOMAIN, name_new_doc, place_new_doc } from './naming.js';
 import type { Proposal } from './merge.js';
@@ -78,7 +78,8 @@ async function build_facts(repo_root: string, proposal: Proposal, secrets_config
   for (const facet of proposal.missing_facets) {
     const regex = compile_facet(facet).regex;
     const matches = (text: string): boolean => !!regex && !!match_facets([regex], [text], 1)[0]?.length;
-    const at = kept.filter((line) => matches(line.text));
+    const position = parse_position_facet(facet);
+    const at = kept.filter((line) => (position ? line.match.file === position.file && line.match.line === position.line : matches(line.text)));
     let stated = false;
     for (const { match, text } of at) {
       const constant = CONFIG_FILE.test(match.file) ? undefined : extract_stated_constant(text);

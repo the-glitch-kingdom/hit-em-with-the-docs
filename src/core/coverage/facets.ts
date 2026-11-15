@@ -20,6 +20,13 @@ export interface CoverageMiss {
 }
 
 /** Longest facet source accepted: eval facets are short; a long pattern is almost always a pasted code line. */
+/** A surface whose name was withheld is matched by position: the facet `position <file>:<line>` (escaped), never a value. */
+export const build_position_facet = (file: string, line: number): string => `position ${`${file}:${line}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`;
+export function parse_position_facet(facet: string): { file: string; line: number } | undefined {
+  const match = /^position (.+):(\d+)$/.exec(facet);
+  return match ? { file: match[1]!.replace(/\\(.)/g, '$1'), line: Number(match[2]) } : undefined;
+}
+
 export const MAX_FACET_LENGTH = 300;
 /** Longest text one facet test sees; the rest is ignored, so a slow pattern cannot run on a huge line or document. */
 export const MAX_TEST_TEXT = 20_000;

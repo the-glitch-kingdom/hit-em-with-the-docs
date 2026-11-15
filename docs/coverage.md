@@ -93,10 +93,10 @@ knowledge-base doc is never an extend target (a fact that already states it stil
   as `[withheld path]` everywhere, and no doc is ever named from such a stem. Hostname-shaped names such as
   `config.local.ts` or `docker-compose.dev.yml` are not read as hosts in a path.
 - **Facets by context (`reconcile --gaps`).** A facet is a value, shown as `[redacted facet]` everywhere and never naming a
-  doc, when every match in code sits inside a string literal, inside an option argument of a shell line (`-p<x>`, `-H "..."`,
+  doc, when every match in code sits inside a string literal that is shaped like a value (a host, URL, key, id or password) or set under a value name (`"password": "..."`), inside an option argument of a shell line (`-p<x>`, `-H "..."`,
   `--password=...`, `--token ...`), inside URL or DSN userinfo, or in a heredoc body; when its text without regex escapes is
   key-shaped; or when it holds a value by the name screen. A literal that is an import path, an env var name, a route path or
-  a flag is a name. Identifier facets outside literals are unaffected. A gaps question that holds a value is shown as
+  a flag is a name, and so is any other quoted literal or comment text (a fixture file name, a flag in a comment). Identifier facets outside literals are unaffected. A gaps question that holds a value is shown as
   `[redacted question]`. `hewtd coverage` builds its facets from screened names, so only the line-shape rule applies there.
 - **Routing is code-based.** A unit is withheld for a human only when a located line is an auth, crypto or
   credential check, found by code shape across languages (decorators, attributes, middleware and guards naming
@@ -153,8 +153,11 @@ get "generate the reference", every stated fact is true at its `file:line`, read
 - The content-word rule is lexical: three content words in a sentence with the name explain it even when the sentence is not accurate; a doc that does not cite the source never explains it (except a stated constant value).
 - A heredoc is found only when its `<<TAG` is within 200 lines above; a multi-line string literal other than a heredoc is
   read line by line, so a value on a continuation line is caught only by the other rules.
-- The literal rule withholds any facet that sits only inside quotes, so a gaps facet that is a plain word in a string
-  (a command name in `.command('serve')`) is redacted and goes to a human; this errs toward withholding.
+- A plain word in a quoted literal that is not value-shaped and not under a value name (`.command('serve')`) is a name and
+  is kept; a plain-word password passed as a positional argument (`login('swordfish')`) is therefore not caught. An uppercase
+  `NAME = "word"` assignment is still a config value.
+- Docstrings, triple-quoted strings, `/* */` blocks and Ruby `=begin` blocks are prose, never a security check; a block that
+  never closes, or a delimiter hidden by a quote inside a comment, is not recognised.
 - Hostnames in file paths are not screened (`config.local.ts` is not a host); IPs, ids, key shapes and environment resource
   names are.
 - A bare integer under a name with no measuring or describing word is not stated, even when it is harmless (`LEVEL = 3`).

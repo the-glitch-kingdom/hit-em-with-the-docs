@@ -13,7 +13,7 @@ import { with_frontmatter } from '../../utils/frontmatter.js';
 import type { SecretsConfig } from '../../utils/config.js';
 import { compute_content_hash } from '../reconcile/ledger.js';
 import type { ReviewEntry } from '../reconcile/review.js';
-import { check_credential_text, check_security_gate, find_security_check, find_sensitive_word, is_security_sensitive, is_stateable_constant } from '../security/gate.js';
+import { check_credential_text, check_security_gate, find_block_lines, find_security_check, find_sensitive_word, is_security_sensitive, is_stateable_constant } from '../security/gate.js';
 import { compile_facet, match_facets, parse_position_facet, REDACTED_FACET } from './facets.js';
 import type { FacetHit } from './locate.js';
 import { FALLBACK_DOMAIN, name_new_doc, place_new_doc } from './naming.js';
@@ -113,11 +113,12 @@ function find_anchor(raw_text: string): string | undefined {
 const MAX_CHECKED_LINES = 100;
 /** The first located line that is a security check: its kind and place, never its text. */
 export async function find_check_line(repo_root: string, sources: FacetHit[]): Promise<{ kind: string; file: string; line: number } | undefined> {
-  const lines_of = new Map<string, string[]>();
+  const lines_of = new Map<string, { lines: string[]; blocks: Set<number> }>();
   for (const found of [...sources].sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line).slice(0, MAX_CHECKED_LINES)) {
-    let lines = lines_of.get(found.file);
-    if (!lines) { lines = (await readFile(join(repo_root, found.file), 'utf-8').catch(() => '')).split('\n'); lines_of.set(found.file, lines); }
-    const kind = find_security_check(lines[found.line - 1] ?? '');
+    let read = lines_of.get(found.file);
+    if (!read) { const text = await readFile(join(repo_root, found.file), 'utf-8').catch(() => ''); read = { lines: text.split('\n'), blocks: find_block_lines(text) }; lines_of.set(found.file, read); }
+    if (read.blocks.has(found.line - 1)) continue; // docstrings and block comments are prose
+    const kind = find_security_check(read.lines[found.line - 1] ?? '');
     if (kind) return { kind, file: found.file, line: found.line };
   }
   return undefined;

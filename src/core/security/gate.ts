@@ -130,6 +130,10 @@ export function is_value_line(line: string, secrets_config: SecretsConfig): bool
 
 // a literal that is a name, not a value: an import path, an env var name, a route path or a flag
 const NAME_LITERAL_PREFIX = /(?:\b(?:import|from|require|getenv|environ(?:\.get)?|ENV(?:\.fetch)?|process\.env)\s*[[(]?\s*|\bimport\s+[\w*{}, ]+\s+from\s*)$/;
+// #120 section 4: a quoted literal is a value only when it is shaped like one (host, URL, key, id) or is set under a value name (`"password": "..."`); any other literal is a name
+// a mixed-case run with a digit and no separators (`Zq5xVwLm7pR`) is password-shaped
+const PASSWORD_SHAPE = /^(?=[^\s]*\d)(?=[^\s]*[a-z])(?=[^\s]*[A-Z])[^\s]{8,}$/;
+const is_value_literal = (before: string, content: string): boolean => has_key_token(content) || PASSWORD_SHAPE.test(content) && !/\.\w{1,5}$/.test(content) || !!find_value_in_name(content) || /([\w-]+)["'`]?\s*(?:=>|[:=,(])\s*$/.test(before) && is_value_name(/([\w-]+)["'`]?\s*(?:=>|[:=,(])\s*$/.exec(before)![1]!);
 /**
  * Where a source line holds values by CONTEXT, not by shape (#118): the spans inside a string literal ('..', "..", `..`),
  * inside an option argument of a shell line (`-p<x>`, `--password=x`, `--token x`) and inside URL or DSN userinfo
@@ -137,6 +141,7 @@ const NAME_LITERAL_PREFIX = /(?:\b(?:import|from|require|getenv|environ(?:\.get)
  */
 export function find_value_spans(line: string): [number, number][] {
   const spans: [number, number][] = [];
+  const in_comment_line = /^\s*(?:\/\/|#|\*|\/\*|--)/.test(line);
   for (let i = 0; i < line.length; i++) {
     const quote = line[i]!;
     if (quote !== '"' && quote !== "'" && quote !== '`') continue;
@@ -144,7 +149,7 @@ export function find_value_spans(line: string): [number, number][] {
     while (end < line.length && line[end] !== quote) end += line[end] === '\\' ? 2 : 1;
     if (end >= line.length) break; // unterminated: an apostrophe in prose, not a literal
     const content = line.slice(i + 1, end);
-    if (!NAME_LITERAL_PREFIX.test(line.slice(0, i)) && !/^(?:\/|--)/.test(content)) spans.push([i + 1, end]);
+    if (!NAME_LITERAL_PREFIX.test(line.slice(0, i)) && !/^(?:\/|--)/.test(content) && !in_comment_line && is_value_literal(line.slice(0, i), content)) spans.push([i + 1, end]);
     i = end;
   }
   for (const token of line.matchAll(/\S+/g)) {
@@ -239,6 +244,38 @@ function find_operand_check(line: string): string | undefined {
     || /\bin\b/.test(code) && !/\bfor\b/.test(code);
   if (!form) return undefined;
   return [...operands].some((operand) => PERMISSION_OPERAND.test(operand)) ? 'permission or role check' : 'crypto or credential check';
+}
+/**
+ * The 0-based lines inside a block string or block comment (#120): a Python triple-quoted string, a C-style block, a Ruby
+ * =begin/=end. They are prose, like `#` and `//` lines. A block that never closes marks nothing, and delimiters inside a
+ * quoted string do not open one. shortcut: a quote char inside a block comment can hide a delimiter; upgrade with a real tokenizer.
+ */
+export function find_block_lines(text: string): Set<number> {
+  const marked = new Set<number>();
+  const lines = text.split('\n');
+  const bare = (line: string): string => line.replace(/\\./g, '').replace(/(["'`])(?:(?!\1).)*\1/g, '""');
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i]!;
+    let close: ((candidate: string) => boolean) | undefined;
+    const triple = /("""|''')/.exec(line);
+    if (/^=begin\b/.test(line)) close = (candidate) => /^=end\b/.test(candidate);
+    else if (triple) {
+      const quote = triple[1]!;
+      if ((line.split(quote).length - 1) % 2 === 0) { marked.add(i); i++; continue; } // opens and closes on this line
+      close = (candidate) => candidate.includes(quote);
+    } else {
+      const code = bare(line).replace(/\/\/.*$/, '');
+      const open = code.indexOf('/*');
+      if (open >= 0 && code.indexOf('*/', open + 2) < 0) close = (candidate) => candidate.includes('*/'); // a one-line /* */ leaves the line's code alone
+    }
+    if (!close) { i++; continue; }
+    let end = i + 1;
+    while (end < lines.length && !close(lines[end]!)) end++;
+    if (end < lines.length) for (let at = i; at <= end; at++) marked.add(at);
+    i = end + 1;
+  }
+  return marked;
 }
 export const is_security_check_line = (line: string): boolean => find_security_check(line) !== undefined;
 

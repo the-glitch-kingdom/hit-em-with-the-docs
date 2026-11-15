@@ -31,6 +31,8 @@ const LIST_LINE = /^\s*(?:[-*+]|\d+[.)]|\|)\s*/;
 
 const HUB_NAME = /^(index|readme|overview)/i;
 const HUB_TIERS = new Set(['overview', 'reference', 'index', 'incident-narrative', 'incident-facts']);
+/** Institutional knowledge: never extended from code (a covered outcome still counts it). */
+const is_knowledge_base = (doc: DocText): boolean => /(^|\/)knowledge-base\//.test(doc.path);
 const hub_cache = new WeakMap<DocText, boolean>();
 /** Index, overview, reference, generated, archive, incident or very broad docs: last-resort targets, never merge points (#115). */
 export function is_hub_doc(doc: DocText): boolean {
@@ -208,14 +210,14 @@ export function resolve_decision(miss: CoverageMiss, located: Pick<LocateResult,
   const closeness = (doc: DocText): number => (doc.sources.some((source) => near_dirs.has(dirname(source))) ? 0 : 1);
   const order = (a: (typeof counts)[number], b: (typeof counts)[number]): number =>
     b.held.length - a.held.length || Number(b.doc.path === eval_path) - Number(a.doc.path === eval_path) || closeness(a.doc) - closeness(b.doc) || a.doc.sources.length - b.doc.sources.length || a.doc.path.localeCompare(b.doc.path);
-  const enough = counts.filter((item) => total && item.held.length / total >= EXTEND_MIN_SHARE).sort(order);
+  const enough = counts.filter((item) => !is_knowledge_base(item.doc) && total && item.held.length / total >= EXTEND_MIN_SHARE).sort(order);
   const pick = enough.find((item) => !is_hub_doc(item.doc)) ?? enough[0];
   if (pick) return finish({ kind: 'extend', doc: pick.doc.path, held: pick.held.length, missing_facets: facets.filter((facet) => !pick.held.includes(facet)) });
   // 2. else the most specific non-hub doc that cites the located code (its cited lines, when it says which) and is about the question (#118):
   //    it holds a facet, or shares distinctive question terms; the eval's nearest doc holding a facet counts without citing
   const query_terms = get_distinctive_terms(miss.query);
   const citing = counts.filter(({ doc, held }) => {
-    if (is_hub_doc(doc)) return false;
+    if (is_hub_doc(doc) || is_knowledge_base(doc)) return false;
     const eval_pick = doc.path === eval_path && held.length > 0;
     const cites = cited_by.includes(doc.path) && doc.sources.length <= SPECIFIC_MAX_SOURCES && covers_hits(doc, code_hits);
     return (cites && (held.length > 0 || is_relevant_to_query(doc, query_terms))) || eval_pick;

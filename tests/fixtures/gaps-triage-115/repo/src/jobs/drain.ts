@@ -1,1 +1,1 @@
-export const DRAIN_BATCH_SIZE = 25;
+export const DRAIN_BATCH_SIZE = 24;

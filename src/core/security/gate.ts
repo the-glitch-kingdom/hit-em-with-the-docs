@@ -30,9 +30,9 @@ const WELL_KNOWN_PORTS = new Set([22, 25, 53, 80, 110, 143, 443, 465, 587, 993, 
 /** A constant a draft may state (#115): a constant value, under a name that is not a value name, and not a port in disguise. */
 export function is_stateable_constant(name: string, value: string): boolean {
   if (!is_constant_value(value) || is_value_name(name)) return false;
+  if (/^\d+$/.test(value.trim()) && WELL_KNOWN_PORTS.has(Number(value.trim()))) return false; // a port, whatever the name measures
   const words = split_words(name);
-  if (MEASURE_NAME.test(words)) return true;
-  return !NETWORK_NAME.test(words) && !(/^\d+$/.test(value.trim()) && WELL_KNOWN_PORTS.has(Number(value.trim())));
+  return MEASURE_NAME.test(words) || !NETWORK_NAME.test(words);
 }
 
 interface ValueRule { rule: string; pattern: RegExp; credential?: boolean; /** Drop a match that is not a value (a code constant). */ keep?: (match: RegExpMatchArray) => boolean }
@@ -79,17 +79,21 @@ export function check_credential_text(text: string, where: string, secrets_confi
 }
 
 // What a located source line IS (#118): code-shape detection on the line, never topic words. Kind labels are the only thing reported.
+// a token, secret, password, signature, hmac, digest or expected value on one side of an equality; not a count or size of them
+const SECRET_WORD = '(?:token|secret|password|passwd|signature|hmac|digest|expected)(?!_?(?:count|len|length|size|num|number|index|limit|max|min)\\b)';
 const CHECK_KINDS: { kind: string; patterns: RegExp[] }[] = [
   { kind: 'crypto or credential check', patterns: [
-    /\b(?:timing_?safe_?equal|compare_digest|constant_time_(?:eq|compare)|createHmac|createHash|createSign|createVerify|createCipher(?:iv)?|createDecipher(?:iv)?|bcrypt|argon2|scrypt|pbkdf2|hashpw|checkpw)\b/i,
-    /\b(?:jwt|jws|jose|hmac|rsa|ecdsa|signer|verifier)\w*\.(?:sign|verify|decode|digest)\b/i,
+    /\b(?:timing_?safe_?equal|compare_digest|constant_time_(?:eq|compare)|createHmac|createHash|createSign|createVerify|createCipher(?:iv)?|createDecipher(?:iv)?|bcrypt|argon2|scrypt|pbkdf2|hashpw|checkpw|ConstantTimeCompare)\b|\bhmac\.(?:Equal|new|New)\b|\bhashlib\.\w+\s*\(|\b(?:sha(?:1|224|256|384|512)|md5|blake2[bs]?)\s*\(|\bverify\s*=\s*False\b|\b(?:rejectUnauthorized\s*:\s*false|InsecureSkipVerify\s*:\s*true|CERT_NONE)\b/i,
+    /\b(?:jwt|jws|jose|hmac|rsa|ecdsa|signer|verifier)\w*\.(?:sign|verify|encode|decode|digest)\b/i,
     /\b(?:decrypt|encrypt|verify_(?:signature|token|password|hmac)|check_password|validate_(?:token|password|signature))\w*\s*\(/i,
+    new RegExp(`\\b\\w*${SECRET_WORD}\\w*\\s*(?:===?|!==?)\\s*\\S|\\S\\s*(?:===?|!==?)\\s*[\\w.]*${SECRET_WORD}\\w*`, 'i'),
     /\b(?:password|passwd|secret|api_?key|digest|signature|hmac)\w*\s*(?:===?|!==?)\s*\S|\S\s*(?:===?|!==?)\s*[\w.]*(?:password|passwd|secret|api_?key|digest|signature)\w*/i,
   ] },
   { kind: 'permission or role check', patterns: [
     /\b(?:has|check|require[sd]?|assert|ensure|can|is|verify)_?(?:permission|role|scope|privilege|access|admin|authori[sz]ed?|superuser|staff)s?\b/i,
     /@(?:requires?_?(?:auth|role|permission|login)\w*|login_required|PreAuthorize|RolesAllowed|Secured)\b/i,
     /\brole\w*\s*(?:===?|!==?|\bin\b)\s*[[\w"']/i,
+    /@\w*(?:permission|auth|role|login|admin)\w*\b|@UseGuards\b|^\s*\[\s*(?:Authorize|AllowAnonymous)\b|\bauthori[sz]e!|\b(?:before|skip_before|prepend_before)_(?:action|filter)\s+:\w*(?:auth|permission|role|login|admin)|\b(?:permission|authentication)_classes\b|\bIs(?:Authenticated|AdminUser)\b|\bis_?(?:authenticated|staff|superuser|anonymous)\b|\bauthenticate\w*!?\s*\(|\bDepends\(\s*\w*(?:current_user|auth|permission|role|login|admin|token|security)|\.(?:use|get|post|put|delete|patch|all)\([^)]*\b\w*(?:auth|permission|role|login|admin|guard)\w*\s*[,)(]/i,
     /\b(?:PermissionDenied|Forbidden|Unauthori[sz]ed)\b/,
   ] },
   { kind: 'access policy', patterns: [/"?\bEffect"?\s*[:=]\s*"?(?:Allow|Deny)\b|\bsts:AssumeRole|\bPrincipal"?\s*[:=]|\baws_iam_\w+|\bAssumeRolePolicy|\bpolicy_document\b/] },

@@ -57,13 +57,15 @@ locating is skipped.
 
 Never overwritten: a `create` entry whose path is taken gets a numbered sibling and apply refuses to
 overwrite. Drafts use the shipped templates. Institutional knowledge is protected: coverage only adds what the
-code declares; it never proposes rewriting or archiving a knowledge-base fact because the code does not show it.
+code declares; it never proposes rewriting or archiving a knowledge-base fact because the code does not show it, and a
+knowledge-base doc is never an extend target (a fact that already states it still counts as covered).
 
 ## Security rules
 
 - **No values** in the table, `--json`, review files or drafts: hosts, IPs, ports, IDs, URLs, credentials, key
   material, env or config values and defaults. Names are fine. A code constant (size, timeout, limit) may be
-  stated; a number under a credential-like name or a network name may not.
+  stated; a number under a credential-like name or a network name may not, and a well-known port number is never
+  stated, whatever the name measures (`BIND_MAX = 8080`).
 - **Names are screened too.** Every surface name from every detector passes the gate's value rules and the secrets
   scan. A name with a finding (a host, `host:port`, IP, environment resource name such as `sync-prod-eu-west-1`, key
   or id shape) is replaced everywhere (table, `--json` name, key, query, facets, review files) by `<kind> at
@@ -71,7 +73,9 @@ code declares; it never proposes rewriting or archiving a knowledge-base fact be
   by the value. Route segments that are ids or keys become `:param`. A crontab line that runs a URL (`curl`,
   `wget`) is named by position, never by the URL.
 - **Routing is code-based.** A unit is withheld for a human only when a located line is an auth, crypto or
-  credential check. A topic word alone (login, token, an `auth` folder) keeps it drafted, marked
+  credential check, found by code shape across languages (decorators, attributes, middleware and guards naming
+  auth, permission, role, login or admin; a token, secret, password, signature or expected value compared;
+  hashing, signing or password-hash calls; TLS verification turned off). A topic word alone (login, token, an `auth` folder) keeps it drafted, marked
   "security-adjacent: judge carefully".
 
 ## Ignore list

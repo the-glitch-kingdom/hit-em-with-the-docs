@@ -10,6 +10,8 @@
 > You still need to remember to use this plugin when creating documentation! As projects grow, documentation needs to be created and maintained. You'll need to invoke this plugin or ask an LLM to create documentation for your features, workflows, or infrastructure. This plugin must be invoked to create, update, or maintain your docs.
 
 > [!NOTE]
+> **3.8.0** (#120) tunes `reconcile --gaps` and `hewtd coverage` after the 3.7.0 field test: unrelated misses on a schedule or routes file no longer merge, the "generate the reference" hint sits beside drafts instead of replacing them, docstrings and block comments are not security checks, flags and file names in literals or comments are no longer withheld as values, table file maps are hubs, new docs are placed and titled from their subject, and class-level and typed collection constants are detected. See [`docs/coverage.md`](./docs/coverage.md).
+
 > **3.7.0** (#117, #118) adds `hewtd coverage`: it grades every surface the code declares (scheduled jobs, alert rules, routes, CLI commands and flags, CI, background tasks, constants, config keys) `absent`, `named` or `explained` by the docs and drafts what is missing for you to accept. `coverage.ignore` holds surfaces on purpose; `targets.code_coverage` is an opt-in advisory audit row. `reconcile --gaps` also picks more relevant target docs, routes to a human only on a located security check, and names new docs after their subject. New gate `npm run gate:coverage`. See [`docs/coverage.md`](./docs/coverage.md).
 
 > [!NOTE]

@@ -187,5 +187,15 @@
     ],
     "hook_block": null,
     "template_changes": null
+  },
+  "3.8.0": {
+    "summary": "reconcile --gaps and coverage fixes from the 3.7.0 field test (#120). No new config keys.",
+    "config_keys": [],
+    "changed_defaults": [],
+    "behaviour_changes": [
+      { "issue": 120, "note": "reconcile --gaps with facets: misses on a declared-list file no longer merge, the generate-the-reference hint sits beside drafts, docstrings are not security checks, names in literals and comments are not withheld as values, table file maps are hubs, new docs are placed by majority folder and titled by subject. hewtd coverage also detects class-level and typed collection constants.", "patterns": ["reconcile\\b.*--gaps", "\\bcoverage\\b"] }
+    ],
+    "hook_block": null,
+    "template_changes": null
   }
 }

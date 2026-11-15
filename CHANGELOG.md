@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.8.0] — 2026-11-15
+
+Fixes the #120 field-test findings on 3.7.0 in `reconcile --gaps` and `hewtd coverage`. No new config keys. Entries without `facets` are still byte-identical to 3.4.1.
+
+- Merging: misses sharing only a declared-list file (schedules, routes, alert rules, CLI flags, config keys) stay separate; elsewhere they tie on a file only within 30 lines; a merged unit is targeted by its union of facets and never inherits one member's `nearest_doc`; a security check holds only the member it was located for.
+- The "generate the reference" hint is given only for facets that are entries of the declared list and sits beside the draft for the rest.
+- Docstrings, triple-quoted strings, `/* */` and Ruby `=begin` blocks are never a security check.
+- Names in quoted literals and comments (flags, fixture file names, command names) are names, not values; value-shaped literals and option arguments are still withheld.
+- Table file maps and file-map or inventory docs are hubs; new docs go in the majority folder of nearby docs and are titled from their subject, not a boolean-looking facet.
+- `coverage` detects class-level constants and annotated collection constants (named, never stated). Docs say `explained` does not mean every why is present.
+- Gates: `gate:gaps` 31/31, `gate:coverage` 40/40. Full suite 2207 tests pass.
+
 ## [3.7.0] — 2026-11-15
 
 Adds `hewtd coverage` (#117) and fixes the #118 field-test misses in `reconcile --gaps`. New command, new config keys `coverage.ignore` and `targets.code_coverage`. Entries without `facets` are still byte-identical to 3.4.1.

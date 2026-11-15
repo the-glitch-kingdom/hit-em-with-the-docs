@@ -1,4 +1,4 @@
-# Code coverage (3.7.0, #117)
+# Code coverage (3.7.0, #117; 3.8.0, #120)
 
 `hewtd coverage` answers one question: of the things the code declares, which ones do the docs cover? It lists
 each declared surface, grades it against the docs, prints a table, and drafts what is missing through the same
@@ -144,11 +144,16 @@ get "generate the reference", every stated fact is true at its `file:line`, read
   the first question, so they can differ. Rename before applying.
 - **A constant under a path containing `auth` goes to `for_judge`**: judge it; it is not withheld.
 
+## Changes in 3.8.0 (#120)
+
+`coverage` and `reconcile --gaps` share the engine, so the triage rules in [reconcile.md](./reconcile.md) apply: table file maps and file-map or inventory docs are hubs; a new doc goes in the majority folder of nearby docs and is titled from its subject; merges follow declared-list and same-block rules with no inherited `nearest_doc` and a per-member security split; the "generate the reference" hint sits beside drafts and covers only list entries; docstrings and block strings are not security checks; names in literals and comments are names. Class-level and annotated collection constants are surfaces (see the constant row above). `gate:gaps` is 31 checks, `gate:coverage` 40.
+
 ## Known limits
 
 - `explained` means a citing doc has a sentence about the surface, not that every why is there: a nightly job can be `explained` while the reason it keys on idle time is missing. Read it as "not a gap by name", not "fully documented".
 - Collection constants need a type annotation, are never stated, and are skipped when the name looks like a credential or the first line holds a key; unannotated collections and indented constants outside a class (function locals, TS/JS local `const`) are not detected.
 
+- Two misses whose facets sit in one file within 30 lines (`FILE_TIE_WINDOW`) still merge, except on a declared-list file; this is a shortcut, tighten it if unrelated misses collapse.
 - Surfaces come from `git ls-files`: untracked files are not scanned. Outside a git repo, or with nothing committed, the table is all zero and `hewtd coverage` prints a warning (also in `--json` `warnings`).
 - A cron line with `&&` or `;` is named by its first non-`cd` command; later commands in the chain are not separate jobs. A `(...)` subshell is unwrapped. A name shorter than 2 characters or a stop word (`a`, `the`) becomes `scheduled job at file:line` and a surface with such a name is matched only inside a code span.
 - A click command named from its function (`migrate_data` is `migrate-data`) is located by position (its decorator line), since the name is not spelled there. A boolean flag pair (`--shout/--no-shout`) is the first long flag.

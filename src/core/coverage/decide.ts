@@ -10,7 +10,7 @@ import { readFile } from 'fs/promises';
 import { dirname, relative } from 'path';
 import { parse_frontmatter } from '../../utils/frontmatter.js';
 import { list_markdown_files } from '../reconcile/triage.js';
-import { compile_facet, is_code_line_facet, match_facets, type CoverageMiss } from './facets.js';
+import { compile_facet, is_code_line_facet, is_weak_facet, match_facets, type CoverageMiss } from './facets.js';
 import type { FacetHit, LocateResult } from './locate.js';
 
 /** A doc must hold at least this share of a miss's facets to be extended on coverage alone (#115). */
@@ -80,7 +80,7 @@ export async function load_doc_texts(docs_root: string): Promise<DocText[]> {
   return docs.sort((a, b) => a.path.localeCompare(b.path));
 }
 
-export function resolve_decision(miss: CoverageMiss, located: Pick<LocateResult, 'code' | 'instructions'>, docs: DocText[]): Decision {
+export function resolve_decision(miss: CoverageMiss, located: Pick<LocateResult, 'code' | 'instructions' | 'weak'>, docs: DocText[]): Decision {
   const facets = miss.facets;
   const total = facets.length;
   const compiled = facets.map((facet) => ({ facet, regex: compile_facet(facet).regex })).filter((item): item is { facet: string; regex: RegExp } => !!item.regex);
@@ -103,14 +103,19 @@ export function resolve_decision(miss: CoverageMiss, located: Pick<LocateResult,
   const holds_all = total ? ranked.find((item) => item.held.length === total) : undefined;
   if (eval_doc && holds_all && eval_doc.held.length < total) notes.push(`the eval's nearest doc ${eval_doc.doc.path} holds ${eval_doc.held.length}/${total}; ${holds_all.doc.path} holds them all`);
 
-  const code_hits = compiled.flatMap(({ facet }) => located.code.get(facet) ?? []);
+  // distinctive facets name the files; weak ones (short, numeric, broad) only count inside those files (#115)
+  const is_weak = (facet: string): boolean => is_weak_facet(facet) || !!located.weak?.has(facet);
+  const strong_files = new Set(compiled.filter(({ facet }) => !is_weak(facet)).flatMap(({ facet }) => (located.code.get(facet) ?? []).map((found) => found.file)));
+  const hits_of = (facet: string): FacetHit[] => (located.code.get(facet) ?? []).filter((found) => strong_files.has(found.file));
+  const code_hits = compiled.flatMap(({ facet }) => hits_of(facet));
+  if (compiled.length && !strong_files.size) notes.push('every facet is weak (short, numeric or found in many files): no source is named for it, so a person must say where it lives');
   const source_files = [...new Set(code_hits.map((found) => found.file))].sort();
   const cited_by = counts.filter(({ doc }) => doc.sources.some((source) => source_files.includes(source)) || source_files.some((file) => doc.text.includes(file))).map(({ doc }) => doc.path);
   const base = { key: miss.key, query: miss.query, count: miss.count, total, flags, notes, ids: [miss.key], ...(miss.blind && { blind: true }), ...(miss.tier && { tier: miss.tier }) };
   const finish = (decision: Omit<Decision, keyof typeof base | 'cited_by' | 'source_files' | 'sources'>): Decision => {
     if (decision.doc && decision.kind === 'extend' && is_hub_doc(counts.find((item) => item.doc.path === decision.doc)!.doc)) decision.hub = true;
     const missing_set = new Set(decision.missing_facets);
-    const needed = code_hits.filter((found) => compiled.some(({ facet }) => missing_set.has(facet) && (located.code.get(facet) ?? []).includes(found)));
+    const needed = code_hits.filter((found) => compiled.some(({ facet }) => missing_set.has(facet) && hits_of(facet).includes(found)));
     const sources = needed.length ? needed : code_hits;
     if (decision.kind !== 'covered' && decision.missing_facets.length && decision.missing_facets.every(is_code_line_facet)) {
       flags.push('facet-shape');
@@ -127,7 +132,7 @@ export function resolve_decision(miss: CoverageMiss, located: Pick<LocateResult,
   }
 
   const none_in_code = !code_hits.length;
-  const instruction_files = [...new Set(compiled.flatMap(({ facet }) => located.instructions.get(facet) ?? []).map((found) => found.file))].sort();
+  const instruction_files = [...new Set(compiled.filter(({ facet }) => !is_weak(facet)).flatMap(({ facet }) => located.instructions.get(facet) ?? []).map((found) => found.file))].sort();
   const nobody_holds = !ranked[0] || ranked[0].held.length === 0;
   if (none_in_code && instruction_files.length && nobody_holds) {
     notes.push('the fact exists only in an agent instruction file, which search cannot reach: move it into an indexed doc');

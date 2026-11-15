@@ -8,7 +8,7 @@
 import { execFileSync } from 'child_process';
 import { readFile, stat } from 'fs/promises';
 import { join, relative } from 'path';
-import { compile_facet, test_facet } from './facets.js';
+import { compile_facet, match_facets } from './facets.js';
 
 export interface FacetHit { file: string; line: number }
 export interface LocateResult {
@@ -58,11 +58,11 @@ export async function locate_facets(options: { repo_root: string; docs_root: str
     }
     if (text.slice(0, 8000).includes('\0')) continue; // binary
     const into = instruction ? result.instructions : result.code;
-    text.split('\n').forEach((line, i) => {
-      for (const { facet, regex } of compiled) {
-        const found = into.get(facet)!;
-        if (found.length < MAX_HITS_PER_FACET && test_facet(regex, line)) found.push({ file, line: i + 1 });
-      }
+    const open_facets = compiled.filter(({ facet }) => into.get(facet)!.length < MAX_HITS_PER_FACET);
+    const matched = match_facets(open_facets.map(({ regex }) => regex), text.split('\n'), MAX_HITS_PER_FACET);
+    open_facets.forEach(({ facet }, i) => {
+      const found = into.get(facet)!;
+      for (const index of matched[i] ?? []) if (found.length < MAX_HITS_PER_FACET) found.push({ file, line: index + 1 });
     });
   }
   return result;

@@ -38,9 +38,9 @@ An entry may also carry the retrieval-eval fields from semantic-memory#101. All 
 | `nearest_doc` | `{path, facet_coverage: "n/m", rank}` for the closest doc the eval found. |
 | `expected` | Doc paths the question should have reached. |
 
-The eval's question-set JSONL (`{id, tier, q, facets, expected?}`, one object per line) is accepted as input too; `q` is the query.
+The eval's question-set JSONL (`{id, tier, q, facets, expected?}`, one object per line) is accepted as input too; `q` is the query, and `//` and `#` comment lines are skipped. A wrong-typed `id`, `tier`, `blind`, `missing_facets`, `nearest_doc` or `expected` is ignored: on an entry with facets it is listed in `errors`; on one without, the entry reads exactly as in 3.4.1.
 
-Facets are untrusted regexes and matched case-insensitively. A facet that does not compile, is longer than 300 characters, has a nested quantifier, or has a `|` group under a quantifier (such as `(a|aa)*b`) is refused and listed in `errors`; `(foo|bar)x` is fine. If every facet of an entry is refused, the entry falls back to the old buckets. Code-line-shaped facets (`x = 24 * 60`, `def f(`, `class C`) are flagged: prefer one-fact, prose-tolerant facets.
+Facets are untrusted regexes and matched case-insensitively. A facet that does not compile, is longer than 300 characters, has a nested quantifier, or has a `|` group under a quantifier (such as `(a|aa)*b`) is refused and listed in `errors`; `(foo|bar)x` is fine. Matching also runs under a time limit (500 ms per file or doc), so a slow pattern the shape check misses (`((a+))+$`, `a*a*a*a*b`) is stopped, counts as matching nothing, and is named in `warnings`. A facet or query holding a value (host, IP, port, ID, config value, secret) is not echoed: the facet is dropped as `[redacted facet]`, the query shown as `[question <id>]`. If every facet of an entry is refused, the entry falls back to the old buckets. Code-line-shaped facets (`x = 24 * 60`, `def f(`, `class C`) are flagged: prefer one-fact, prose-tolerant facets.
 
 Located files over 512 KB are skipped, and the input file itself is never searched. See [reconcile.md](./reconcile.md) for the outcomes, merging, drafts and the security rules.
 

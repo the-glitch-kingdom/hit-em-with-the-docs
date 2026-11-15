@@ -39,7 +39,8 @@ export function extract_declared_name(line: string): { name: string; verb: 'defi
   const env_match = ENV_NAME.exec(line);
   const env_name = env_match?.slice(1).find(Boolean);
   if (env_name) return { name: env_name, verb: 'read in' };
-  const name = DECLARATION.exec(line)?.[1] ?? ASSIGNMENT.exec(line)?.[1];
+  const code = line.replace(/(['"`])(?:\\.|(?!\1).)*\1/g, '""'); // a keyword inside a string literal is text, not a declaration
+  const name = DECLARATION.exec(code)?.[1] ?? ASSIGNMENT.exec(code)?.[1];
   return name ? { name, verb: 'defined in' } : undefined;
 }
 

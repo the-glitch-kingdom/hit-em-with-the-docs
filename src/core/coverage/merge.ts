@@ -35,10 +35,15 @@ export function merge_decisions(decisions: Decision[]): Proposal[] {
   const parent = sorted.map((_, i) => i);
   const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i]!)));
   const owner = new Map<string, number>();
+  // the target doc of each group: two groups extending different docs never merge (each miss keeps its own doc)
+  const group_doc = sorted.map((decision) => (decision.kind === 'extend' ? decision.doc : undefined));
   const tie = (key: string, i: number): void => {
     const seen = owner.get(key);
-    if (seen === undefined) owner.set(key, i);
-    else parent[find(i)] = find(seen);
+    if (seen === undefined) return void owner.set(key, i);
+    const [root, other] = [find(i), find(seen)];
+    if (root === other || (group_doc[root] && group_doc[other] && group_doc[root] !== group_doc[other])) return;
+    parent[root] = other;
+    group_doc[other] ??= group_doc[root];
   };
   sorted.forEach((decision, i) => {
     if (decision.kind === 'covered') tie(`covered:${decision.doc}`, i);

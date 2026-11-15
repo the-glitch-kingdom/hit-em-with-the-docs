@@ -47,7 +47,10 @@ export function check_credential_text(text: string, where: string, secrets_confi
   return [...secrets, ...find_value_findings(text, where, true)];
 }
 
-const SENSITIVE = /\b(?:auth(?:n|z|entication|orization|orisation)?|oauth|saml|sso|jwt|permissions?|privileges?|privileged|rbac|acl|iam|bypass(?:es|ed)?|vulnerabilit(?:y|ies)|vulnerable|cve-?\d*|exploit\w*|firewall|security[ _-]groups?|network[ _-](?:polic\w+|rules?|acl)|ingress|egress|allow[ _-]?lists?|csrf|xss|ssrf|signing[ _-]keys?|encryption[ _-]keys?)\b|(?:^|\/)(?:auth|iam|security|permissions?)\//i;
+const SENSITIVE = /\b(?:auth(?:n|z|s|entic\w*|ori[sz]\w*)?|oauth|saml|sso|jwts?|login|logout|passwords?|passwd|credentials?|tokens?|secrets?|sessions?|cookies?|permissions?|privileges?|privileged|rbac|acl|iam|admins?|bypass(?:es|ed)?|vulnerabilit(?:y|ies)|vulnerable|cve|exploit\w*|firewall|security groups?|network (?:polic\w+|rules?|acl)|ingress|egress|allow ?lists?|csrf|xss|ssrf|cors|tls|ssl|certs?|certificates?|encrypt\w*|decrypt\w*|signing keys?|encryption keys?)\b|(?:^|\/)(?:auth|iam|security|permissions?|login)\//i;
+
+/** Identifiers split into words, so `check_auth_token`, `isAuthorized` and `\bauth\b` read as the words they hold. */
+const split_words = (text: string): string => text.replace(/\\[bBdDsSwW]/g, ' ').replace(/\\(.)/g, '$1').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2').replace(/[_-]+/g, ' ');
 
 /** Auth internals, permission checks and bypasses, vulnerability details, IAM/firewall/network rules: a human writes these. */
-export const is_security_sensitive = (text: string): boolean => SENSITIVE.test(text);
+export const is_security_sensitive = (text: string): boolean => SENSITIVE.test(split_words(text));

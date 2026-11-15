@@ -11,6 +11,7 @@ import type { PluginConfig } from '../../utils/config.js';
 import { load_cited_sources } from '../integrate/integrator.js';
 import { build_phrases, type DroppedPhrase, type PhraseInput } from './phrases.js';
 import { scan_text } from './secrets.js';
+import { check_security_gate } from '../security/gate.js';
 import { compile_facet, is_code_line_facet } from '../coverage/facets.js';
 
 export const GAPS_VERSION = 1;
@@ -75,12 +76,13 @@ export function parse_gaps(text: string, context: GapsContext): GapsRead {
   } catch {
     json = undefined;
   }
-  const first_line = text.split(/\r?\n/).find((line) => line.trim() && !line.trim().startsWith('#'))?.trim() ?? '';
+  const is_comment = (line: string): boolean => line.trim().startsWith('#') || line.trim().startsWith('//'); // the eval's sets start with // lines
+  const first_line = text.split(/\r?\n/).find((line) => line.trim() && !is_comment(line))?.trim() ?? '';
   if (json === undefined && first_line.startsWith('{')) {
     // the eval's question-set JSONL: one object per line; a bad line is reported by line number
     items = [];
     text.split(/\r?\n/).forEach((line, i) => {
-      if (!line.trim() || line.trim().startsWith('#')) return;
+      if (!line.trim() || is_comment(line)) return;
       try { items.push(JSON.parse(line)); } catch { read.errors.push(`line ${i + 1}: not valid JSON`); items.push(undefined); }
     });
   } else if (json === undefined) {
@@ -125,33 +127,40 @@ export function parse_gaps(text: string, context: GapsContext): GapsRead {
       if (typeof raw_gap.last_seen !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raw_gap.last_seen)) return void read.errors.push(`gaps[${i}]: "last_seen" must be YYYY-MM-DD`);
       gap.last_seen = raw_gap.last_seen;
     }
+    // the #101 fields: a wrong-typed one is ignored (3.4.1 ignored unknown keys), and reported only on an entry with facets
+    const ignored: string[] = [];
     for (const key of ['id', 'tier'] as const) {
       if (raw_gap[key] === undefined) continue;
-      if (typeof raw_gap[key] !== 'string') return void read.errors.push(`gaps[${i}]: "${key}" must be a string`);
-      gap[key] = raw_gap[key] as string;
+      if (typeof raw_gap[key] === 'string') gap[key] = raw_gap[key] as string;
+      else ignored.push(`"${key}" must be a string`);
     }
     if (raw_gap.blind !== undefined) {
-      if (typeof raw_gap.blind !== 'boolean') return void read.errors.push(`gaps[${i}]: "blind" must be a boolean`);
-      gap.blind = raw_gap.blind;
+      if (typeof raw_gap.blind === 'boolean') gap.blind = raw_gap.blind;
+      else ignored.push('"blind" must be a boolean');
     }
     for (const key of ['facets', 'missing_facets', 'expected'] as const) {
       if (raw_gap[key] === undefined) continue;
-      if (!Array.isArray(raw_gap[key]) || (raw_gap[key] as unknown[]).some((item) => typeof item !== 'string')) return void read.errors.push(`gaps[${i}]: "${key}" must be an array of strings`);
-      gap[key] = raw_gap[key] as string[];
+      if (Array.isArray(raw_gap[key]) && (raw_gap[key] as unknown[]).every((item) => typeof item === 'string')) gap[key] = raw_gap[key] as string[];
+      else ignored.push(`"${key}" must be an array of strings`);
     }
+    const facet_errors: string[] = [];
     if (gap.facets) {
       gap.facets = gap.facets.filter((facet, j) => {
         const { error } = compile_facet(facet);
-        if (error) read.errors.push(`gaps[${i}]: facet ${j} skipped: ${error}`);
+        if (error) facet_errors.push(`facet ${j} skipped: ${error}`);
         return !error;
       });
       if (!gap.facets.length) delete gap.facets;
     }
     if (raw_gap.nearest_doc !== undefined) {
       const near = raw_gap.nearest_doc as Record<string, unknown> | null;
-      if (!near || typeof near.path !== 'string' || (near.facet_coverage !== undefined && typeof near.facet_coverage !== 'string') || (near.rank != null && !Number.isInteger(near.rank))) return void read.errors.push(`gaps[${i}]: "nearest_doc" must be {path, facet_coverage, rank}`);
-      gap.nearest_doc = { path: near.path, facet_coverage: (near.facet_coverage as string | undefined) ?? '', rank: (near.rank as number | null | undefined) ?? null };
+      if (!near || typeof near.path !== 'string' || (near.facet_coverage !== undefined && typeof near.facet_coverage !== 'string') || (near.rank != null && !Number.isInteger(near.rank))) ignored.push('"nearest_doc" must be {path, facet_coverage, rank}');
+      else gap.nearest_doc = { path: near.path, facet_coverage: (near.facet_coverage as string | undefined) ?? '', rank: (near.rank as number | null | undefined) ?? null };
     }
+    if (!gap.facets) {
+      for (const key of ['id', 'tier', 'blind', 'missing_facets', 'nearest_doc', 'expected'] as const) delete gap[key]; // without facets the entry is a 3.4.1 usage-log entry
+    }
+    for (const problem of [...facet_errors, ...(gap.facets ? ignored.map((text) => `${text}; ignored`) : [])]) read.errors.push(`gaps[${i}]: ${problem}`);
     read.gaps.push(gap);
   });
   return read;
@@ -201,13 +210,18 @@ export async function classify_gaps(gaps: Gap[], options: { root: string; docs_r
     const finding = scan_text(gap.query, 'gaps', secrets)[0];
     if (finding) { classification.dropped.push({ query: '[redacted]', reason: 'secret', note: `${finding.rule}, ${finding.masked}` }); continue; }
     if (gap.facets?.length) {
+      // values never: a facet or query holding a host, IP, port, ID or config value is not echoed into the report
+      const find_value = (text: string): { rule: string; masked: string } | undefined => scan_text(text, 'gaps', secrets)[0] ?? check_security_gate(text.replace(/\\(.)/g, '$1'), 'gaps', secrets)[0];
       const clean = gap.facets.filter((facet) => {
-        const finding = scan_text(facet, 'gaps', secrets)[0];
+        const finding = find_value(facet);
         if (finding) classification.dropped.push({ query: '[redacted facet]', reason: 'secret', note: `${finding.rule}, ${finding.masked}` });
         return !finding;
       });
       if (!clean.length) continue;
-      classification.facet_gaps.push({ ...gap, facets: clean });
+      const query_value = check_security_gate(gap.query, 'gaps', secrets)[0];
+      const query = query_value ? `[question ${gap.id ?? `with ${query_value.rule} withheld`}]` : gap.query;
+      if (query_value) classification.dropped.push({ query: '[redacted query]', reason: 'secret', note: `${query_value.rule}, ${query_value.masked}` });
+      classification.facet_gaps.push({ ...gap, query, facets: clean });
       if (clean.some(is_code_line_facet)) classification.warnings.push(`${gap.id ?? gap.query}: a facet looks like a code line; a coverage label built on it may be facet shape, not a missing doc (semantic-memory#101 section 3)`);
       continue;
     }

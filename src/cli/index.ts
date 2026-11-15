@@ -1422,6 +1422,7 @@ program
         const result = await classify_gaps(read.gaps, { root: repo_root, docs_root: docs_root, config });
         const { facet_gaps, warnings, ...classified } = result;
         const coverage = facet_gaps.length ? await (await import('../core/coverage/plan.js')).plan_coverage_misses({ repo_root: repo_root, docs_root: docs_root, config, gaps: facet_gaps, include_blind: options.includeBlind, exclude_files: [relative(repo_root, resolve(process.cwd(), options.gaps)).split('\\').join('/')] }) : undefined;
+        if (coverage) warnings.push(...coverage.warnings);
         const report_file = relative(repo_root, await write_gaps_report(repo_root, render_gaps_report(result, config.reconcile.secrets, undefined, coverage, warnings)));
         const { write_gaps_review, write_coverage_review, find_next_batch, resolve_review_dir } = await import('../core/reconcile/review.js');
         const batch = options.writeReview ? options.batch ?? (await find_next_batch(resolve_review_dir(repo_root))) : undefined;

@@ -10,7 +10,7 @@ import { readFile } from 'fs/promises';
 import { dirname, relative } from 'path';
 import { parse_frontmatter } from '../../utils/frontmatter.js';
 import { list_markdown_files } from '../reconcile/triage.js';
-import { compile_facet, is_code_line_facet, test_facet, type CoverageMiss } from './facets.js';
+import { compile_facet, is_code_line_facet, match_facets, type CoverageMiss } from './facets.js';
 import type { FacetHit, LocateResult } from './locate.js';
 
 /** A doc holding no more than this share of a miss's facets is not "the doc about it" (the eval found 2 of 16 misses with none anywhere, 8 with 2-3 of 3-4). */
@@ -57,13 +57,14 @@ export async function load_doc_texts(docs_root: string): Promise<DocText[]> {
   return docs.sort((a, b) => a.path.localeCompare(b.path));
 }
 
-const holds_facet = (regex: RegExp, text: string): boolean => text.split('\n').some((line) => test_facet(regex, line));
-
 export function resolve_decision(miss: CoverageMiss, located: Pick<LocateResult, 'code' | 'instructions'>, docs: DocText[]): Decision {
   const facets = miss.facets;
   const total = facets.length;
   const compiled = facets.map((facet) => ({ facet, regex: compile_facet(facet).regex })).filter((item): item is { facet: string; regex: RegExp } => !!item.regex);
-  const held_by = (doc: DocText): string[] => compiled.filter(({ regex }) => holds_facet(regex, doc.text)).map(({ facet }) => facet);
+  const held_by = (doc: DocText): string[] => {
+    const matched = match_facets(compiled.map(({ regex }) => regex), doc.text.split('\n'), 1);
+    return compiled.filter((_, i) => matched[i]?.length).map(({ facet }) => facet);
+  };
   const counts = docs.map((doc) => ({ doc, held: held_by(doc) }));
   const ranked = [...counts].sort((a, b) => b.held.length - a.held.length || a.doc.path.localeCompare(b.doc.path));
   const notes: string[] = [];
@@ -76,6 +77,12 @@ export function resolve_decision(miss: CoverageMiss, located: Pick<LocateResult,
   if (eval_doc && miss.nearest_doc?.facet_coverage) {
     const own = `${eval_doc.held.length}/${total}`;
     if (own !== miss.nearest_doc.facet_coverage) notes.push(`the eval counts ${miss.nearest_doc.facet_coverage} in ${eval_doc.doc.path}, hewtd counts ${own}`);
+  }
+  // a doc holding every facet means the fact is written down already, whichever doc the eval ranked nearest
+  const holds_all = total ? ranked.find((item) => item.held.length === total) : undefined;
+  if (eval_doc && holds_all && eval_doc.held.length < total) {
+    notes.push(`the eval's nearest doc ${eval_doc.doc.path} holds ${eval_doc.held.length}/${total}; ${holds_all.doc.path} holds them all`);
+    best = holds_all;
   }
 
   const code_hits = compiled.flatMap(({ facet }) => located.code.get(facet) ?? []);
@@ -94,7 +101,7 @@ export function resolve_decision(miss: CoverageMiss, located: Pick<LocateResult,
   };
 
   if (best && total && best.held.length === total) {
-    const rank = miss.nearest_doc?.rank;
+    const rank = best === eval_doc ? miss.nearest_doc?.rank : undefined;
     notes.push(rank != null ? `every facet is in ${best.doc.path} and it has rank ${rank}: check ranking and phrasing (symptoms, purpose, title), not the doc's content` : `every facet is in ${best.doc.path}: check ranking and phrasing, not the doc's content`);
     return finish({ kind: 'covered', doc: best.doc.path, held: total, missing_facets: [], ...(rank !== undefined && { rank }) });
   }

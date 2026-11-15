@@ -31,11 +31,11 @@ describe('facet inputs (#113)', () => {
     expect(r.errors.some((e) => e.startsWith('gaps[0]') && e.includes('facet 1'))).toBe(true);
     expect(r.gaps[0]!.facets).toEqual(['ok_name']);
   });
-  it('bad types are reported by index and skipped', () => {
-    const r = parse_gaps(JSON.stringify([{ query: 'q', facets: 'x' }, { query: 'q two three', blind: 'yes' }, { query: 'fine one two', nearest_doc: { path: 5 } }]), ctx);
-    expect(r.gaps).toEqual([]);
-    expect(r.errors).toHaveLength(3);
-    expect(r.errors[2]).toContain('gaps[2]');
+  it('bad types: the field is ignored, the entry kept; reported by index only on an entry with facets', () => {
+    const r = parse_gaps(JSON.stringify([{ query: 'q', facets: 'x' }, { query: 'q two three', blind: 'yes' }, { query: 'fine one two', facets: ['ok_name'], nearest_doc: { path: 5 } }]), ctx);
+    expect(r.gaps).toEqual([{ query: 'q', used_doc: null }, { query: 'q two three', used_doc: null }, { query: 'fine one two', used_doc: null, facets: ['ok_name'] }]);
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0]).toContain('gaps[2]');
   });
   it('reads the question-set JSONL ({id, tier, q, facets, expected?})', () => {
     const text = '{"id":"b1","tier":"blind","q":"what is the retry limit","facets":["max_retries"],"expected":["ops/a.md"]}\n\n{"id":"b2","tier":"x","q":"where does the queue live","facets":["queue_name"]}\nnot json\n';

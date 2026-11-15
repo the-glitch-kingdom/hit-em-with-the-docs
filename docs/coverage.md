@@ -26,7 +26,7 @@ Detectors live in `src/core/coverage/surfaces/detectors.ts`; adding one is addin
 | CLI command and flag | argparse, click (multi-line `@click.option(`, `@click.command`, `@<group>.command`, with or without a name), commander style declarations |
 | CI workflow and job | GitHub workflows, GitLab CI jobs |
 | background task | celery tasks, sidekiq workers |
-| constant | module-level numeric constants (a size, timeout or limit) |
+| constant | numeric constants (a size, timeout or limit) at module level or in a class body (Python class bodies; Java/C#/Kotlin/Rust `static`, `final`, `const`; TS `static readonly`), and annotated collection constants (`BOUNDS: List[int] = [...]`, `X: Record<number, number> = {...}`), which are named and never stated |
 | config key | declared config keys |
 
 Generated files, tests, root-level `vendor/`, `third_party/` and `archive/` folders and `node_modules` are skipped (`src/vendor/` and `src/archive/` are the repo's own code and are graded); `coverage.ignore` covers
@@ -145,6 +145,9 @@ get "generate the reference", every stated fact is true at its `file:line`, read
 - **A constant under a path containing `auth` goes to `for_judge`**: judge it; it is not withheld.
 
 ## Known limits
+
+- `explained` means a citing doc has a sentence about the surface, not that every why is there: a nightly job can be `explained` while the reason it keys on idle time is missing. Read it as "not a gap by name", not "fully documented".
+- Collection constants need a type annotation, are never stated, and are skipped when the name looks like a credential or the first line holds a key; unannotated collections and indented constants outside a class (function locals, TS/JS local `const`) are not detected.
 
 - Surfaces come from `git ls-files`: untracked files are not scanned. Outside a git repo, or with nothing committed, the table is all zero and `hewtd coverage` prints a warning (also in `--json` `warnings`).
 - A cron line with `&&` or `;` is named by its first non-`cd` command; later commands in the chain are not separate jobs. A `(...)` subshell is unwrapped. A name shorter than 2 characters or a stop word (`a`, `the`) becomes `scheduled job at file:line` and a surface with such a name is matched only inside a code span.

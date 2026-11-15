@@ -339,6 +339,60 @@
    "outcome": "new",
    "draft": "judge",
    "no_value": true
+  },
+  {
+   "id": "class-constant-python",
+   "kind": "constant",
+   "name": "CHUNK_SIZE",
+   "file": "app/upload_service.py",
+   "line": 5,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "stated",
+   "stated": [
+    {
+     "name": "CHUNK_SIZE",
+     "value": "10 * 1024 * 1024"
+    }
+   ]
+  },
+  {
+   "id": "typed-collection-python",
+   "kind": "constant",
+   "name": "BACKOFF_STEPS",
+   "file": "app/upload_service.py",
+   "line": 6,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "judge",
+   "no_value": true
+  },
+  {
+   "id": "class-constant-ts-static-readonly",
+   "kind": "constant",
+   "name": "PAGE_TTL_SECONDS",
+   "file": "src/Pager.ts",
+   "line": 2,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "stated",
+   "stated": [
+    {
+     "name": "PAGE_TTL_SECONDS",
+     "value": "900"
+    }
+   ]
+  },
+  {
+   "id": "typed-collection-ts-record",
+   "kind": "constant",
+   "name": "TIER_WEIGHTS",
+   "file": "src/Weights.ts",
+   "line": 1,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "judge",
+   "no_value": true
   }
  ],
  "unscored": [

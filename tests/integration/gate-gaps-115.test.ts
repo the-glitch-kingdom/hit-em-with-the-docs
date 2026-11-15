@@ -17,7 +17,7 @@ describe('gate:gaps', () => {
     const run = gate();
     expect(run.stdout).not.toMatch(/^FAIL/m);
     expect(run.status).toBe(0);
-    expect(run.stdout).toMatch(/gate:gaps 20\/20/);
+    expect(run.stdout).toMatch(/gate:gaps 31\/31/);
   }, 130_000);
 
   it('fails when an expectation is wrong (outcome, target, stated fact, source)', () => {
@@ -33,7 +33,7 @@ describe('gate:gaps', () => {
       const run = gate(file);
       expect(run.status).toBe(1);
       for (const id of ['best-coverage', 'topic-absent', 'size', 'numeric']) expect(run.stdout).toMatch(new RegExp(`^FAIL  ${id}`, 'm'));
-      expect(run.stdout).toMatch(/gate:gaps 16\/20/);
+      expect(run.stdout).toMatch(/gate:gaps 27\/31/);
     } finally { rmSync(dir, { recursive: true, force: true }); }
   }, 130_000);
 

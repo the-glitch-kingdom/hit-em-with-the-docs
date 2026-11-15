@@ -18,6 +18,7 @@ never fails `audit --strict` (like `DOCS_UNREVIEWED`).
 | docs citing a file with a credential-shaped value (the doc holds none; the cited code file does, listed in the row; a doc that also holds its own value counts on the row above only) | `secrets.max` 0 | fix the file, or `hewtd secrets --baseline-add <file:line> --reason "<why>"` for a false positive (3.4.1) |
 | archive candidates still active | `archive_candidates.max` 0 | `hewtd archive-candidates` |
 | named flows with an overview doc | `flows` (default `[]`: not applicable) | write a `kind: overview` doc |
+| code surfaces explained in a doc, one row per surface kind (opt-in, 3.7.0) | `code_coverage.min` 0.8, only when `targets.code_coverage` is set | `hewtd coverage --write-review` |
 
 Active docs are the docs triage judges, minus `reports/`, `drafts/`, generated docs and `tier: plan`; `archive/`,
 INDEX and REGISTRY are never listed.

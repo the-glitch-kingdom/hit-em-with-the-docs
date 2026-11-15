@@ -13,3 +13,7 @@
 {"id":"non-code","q":"when is the legacy flag cut off","facets":["legacy_cutoff_days"]}
 {"id":"security","q":"how does the auth check on delete work","facets":["auth_check_attempts"]}
 {"id":"blind","tier":"blind","blind":true,"q":"how many digits are ledger amounts rounded to","facets":["round_digits"]}
+{"id":"nearest-facet","q":"how long are uploads kept before purge","facets":["upload_retention_days","upload_purge_hour"],"nearest_doc":{"path":"ops/uploads.md","facet_coverage":"1/2","rank":1}}
+{"id":"real-check","q":"who may delete a record","facets":["has_permission"]}
+{"id":"code-line","q":"how many times is a call retried","facets":["RETRY_CAP = 7"]}
+{"id":"map-hub","q":"how many items does the drain take per batch","facets":["drain_batch_size"]}

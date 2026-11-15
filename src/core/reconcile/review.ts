@@ -64,6 +64,8 @@ export interface ReviewEntry {
   phrases?: string[];
   /** Coverage drafts (#115): facets hewtd could not state, each with the file:line it was found at. The judge writes a sentence per item from those lines; apply ignores it. */
   for_judge?: { facet: string; at: string[] }[];
+  /** Coverage drafts (#118): the question, a facet or a source path holds a security topic word, but no located line is a security check. Judge carefully: no values, no internals of a check. Apply ignores it. */
+  security_adjacent?: { word: string; where: string };
   lane?: string;
   reasons?: string[];
 }

@@ -1,0 +1,5 @@
+stages: [deploy]
+deploy-staging:
+  stage: deploy
+  script:
+    - ./deploy.sh staging

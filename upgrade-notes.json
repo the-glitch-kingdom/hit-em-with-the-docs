@@ -174,5 +174,18 @@
     ],
     "hook_block": null,
     "template_changes": null
+  },
+  "3.7.0": {
+    "summary": "reconcile --gaps relevance fixes (#118) and the new hewtd coverage command (#117). New optional config: coverage.ignore, and the opt-in advisory targets.code_coverage.",
+    "config_keys": [
+      { "key": "coverage.ignore", "default": [], "note": "hewtd coverage (#117): surfaces held on purpose, each a path prefix or glob, or a surface name, with an optional reason: [\"vendor/**\", {\"name\": \"DEBUG_LIMIT\", \"reason\": \"debug only\"}]. Held surfaces are counted apart, never missed." }
+    ],
+    "changed_defaults": [],
+    "behaviour_changes": [
+      { "issue": 117, "note": "New `hewtd coverage` command and /hit-em-with-the-docs:coverage: grades each declared surface absent, named or explained and drafts gaps through the reconcile --gaps engine. targets.code_coverage ({min, reason}) is opt-in and advisory: set it to add an audit row per surface kind; it is not written by --fix.", "patterns": ["\\bcoverage\\b"] },
+      { "issue": 118, "note": "reconcile --gaps with facets: a citing doc must be relevant to the question, file-map docs count as hubs, only a located security check goes to a human (a topic word alone is drafted and marked security_adjacent), new docs are named after their subject and placed beside nearby docs, and a simple constant is stated from its located line.", "patterns": ["reconcile\\b.*--gaps"] }
+    ],
+    "hook_block": null,
+    "template_changes": null
   }
 }

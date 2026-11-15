@@ -53,6 +53,17 @@ describe('fact-stating drafts (#115)', () => {
     expect(e.patch![0]!.new).not.toContain('drain_queue');
     expect(e.for_judge).toEqual([{ facet: 'drain_queue', at: ['src/upload.ts:2'] }]);
   });
+  it('code-line-shaped facets state the constant from the located line (#118)', async () => {
+    const r = await run([proposal({ missing_facets: ['CHUNK_SIZE = 10 \\* 1024 \\* 1024', 'CACHE_TTL = 3600'], sources: [{ file: 'src/upload.ts', line: 1 }, { file: 'src/ttl.py', line: 1 }], source_files: ['src/upload.ts', 'src/ttl.py'] })]);
+    const text = r.entries[0]!.draft!;
+    expect(text).toContain('`CHUNK_SIZE` is `10 * 1024 * 1024` (`src/upload.ts`, line 1).');
+    expect(text).toContain('`CACHE_TTL` is `3600` (`src/ttl.py`, line 1).');
+    expect(r.entries[0]!.for_judge).toBeUndefined();
+  });
+  it('a code-line facet on a non-stateable line is still not stated (#118)', async () => {
+    const r = await run([proposal({ missing_facets: ['label = "hello"'], sources: [{ file: 'src/upload.ts', line: 4 }], source_files: ['src/upload.ts'] })]);
+    expect(r.entries[0]!.for_judge).toEqual([{ facet: 'label = "hello"', at: ['src/upload.ts:4'] }]);
+  });
   it('a sentence that does not match its facet is not stated: the facet goes to the judge', async () => {
     const r = await run([proposal({ missing_facets: ['24 hours'], sources: [{ file: 'src/upload.ts', line: 3 }], source_files: ['src/upload.ts'] })]);
     // expiry_seconds = 24 * 3600 holds no "24 hours"; the facet does not even match the line
@@ -65,7 +76,7 @@ describe('fact-stating drafts (#115)', () => {
     expect(e.patch).toBeUndefined();
     expect(e.draft).toBeUndefined();
     const n = (await run([proposal({ missing_facets: ['drain_queue'], sources: [{ file: 'src/upload.ts', line: 2 }], source_files: ['src/upload.ts'] })])).entries[0]!;
-    expect(n).toMatchObject({ verdict: null, path: 'ops/how-large-is-an-upload-chunk.md' });
+    expect(n).toMatchObject({ verdict: null, path: 'ops/drain-queue.md' });
     expect(n.draft).toBeUndefined();
   });
   it('config files and values are never stated', async () => {

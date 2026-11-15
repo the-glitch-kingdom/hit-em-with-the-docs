@@ -28,7 +28,7 @@ describe('build_drafts (#113)', () => {
     const r = await run([proposal({ domain: 'ops', sources: [{ file: 'src/queue.ts', line: 1 }, { file: 'src/queue.ts', line: 2 }], source_files: ['src/queue.ts'] })]);
     expect(r.entries).toHaveLength(1);
     const e = r.entries[0]!;
-    expect(e).toMatchObject({ verdict: 'create', path: 'ops/what-is-the-retry-limit.md', content_hash: compute_content_hash(''), sources: ['src/queue.ts'] });
+    expect(e).toMatchObject({ verdict: 'create', path: 'ops/retry-limit.md', content_hash: compute_content_hash(''), sources: ['src/queue.ts'] });
     expect(e.draft).toMatch(/^---\n/);
     expect(e.draft).toContain('`retry_limit` is `5` (`src/queue.ts`, line 1).');
     expect(e.draft).not.toContain('drain_queue'); // line 2 holds no missing facet: not cited
@@ -37,9 +37,9 @@ describe('build_drafts (#113)', () => {
     expect(sentences.every((s) => /line \d+\)/.test(s))).toBe(true);
   });
   it('never overwrites: an existing path gets a numbered sibling', async () => {
-    w('.documentation/ops/what-is-the-retry-limit.md', '# x\n');
+    w('.documentation/ops/retry-limit.md', '# x\n');
     const r = await run([proposal({ domain: 'ops', sources: [{ file: 'src/queue.ts', line: 1 }], source_files: ['src/queue.ts'] })]);
-    expect(r.entries[0]!.path).toBe('ops/what-is-the-retry-limit-2.md');
+    expect(r.entries[0]!.path).toBe('ops/retry-limit-2.md');
   });
   it('extend: a patch entry on the target doc anchored to its last line, with sources', async () => {
     const r = await run([proposal({ kind: 'extend', doc: 'ops/queue.md', sources: [{ file: 'src/queue.ts', line: 1 }], source_files: ['src/queue.ts'] })]);
@@ -65,10 +65,11 @@ describe('build_drafts (#113)', () => {
     expect(mixed.needs_human).toHaveLength(1);
     expect(JSON.stringify(mixed)).not.toContain(token);
   });
-  it('security-sensitive topics are listed for a human with unit names only, never drafted', async () => {
-    const r = await run([proposal({ closes: [{ key: 'q9', query: 'how does the permission check work', count: 1 }], sources: [{ file: 'src/queue.ts', line: 1 }], source_files: ['src/queue.ts'] })]);
-    expect(r.entries).toEqual([]);
-    expect(r.needs_human).toEqual([{ keys: ['q9'], source_files: ['src/queue.ts'], reason: 'security-sensitive: `permission` in the question' }]); // #115: the reason names the matched word
+  it('a security topic word alone no longer withholds the unit (#118: code-based routing); it is drafted and marked security-adjacent', async () => {
+    const r = await run([proposal({ domain: 'ops', closes: [{ key: 'q9', query: 'how does the permission check work', count: 1 }], sources: [{ file: 'src/queue.ts', line: 1 }], source_files: ['src/queue.ts'] })]);
+    expect(r.needs_human).toEqual([]);
+    expect(r.entries).toHaveLength(1);
+    expect(r.entries[0]).toMatchObject({ security_adjacent: { word: 'permission', where: 'the question' } });
   });
   it('blind proposals are skipped unless include_blind; covered, instruction-only and generated-reference are not drafted', async () => {
     const base = { sources: [{ file: 'src/queue.ts', line: 1 }], source_files: ['src/queue.ts'], domain: 'ops' };

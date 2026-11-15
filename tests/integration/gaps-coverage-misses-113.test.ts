@@ -51,7 +51,7 @@ describe('reconcile --gaps with facets (built CLI, labelled fixture)', () => {
     expect(two.closes.map((c: any) => c.key)).toEqual(['two-a', 'two-b']); // two misses, one proposal
     expect(proposal_for(out, 'instruction-only')).toMatchObject({ kind: 'instruction-only', instruction_files: ['CLAUDE.md'] });
     // #115: a credential line is withheld and the miss goes to a human with the reason, instead of being blocked
-    expect(out.coverage.needs_human).toEqual([expect.objectContaining({ keys: ['credential'], reason: expect.stringContaining('src/deploy.ts:1') }), { keys: ['security'], source_files: ['src/auth/guard.ts'], reason: 'security-sensitive: `permission` in the question' }]);
+    expect(out.coverage.needs_human).toEqual([expect.objectContaining({ keys: ['credential'], reason: expect.stringContaining('src/deploy.ts:1') }), { keys: ['security'], source_files: ['src/auth/guard.ts'], reason: 'security check (permission or role check) at src/auth/guard.ts:1: a person must state it' }]);
     expect(out.coverage.blocked).toEqual([]);
     expect(out.coverage.skipped.some((s: any) => s.keys.includes('blind') && /blind/.test(s.reason))).toBe(true);
     expect(proposal_for(out, 'code-line').flags).toContain('facet-shape');
@@ -65,9 +65,9 @@ describe('reconcile --gaps with facets (built CLI, labelled fixture)', () => {
     const review_path = join(root, out.coverage_review);
     const review = readFileSync(review_path, 'utf-8');
     expect(review).not.toMatch(/- \[x\] accept/);
-    // #115: only a simple constant is stated: report_batch_size (two) and purge_interval (missing-detail); functions, strings and the code-line facet wait for the judge
-    expect((review.match(/"verdict": "create"/g) ?? []).length).toBe(1);
-    expect((review.match(/"verdict": null/g) ?? []).length).toBe(2); // absent, code-line
+    // #115: only a simple constant is stated: report_batch_size (two) and purge_interval (missing-detail); the code-line facet is stated from its located line too (#118); functions and strings wait for the judge
+    expect((review.match(/"verdict": "create"/g) ?? []).length).toBe(2); // + eviction_ttl (#118: a code-line-shaped facet)
+    expect((review.match(/"verdict": null/g) ?? []).length).toBe(1); // absent
     expect(review).toContain('"verdict": "verify"');
     expect(g('status', '--porcelain', '-uno')).toBe('');
     expect(existsSync(join(root, '.documentation/features'))).toBe(false);
@@ -79,14 +79,14 @@ describe('reconcile --gaps with facets (built CLI, labelled fixture)', () => {
     const cache = readFileSync(join(root, '.documentation/ops/cache.md'), 'utf-8');
     expect(cache).toContain('`purge_interval` is `900` (`src/cache/store.ts`, line 2).');
     expect(existsSync(join(root, '.documentation/features/what-does-the-csv-export-job-do.md'))).toBe(false); // a null-verdict entry waits for the judge: ticked or not, apply leaves it
-    expect(readFileSync(join(root, '.documentation/ops/when-does-the-nightly-report-run.md'), 'utf-8')).toContain('`report_batch_size` is `200` (`src/jobs/scheduler.ts`, line 2).');
+    expect(readFileSync(join(root, '.documentation/ops/nightly-report-job.md'), 'utf-8')).toContain('`report_batch_size` is `200` (`src/jobs/scheduler.ts`, line 2).');
     // never overwrites: replaying the same review is a no-op, and a fresh create on a taken path errors
     const head = g('rev-parse', 'HEAD');
     hewtd(['reconcile', '--apply', review_path]);
     expect(g('rev-parse', 'HEAD')).toBe(head);
     const before = readFileSync(join(root, '.documentation/ops/cache.md'), 'utf-8');
     const clash = join(root, '.hewtd/reconcile/review-9-coverage.md');
-    writeFileSync(clash, review.replaceAll('- [ ] accept', '- [x] accept').replaceAll('ops/when-does-the-nightly-report-run.md', 'ops/cache.md').replace(/"path": "ops\/cache.md",\n  "content_hash": "[0-9a-f]+",\n  "verdict": "verify"/, '"path": "ops/skip-me.md",\n  "content_hash": "x",\n  "verdict": null'));
+    writeFileSync(clash, review.replaceAll('- [ ] accept', '- [x] accept').replaceAll('ops/nightly-report-job.md', 'ops/cache.md').replace(/"path": "ops\/cache.md",\n  "content_hash": "[0-9a-f]+",\n  "verdict": "verify"/, '"path": "ops/skip-me.md",\n  "content_hash": "x",\n  "verdict": null'));
     const refused = hewtd(['reconcile', '--apply', clash]);
     expect(refused.stdout + refused.stderr).toMatch(/already exists \(never overwrites\)/);
     expect(readFileSync(join(root, '.documentation/ops/cache.md'), 'utf-8')).toBe(before);
@@ -141,16 +141,16 @@ describe('reconcile --gaps with facets (built CLI, labelled fixture)', () => {
     const applied_in = (file: string, text: string) => { writeFileSync(file, accept(text)); const r = hewtd(['reconcile', '--apply', file]); return r.stdout + r.stderr; };
     it('refuses a create path outside the docs root and a non-.md path', () => {
       const { file, text } = only_absent();
-      expect(applied_in(file, text.replaceAll('ops/when-does-the-nightly-report-run.md', '../escaped.md'))).toMatch(/inside the docs root|error/i);
+      expect(applied_in(file, text.replaceAll('ops/nightly-report-job.md', '../escaped.md'))).toMatch(/inside the docs root|error/i);
       expect(existsSync(join(root, 'escaped.md'))).toBe(false);
-      expect(applied_in(file, text.replaceAll('ops/when-does-the-nightly-report-run.md', 'ops/x.txt'))).toMatch(/\.md path|error/i);
+      expect(applied_in(file, text.replaceAll('ops/nightly-report-job.md', 'ops/x.txt'))).toMatch(/\.md path|error/i);
       expect(existsSync(join(root, '.documentation/ops/x.txt'))).toBe(false);
     });
     it('an edited draft that trips the gate is refused at apply', () => {
       const { file, text } = only_absent();
       const out = applied_in(file, text.replace('## What the code defines', 'Connect to db.internal.example.com on port 5432.\\n\\n## What the code defines'));
       expect(out).toMatch(/security gate/);
-      expect(existsSync(join(root, '.documentation/ops/when-does-the-nightly-report-run.md'))).toBe(false);
+      expect(existsSync(join(root, '.documentation/ops/nightly-report-job.md'))).toBe(false);
     });
     it('a doc cited by a phrases entry and a coverage entry applies cleanly in two separate runs', () => {
       writeFileSync(join(root, 'gaps.json'), JSON.stringify({ version: 1, source: 'f', gaps: [gaps[0], { query: 'how often is the cache purged', used_doc: '.documentation/ops/cache.md' }, { query: 'how often is the cache purged now', used_doc: '.documentation/ops/cache.md' }] }));

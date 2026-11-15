@@ -334,9 +334,22 @@ const targets_object_schema = z
     flows: z.array(z.string().min(1)).catch([]),
     flows_reason: z.string().catch(DEFAULT_TARGETS.flows_reason),
     held: z.array(z.object({ path: z.string().min(1), reason: z.string().min(1) })).catch([]),
+    /** Opt-in, advisory (#117): share of declared code surfaces (per kind) a doc explains. Absent = no audit row. */
+    code_coverage: z.object({ min: z.number().min(0).max(1).catch(0.8), reason: z.string().catch('declared code surfaces are explained in a doc') }).optional().catch(undefined),
   });
 const targets_config_schema = targets_object_schema.catch(() => targets_object_schema.parse({})).default({});
 export type TargetsConfig = z.infer<typeof targets_config_schema>;
+
+/** Coverage (#117): `ignore` holds surfaces on purpose (a path prefix or glob, or a surface name), each with an optional reason. Lenient: a bad entry is dropped. */
+const ignore_entry_schema = z.union([
+  z.string().min(1).transform((path) => ({ path })),
+  z.object({ path: z.string().min(1).optional(), name: z.string().min(1).optional(), reason: z.string().optional() }).refine((entry) => entry.path || entry.name),
+]);
+export type CoverageIgnore = { path?: string; name?: string; reason?: string };
+const coverage_config_schema = z
+  .object({ ignore: z.array(z.unknown()).transform((items) => items.flatMap((item) => { const parsed = ignore_entry_schema.safeParse(item); return parsed.success ? [parsed.data as CoverageIgnore] : []; })).catch([] as CoverageIgnore[]) })
+  .catch({ ignore: [] as CoverageIgnore[] })
+  .default({});
 
 export const plugin_config_schema = z
   .object({
@@ -355,6 +368,8 @@ export const plugin_config_schema = z
     retrieval: retrieval_config_schema,
     overview: overview_config_schema,
     reconcile: reconcile_config_schema,
+    /** `hewtd coverage` (#117). */
+    coverage: coverage_config_schema,
     /** Cold generations kept by `reconcile --promote` (#97), listed for indexers; written by hewtd, not by hand. */
     cold_storage: lenient_cold_storage,
     integrate: integrate_config_schema,

@@ -21,7 +21,8 @@ describe('resolve_decision (#113)', () => {
     expect(d.source_files).toEqual(['src/jobs/a.ts', 'src/jobs/b.ts']);
   });
   it('extend by graph signal: a doc already citing the located source is the home, though it holds no facet', () => {
-    const d = resolve_decision(miss(['purge_interval', 'other_thing']), { code: code(['purge_interval', 'src/cache.ts', 9]), instructions: new Map() }, docs);
+    // #118: a citing doc with no facet must also be about the question (here: the cache, refresh and token, two or more distinctive terms (#118)), so the question names it
+    const d = resolve_decision(miss(['purge_interval', 'other_thing'], { query: 'how often does the cache refresh token purge run' }), { code: code(['purge_interval', 'src/cache.ts', 9]), instructions: new Map() }, docs);
     expect(d).toMatchObject({ kind: 'extend', doc: 'ops/cache.md', held: 0 });
     expect(d.cited_by).toEqual(['ops/cache.md']);
   });

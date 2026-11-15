@@ -1,0 +1,7 @@
+groups:
+  - name: app
+    rules:
+      - alert: HighErrorRate
+        expr: rate(errors[5m]) > 0.05
+      - alert: QueueBacklog
+        expr: queue_depth > 1000

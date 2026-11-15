@@ -11,6 +11,7 @@ import { basename, join, relative, resolve } from 'path';
 import { parse_frontmatter } from '../../utils/frontmatter.js';
 import type { PluginConfig } from '../../utils/config.js';
 import { is_weak_purpose } from './retrieval.js';
+import { list_graded_surfaces } from '../coverage/coverage.js';
 import { find_archive_candidates } from '../archive/candidates.js';
 import { compute_content_hash, is_reviewed, load_ledger } from '../reconcile/ledger.js';
 import { find_unreviewed_docs, get_verified_day, list_markdown_files, triage_docs } from '../reconcile/triage.js';
@@ -108,6 +109,19 @@ export async function compute_targets(options: { repo_root: string; docs_root: s
     const overviews = docs.filter((doc) => doc.data.kind === 'overview').map((doc) => normalize([doc.data.title, basename(doc.doc_path, '.md'), ...(Array.isArray(doc.data.tags) ? doc.data.tags : [])].filter((part): part is string => typeof part === 'string').join(' ')));
     const missing = targets.flows.filter((flow) => !overviews.some((overview) => overview.includes(normalize(flow))));
     rows.push({ id: 'flows', label: 'named flows with an overview doc', value: targets.flows.length - missing.length, total: targets.flows.length, target: 'all', met: missing.length === 0, held: 0, ...(missing.length && { next: 'write a `kind: overview` doc for each missing flow (templates/overview.template.md)', missing }) });
+  }
+  if (targets.code_coverage) {
+    // opt-in and advisory (#117): per surface kind, how many declared surfaces a doc explains; named is not covered; ignored ones are held
+    const { graded, held: held_surfaces } = await list_graded_surfaces({ repo_root, docs_root, config });
+    const { min } = targets.code_coverage;
+    const kinds = [...new Set([...graded, ...held_surfaces].map((surface) => surface.kind))].sort();
+    for (const kind of kinds) {
+      const of_kind = graded.filter((surface) => surface.kind === kind);
+      const explained = of_kind.filter((surface) => surface.grade === 'explained').length;
+      const met = of_kind.length === 0 || explained / of_kind.length >= min;
+      const missing = of_kind.filter((surface) => surface.grade !== 'explained').map((surface) => surface.file).filter((file, i, all) => all.indexOf(file) === i);
+      rows.push({ id: `code_coverage_${kind.replace(/-/g, '_')}`, label: `${kind} surfaces explained in a doc`, value: explained, total: of_kind.length, target: `>= ${Math.round(min * 100)}%`, met, held: held_surfaces.filter((surface) => surface.kind === kind).length, ...(!met && { next: 'hewtd coverage --write-review', files: sample(missing) }) });
+    }
   }
   return { rows, note: TARGETS_NOTE };
 }

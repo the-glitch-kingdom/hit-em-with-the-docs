@@ -22,6 +22,23 @@ const { compile_facet, is_weak_facet } = await import(pathToFileURL(join(root_di
 const { load_review } = await import(pathToFileURL(join(root_dir, 'dist/core/reconcile/review.js')).href);
 const expected = JSON.parse(readFileSync(expected_file, 'utf-8'));
 
+// a malformed expectation must fail the gate, not pass quietly: validate every case before scoring
+const KNOWN_KEYS = new Set(['blind', 'reference', 'kind', 'needs_human', 'draft', 'security_adjacent', 'domain', 'id', 'path', 'keys', 'skipped', 'doc', 'stated', 'sources', 'judge']);
+const malformed = [];
+if (!Array.isArray(expected.cases) || !expected.cases.length) malformed.push('cases must be a non-empty list');
+for (const [position, spec] of (Array.isArray(expected.cases) ? expected.cases : []).entries()) {
+  const label = typeof spec?.id === 'string' && spec.id ? spec.id : `#${position}`;
+  const bad = (text) => malformed.push(`${label}: ${text}`);
+  if (!spec || typeof spec !== 'object') { bad('not an object'); continue; }
+  for (const key of Object.keys(spec)) if (!KNOWN_KEYS.has(key)) bad(`unknown key "${key}"`);
+  if (typeof spec.id !== 'string' || !spec.id) bad('id must be a non-empty string');
+  if (spec.draft === undefined) bad('draft is required');
+  if (spec.draft !== undefined && !['stated', 'judge', 'none'].includes(spec.draft)) bad(`draft "${spec.draft}" is not one of stated, judge, none`);
+  if (spec.draft === 'stated' && (!Array.isArray(spec.stated) || !spec.stated.length)) bad('draft "stated" needs a non-empty stated list');
+  if (spec.draft === 'judge' && (!Array.isArray(spec.judge) || !spec.judge.length)) bad('draft "judge" needs a non-empty judge list');
+}
+if (malformed.length) { console.error(`gate:gaps: malformed expectation\n  ${malformed.join('\n  ')}`); process.exit(2); }
+
 // the fixture's one credential line is built here, so no secret-shaped literal is committed
 const secret_value = 'AK' + 'IA' + 'Q7ZR3LMP9XVB2NCK';
 const temp = mkdtempSync(join(tmpdir(), 'gate-gaps-'));
@@ -78,7 +95,7 @@ try {
       for (const facet of spec.stated ?? []) {
         const regex = compile_facet(facet).regex;
         const found = mine.filter((entry) => entry.verdict !== null).flatMap((entry) => entry_text(entry).split('\n')).map((line) => STATED.exec(line)).filter(Boolean)
-          .find((match) => regex.test(match[0]) && regex.test(repo_lines(match[3])[Number(match[4]) - 1] ?? ''));
+          .find((match) => (regex.test(match[0]) || regex.test(`${match[1]} = ${match[2]}`)) && regex.test(repo_lines(match[3])[Number(match[4]) - 1] ?? ''));
         if (!found) problems.push(`fact "${facet}" is not stated with file:line`);
       }
       for (const entry of mine) for (const file of entry.sources ?? []) if (!facets.some((facet) => !is_weak_facet(facet) && holds(file, facet))) problems.push(`draft source ${file} holds no distinctive facet`);
@@ -88,6 +105,8 @@ try {
       for (const facet of spec.judge ?? []) if (!listed.includes(facet)) problems.push(`fact "${facet}" is not listed for the judge`);
       if (mine.some((entry) => entry.verdict !== null)) problems.push('a judge-pending case was written as a verdict');
     }
+    if (spec.path && !mine.some((entry) => entry.path === spec.path)) problems.push(`new doc path ${mine.map((entry) => entry.path).join(',') || 'none'}, expected ${spec.path}`);
+    if (spec.security_adjacent && !main.out.coverage.security_adjacent?.some((found) => found.keys.includes(keys[0]) && found.word === spec.security_adjacent)) problems.push(`not marked security-adjacent by "${spec.security_adjacent}"`);
     const human = main.out.coverage.needs_human.find((found) => found.keys.includes(keys[0]));
     if (spec.needs_human) { if (!human) problems.push('not listed for a human'); else if (!human.reason?.includes(spec.needs_human)) problems.push(`reason "${human.reason}" lacks "${spec.needs_human}"`); } else if (human) problems.push(`listed for a human: ${human.reason}`);
     if (spec.skipped && !main.out.coverage.skipped.some((found) => found.keys.includes(keys[0]) && found.reason.includes(spec.skipped))) problems.push(`not skipped with "${spec.skipped}"`);
@@ -98,6 +117,10 @@ try {
     }
     rows.push({ id: spec.id, problems });
   }
+
+  // every gap in the fixture needs a case: deleting a case must fail
+  const expected_keys = new Set(expected.cases.flatMap((spec) => spec.keys ?? [spec.id]));
+  rows.push({ id: 'every fixture gap has a case', problems: gaps.filter((gap) => !expected_keys.has(gap.id)).map((gap) => `no case for gap ${gap.id}`) });
 
   // no value from a credential line, anywhere the gate writes
   const outputs = [main.stdout, plain.stdout, ...[main.out.report, plain.out.report, main.out.coverage_review].filter(Boolean).map((file) => readFileSync(join(repo, file), 'utf-8')), ...readdirSync(join(repo, '.hewtd'), { recursive: true }).filter((file) => /\.(md|json|jsonl)$/.test(file)).map((file) => { try { return readFileSync(join(repo, '.hewtd', file), 'utf-8'); } catch { return ''; } })];

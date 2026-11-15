@@ -7,6 +7,7 @@
  * Deterministic: same inputs, same output (ties break on doc path).
  */
 import { readFile } from 'fs/promises';
+import { existsSync } from 'fs';
 import { dirname, relative } from 'path';
 import { parse_frontmatter } from '../../utils/frontmatter.js';
 import { list_markdown_files } from '../reconcile/triage.js';
@@ -20,8 +21,28 @@ export const SPECIFIC_MAX_SOURCES = 5;
 /** A doc citing more files than this is a hub: an index in all but name. */
 export const HUB_MIN_SOURCES = 15;
 
+/** A doc whose body has at least this many path lines, making up at least PATH_LIST_SHARE of its non-empty lines, is a file map (#118). */
+const PATH_LIST_MIN_LINES = 5;
+const PATH_LIST_SHARE = 0.5;
+/** A citing doc with no facet qualifies as relevant when its title, purpose or path share a distinctive question term, or its body shares this many (and at least half of all of them) (#118). */
+const RELEVANT_BODY_TERMS = 2;
+const FILE_EXTENSION = /\.(?:ts|tsx|js|jsx|mjs|cjs|py|rb|go|rs|java|kt|cs|php|sh|ya?ml|json|toml|sql|tf|conf|ini|env|md|cron)$/i;
+const URL_TEXT = /\b[a-z][a-z0-9+.-]*:\/\/\S+/gi;
+/** A brand written with a dot (`Node.js`, `Next.js`) is a word, not a file. */
+const BRAND_WORD = /^[A-Z][a-z]+\.(?:js|ts)$/;
+/** A path token has a file extension, or two or more slashes, or sits in backticks or link syntax; a URL, a folder-first word pair (`api/gateway`) or a brand (`Node.js`) in prose is not one (#118). */
+export function has_path_token(line: string): boolean {
+  const text = line.replace(URL_TEXT, ' ');
+  const marked = [...text.matchAll(/`([^`]+)`|\]\(([^)]+)\)/g)].map((found) => found[1] ?? found[2]!);
+  if (marked.some((token) => /[\w.@-]\/[\w.@-]/.test(token) || FILE_EXTENSION.test(token))) return true;
+  return (text.match(/[\w.@-]+(?:\/[\w.@-]+)+|\b[\w-]+\.[a-z]+\b/gi) ?? []).some((token) => (token.split('/').length > 2 || FILE_EXTENSION.test(token)) && !BRAND_WORD.test(token));
+}
+const LIST_LINE = /^\s*(?:[-*+]|\d+[.)]|\|)\s*/;
+
 const HUB_NAME = /^(index|readme|overview)/i;
 const HUB_TIERS = new Set(['overview', 'reference', 'index', 'incident-narrative', 'incident-facts']);
+/** Institutional knowledge: never extended from code (a covered outcome still counts it). */
+const is_knowledge_base = (doc: DocText): boolean => /(^|\/)knowledge-base\//.test(doc.path);
 const hub_cache = new WeakMap<DocText, boolean>();
 /** Index, overview, reference, generated, archive, incident or very broad docs: last-resort targets, never merge points (#115). */
 export function is_hub_doc(doc: DocText): boolean {
@@ -33,11 +54,53 @@ export function is_hub_doc(doc: DocText): boolean {
     const { data } = parse_frontmatter<Record<string, unknown>>(doc.text);
     hub = data.generated === true || [data.tier, data.kind].some((value) => typeof value === 'string' && HUB_TIERS.has(value));
   }
+  if (!hub) hub = is_path_list(parse_frontmatter<Record<string, unknown>>(doc.text).content);
   hub_cache.set(doc, hub);
   return hub;
 }
 
-export interface DocText { path: string; text: string; sources: string[] }
+/** A body that is mostly a list of paths (a file map or inventory) names code without explaining any of it. */
+function is_path_list(body: string): boolean {
+  const lines = body.split('\n').filter((line) => line.trim() && !/^\s*#/.test(line));
+  const path_lines = lines.filter((line) => LIST_LINE.test(line) && has_path_token(line)).length;
+  return path_lines >= PATH_LIST_MIN_LINES && path_lines / lines.length >= PATH_LIST_SHARE;
+}
+
+/** A `sources` entry that says which lines it cites; absent `lines` means the whole file. */
+export interface SourceRef { path: string; lines?: [number, number][] }
+export interface DocText { path: string; text: string; sources: string[]; /** Only for entries that carry line granularity. */ source_refs?: SourceRef[] }
+
+const STOP_TERMS = new Set('a an and are as at be by can do does for from how i if in is it its of on or so that the their there these this to was what when where which who why will with work works used use uses using value values code file files data system service function method class'.split(' '));
+/** Distinctive words of a text: identifiers split, lower-cased, stop and generic words dropped, a plural `s` folded. */
+function get_distinctive_terms(text: string): Set<string> {
+  const words = text.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().match(/[a-z][a-z0-9]{2,}/g) ?? [];
+  return new Set(words.map((word) => (word.length > 4 && word.endsWith('s') ? word.slice(0, -1) : word)).filter((word) => !STOP_TERMS.has(word)));
+}
+/** Common nouns that name half the codebase: they never make a doc relevant on their own (#118). */
+const GENERIC_TERMS = new Set('email mail schedule job task config configuration limit service api data user file page request response error log name type key list time date setting option feature app server client default rate number count message event queue worker process handler helper util info status result check test run set get add update create delete send provider'.split(' '));
+/** Terms that are identifier-like in the raw text (an underscore, camelCase or a digit): one shared is enough. */
+function get_identifier_terms(text: string): Set<string> {
+  const tokens = (text.match(/[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+|[a-z]+[A-Z][A-Za-z0-9]*|[A-Za-z]+\d[A-Za-z0-9]*/g) ?? []);
+  return get_distinctive_terms(tokens.join(' '));
+}
+function is_relevant_to_query(doc: DocText, query_terms: Set<string>, strong_terms: Set<string>): boolean {
+  if (!query_terms.size) return false;
+  const { data, content } = parse_frontmatter<Record<string, unknown>>(doc.text);
+  const label = get_distinctive_terms([doc.path.replace(/\.md$/, ''), data.title, data.purpose].filter((part): part is string => typeof part === 'string').join(' '));
+  const shared_label = [...query_terms].filter((term) => label.has(term));
+  if (shared_label.some((term) => strong_terms.has(term)) || shared_label.filter((term) => !GENERIC_TERMS.has(term)).length >= 2) return true;
+  const body = get_distinctive_terms(content);
+  const shared = [...query_terms].filter((term) => body.has(term));
+  return shared.filter((term) => !GENERIC_TERMS.has(term)).length >= RELEVANT_BODY_TERMS && shared.length / query_terms.size >= 0.5;
+}
+/** A citation with line data counts for a file only when it covers one of the facet lines; without line data the whole file counts. */
+function covers_hits(doc: DocText, located: FacetHit[]): boolean {
+  return located.some((found) => {
+    const citations = (doc.source_refs ?? []).filter((citation) => citation.path === found.file);
+    if (!citations.length) return doc.sources.includes(found.file) || doc.text.includes(found.file);
+    return citations.some((citation) => !citation.lines || citation.lines.some(([from, to]) => found.line >= from && found.line <= to));
+  });
+}
 export type DecisionKind = 'extend' | 'new' | 'covered' | 'instruction-only';
 export interface Decision {
   key: string;
@@ -58,6 +121,8 @@ export interface Decision {
   cited_by: string[];
   /** new: folder where the docs about nearby code live. */
   domain?: string;
+  /** new: deepest folder common to the docs about nearby code (the domain or a subfolder of it). */
+  folder?: string;
   rank?: number | null;
   instruction_files?: string[];
   flags: string[];
@@ -69,15 +134,34 @@ export interface Decision {
 
 export async function load_doc_texts(docs_root: string): Promise<DocText[]> {
   const docs: DocText[] = [];
+  if (!existsSync(docs_root)) return docs; // a repo with no docs yet: every surface is absent
   for (const abs_path of await list_markdown_files(docs_root)) {
     const text = await readFile(abs_path, 'utf-8');
     const { data } = parse_frontmatter<Record<string, unknown>>(text);
     if (data.generated === true) continue;
     const listed = Array.isArray(data.sources) ? data.sources : [];
     const sources = listed.map((entry) => (typeof entry === 'string' ? entry : (entry as { path?: unknown } | null)?.path)).filter((path_text): path_text is string => typeof path_text === 'string');
-    docs.push({ path: relative(docs_root, abs_path).split('\\').join('/'), text, sources });
+    const source_refs = listed.flatMap((entry): SourceRef[] => {
+      const { path: path_text, lines } = (entry && typeof entry === 'object' ? entry : {}) as { path?: unknown; lines?: unknown };
+      if (typeof path_text !== 'string' || lines === undefined) return [];
+      const ranges = (Array.isArray(lines) ? lines : [lines]).map((item) => /^(\d+)(?:\s*-\s*(\d+))?$/.exec(String(item).trim())).filter((found): found is RegExpExecArray => !!found).map((found): [number, number] => [Number(found[1]), Number(found[2] ?? found[1])]);
+      return ranges.length ? [{ path: path_text, lines: ranges }] : [];
+    });
+    docs.push({ path: relative(docs_root, abs_path).split('\\').join('/'), text, sources, ...(source_refs.length && { source_refs }) });
   }
   return docs.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+/** The deepest folder every given folder sits in (posix, docs-relative). */
+function find_common_folder(folders: string[]): string {
+  const common = folders[0]!.split('/');
+  for (const folder of folders.slice(1)) {
+    const parts = folder.split('/');
+    let keep = 0;
+    while (keep < common.length && common[keep] === parts[keep]) keep++;
+    common.length = keep;
+  }
+  return common.join('/');
 }
 
 export function resolve_decision(miss: CoverageMiss, located: Pick<LocateResult, 'code' | 'instructions' | 'weak'>, docs: DocText[]): Decision {
@@ -124,7 +208,8 @@ export function resolve_decision(miss: CoverageMiss, located: Pick<LocateResult,
     return { ...base, ...decision, sources, source_files: [...new Set(sources.map((found) => found.file))].sort(), cited_by };
   };
 
-  const best = holds_all;
+  // a named surface (a doc names it, none explains it) is never covered: the doc that names it is extended with what it does
+  const best = miss.named ? undefined : holds_all;
   if (best && total) {
     const rank = best === eval_doc ? miss.nearest_doc?.rank : undefined;
     notes.push(rank != null ? `every facet is in ${best.doc.path} and it has rank ${rank}: check ranking and phrasing (symptoms, purpose, title), not the doc's content` : `every facet is in ${best.doc.path}: check ranking and phrasing, not the doc's content`);
@@ -142,23 +227,40 @@ export function resolve_decision(miss: CoverageMiss, located: Pick<LocateResult,
   // 1. the doc holding most facets (>= half), a non-hub first; the eval's nearest doc, then the closer and narrower doc, win ties
   const near_dirs = new Set(source_files.map((file) => dirname(file)));
   const closeness = (doc: DocText): number => (doc.sources.some((source) => near_dirs.has(dirname(source))) ? 0 : 1);
+  const names_source = (doc: DocText): number => (miss.named && cited_by.includes(doc.path) ? 0 : 1);
   const order = (a: (typeof counts)[number], b: (typeof counts)[number]): number =>
-    b.held.length - a.held.length || Number(b.doc.path === eval_path) - Number(a.doc.path === eval_path) || closeness(a.doc) - closeness(b.doc) || a.doc.sources.length - b.doc.sources.length || a.doc.path.localeCompare(b.doc.path);
-  const enough = counts.filter((item) => total && item.held.length / total >= EXTEND_MIN_SHARE).sort(order);
+    b.held.length - a.held.length || Number(b.doc.path === eval_path) - Number(a.doc.path === eval_path) || names_source(a.doc) - names_source(b.doc) || closeness(a.doc) - closeness(b.doc) || a.doc.sources.length - b.doc.sources.length || a.doc.path.localeCompare(b.doc.path);
+  const enough = counts.filter((item) => !is_knowledge_base(item.doc) && total && item.held.length / total >= EXTEND_MIN_SHARE).sort(order);
   const pick = enough.find((item) => !is_hub_doc(item.doc)) ?? enough[0];
-  if (pick) return finish({ kind: 'extend', doc: pick.doc.path, held: pick.held.length, missing_facets: facets.filter((facet) => !pick.held.includes(facet)) });
-  // 2. else the most specific non-hub doc already citing the located code
-  const citing = counts.filter(({ doc }) => cited_by.includes(doc.path) && !is_hub_doc(doc) && doc.sources.length <= SPECIFIC_MAX_SOURCES).sort(order)[0];
+  if (pick) return finish({ kind: 'extend', doc: pick.doc.path, held: pick.held.length, missing_facets: miss.named ? facets : facets.filter((facet) => !pick.held.includes(facet)) });
+  // 2. else the most specific non-hub doc that cites the located code (its cited lines, when it says which) and is about the question (#118):
+  //    it holds a facet, or shares distinctive question terms; the eval's nearest doc holding a facet counts without citing
+  const query_terms = get_distinctive_terms(miss.query);
+  const strong_terms = new Set([...get_identifier_terms(miss.query), ...get_distinctive_terms(facets.join(' '))]);
+  // the eval's nearest doc is preferred only when it holds a facet that names code (not weak, located or identifier-like) and is cited or relevant
+  const is_distinctive = (facet: string): boolean => !is_weak(facet) && (!!located.code.get(facet)?.length || /[A-Za-z0-9]_[A-Za-z0-9]|[a-z][A-Z]|\d/.test(facet.replace(/\\./g, '')));
+  const qualifies = ({ doc, held }: (typeof counts)[number]): { ok: boolean; preferred: boolean } => {
+    if (is_hub_doc(doc) || is_knowledge_base(doc)) return { ok: false, preferred: false };
+    const cites = cited_by.includes(doc.path) && doc.sources.length <= SPECIFIC_MAX_SOURCES && covers_hits(doc, code_hits);
+    const relevant = is_relevant_to_query(doc, query_terms, strong_terms);
+    const preferred = doc.path === eval_path && held.some(is_distinctive) && (cites || relevant);
+    return { ok: (cites && (held.length > 0 || relevant)) || preferred, preferred };
+  };
+  const citing = counts.map((item) => ({ item, ...qualifies(item) })).filter(({ ok }) => ok)
+    .sort((a, b) => Number(b.preferred) - Number(a.preferred) || b.item.held.length - a.item.held.length || order(a.item, b.item))[0]?.item;
   if (citing) return finish({ kind: 'extend', doc: citing.doc.path, held: citing.held.length, missing_facets: facets.filter((facet) => !citing.held.includes(facet)) });
 
   // new doc: the folder where the docs about nearby code live
-  const votes = new Map<string, number>();
+  const votes = new Map<string, DocText[]>();
   for (const doc of docs) {
-    const folder = doc.path.includes('/') ? doc.path.split('/')[0]! : undefined;
-    if (!folder || folder === 'archive' || is_hub_doc(doc)) continue; // an incident or overview is no home for a new doc
+    const domain_dir = doc.path.includes('/') ? doc.path.split('/')[0]! : undefined;
+    if (!domain_dir || domain_dir === 'archive' || domain_dir === 'knowledge-base' || is_hub_doc(doc)) continue; // an incident, overview or knowledge-base fact is no home for a new doc (#118)
     const near = doc.sources.some((source) => source_files.some((file) => dirname(file) === dirname(source)));
-    if (near) votes.set(folder, (votes.get(folder) ?? 0) + 1);
+    if (near) votes.set(domain_dir, [...(votes.get(domain_dir) ?? []), doc]);
   }
-  const domain = [...votes].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
-  return finish({ kind: 'new', held: ranked[0]?.held.length ?? 0, missing_facets: facets, ...(domain && { domain }) });
+  const winner = [...votes].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))[0];
+  const domain = winner?.[0];
+  // the deepest folder every voting doc of the winning domain shares
+  const folder = winner && find_common_folder(winner[1].map((doc) => dirname(doc.path)));
+  return finish({ kind: 'new', held: ranked[0]?.held.length ?? 0, missing_facets: facets, ...(domain && { domain }), ...(folder && { folder }) });
 }

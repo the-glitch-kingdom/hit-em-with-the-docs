@@ -1,5 +1,5 @@
 {
- "note": "13 failure shapes of #115 (14 rows: hub merge is two misses). keys defaults to [id]. draft: stated (facts with file:line) | judge | none.",
+ "note": "18 cases: the 13 failure shapes of #115 (14 rows) plus the #118 shapes. keys defaults to [id]. draft: stated (facts with file:line) | judge | none. path: the new doc's path. security_adjacent: the topic word marking the unit.",
  "cases": [
   {
    "id": "best-coverage",
@@ -20,7 +20,8 @@
    "draft": "stated",
    "stated": [
     "slug_max_length"
-   ]
+   ],
+   "path": "utils/slug-max-length.md"
   },
   {
    "id": "topic-absent",
@@ -38,7 +39,8 @@
    "draft": "stated",
    "stated": [
     "invoice_grace_days"
-   ]
+   ],
+   "path": "billing/invoice-grace-days.md"
   },
   {
    "id": "hub-b",
@@ -126,8 +128,9 @@
   {
    "id": "security",
    "kind": "new",
-   "draft": "none",
-   "needs_human": "security-sensitive:"
+   "draft": "judge",
+   "judge": ["auth_check_attempts"],
+   "security_adjacent": "auth"
   },
   {
    "id": "blind",
@@ -137,6 +140,40 @@
     "round_digits"
    ],
    "blind": true
+  },
+  {
+   "id": "nearest-facet",
+   "kind": "extend",
+   "doc": "ops/uploads.md",
+   "draft": "stated",
+   "stated": [
+    "upload_purge_hour"
+   ]
+  },
+  {
+   "id": "real-check",
+   "kind": "new",
+   "draft": "none",
+   "needs_human": "security check (permission or role check) at src/perm/delete_guard.ts:1"
+  },
+  {
+   "id": "code-line",
+   "kind": "new",
+   "draft": "stated",
+   "stated": [
+    "RETRY_CAP = 7"
+   ],
+   "path": "features/retry-cap.md"
+  },
+  {
+   "id": "map-hub",
+   "kind": "new",
+   "doc": null,
+   "draft": "stated",
+   "stated": [
+    "drain_batch_size"
+   ],
+   "path": "features/drain-batch-size.md"
   }
  ]
 }

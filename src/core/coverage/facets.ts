@@ -15,11 +15,20 @@ export interface CoverageMiss {
   blind?: boolean;
   facets: string[];
   missing_facets?: string[];
+  /** hewtd coverage: a doc names this surface but none explains it (the facet is just its name). */
+  named?: boolean;
   nearest_doc?: { path: string; facet_coverage: string; rank: number | null };
   expected?: string[];
 }
 
 /** Longest facet source accepted: eval facets are short; a long pattern is almost always a pasted code line. */
+/** A surface whose name was withheld is matched by position: the facet `position <file>:<line>` (escaped), never a value. */
+export const build_position_facet = (file: string, line: number): string => `position ${`${file}:${line}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`;
+export function parse_position_facet(facet: string): { file: string; line: number } | undefined {
+  const match = /^position (.+):(\d+)$/.exec(facet);
+  return match ? { file: match[1]!.replace(/\\(.)/g, '$1'), line: Number(match[2]) } : undefined;
+}
+
 export const MAX_FACET_LENGTH = 300;
 /** Longest text one facet test sees; the rest is ignored, so a slow pattern cannot run on a huge line or document. */
 export const MAX_TEST_TEXT = 20_000;
@@ -92,3 +101,6 @@ export function is_weak_facet(source: string): boolean {
   const text = source.replace(/\\[a-zA-Z]/g, '').replace(/\\/g, '').replace(/[\^$.*+?()[\]{}|]/g, '');
   return (text.match(/\w/g) ?? []).length < WEAK_MIN_WORD_CHARS || !/[a-z_]/i.test(text);
 }
+
+/** What a facet that is only a value (a credential or config default) is shown as, everywhere. */
+export const REDACTED_FACET = '[redacted facet]';

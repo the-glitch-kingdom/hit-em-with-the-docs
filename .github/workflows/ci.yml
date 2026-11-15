@@ -45,6 +45,10 @@ jobs:
         if: matrix.shard == 1
         run: node scripts/gate-gaps.mjs
 
+      - name: Coverage gate
+        if: matrix.shard == 1
+        run: node scripts/gate-coverage.mjs
+
       - name: Test
         run: npx vitest run --shard=${{ matrix.shard }}/3 ${{ matrix.node-version == '20.x' && '--coverage' || '' }}
 

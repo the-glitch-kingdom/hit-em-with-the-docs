@@ -11,6 +11,7 @@ import type { PluginConfig } from '../../utils/config.js';
 import { load_cited_sources } from '../integrate/integrator.js';
 import { build_phrases, type DroppedPhrase, type PhraseInput } from './phrases.js';
 import { scan_text } from './secrets.js';
+import { compile_facet, is_code_line_facet } from '../coverage/facets.js';
 
 export const GAPS_VERSION = 1;
 
@@ -21,6 +22,16 @@ export interface Gap {
   suggested?: 'symptoms.user_phrase' | 'new doc';
   count?: number;
   last_seen?: string;
+  /** From the eval (semantic-memory#101); all optional, so usage-log gaps stay valid. */
+  id?: string;
+  tier?: string;
+  /** From a blind question set: feeding it here spoils it for measurement. */
+  blind?: boolean;
+  /** The question's facet regexes. An entry with facets is planned by the coverage engine, not phrase-classified. */
+  facets?: string[];
+  missing_facets?: string[];
+  nearest_doc?: { path: string; facet_coverage: string; rank: number | null };
+  expected?: string[];
 }
 
 export interface GapsRead {
@@ -64,7 +75,15 @@ export function parse_gaps(text: string, context: GapsContext): GapsRead {
   } catch {
     json = undefined;
   }
-  if (json === undefined) {
+  const first_line = text.split(/\r?\n/).find((line) => line.trim() && !line.trim().startsWith('#'))?.trim() ?? '';
+  if (json === undefined && first_line.startsWith('{')) {
+    // the eval's question-set JSONL: one object per line; a bad line is reported by line number
+    items = [];
+    text.split(/\r?\n/).forEach((line, i) => {
+      if (!line.trim() || line.trim().startsWith('#')) return;
+      try { items.push(JSON.parse(line)); } catch { read.errors.push(`line ${i + 1}: not valid JSON`); items.push(undefined); }
+    });
+  } else if (json === undefined) {
     // hand-written: one question per line, blank lines and # comments skipped
     items = text.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith('#'));
   } else if (Array.isArray(json)) {
@@ -82,7 +101,9 @@ export function parse_gaps(text: string, context: GapsContext): GapsRead {
   }
 
   items.forEach((entry, i) => {
+    if (entry === undefined) return; // a JSONL line already reported
     const raw_gap = typeof entry === 'string' ? { query: entry } : entry && typeof entry === 'object' && !Array.isArray(entry) ? (entry as Record<string, unknown>) : null;
+    if (raw_gap && raw_gap.query === undefined && typeof raw_gap.q === 'string') raw_gap.query = raw_gap.q; // question-set form
     if (!raw_gap || typeof raw_gap.query !== 'string' || !normalize_query(raw_gap.query)) return void read.errors.push(`gaps[${i}]: needs a non-empty "query" string`);
     const gap: Gap = { query: normalize_query(raw_gap.query), used_doc: null };
     if (raw_gap.used_doc != null) {
@@ -102,6 +123,33 @@ export function parse_gaps(text: string, context: GapsContext): GapsRead {
       if (typeof raw_gap.last_seen !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raw_gap.last_seen)) return void read.errors.push(`gaps[${i}]: "last_seen" must be YYYY-MM-DD`);
       gap.last_seen = raw_gap.last_seen;
     }
+    for (const key of ['id', 'tier'] as const) {
+      if (raw_gap[key] === undefined) continue;
+      if (typeof raw_gap[key] !== 'string') return void read.errors.push(`gaps[${i}]: "${key}" must be a string`);
+      gap[key] = raw_gap[key] as string;
+    }
+    if (raw_gap.blind !== undefined) {
+      if (typeof raw_gap.blind !== 'boolean') return void read.errors.push(`gaps[${i}]: "blind" must be a boolean`);
+      gap.blind = raw_gap.blind;
+    }
+    for (const key of ['facets', 'missing_facets', 'expected'] as const) {
+      if (raw_gap[key] === undefined) continue;
+      if (!Array.isArray(raw_gap[key]) || (raw_gap[key] as unknown[]).some((item) => typeof item !== 'string')) return void read.errors.push(`gaps[${i}]: "${key}" must be an array of strings`);
+      gap[key] = raw_gap[key] as string[];
+    }
+    if (gap.facets) {
+      gap.facets = gap.facets.filter((facet, j) => {
+        const { error } = compile_facet(facet);
+        if (error) read.errors.push(`gaps[${i}]: facet ${j} skipped: ${error}`);
+        return !error;
+      });
+      if (!gap.facets.length) delete gap.facets;
+    }
+    if (raw_gap.nearest_doc !== undefined) {
+      const near = raw_gap.nearest_doc as Record<string, unknown> | null;
+      if (!near || typeof near.path !== 'string' || (near.facet_coverage !== undefined && typeof near.facet_coverage !== 'string') || (near.rank != null && !Number.isInteger(near.rank))) return void read.errors.push(`gaps[${i}]: "nearest_doc" must be {path, facet_coverage, rank}`);
+      gap.nearest_doc = { path: near.path, facet_coverage: (near.facet_coverage as string | undefined) ?? '', rank: (near.rank as number | null | undefined) ?? null };
+    }
     read.gaps.push(gap);
   });
   return read;
@@ -117,6 +165,10 @@ export interface GapsClassification {
   candidates: NewDocCandidate[];
   questions: OpenQuestion[];
   dropped: DroppedPhrase[];
+  /** Entries with facets: planned by the coverage engine (src/core/coverage/), not bucketed here. */
+  facet_gaps: Gap[];
+  /** Things the user should know before trusting the result (blind sets, code-line-shaped facets). */
+  warnings: string[];
 }
 
 const normalize_list = (value: unknown): string[] => (Array.isArray(value) ? value : [value]).filter((item): item is string => typeof item === 'string');
@@ -139,18 +191,32 @@ const extract_identifier_body = (query: string): string =>
 export async function classify_gaps(gaps: Gap[], options: { root: string; docs_root: string; config: PluginConfig }): Promise<GapsClassification> {
   const { root: repo_root, docs_root, config } = options;
   const secrets = config.reconcile.secrets;
-  const classification: GapsClassification = { proposals: [], candidates: [], questions: [], dropped: [] };
+  const classification: GapsClassification = { proposals: [], candidates: [], questions: [], dropped: [], facet_gaps: [], warnings: [] };
 
   // same query (case-insensitive) across entries: counts add up
   const merged = new Map<string, { query: string; count: number; doc: string | null }>();
   for (const gap of gaps) {
     const finding = scan_text(gap.query, 'gaps', secrets)[0];
     if (finding) { classification.dropped.push({ query: '[redacted]', reason: 'secret', note: `${finding.rule}, ${finding.masked}` }); continue; }
+    if (gap.facets?.length) {
+      const clean = gap.facets.filter((facet) => {
+        const hit = scan_text(facet, 'gaps', secrets)[0];
+        if (hit) classification.dropped.push({ query: '[redacted facet]', reason: 'secret', note: `${hit.rule}, ${hit.masked}` });
+        return !hit;
+      });
+      if (!clean.length) continue;
+      classification.facet_gaps.push({ ...gap, facets: clean });
+      if (clean.some(is_code_line_facet)) classification.warnings.push(`${gap.id ?? gap.query}: a facet looks like a code line; a coverage label built on it may be facet shape, not a missing doc (semantic-memory#101 section 3)`);
+      continue;
+    }
     const key = `${gap.used_doc ?? ''}\0${gap.query.toLowerCase()}`;
     const merged_gap = merged.get(key);
     if (merged_gap) merged_gap.count += gap.count ?? 1;
     else merged.set(key, { query: gap.query, count: gap.count ?? 1, doc: gap.used_doc });
   }
+
+  const blind_ids = classification.facet_gaps.filter((gap) => gap.blind).map((gap) => gap.id ?? gap.query);
+  if (blind_ids.length) classification.warnings.push(`blind entries fed in (${blind_ids.join(', ')}): feeding a blind set here spoils it for measurement; they are classified but not drafted without --include-blind`);
 
   // docs that can take a phrase: live (not archived) and free of secrets
   const doc_state = new Map<string, { ok: boolean; existing: string[] }>();

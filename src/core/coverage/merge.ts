@@ -35,7 +35,7 @@ export interface Proposal {
 const unique = <T>(items: T[]): T[] => [...new Set(items)];
 
 /** Misses on one file tie only when their lines are this close (#120): a shortcut for "same block or symbol"; upgrade to enclosing-symbol detection if it merges too much. */
-export const FILE_TIE_WINDOW = 30;
+const FILE_TIE_WINDOW = 30;
 export interface MergeOptions {
   /** Files that declare a list (schedules, routes, alert rules, flags, keys): their entries are unrelated, so the file never ties misses. */
   declared_files?: Set<string>;

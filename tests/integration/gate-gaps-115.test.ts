@@ -36,4 +36,29 @@ describe('gate:gaps', () => {
       expect(run.stdout).toMatch(/gate:gaps 15\/19/);
     } finally { rmSync(dir, { recursive: true, force: true }); }
   }, 130_000);
+
+  it('fails every malformed expectation, naming the case', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gate-malformed-'));
+    try {
+      const forms: [string, (spec: any, all: any) => void][] = [
+        ['no cases', (_s, all) => { all.cases = []; }],
+        ['stated deleted', (s) => { delete s.stated; }],
+        ['stated empty', (s) => { s.stated = []; }],
+        ['draft typo', (s) => { s.draft = 'stated '; }],
+        ['judge deleted', (s) => { s.draft = 'judge'; delete s.stated; delete s.judge; }],
+        ['unknown key', (s) => { s.statd = ['x']; }],
+      ];
+      for (const [label, mutate] of forms) {
+        const broken = JSON.parse(readFileSync(EXPECTED, 'utf-8'));
+        const spec = broken.cases.find((c: any) => c.draft === 'stated');
+        mutate(spec, broken);
+        const file = join(dir, 'expected.json');
+        writeFileSync(file, JSON.stringify(broken));
+        const run = gate(file);
+        expect(run.status, label).not.toBe(0);
+        expect(run.stderr + run.stdout, label).toMatch(/malformed expectation/);
+        if (label !== 'no cases') expect(run.stderr + run.stdout, label).toContain(spec.id);
+      }
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }, 130_000);
 });

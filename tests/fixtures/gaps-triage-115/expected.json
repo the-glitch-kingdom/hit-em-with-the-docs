@@ -129,6 +129,7 @@
    "id": "security",
    "kind": "new",
    "draft": "judge",
+   "judge": ["auth_check_attempts"],
    "security_adjacent": "auth"
   },
   {

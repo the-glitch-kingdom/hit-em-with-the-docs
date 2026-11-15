@@ -47,19 +47,40 @@ describe('gate:coverage', () => {
     } finally { rmSync(dir, { recursive: true, force: true }); }
   }, 130_000);
 
-  it('fails a malformed spec: draft "stated" with no stated list, an empty ignored_files', () => {
+  it('fails a malformed spec: an empty ignored_files', () => {
     const dir = mkdtempSync(join(tmpdir(), 'gate-cov-malformed-'));
     try {
       const broken = JSON.parse(readFileSync(EXPECTED, 'utf-8'));
-      const stated = broken.cases.find((c: any) => c.draft === 'stated');
-      delete stated.stated;
       broken.ignored_files = [];
       const file = join(dir, 'expected.json');
       writeFileSync(file, JSON.stringify(broken));
       const run = gate(file);
       expect(run.status).toBe(1);
-      expect(run.stdout).toMatch(new RegExp(`^FAIL  ${stated.id}.*non-empty stated list`, 'm'));
       expect(run.stdout).toMatch(/^FAIL  generated files.*non-empty list/m);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }, 130_000);
+
+  it('fails every malformed expectation, naming the case', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gate-cov-malformed2-'));
+    try {
+      const forms: [string, (spec: any, all: any) => void][] = [
+        ['no cases', (_s, all) => { all.cases = []; }],
+        ['stated deleted', (s) => { delete s.stated; }],
+        ['stated empty', (s) => { s.stated = []; }],
+        ['draft typo', (s) => { s.draft = 'stated '; }],
+        ['unknown key', (s) => { s.statd = ['x']; }],
+      ];
+      for (const [label, mutate] of forms) {
+        const broken = JSON.parse(readFileSync(EXPECTED, 'utf-8'));
+        const spec = broken.cases.find((c: any) => c.draft === 'stated');
+        mutate(spec, broken);
+        const file = join(dir, 'expected.json');
+        writeFileSync(file, JSON.stringify(broken));
+        const run = gate(file);
+        expect(run.status, label).not.toBe(0);
+        expect(run.stderr + run.stdout, label).toMatch(/malformed expectation/);
+        if (label !== 'no cases') expect(run.stderr + run.stdout, label).toContain(spec.id);
+      }
     } finally { rmSync(dir, { recursive: true, force: true }); }
   }, 130_000);
 });

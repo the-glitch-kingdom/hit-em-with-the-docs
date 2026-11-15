@@ -50,32 +50,38 @@ function list_block_keys(lines: string[], from: number, entry: RegExp = /^\s*['"
 }
 
 const CRON_LINE = /^\s*(?:@(?:reboot|hourly|daily|midnight|weekly|monthly|yearly|annually)|[\d*/,-]+\s+[\d*/,-]+\s+[\d*?/,-]+\s+[\w*/,-]+\s+[\w*?/,-]+)\s+(\S.*)$/;
-const WRAPPERS = new Set(['env', 'nice', 'ionice', 'nohup', 'time', 'sudo', 'flock', 'timeout', 'chronic', 'setsid', 'exec', 'command', 'bundle', 'run-parts']);
+const WRAPPERS = new Set(['env', 'nice', 'ionice', 'nohup', 'time', 'sudo', 'flock', 'timeout', 'chronic', 'setsid', 'exec', 'command', 'bundle']);
+// the user column of a cron line, when it is not a system file: a plain account word with a command after it
+const USER_WORDS = new Set(['root', 'www-data', 'nobody', 'daemon', 'postgres', 'deploy', 'app', 'ubuntu']);
 const INTERPRETERS = /^(?:python[\d.]*|node|nodejs|ruby|perl|php|bash|sh|zsh|dash)$/;
 // runners whose first argument is the job: `manage.py clearsessions`, `rake db:cleanup`, `npm run sync`, `make purge`
 const RUNNERS = new Set(['manage.py', 'django-admin', 'django-admin.py', 'rake', 'artisan', 'rails', 'npm', 'pnpm', 'yarn', 'make', 'flask', 'bin/console']);
 const CONTAINER_RUNNERS = new Set(['docker', 'docker-compose', 'podman', 'kubectl']);
 // a wrapper flag that takes a value: `nice -n 10`, `flock -w 5`, `sudo -u app`
-const takes_value = (flag: string, value = ''): boolean => (/^-[ncwk]$/.test(flag) && /^\d+$/.test(value)) || (flag === '-u' && /^\w+$/.test(value));
+const takes_value = (flag: string, value = ''): boolean => (/^-[ncwk]$/.test(flag) && /^\d+$/.test(value)) || (/^-[us]$/.test(flag) && /^\w+$/.test(value));
+const NO_VALUE_FLAGS = /^(?:-[itdT]+|--(?:rm|interactive|tty|detach|privileged|silent|quiet|verbose))$/;
 const unquote = (text: string): string => text.trim().replace(/^(['"])(.*)\1$/, '$2');
 /** Skip options; an option's separate value is a bare word that is not the program (no slash, no extension) and is followed by more words. */
 function skip_options(list: string[], value_flags: RegExp = /^$/): string[] {
   let rest = list;
   while (rest[0]?.startsWith('-')) {
     const [flag, next] = rest;
-    const value = !flag!.includes('=') && next !== undefined && rest.length > 2 && (value_flags.test(flag!) || /^\d+$/.test(next) || (!next.startsWith('-') && !/[/.]/.test(next)));
+    const value = !NO_VALUE_FLAGS.test(flag!) && !flag!.includes('=') && next !== undefined && rest.length > 2 && (value_flags.test(flag!) || /^\d+$/.test(next) || (!next.startsWith('-') && !/[/.]/.test(next)));
     rest = rest.slice(value ? 2 : 1);
   }
   return rest;
 }
 /** The script or executable a cron command runs: wrappers, `cd X &&`, interpreters and `VAR=..` stripped; runners name their subcommand, container exec its inner command. Undefined when it is not a local program (a URL, curl, wget). `user_column`: the file is a system crontab whose line has a user after the schedule. */
 export function name_cron_command(command: string, user_column = false): string | undefined {
-  const segment = command.split(/&&|\|\||;|\|/).map((part) => part.trim()).find((part) => part && !/^cd\b/.test(part));
+  let words = command.trim().split(/\s+/);
+  const has_user = words.length > 1 && (user_column ? !/^\w+=/.test(words[0]!) : USER_WORDS.has(words[0]!) && !/^(?:-|\w+=)/.test(words[1]!));
+  if (has_user) words = words.slice(1);
+  const segment = words.join(' ').split(/&&|\|\||;|\|/).map((part) => part.trim()).find((part) => part && !/^cd\b/.test(part));
   const tokens = (segment ?? '').replace(/\s+(?:>>?|2>>?|<)\s*\S*.*$/, '').split(/\s+/).filter(Boolean);
-  const take = (list: string[], user = false): string | undefined => {
+  const take = (list: string[]): string | undefined => {
     let rest = list.slice();
-    // a user column: always in /etc/crontab and cron.d files; elsewhere a bare word followed by a path, wrapper or interpreter
-    if (rest.length > 1 && (user ? !/^\w+=/.test(rest[0]!) : /^[a-z_][\w-]*$/.test(rest[0]!) && !WRAPPERS.has(rest[0]!) && !CONTAINER_RUNNERS.has(rest[0]!) && !RUNNERS.has(rest[0]!) && !INTERPRETERS.test(rest[0]!) && (rest[1]!.includes('/') || WRAPPERS.has(rest[1]!) || INTERPRETERS.test(rest[1]!)))) rest = rest.slice(1);
+    // an unlisted user column: a bare word followed by a path, wrapper or interpreter
+    if (rest.length > 1 && (/^[a-z_][\w-]*$/.test(rest[0]!) && !WRAPPERS.has(rest[0]!) && !CONTAINER_RUNNERS.has(rest[0]!) && !RUNNERS.has(rest[0]!) && !INTERPRETERS.test(rest[0]!) && (rest[1]!.includes('/') || WRAPPERS.has(rest[1]!) || INTERPRETERS.test(rest[1]!)))) rest = rest.slice(1);
     for (;;) {
       const head = rest[0];
       if (!head) return undefined;
@@ -90,6 +96,10 @@ export function name_cron_command(command: string, user_column = false): string 
         if (dash >= 0) return take(after.slice(dash + 1));
         const args = skip_options(after, /^(?:-u|-e|-w|--user|--env|--workdir|-n|--namespace|-c|--container)$/);
         return take(args.slice(1)); // the first positional is the container or pod
+      }
+      if (word === 'run-parts') {
+        const dir = rest.slice(1).find((token) => !token.startsWith('-'));
+        return dir?.split('/').filter(Boolean).pop(); // the directory as written: cron.hourly
       }
       if (WRAPPERS.has(word)) {
         rest = rest.slice(1);
@@ -110,14 +120,16 @@ export function name_cron_command(command: string, user_column = false): string 
         continue;
       }
       if (RUNNERS.has(word) || RUNNERS.has(head)) {
-        const args = skip_options(rest.slice(1), /^(?:-C|-f|--prefix|--cwd|--app|-A)$/).filter((token) => !/^(?:run|run-script|exec)$/.test(token) || word === 'rails');
+        const runner_flags = /^(?:-C|-f|--prefix|--cwd|--app|-A)$/;
+        let args = skip_options(rest.slice(1), runner_flags);
+        if (word !== 'rails' && /^(?:run|run-script|exec)$/.test(args[0] ?? '')) args = skip_options(args.slice(1), runner_flags);
         const sub = word === 'rails' && args[0] === 'runner' ? /^[\w.:]+/.exec(unquote(args.slice(1).join(' ')))?.[0] : args[0];
         return sub && /^[\w.:@+-]+$/.test(sub) ? sub : undefined;
       }
       return word.replace(/\.(?:sh|py|rb|js|ts|php|pl|bash)$/, '') || undefined;
     }
   };
-  const name = take(tokens, user_column);
+  const name = take(tokens);
   return name && /^[\w.@+:-]+$/.test(name) ? name : undefined;
 }
 

@@ -22,6 +22,23 @@ const { compile_facet, is_weak_facet } = await import(pathToFileURL(join(root_di
 const { load_review } = await import(pathToFileURL(join(root_dir, 'dist/core/reconcile/review.js')).href);
 const expected = JSON.parse(readFileSync(expected_file, 'utf-8'));
 
+// a malformed expectation must fail the gate, not pass quietly: validate every case before scoring
+const KNOWN_KEYS = new Set(['blind', 'reference', 'kind', 'needs_human', 'draft', 'security_adjacent', 'domain', 'id', 'path', 'keys', 'skipped', 'doc', 'stated', 'sources', 'judge']);
+const malformed = [];
+if (!Array.isArray(expected.cases) || !expected.cases.length) malformed.push('cases must be a non-empty list');
+for (const [position, spec] of (Array.isArray(expected.cases) ? expected.cases : []).entries()) {
+  const label = typeof spec?.id === 'string' && spec.id ? spec.id : `#${position}`;
+  const bad = (text) => malformed.push(`${label}: ${text}`);
+  if (!spec || typeof spec !== 'object') { bad('not an object'); continue; }
+  for (const key of Object.keys(spec)) if (!KNOWN_KEYS.has(key)) bad(`unknown key "${key}"`);
+  if (typeof spec.id !== 'string' || !spec.id) bad('id must be a non-empty string');
+  if (spec.draft === undefined) bad('draft is required');
+  if (spec.draft !== undefined && !['stated', 'judge', 'none'].includes(spec.draft)) bad(`draft "${spec.draft}" is not one of stated, judge, none`);
+  if (spec.draft === 'stated' && (!Array.isArray(spec.stated) || !spec.stated.length)) bad('draft "stated" needs a non-empty stated list');
+  if (spec.draft === 'judge' && (!Array.isArray(spec.judge) || !spec.judge.length)) bad('draft "judge" needs a non-empty judge list');
+}
+if (malformed.length) { console.error(`gate:gaps: malformed expectation\n  ${malformed.join('\n  ')}`); process.exit(2); }
+
 // the fixture's one credential line is built here, so no secret-shaped literal is committed
 const secret_value = 'AK' + 'IA' + 'Q7ZR3LMP9XVB2NCK';
 const temp = mkdtempSync(join(tmpdir(), 'gate-gaps-'));

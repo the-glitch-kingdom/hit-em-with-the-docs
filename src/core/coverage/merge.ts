@@ -134,30 +134,36 @@ const LISTS: Array<{ kind: DeclaredList['kind']; pattern: RegExp; what: string; 
 
 // the surface detectors know the entry forms the regexes do not (celery crontab()/timedelta, Flask/FastAPI decorators, yargs flags, ...)
 const LIST_OF_SURFACE: Partial<Record<SurfaceKind, DeclaredList['kind']>> = { 'scheduled-job': 'schedules', 'alert-rule': 'alert-rules', 'http-route': 'routes', 'cli-flag': 'cli-flags', 'config-key': 'config-keys' };
-/** Lines an entry that opens a block covers past its first line (a beat entry's schedule sits a few lines below its key). */
+/** Lines past an entry's first line (its key or name) that still belong to it, by kind: the schedule, the route path, the flag. The task path and options lines are not entries. */
 const ENTRY_SPAN = 4;
+const ENTRY_LINE: Partial<Record<SurfaceKind, RegExp>> = { 'scheduled-job': /^\s*['"]?(?:schedule|cron|crontab|interval|every)['"]?\s*[:=]/i, 'http-route': /['"`]\/[^'"`]*['"`]/, 'cli-flag': /['"]-[\w/-]+['"]/ };
 
-/** Entries per list kind, as the surface detectors find them: names (to count unique ones) and the lines each spans. Names are only counted, never reported. */
+/** Entries per list kind, as the surface detectors find them: names (to count unique ones) and the lines that are the entry itself. Names are only counted, never reported. */
 function find_surface_entries(file: string, lines: string[]): Map<DeclaredList['kind'], { names: Set<string>; lines: Set<number> }> {
-  const entries = new Map<DeclaredList['kind'], { names: Set<string>; lines: Set<number>; first: number[] }>();
+  const entries = new Map<DeclaredList['kind'], { names: Set<string>; lines: Set<number>; first: { line: number; kind: SurfaceKind }[] }>();
   for (const detector of SURFACE_DETECTORS.filter((found) => found.applies(file))) {
     for (const surface of detector.detect(file, lines)) {
       const kind = LIST_OF_SURFACE[surface.kind];
       if (!kind) continue;
       const entry = entries.get(kind) ?? { names: new Set<string>(), lines: new Set<number>(), first: [] };
       entry.names.add(kind === 'config-keys' ? surface.name : `${surface.name}\0${surface.line}`);
-      entry.first.push(surface.line);
+      entry.first.push({ line: surface.line, kind: surface.kind });
       entries.set(kind, entry);
     }
   }
   for (const entry of entries.values()) {
-    const starts = [...new Set(entry.first)].sort((a, b) => a - b);
-    starts.forEach((start, i) => { for (let line = start; line <= Math.min(start + (/[{([:]\s*(?:#.*)?$/.test(lines[start - 1] ?? '') ? ENTRY_SPAN : 0), (starts[i + 1] ?? Infinity) - 1, lines.length); line++) entry.lines.add(line); });
+    const starts = [...new Set(entry.first.map((first) => first.line))].sort((a, b) => a - b);
+    for (const { line: start, kind } of entry.first) {
+      entry.lines.add(start);
+      const next = starts.find((line) => line > start) ?? Infinity;
+      const own = ENTRY_LINE[kind];
+      if (own && /[{([:]\s*(?:#.*)?$/.test(lines[start - 1] ?? '')) for (let line = start + 1; line <= Math.min(start + ENTRY_SPAN, next - 1, lines.length); line++) if (own.test(lines[line - 1]!)) entry.lines.add(line);
+    }
   }
   return entries;
 }
 
-/** Lines around an entry's own line that still belong to it (a schedule's task name sits beside its cron string). */
+/** Lines around a pattern match that still belong to it (a schedule's task name sits beside its cron string); a file the surface detectors read is exact. */
 const ENTRY_WINDOW = 1;
 
 /**
@@ -176,7 +182,7 @@ export function detect_declared_lists(files: Map<string, string>, facets?: strin
       const count = Math.max(list.unique_names ? new Set(matches.map((match) => match[1])).size : matches.length, surface?.names.size ?? 0);
       if (count < DECLARED_LIST_MIN) continue;
       const entry_lines = new Set([...matches.map((match) => text.slice(0, match.index).split('\n').length), ...(surface?.lines ?? [])]);
-      const near = (line: number): boolean => [...entry_lines].some((entry) => Math.abs(entry - line) <= ENTRY_WINDOW);
+      const near = (line: number): boolean => [...entry_lines].some((entry) => Math.abs(entry - line) <= (surface ? 0 : ENTRY_WINDOW));
       const covers = facets?.filter((facet) => {
         const position = parse_position_facet(facet);
         if (position) return position.file === file && near(position.line);

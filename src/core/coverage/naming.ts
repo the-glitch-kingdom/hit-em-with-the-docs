@@ -4,7 +4,7 @@
  * else the question's noun phrase. The folder is where the docs about nearby code live; never the knowledge-base root.
  */
 import { basename } from 'path';
-import { find_value_in_name } from '../security/gate.js';
+import { find_security_check, find_value_in_name, is_security_sensitive } from '../security/gate.js';
 
 /** A doc name is cut at a whole word, never mid-phrase. */
 export const MAX_SLUG_LENGTH = 40;
@@ -50,7 +50,10 @@ export function name_new_doc(options: { queries: string[]; facets: string[]; sou
   // #120: a boolean column or flag (is_sample) is a property of a subject, not the subject: it names a doc only when nothing else can
   const ranked = [...counts].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length || a[0].localeCompare(b[0])).map(([identifier]) => identifier);
   const is_boolean = (identifier: string): boolean => BOOLEAN_PREFIX.has(split_name(identifier)[0] ?? '');
-  const dominant = ranked.find((identifier) => !is_boolean(identifier));
+  // #120: an identifier names the doc when the question speaks of it (shares a word); one that is merely there (a security check's operand, an incidental constant) never does
+  const stem = (word: string): string => word.replace(/(?:ies|es|s)$/, '');
+  const asked = new Set(options.queries.flatMap((query) => query.toLowerCase().match(/[a-z][a-z0-9]+/g) ?? []).filter((word) => !QUESTION_WORDS.has(word)).map(stem));
+  const dominant = ranked.find((identifier) => !is_boolean(identifier) && split_name(identifier).some((word) => !GENERIC_PREFIX.has(word) && !GENERIC_SUFFIX.has(word) && asked.has(stem(word))));
   if (dominant) return make_slug(strip_generic(split_name(dominant)));
   // 2. the source module the facets were found in
   const modules = new Map<string, number>();
@@ -60,10 +63,13 @@ export function name_new_doc(options: { queries: string[]; facets: string[]; sou
   }
   const module_name = [...modules].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
   if (module_name) return make_slug(split_name(module_name));
-  if (ranked[0]) return make_slug(strip_generic(split_name(ranked[0])));
   // 3. the question's noun phrase
   const phrase = (options.queries[0]?.toLowerCase().match(/[a-z][a-z0-9]+/g) ?? []).filter((word) => !QUESTION_WORDS.has(word)).slice(0, MAX_PHRASE_WORDS);
-  return make_slug(phrase) || 'topic';
+  if (phrase.length) return make_slug(phrase);
+  // 4. nothing else: the most frequent identifier that is not a boolean flag or a security check
+  const plain = ranked.find((identifier) => !is_boolean(identifier) && !find_security_check(identifier) && !is_security_sensitive(identifier)) ?? ranked.find((identifier) => !find_security_check(identifier) && !is_security_sensitive(identifier));
+  if (plain) return make_slug(strip_generic(split_name(plain)));
+  return 'topic';
 }
 
 /** Where a new doc goes: the folder of the nearby docs, else the domain, else the fallback. Never the knowledge-base root; a fact goes in knowledge-base/facts. */

@@ -16,6 +16,7 @@ Fixes the #120 field-test findings on 3.7.0 in `reconcile --gaps` and `hewtd cov
 - `coverage` detects class-level constants and annotated collection constants (named, never stated). Docs say `explained` does not mean every why is present.
 - Declared lists are found by the surface detectors (celery beat `crontab()`/`timedelta`, Flask and FastAPI decorators), not only 5-field cron strings; Java, Kotlin and C# typed collections and arrays are named constants (never stated).
 - A doc whose `sources` list the located file (cited by at most 5 docs) and whose title shares a question term is extended (an `Alerts Runbook` for an alerts miss), even when it cites many files.
+- Last review round: a Java/C# method-local `final`/`const` is not a class constant (a field needs `static` or an access modifier with `final`/`const`/`readonly`); PascalCase C# `const` and `static readonly` fields are constants; multi-line FastAPI decorators, `api_route`, `websocket` and Flask `add_url_rule` are routes; a new doc is named from an identifier that shares a word with the question, else the source module, else the question phrase, and never from a security-check identifier the question does not name; the generated-reference hint covers a facet only on an entry's key or schedule/route/flag line, never its task path or options line.
 - Gates: `gate:gaps` 31/31, `gate:coverage` 40/40. Full suite 2250 tests pass.
 
 ## [3.7.0] — 2026-11-15

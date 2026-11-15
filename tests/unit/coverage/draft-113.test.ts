@@ -68,7 +68,7 @@ describe('build_drafts (#113)', () => {
   it('security-sensitive topics are listed for a human with unit names only, never drafted', async () => {
     const r = await run([proposal({ closes: [{ key: 'q9', query: 'how does the permission check work', count: 1 }], sources: [{ file: 'src/queue.ts', line: 1 }], source_files: ['src/queue.ts'] })]);
     expect(r.entries).toEqual([]);
-    expect(r.needs_human).toEqual([{ keys: ['q9'], source_files: ['src/queue.ts'] }]);
+    expect(r.needs_human).toEqual([{ keys: ['q9'], source_files: ['src/queue.ts'], reason: 'security-sensitive: `permission` in the question' }]); // #115: the reason names the matched word
   });
   it('blind proposals are skipped unless include_blind; covered, instruction-only and generated-reference are not drafted', async () => {
     const base = { sources: [{ file: 'src/queue.ts', line: 1 }], source_files: ['src/queue.ts'], domain: 'ops' };

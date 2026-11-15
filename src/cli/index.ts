@@ -1419,7 +1419,7 @@ program
         const { parse_gaps, classify_gaps } = await import('../core/reconcile/gaps.js');
         const { render_gaps_report, write_gaps_report } = await import('../core/reconcile/gaps-report.js');
         const read = parse_gaps(await read_file(resolve(process.cwd(), options.gaps), 'utf-8'), { docs_root: docs_root, repo_root: repo_root });
-        const result = await classify_gaps(read.gaps, { root: repo_root, docs_root: docs_root, config });
+        const result = await classify_gaps(read.gaps, { root: repo_root, docs_root: docs_root, config, ...(options.includeBlind && { include_blind: true }) });
         const { facet_gaps, warnings, ...classified } = result;
         const coverage = facet_gaps.length ? await (await import('../core/coverage/plan.js')).plan_coverage_misses({ repo_root: repo_root, docs_root: docs_root, config, gaps: facet_gaps, include_blind: options.includeBlind, exclude_files: [relative(repo_root, resolve(process.cwd(), options.gaps)).split('\\').join('/')] }) : undefined;
         if (coverage) warnings.push(...coverage.warnings);

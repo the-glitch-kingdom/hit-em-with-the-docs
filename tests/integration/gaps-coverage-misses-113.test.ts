@@ -51,7 +51,7 @@ describe('reconcile --gaps with facets (built CLI, labelled fixture)', () => {
     expect(two.closes.map((c: any) => c.key)).toEqual(['two-a', 'two-b']); // two misses, one proposal
     expect(proposal_for(out, 'instruction-only')).toMatchObject({ kind: 'instruction-only', instruction_files: ['CLAUDE.md'] });
     // #115: a credential line is withheld and the miss goes to a human with the reason, instead of being blocked
-    expect(out.coverage.needs_human).toEqual([expect.objectContaining({ keys: ['credential'], reason: expect.stringContaining('src/deploy.ts:1') }), { keys: ['security'], source_files: ['src/auth/guard.ts'] }]);
+    expect(out.coverage.needs_human).toEqual([expect.objectContaining({ keys: ['credential'], reason: expect.stringContaining('src/deploy.ts:1') }), { keys: ['security'], source_files: ['src/auth/guard.ts'], reason: 'security-sensitive: `permission` in the question' }]);
     expect(out.coverage.blocked).toEqual([]);
     expect(out.coverage.skipped.some((s: any) => s.keys.includes('blind') && /blind/.test(s.reason))).toBe(true);
     expect(proposal_for(out, 'code-line').flags).toContain('facet-shape');

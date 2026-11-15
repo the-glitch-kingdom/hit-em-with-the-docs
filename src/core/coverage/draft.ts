@@ -13,7 +13,7 @@ import { with_frontmatter } from '../../utils/frontmatter.js';
 import type { SecretsConfig } from '../../utils/config.js';
 import { compute_content_hash } from '../reconcile/ledger.js';
 import type { ReviewEntry } from '../reconcile/review.js';
-import { check_credential_text, check_security_gate, is_constant_value, is_security_sensitive, is_value_name } from '../security/gate.js';
+import { check_credential_text, check_security_gate, find_sensitive_word, is_constant_value, is_security_sensitive, is_value_name } from '../security/gate.js';
 import { compile_facet, match_facets } from './facets.js';
 import type { FacetHit } from './locate.js';
 import type { Proposal } from './merge.js';
@@ -24,7 +24,7 @@ export interface JudgeItem { facet: string; at: string[] }
 export interface DraftResult {
   entries: ReviewEntry[];
   /** Security-sensitive topics: unit names (question keys, source files) only. */
-  needs_human: { keys: string[]; source_files: string[]; reason?: string }[];
+  needs_human: { keys: string[]; source_files: string[]; /** Why a person is needed: a matched word or path, never a value. */ reason: string }[];
   /** The gate refused: path:line and a masked length, never a value. */
   blocked: { keys: string[]; reason: string }[];
   skipped: { keys: string[]; reason: string }[];
@@ -129,7 +129,8 @@ export async function build_drafts(options: { repo_root: string; docs_root: stri
     if (proposal.kind === 'covered') { skip(`covered by ${proposal.doc}: check ranking and phrasing, nothing to draft`); continue; }
     if (proposal.kind === 'instruction-only') { skip(`the fact is only in agent instruction files (${proposal.instruction_files.join(', ')}): move it into an indexed doc`); continue; }
     if (proposal.blind && !options.include_blind) { skip('blind entry: drafting from it would spoil the blind set (pass --include-blind to draft anyway)'); continue; }
-    if ([...proposal.closes.map((closed) => closed.query), ...proposal.missing_facets, ...proposal.source_files].some(is_security_sensitive)) { result.needs_human.push({ keys, source_files: proposal.source_files }); continue; }
+    const sensitive = ([['the question', proposal.closes.map((closed) => closed.query)], ['a facet', proposal.missing_facets], ['a source path', proposal.source_files]] as const).flatMap(([where, texts]) => texts.map((text) => ({ where, word: find_sensitive_word(text) }))).find((found) => found.word);
+    if (sensitive) { result.needs_human.push({ keys, source_files: proposal.source_files, reason: `security-sensitive: \`${sensitive.word}\` in ${sensitive.where}` }); continue; }
     if (!proposal.sources.length) { skip('nothing located in code: no file:line to ground a draft'); continue; }
     if (proposal.generated_reference.length) { skip(`generated reference suggested (${proposal.generated_reference.map((list) => `${list.kind} in ${list.file}`).join(', ')}): generate it instead of writing prose`); continue; }
     const built = await build_facts(repo_root, proposal, secrets_config);

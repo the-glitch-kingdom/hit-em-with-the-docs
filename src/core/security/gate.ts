@@ -70,3 +70,5 @@ const split_words = (text: string): string => text.replace(/\\[bBdDsSwW]/g, ' ')
 
 /** Auth internals, permission checks and bypasses, vulnerability details, IAM/firewall/network rules: a human writes these. */
 export const is_security_sensitive = (text: string): boolean => SENSITIVE.test(split_words(text));
+/** The word or path folder that made `text` security-sensitive (for a reason line), lower-cased; undefined when none. */
+export const find_sensitive_word = (text: string): string | undefined => SENSITIVE.exec(split_words(text))?.[0].replace(/\//g, '').toLowerCase();

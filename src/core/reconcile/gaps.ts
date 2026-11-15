@@ -201,7 +201,7 @@ const extract_identifier_body = (query: string): string =>
   (query.match(/[\w$./-]+(?:\(\))?/g) ?? []).filter((token) => /[a-z][A-Z]|_|\/|\.[A-Za-z]{1,5}$|\(\)$/.test(token.replace(/\.$/, ''))).map((token) => `\`${token.replace(/\.$/, '')}\``).join(' ');
 
 /** Every gap lands in exactly one outcome. Read-only: nothing in the docs tree changes. */
-export async function classify_gaps(gaps: Gap[], options: { root: string; docs_root: string; config: PluginConfig }): Promise<GapsClassification> {
+export async function classify_gaps(gaps: Gap[], options: { root: string; docs_root: string; config: PluginConfig; include_blind?: boolean }): Promise<GapsClassification> {
   const { root: repo_root, docs_root, config } = options;
   const secrets = config.reconcile.secrets;
   const classification: GapsClassification = { proposals: [], candidates: [], questions: [], dropped: [], facet_gaps: [], warnings: [] };
@@ -240,7 +240,7 @@ export async function classify_gaps(gaps: Gap[], options: { root: string; docs_r
   }
 
   const blind_ids = classification.facet_gaps.filter((gap) => gap.blind).map((gap) => gap.id ?? gap.query);
-  if (blind_ids.length) classification.warnings.push(`blind entries fed in (${blind_ids.join(', ')}): feeding a blind set here spoils it for measurement; they are classified but not drafted without --include-blind`);
+  if (blind_ids.length) classification.warnings.push(`blind entries fed in (${blind_ids.join(', ')}): feeding a blind set here spoils it for measurement; they are ${options.include_blind ? 'classified and drafted (--include-blind was passed)' : 'classified but not drafted without --include-blind'}`);
 
   // docs that can take a phrase: live (not archived) and free of secrets
   const doc_state = new Map<string, { ok: boolean; existing: string[] }>();

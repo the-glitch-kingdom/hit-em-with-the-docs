@@ -55,7 +55,7 @@ function render_coverage_section(coverage: CoveragePlan): string[] {
     lines.push('');
   }
   const { drafts } = coverage;
-  if (drafts.needs_human.length) lines.push('### security: needs a human', '', 'Security-sensitive topics are never drafted. Unit names only:', ...drafts.needs_human.map((unit) => `- ${unit.keys.join(', ')}${unit.source_files.length ? ` (${unit.source_files.join(', ')})` : ''}`), '');
+  if (drafts.needs_human.length) lines.push('### security: needs a human', '', 'Security-sensitive topics are never drafted, and a fact only on a credential line is withheld. Unit names and the reason only:', ...drafts.needs_human.map((unit) => `- ${unit.keys.join(', ')}${unit.source_files.length ? ` (${unit.source_files.join(', ')})` : ''}: ${unit.reason}`), '');
   if (drafts.blocked.length) lines.push('### blocked by the security gate', '', ...drafts.blocked.map((unit) => `- ${unit.keys.join(', ')}: ${unit.reason}`), '');
   if (drafts.skipped.length) lines.push('### not drafted', '', ...drafts.skipped.map((unit) => `- ${unit.keys.join(', ')}: ${unit.reason}`), '');
   lines.push(`Drafts written to the review file: ${drafts.entries.length} (only with --write-review).`);

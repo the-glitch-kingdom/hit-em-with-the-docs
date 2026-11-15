@@ -40,13 +40,13 @@ describe('finding 1: a facet inside a literal, an option argument or userinfo is
     });
   });
   afterAll(() => rmSync(repo, { recursive: true, force: true }));
-  it('every shape is [redacted facet] in the plan and never names a doc', async () => {
+  it('every shape is withheld (counted, never text) in the plan and never names a doc', async () => {
     const secrets = [pw(1), pw(2), hex, pw(4), pw(5), pw(6), pw(7)];
     const gaps = secrets.map((secret, i) => ({ id: `g${i}`, query: 'how does the service connect', facets: [secret, 'open_pool'] }));
     const plan = await plan_coverage_misses({ repo_root: repo, docs_root: join(repo, '.documentation'), config: plugin_config_schema.parse({}), gaps, today: '2026-11-15' });
     const text = JSON.stringify(plan);
     for (const secret of secrets) expect(text).not.toContain(secret);
-    expect(plan.proposals.flatMap((proposal) => proposal.missing_facets)).toContain('[redacted facet]');
+    expect(plan.proposals.reduce((sum, proposal) => sum + (proposal.withheld_facets ?? 0), 0)).toBe(secrets.length);
     expect(plan.proposals.flatMap((proposal) => proposal.missing_facets)).toContain('open_pool');
   });
   it('identifier facets outside literals stay', async () => {
@@ -54,7 +54,7 @@ describe('finding 1: a facet inside a literal, an option argument or userinfo is
     const plan = await plan_coverage_misses({ repo_root: repo, docs_root: join(repo, '.documentation'), config: plugin_config_schema.parse({}), gaps, today: '2026-11-15' });
     const facets = plan.proposals.flatMap((proposal) => proposal.missing_facets);
     expect(facets).toEqual(expect.arrayContaining(['secretPhrase', 'run_report', 'use_phrase']));
-    expect(facets).not.toContain('[redacted facet]');
+    expect(plan.proposals.some((proposal) => proposal.withheld_facets)).toBe(false);
   });
   it('a key-shaped facet is redacted even when nothing locates it', async () => {
     const plan = await plan_coverage_misses({ repo_root: repo, docs_root: join(repo, '.documentation'), config: plugin_config_schema.parse({}), gaps: [{ id: 'k', query: 'how', facets: [hex, 'open_pool'] }], today: '2026-11-15' });

@@ -23,6 +23,10 @@ export interface Proposal {
   closes: { key: string; query: string; count: number }[];
   count: number;
   missing_facets: string[];
+  /** Facets withheld because each is only a value (never in missing_facets, matched, located or named). */
+  withheld_facets?: number;
+  /** Located lines of the withheld facets: used only to hold a security check. */
+  withheld_sources?: FacetHit[];
   sources: FacetHit[];
   source_files: string[];
   cited_by: string[];
@@ -110,6 +114,8 @@ export function merge_decisions(decisions: Decision[], options: MergeOptions = {
       closes: group.map((decision) => ({ key: decision.key, query: decision.query, count: decision.count })),
       count: group.reduce((sum, decision) => sum + decision.count, 0),
       missing_facets: unique(group.flatMap((decision) => decision.missing_facets)),
+      withheld_facets: group.reduce((sum, decision) => sum + (decision.withheld_facets ?? 0), 0),
+      withheld_sources: group.flatMap((decision) => decision.withheld_sources ?? []).filter((found, i, all) => all.findIndex((other) => other.file === found.file && other.line === found.line) === i),
       sources,
       source_files: unique(sources.map((found) => found.file)).sort(),
       cited_by: unique(group.flatMap((decision) => decision.cited_by)).sort(),

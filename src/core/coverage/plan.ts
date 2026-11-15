@@ -10,7 +10,7 @@ import { load_doc_texts, resolve_decision, type Decision } from './decide.js';
 import { build_drafts, find_check_line, type DraftResult } from './draft.js';
 import { locate_facets, type LocateResult } from './locate.js';
 import { add_generated_references, find_declared_files, merge_decisions, type MergeOptions, type Proposal } from './merge.js';
-import { compile_facet, list_timed_out_facets, match_facets, parse_position_facet, REDACTED_FACET, test_facet, type CoverageMiss } from './facets.js';
+import { compile_facet, list_timed_out_facets, match_facets, parse_position_facet, test_facet, type CoverageMiss } from './facets.js';
 import { find_surface_names } from './surfaces/index.js';
 import { find_value_in_name, find_value_spans, has_key_token, is_value_line } from '../security/gate.js';
 import type { SecretsConfig } from '../../utils/config.js';
@@ -81,8 +81,12 @@ export async function plan_coverage_misses(options: { repo_root: string; docs_ro
   const value_facets = await find_value_facets(repo_root, located, config.reconcile.secrets, by_context);
   // a gaps facet that is key-shaped or holds a value once the regex escapes are read is a value, located or not
   if (by_context) for (const facet of misses.flatMap((miss) => miss.facets)) if (has_key_token(de_regex(facet)) || find_value_in_name(de_regex(facet))) value_facets.add(facet);
-  // a facet that is only a value is classified like any other, then shown as [redacted facet] in every output
-  const decisions = misses.map((miss) => resolve_decision(miss, located, docs)).map((decision) => ({ ...decision, missing_facets: [...new Set(decision.missing_facets.map((facet) => (value_facets.has(facet) ? REDACTED_FACET : facet)))] }));
+  // a facet that is only a value is taken out before anything reads it: it is counted, never matched, located, merged on or named
+  const decisions = misses.map((miss) => {
+    const withheld = [...new Set(miss.facets.filter((facet) => value_facets.has(facet)))];
+    const decision = resolve_decision({ ...miss, facets: miss.facets.filter((facet) => !value_facets.has(facet)), withheld: withheld.length }, located, docs);
+    return { ...decision, withheld_sources: withheld.flatMap((facet) => located.code.get(facet) ?? []) };
+  });
   // blind misses never share a proposal with others: a blind-only proposal can then be skipped whole
   const merge_options: MergeOptions = {
     declared_files: await find_declared_files(repo_root, decisions),
@@ -104,7 +108,7 @@ export async function plan_coverage_misses(options: { repo_root: string; docs_ro
     const members = proposal.closes.map((closed) => by_key.get(closed.key)!);
     const held: typeof members = [];
     const rest: typeof members = [];
-    for (const member of members) (await find_check_line(repo_root, member.sources) ? held : rest).push(member);
+    for (const member of members) (await find_check_line(repo_root, [...member.sources, ...(member.withheld_sources ?? [])]) ? held : rest).push(member);
     split.push(...(held.length && rest.length ? [...merge_decisions(held, merge_options), ...merge_decisions(rest, merge_options)] : [proposal]));
   }
   const proposals = await add_generated_references(repo_root, split.length === merged.length ? split : split.sort((a, b) => b.count - a.count || a.closes[0]!.key.localeCompare(b.closes[0]!.key)));

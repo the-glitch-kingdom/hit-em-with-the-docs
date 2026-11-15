@@ -14,6 +14,8 @@ export interface CoverageMiss {
   tier?: string;
   blind?: boolean;
   facets: string[];
+  /** How many facets were withheld (a facet that is only a value): counted, never matched, located or shown. */
+  withheld?: number;
   missing_facets?: string[];
   /** hewtd coverage: a doc names this surface but none explains it (the facet is just its name). */
   named?: boolean;
@@ -102,5 +104,3 @@ export function is_weak_facet(source: string): boolean {
   return (text.match(/\w/g) ?? []).length < WEAK_MIN_WORD_CHARS || !/[a-z_]/i.test(text);
 }
 
-/** What a facet that is only a value (a credential or config default) is shown as, everywhere. */
-export const REDACTED_FACET = '[redacted facet]';

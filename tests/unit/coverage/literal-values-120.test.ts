@@ -49,14 +49,14 @@ beforeAll(() => {
 afterAll(() => rmSync(repo, { recursive: true, force: true }));
 const run = async (facet: string) => {
   const result = await plan_coverage_misses({ repo_root: repo, docs_root: join(repo, '.documentation'), config: await load_plugin_config(repo), gaps: [{ query: 'q', used_doc: null, id: 'q', facets: [facet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')] }], today: '2026-11-15' });
-  return { facets: result.proposals.flatMap((proposal) => proposal.missing_facets), text: JSON.stringify(result) };
+  return { facets: result.proposals.flatMap((proposal) => [...proposal.missing_facets, ...(proposal.withheld_facets ? ['[withheld]'] : [])]), text: JSON.stringify(result) };
 };
 
 describe('a literal value never reaches the output (#120 review)', () => {
   for (const [name, , value] of leaks) {
     it(`withholds: ${name}`, async () => {
       const { facets, text } = await run(value);
-      expect(facets).toEqual(['[redacted facet]']);
+      expect(facets).toEqual(['[withheld]']);
       expect(text).not.toContain(value);
     });
   }

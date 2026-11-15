@@ -21,7 +21,7 @@ beforeAll(() => {
 afterAll(() => rmSync(repo, { recursive: true, force: true }));
 const run = async (facets: string[]) => {
   const r = await plan_coverage_misses({ repo_root: repo, docs_root: join(repo, '.documentation'), config: await load_plugin_config(repo), gaps: [{ query: 'q', used_doc: null, id: 'q', facets }], today: '2026-11-15' });
-  return r.proposals.flatMap((proposal) => proposal.missing_facets);
+  return r.proposals.flatMap((proposal) => [...proposal.missing_facets, ...(proposal.withheld_facets ? ['[withheld]'] : [])]);
 };
 
 describe('a name inside a literal or comment is not a value (#120 section 4)', () => {
@@ -32,14 +32,14 @@ describe('a name inside a literal or comment is not a value (#120 section 4)', (
     expect(await run(['orders_sample.json'])).toEqual(['orders_sample.json']);
   });
   it('a plain word in quotes is withheld (only the five name shapes are names; main withheld it too)', async () => {
-    expect(await run(['a_plain_word'])).toEqual(['[redacted facet]']);
+    expect(await run(['a_plain_word'])).toEqual(['[withheld]']);
   });
   it('option arguments and host, url, key-shaped literals stay withheld', async () => {
     const out = await run(['Hunter2Hunter2', 'hunter2', 'abc123xyz', 'db-1.example.com', 'https://example.com/x']);
-    expect(out).toEqual(['[redacted facet]']); // one redacted entry: the facets collapse
+    expect(out).toEqual(['[withheld]']); // one redacted entry: the facets collapse
   });
   it('a literal under a value name stays withheld, and so does a single bare token (only clearly name-shaped literals are names)', async () => {
-    expect(await run(['swordfish'])).toEqual(['[redacted facet]']);
-    expect(await run(['strictmode'])).toEqual(['[redacted facet]']); // one bare token is not clearly a name
+    expect(await run(['swordfish'])).toEqual(['[withheld]']);
+    expect(await run(['strictmode'])).toEqual(['[withheld]']); // one bare token is not clearly a name
   });
 });

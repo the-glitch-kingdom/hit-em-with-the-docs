@@ -53,14 +53,14 @@ afterAll(() => rmSync(repo, { recursive: true, force: true }));
 const escape = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const run = async (facet: string) => {
   const result = await plan_coverage_misses({ repo_root: repo, docs_root: join(repo, '.documentation'), config: await load_plugin_config(repo), gaps: [{ query: 'q', used_doc: null, id: 'q', facets: [escape(facet)] }], today: '2026-11-15' });
-  return { facets: result.proposals.flatMap((proposal) => proposal.missing_facets), text: JSON.stringify(result) };
+  return { facets: result.proposals.flatMap((proposal) => [...proposal.missing_facets, ...(proposal.withheld_facets ? ['[withheld]'] : [])]), text: JSON.stringify(result) };
 };
 
 describe('a literal is a value unless it is clearly a name (#120 structural)', () => {
   for (const [name, , value] of withheld) {
     it(`withholds: ${name}`, async () => {
       const { facets, text } = await run(value);
-      expect(facets).toEqual(['[redacted facet]']);
+      expect(facets).toEqual(['[withheld]']);
       expect(text).not.toContain(value);
     });
   }

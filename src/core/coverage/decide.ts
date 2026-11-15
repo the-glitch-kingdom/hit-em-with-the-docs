@@ -131,6 +131,10 @@ export interface Decision {
   hub?: boolean;
   held: number;
   total: number;
+  /** Facets withheld because each is only a value: they count in `total` (so a doc never covers the miss) but are never matched. */
+  withheld_facets?: number;
+  /** Where the withheld facets sit: read only by the security-check hold, never cited or drafted from. */
+  withheld_sources?: FacetHit[];
   /** Facets the target doc (or, for a new doc, every doc) lacks. */
   missing_facets: string[];
   /** Located code: file -> lines, for the facets this proposal must add. */
@@ -187,7 +191,8 @@ function find_majority_folder(folders: string[]): string {
 
 export function resolve_decision(miss: CoverageMiss, located: Pick<LocateResult, 'code' | 'instructions' | 'weak'>, docs: DocText[]): Decision {
   const facets = miss.facets;
-  const total = facets.length;
+  const withheld_facets = miss.withheld ?? 0;
+  const total = facets.length + withheld_facets;
   const compiled = facets.map((facet) => ({ facet, regex: compile_facet(facet).regex })).filter((item): item is { facet: string; regex: RegExp } => !!item.regex);
   const held_by = (doc: DocText): string[] => {
     const matched = match_facets(compiled.map(({ regex }) => regex), doc.text.split('\n'), 1);
@@ -216,7 +221,7 @@ export function resolve_decision(miss: CoverageMiss, located: Pick<LocateResult,
   if (compiled.length && !strong_files.size) notes.push('every facet is weak (short, numeric or found in many files): no source is named for it, so a person must say where it lives');
   const source_files = [...new Set(code_hits.map((found) => found.file))].sort();
   const cited_by = counts.filter(({ doc }) => doc.sources.some((source) => source_files.includes(source)) || source_files.some((file) => doc.text.includes(file))).map(({ doc }) => doc.path);
-  const base = { key: miss.key, query: miss.query, count: miss.count, total, flags, notes, ids: [miss.key], ...(miss.blind && { blind: true }), ...(miss.tier && { tier: miss.tier }) };
+  const base = { key: miss.key, query: miss.query, count: miss.count, total, withheld_facets, withheld_sources: [] as FacetHit[], flags, notes, ids: [miss.key], ...(miss.blind && { blind: true }), ...(miss.tier && { tier: miss.tier }) };
   const finish = (decision: Omit<Decision, keyof typeof base | 'cited_by' | 'source_files' | 'sources'>): Decision => {
     if (decision.doc && decision.kind === 'extend' && is_hub_doc(counts.find((item) => item.doc.path === decision.doc)!.doc)) decision.hub = true;
     const missing_set = new Set(decision.missing_facets);

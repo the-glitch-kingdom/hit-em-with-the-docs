@@ -14,7 +14,7 @@ import type { SecretsConfig } from '../../utils/config.js';
 import { compute_content_hash } from '../reconcile/ledger.js';
 import type { ReviewEntry } from '../reconcile/review.js';
 import { check_credential_text, check_security_gate, find_block_lines, find_security_check, has_code_syntax, find_sensitive_word, is_security_sensitive, is_stateable_constant } from '../security/gate.js';
-import { compile_facet, match_facets, parse_position_facet, REDACTED_FACET } from './facets.js';
+import { compile_facet, match_facets, parse_position_facet } from './facets.js';
 import type { FacetHit } from './locate.js';
 import { FALLBACK_DOMAIN, name_new_doc, place_new_doc } from './naming.js';
 import type { Proposal } from './merge.js';
@@ -74,9 +74,8 @@ async function build_facts(repo_root: string, proposal: Proposal, secrets_config
   }
   const sentences: string[] = [];
   const for_judge: JudgeItem[] = [];
-  let lost_facet = false;
+  let lost_facet = (proposal.withheld_facets ?? 0) > 0;
   for (const facet of proposal.missing_facets) {
-    if (facet === REDACTED_FACET) { lost_facet = true; continue; }
     const regex = compile_facet(facet).regex;
     const matches = (text: string): boolean => !!regex && !!match_facets([regex], [text], 1)[0]?.length;
     const position = parse_position_facet(facet);
@@ -136,16 +135,17 @@ export async function build_drafts(options: { repo_root: string; docs_root: stri
     if (proposal.kind === 'instruction-only') { skip(`the fact is only in agent instruction files (${proposal.instruction_files.join(', ')}): move it into an indexed doc`); continue; }
     if (proposal.blind && !options.include_blind) { skip('blind entry: drafting from it would spoil the blind set (pass --include-blind to draft anyway)'); continue; }
     // #118: withhold only when a located line IS a security check; a topic word alone keeps the unit drafted, marked security-adjacent
-    const check = await find_check_line(repo_root, proposal.sources);
+    const check = await find_check_line(repo_root, [...proposal.sources, ...(proposal.withheld_sources ?? [])]);
     if (check) { result.needs_human.push({ keys, source_files: proposal.source_files, reason: `security check (${check.kind}) at ${check.file}:${check.line}: a person must state it` }); continue; }
     const sensitive = ([['the question', proposal.closes.map((closed) => closed.query)], ['a facet', proposal.missing_facets], ['a source path', proposal.source_files]] as const).flatMap(([where, texts]) => texts.map((text) => ({ where, word: find_sensitive_word(text) }))).find((found) => found.word);
+    if (proposal.withheld_facets && !proposal.sources.length) { result.needs_human.push({ keys, source_files: [], reason: `every facet is withheld (${proposal.withheld_facets}): each is only a credential or config value, so a person must say what to write` }); continue; }
     if (!proposal.sources.length) { skip('nothing located in code: no file:line to ground a draft'); continue; }
     // #120: the hint covers the facets that are entries of the declared list; the other facets are still drafted, beside it
     const reference = proposal.generated_reference;
     const hint = `generated reference suggested (${reference.map((list) => `${list.kind} in ${list.file}`).join(', ')})`;
     const listed = new Set(reference.flatMap((list) => list.covers ?? proposal.missing_facets));
     const rest = proposal.missing_facets.filter((facet) => !listed.has(facet));
-    if (reference.length && !rest.length) { skip(`${hint}: generate it instead of writing prose`); continue; }
+    if (reference.length && !rest.length && !proposal.withheld_facets) { skip(`${hint}: generate it instead of writing prose`); continue; }
     if (reference.length) proposal = { ...proposal, missing_facets: rest };
     const adjacent = sensitive?.word ? { word: sensitive.word, where: sensitive.where } : undefined;
     if (adjacent) (result.security_adjacent ??= []).push({ keys, ...adjacent });

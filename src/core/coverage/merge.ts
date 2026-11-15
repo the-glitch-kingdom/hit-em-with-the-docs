@@ -86,7 +86,7 @@ const LISTS: Array<{ kind: DeclaredList['kind']; pattern: RegExp; what: string; 
   { kind: 'schedules', pattern: /['"`]\s*[\d*/,-]+\s+[\d*/,-]+\s+[\d*?/,-]+\s+[\d*A-Za-z/,-]+\s+[\d*?A-Za-z/,-]+\s*['"`]/g, what: 'schedules' },
   { kind: 'alert-rules', pattern: /^\s*-?\s*alert:\s*\S+/gm, what: 'alert rules' },
   { kind: 'cli-flags', pattern: /(?:\.option\(\s*['"]-|add_argument\(\s*['"]--)/g, what: 'CLI flags' },
-  { kind: 'config-keys', pattern: /(?:process\.env\.|os\.environ(?:\.get)?[\[(]\s*['"]?)([A-Z][A-Z0-9_]{2,})/g, what: 'config keys', unique_names: true },
+  { kind: 'config-keys', pattern: /(?:process\.env\.|os\.environ(?:\.get)?[[(]\s*['"]?)([A-Z][A-Z0-9_]{2,})/g, what: 'config keys', unique_names: true },
 ];
 
 /** Declared lists in the located source files, by kind then file. Counts and names only; no value is read out. */

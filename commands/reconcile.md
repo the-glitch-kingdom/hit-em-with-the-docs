@@ -1,7 +1,7 @@
 ---
 description: Reconcile existing docs with the code - triage, judge each doc against what it cites, propose fixes for you to accept, apply serially
 allowed-tools: Bash(npx:*), Read, Write, Agent
-argument-hint: "<domain|folder|files...> | --overview \"<question>\" | --gaps <file> | --next N | --status | --outside  [--serial|--team]"
+argument-hint: "<domain|folder|files...> | --overview \"<question>\" | --gaps <file> [--include-blind] | --next N | --status | --outside  [--serial|--team]"
 ---
 
 Arguments: $ARGUMENTS
@@ -166,6 +166,23 @@ It writes only `.hewtd/reconcile/gaps-report-<date>.md` (masked) and changes no 
 **Phrases.** Write the skeleton with `hewtd reconcile --gaps <file> --write-review` (`review-<batch>-gaps.md`, one unticked `phrases` entry per doc). Let the user accept, edit or drop each phrase. Keep the reader's wording from the real query; do not rewrite it into the author's terms. Tick `accept` only on their say-so, then apply with `hewtd reconcile --apply .hewtd/reconcile/review-<batch>-gaps.md` as in step 6.
 
 **New-doc candidates.** Never auto-created. If the user wants one, read the listed `sources` (skip any in `blocked_files`), draft a doc from what they say, and create it with `hewtd integrate <file>`, which records the sources and blocks secrets. Show the draft first.
+
+**Coverage misses (entries with `facets`).** The file can also be the retrieval eval's `--gaps-out` (semantic-memory#101: `id`, `tier`, `blind`, `facets`, `missing_facets`, `nearest_doc {path, facet_coverage, rank}`, `expected`) or its question-set JSONL (`{id, tier, q, facets, expected?}`). Facets are regexes. An entry with facets is not phrase-classified; hewtd locates each facet in tracked code (docs and agent instruction files excluded), counts which docs already hold it, and gives each miss exactly one outcome, merged when misses share a doc or source files (one proposal lists every question it closes):
+
+- **extend `<doc>`**: one doc holds most facets or already cites the code. The missing facets are listed; the draft is a `verify` entry with a `patch` that appends a "Details from the code (unreviewed)" section and adds the located files to `sources`.
+- **new doc**: no doc holds more than a small share and none cites the code. A `create` entry whose `draft` follows `templates/doc.template.md` (purpose, symptoms from the questions, sources = code files). The path is never an existing doc: a taken path gets a numbered sibling, and `--apply` refuses to overwrite.
+- **covered: check ranking**: a doc holds every facet. Fix `symptoms`, `purpose` or the title, not the content (`nearest_doc.rank` shows how far it ranked).
+- **instruction file only**: the fact is in CLAUDE.md / AGENTS.md / `.claude/rules/**` only, which search cannot reach. Move it into an indexed doc.
+
+`--write-review` writes `review-<batch>-coverage.md` (unticked). Read it, then read each cited `file:line` yourself before the user ticks anything: every drafted sentence names code and cites where it is. Expand a sentence only with what that code shows. Apply the coverage file apart from the `-gaps.md` phrases file when both touch one doc.
+
+Rules the drafts follow, and you must keep when you edit them:
+
+- **Values never**: no credentials, connection strings, env or config values or defaults, hostnames, IPs, ports, account/tenant/project IDs, key or cert contents, and no example values. Env and config *names* are fine. One security gate checks every draft before it is written (a hit blocks the unit and reports `path:line` masked) and runs again when a `create` entry is applied.
+- **Security-sensitive topics are never drafted** (auth internals, permission checks and bypasses, vulnerability details, IAM, firewall and network rules). The report lists them under "security: needs a human", unit names only. Tell the user; do not write them yourself.
+- **Blind entries** (`blind: true`) warn and are not drafted unless the user passes `--include-blind`: feeding a blind set here spoils it for measurement. Ask before passing it.
+- **Code-line-shaped facets** (`x = 24 * 60`, `def f(`, `class C`, `n: int`) are flagged: a "coverage" label built on them may be facet shape, not a missing doc. Suggest one-fact, prose-tolerant facets and a re-run of the eval before writing a doc.
+- **Generated reference**: a located file that declares a list (routes, schedules, alert rules, CLI flags, config keys) gets a suggestion to generate the reference instead of prose; no draft is written for it.
 
 ## 5. Present and accept
 

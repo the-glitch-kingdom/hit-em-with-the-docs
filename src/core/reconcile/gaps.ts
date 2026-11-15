@@ -88,6 +88,8 @@ export function parse_gaps(text: string, context: GapsContext): GapsRead {
     items = text.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith('#'));
   } else if (Array.isArray(json)) {
     items = json;
+  } else if (json && typeof json === 'object' && !('version' in json) && !('gaps' in json) && ('query' in json || 'q' in json)) {
+    items = [json]; // a one-line question-set JSONL
   } else if (json && typeof json === 'object') {
     const gaps_file = json as Record<string, unknown>;
     if (gaps_file.version !== GAPS_VERSION) {

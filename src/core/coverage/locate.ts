@@ -22,7 +22,7 @@ export interface LocateResult {
 export const MAX_HITS_PER_FACET = 20;
 /** Larger files are generated or vendored, not hand-written code. */
 const MAX_FILE_BYTES = 512 * 1024;
-const NOT_CODE = /(^|\/)(node_modules|\.git|\.hewtd|\.planning|\.claude|reports|archive|dist|build|coverage)\/|\.(md|mdx|txt|rst|lock|map|min\.js|png|jpe?g|gif|ico|pdf|woff2?|zip|gz|svg)$|(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$/i;
+const NOT_CODE = /(^|\/)(node_modules|\.git|\.hewtd|\.planning|\.claude|dist)\/|^(reports|archive|build|coverage)\/|\.(md|mdx|txt|rst|lock|map|min\.js|png|jpe?g|gif|ico|pdf|woff2?|zip|gz|svg)$|(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$/i;
 const INSTRUCTION = /(^|\/)(CLAUDE|AGENTS|GEMINI)\.md$|(^|\/)\.claude\/rules\/.+\.md$/;
 
 export const is_instruction_file = (repo_path: string): boolean => INSTRUCTION.test(repo_path);
@@ -36,7 +36,7 @@ function list_tracked_files(repo_root: string): string[] {
   }
 }
 
-export async function locate_facets(options: { repo_root: string; docs_root: string; cold_root?: string; facets: string[] }): Promise<LocateResult> {
+export async function locate_facets(options: { repo_root: string; docs_root: string; cold_root?: string; facets: string[]; /** Repo-relative files that are not code: the question set the facets came from lists them all. */ exclude_files?: string[] }): Promise<LocateResult> {
   const { repo_root, docs_root } = options;
   const compiled = options.facets.map((facet) => ({ facet, regex: compile_facet(facet).regex })).filter((item): item is { facet: string; regex: RegExp } => !!item.regex);
   const result: LocateResult = { code: new Map(compiled.map((item) => [item.facet, []])), instructions: new Map(compiled.map((item) => [item.facet, []])) };
@@ -44,6 +44,7 @@ export async function locate_facets(options: { repo_root: string; docs_root: str
   const docs_prefix = relative(repo_root, docs_root).split('\\').join('/') + '/';
   const cold_prefix = options.cold_root ? options.cold_root.replace(/^\.\//, '').replace(/\/?$/, '/') : undefined;
   for (const file of list_tracked_files(repo_root)) {
+    if (options.exclude_files?.includes(file)) continue;
     if (file.startsWith(docs_prefix) || (cold_prefix && file.startsWith(cold_prefix))) continue;
     const instruction = is_instruction_file(file);
     if (!instruction && NOT_CODE.test(file)) continue;

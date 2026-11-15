@@ -5,7 +5,7 @@
  */
 import { execFileSync } from 'child_process';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, statSync, writeFileSync } from 'fs';
-import { readFile, stat, writeFile } from 'fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'fs/promises';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import { parse_frontmatter, with_frontmatter, with_frontmatter_keys } from '../../utils/frontmatter.js';
 import { format_date } from '../metadata/generator.js';
@@ -24,6 +24,7 @@ import { get_member_state } from './overview.js';
 import { build_phrases } from './phrases.js';
 import { extract_symptom_text } from './gaps.js';
 import { get_environment_names, load_review, type ReviewEntry } from './review.js';
+import { check_security_gate } from '../security/gate.js';
 
 export interface ApplyOutcome {
   path: string;
@@ -327,6 +328,17 @@ async function build_overview_doc(entry: ReviewEntry, docs_root: string, ledger:
   return with_frontmatter(entry.draft!, { ...frontmatter, kind: 'overview', ...(entry.sources && { sources: entry.sources }) });
 }
 
+/** create (#113): a new doc from a coverage-miss draft; the path must be a free .md path inside the docs root. The security gate re-runs here because the draft may have been edited. */
+function build_created_doc(entry: ReviewEntry, docs_root: string, secrets_config: Awaited<ReturnType<typeof load_plugin_config>>['reconcile']['secrets']): string {
+  const inside = !relative(docs_root, join(docs_root, entry.path)).startsWith('..');
+  if (!entry.path.endsWith('.md') || !inside || !entry.draft?.trim()) throw new Error('create needs a .md path inside the docs root and a draft');
+  const found = check_security_gate(entry.draft, entry.path, secrets_config)[0];
+  if (found) throw new Error(`security gate: ${entry.path}:${found.line} (${found.rule}, ${found.masked})`);
+  const { last_verified: _ignored, ...frontmatter } = entry.frontmatter ?? {};
+  const own = parse_frontmatter<Record<string, unknown>>(entry.draft).data;
+  return with_frontmatter(entry.draft, { ...own, ...frontmatter, ...(entry.sources?.length && { sources: [...new Set([...(Array.isArray(own.sources) ? own.sources : []), ...entry.sources])] }) });
+}
+
 const INDEXED_KEYS = new Set(['title', 'summary', 'purpose', 'description', 'tier', 'status', 'domains', 'keywords', 'kind']);
 
 export async function apply_reviews(options: {
@@ -410,7 +422,8 @@ export async function apply_reviews(options: {
       if (!accepted) { outcomes.push({ path: entry.path, status: 'rejected' }); continue; }
       if (!entry.verdict) { outcomes.push({ path: entry.path, status: 'skipped', detail: 'no verdict' }); continue; }
       if (entry.verdict === 'overview' && present) { outcomes.push({ path: entry.path, status: 'error', detail: 'overview target already exists' }); continue; }
-      if (!present && entry.verdict !== 'overview') { outcomes.push({ path: entry.path, status: 'error', detail: 'file not found' }); continue; }
+      if (entry.verdict === 'create' && present) { outcomes.push({ path: entry.path, status: 'error', detail: 'create target already exists (never overwrites)' }); continue; }
+      if (!present && entry.verdict !== 'overview' && entry.verdict !== 'create') { outcomes.push({ path: entry.path, status: 'error', detail: 'file not found' }); continue; }
       const raw_text = present ? await readFile(abs_path, 'utf-8') : ''; // a new overview is hashed as empty
 
       if (compute_content_hash(raw_text) !== entry.content_hash) {
@@ -435,6 +448,10 @@ export async function apply_reviews(options: {
           await writeFile(abs_path, next, 'utf-8');
           touched.add(abs_path);
           merged_ids.add(entry.id ?? entry.path);
+        } else if (entry.verdict === 'create') {
+          await mkdir(dirname(abs_path), { recursive: true });
+          await writeFile(abs_path, build_created_doc(entry, docs_root, secrets_config), 'utf-8');
+          touched.add(abs_path);
         } else if (entry.verdict === 'overview') {
           await writeFile(abs_path, await build_overview_doc(entry, docs_root, ledger), 'utf-8');
           touched.add(abs_path);

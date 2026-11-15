@@ -62,6 +62,8 @@ export interface ReviewEntry {
   allow_unreviewed?: boolean;
   /** phrases: search-gap queries to add to the doc's symptoms as user_phrase. */
   phrases?: string[];
+  /** Coverage drafts (#115): facets hewtd could not state, each with the file:line it was found at. The judge writes a sentence per item from those lines; apply ignores it. */
+  for_judge?: { facet: string; at: string[] }[];
   lane?: string;
   reasons?: string[];
 }

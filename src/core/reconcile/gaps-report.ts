@@ -24,6 +24,7 @@ export function render_gaps_report(classification: GapsClassification, config: S
   if (!classification.questions.length) lines.push('None.');
   for (const question of classification.questions) lines.push(`- ${question.query}${format_count_suffix(question.count)}`);
   if (coverage) lines.push(...render_coverage_section(coverage));
+  if (classification.held_back?.length) lines.push('', '### needs a human: every facet withheld', '', 'Questions whose every facet the security gate withheld. Unit names and rule names only:', ...classification.held_back.map((unit) => `- ${unit.keys.join(', ')}: ${unit.reason}`));
   lines.push('', `## Dropped (${classification.dropped.length})`, '');
   if (!classification.dropped.length) lines.push('None.');
   for (const dropped_phrase of classification.dropped) lines.push(`- ${dropped_phrase.query} - ${dropped_phrase.reason}${dropped_phrase.note ? ` (${dropped_phrase.note})` : ''}`);
@@ -54,7 +55,7 @@ function render_coverage_section(coverage: CoveragePlan): string[] {
     lines.push('');
   }
   const { drafts } = coverage;
-  if (drafts.needs_human.length) lines.push('### security: needs a human', '', 'Security-sensitive topics are never drafted. Unit names only:', ...drafts.needs_human.map((unit) => `- ${unit.keys.join(', ')}${unit.source_files.length ? ` (${unit.source_files.join(', ')})` : ''}`), '');
+  if (drafts.needs_human.length) lines.push('### security: needs a human', '', 'Security-sensitive topics are never drafted, and a fact only on a credential line is withheld. Unit names and the reason only:', ...drafts.needs_human.map((unit) => `- ${unit.keys.join(', ')}${unit.source_files.length ? ` (${unit.source_files.join(', ')})` : ''}: ${unit.reason}`), '');
   if (drafts.blocked.length) lines.push('### blocked by the security gate', '', ...drafts.blocked.map((unit) => `- ${unit.keys.join(', ')}: ${unit.reason}`), '');
   if (drafts.skipped.length) lines.push('### not drafted', '', ...drafts.skipped.map((unit) => `- ${unit.keys.join(', ')}: ${unit.reason}`), '');
   lines.push(`Drafts written to the review file: ${drafts.entries.length} (only with --write-review).`);

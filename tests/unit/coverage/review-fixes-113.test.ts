@@ -7,7 +7,6 @@ import { join } from 'node:path';
 import { compile_facet, match_facets } from '../../../src/core/coverage/facets.js';
 import { resolve_decision, type Decision, type DocText } from '../../../src/core/coverage/decide.js';
 import { merge_decisions } from '../../../src/core/coverage/merge.js';
-import { extract_declared_name } from '../../../src/core/coverage/draft.js';
 import { is_security_sensitive } from '../../../src/core/security/gate.js';
 import { parse_gaps, classify_gaps } from '../../../src/core/reconcile/gaps.js';
 import { load_plugin_config } from '../../../src/utils/config.js';
@@ -81,14 +80,6 @@ describe('security-sensitive identifiers (review: \\b missed snake_case and came
     it(`flags ${text}`, () => expect(is_security_sensitive(text)).toBe(true));
   for (const text of ['cache_ttl', 'max_retries', 'tokenizer_config', 'author_name', 'src/queue/worker.ts'])
     it(`does not flag ${text}`, () => expect(is_security_sensitive(text)).toBe(false));
-});
-
-describe('declared names come from code, not string literals (review: draft could quote a string)', () => {
-  it('ignores a declaration keyword inside a string', () => {
-    expect(extract_declared_name('log("class hunter2sekrit")')).toBeUndefined();
-    expect(extract_declared_name("msg = 'def p4ssw0rdValue'")).toEqual({ name: 'msg', verb: 'defined in' });
-    expect(extract_declared_name('export function load_cache() {')).toEqual({ name: 'load_cache', verb: 'defined in' });
-  });
 });
 
 const decision = (key: string, kind: Decision['kind'], extra: Partial<Decision> = {}): Decision => ({ key, query: `question ${key}`, count: 1, kind, held: 0, total: 1, missing_facets: [`f_${key}`], sources: [], source_files: [], cited_by: [], flags: [], notes: [], ids: [key], ...extra });

@@ -180,6 +180,8 @@ export interface GapsClassification {
   facet_gaps: Gap[];
   /** Things the user should know before trusting the result (blind sets, code-line-shaped facets). */
   warnings: string[];
+  /** Misses whose every facet was withheld by the gate (#115): kept for a human, with the reason (rule names only, never a value). Present only when there is one. */
+  held_back?: { keys: string[]; reason: string }[];
 }
 
 const normalize_list = (value: unknown): string[] => (Array.isArray(value) ? value : [value]).filter((item): item is string => typeof item === 'string');
@@ -199,7 +201,7 @@ const extract_identifier_body = (query: string): string =>
   (query.match(/[\w$./-]+(?:\(\))?/g) ?? []).filter((token) => /[a-z][A-Z]|_|\/|\.[A-Za-z]{1,5}$|\(\)$/.test(token.replace(/\.$/, ''))).map((token) => `\`${token.replace(/\.$/, '')}\``).join(' ');
 
 /** Every gap lands in exactly one outcome. Read-only: nothing in the docs tree changes. */
-export async function classify_gaps(gaps: Gap[], options: { root: string; docs_root: string; config: PluginConfig }): Promise<GapsClassification> {
+export async function classify_gaps(gaps: Gap[], options: { root: string; docs_root: string; config: PluginConfig; include_blind?: boolean }): Promise<GapsClassification> {
   const { root: repo_root, docs_root, config } = options;
   const secrets = config.reconcile.secrets;
   const classification: GapsClassification = { proposals: [], candidates: [], questions: [], dropped: [], facet_gaps: [], warnings: [] };
@@ -211,15 +213,21 @@ export async function classify_gaps(gaps: Gap[], options: { root: string; docs_r
     if (finding) { classification.dropped.push({ query: '[redacted]', reason: 'secret', note: `${finding.rule}, ${finding.masked}` }); continue; }
     if (gap.facets?.length) {
       // values never: a facet or query holding a host, IP, port, ID or config value is not echoed into the report
-      const find_value = (text: string): { rule: string; masked: string } | undefined => scan_text(text, 'gaps', secrets)[0] ?? check_security_gate(text.replace(/\\(.)/g, '$1'), 'gaps', secrets)[0];
+      // regex escapes read as the text they stand for (`\\s*` is a space), so `NAME\\s*=\\s*5` is judged as `NAME = 5`
+      const find_value = (text: string): { rule: string; masked: string } | undefined => scan_text(text, 'gaps', secrets)[0] ?? check_security_gate(text.replace(/\\[sS][*+?]?/g, ' ').replace(/\\[bBdDwW]/g, '').replace(/\\(.)/g, '$1'), 'gaps', secrets)[0];
+      const withheld_rules: string[] = [];
       const clean = gap.facets.filter((facet) => {
         const finding = find_value(facet);
-        if (finding) classification.dropped.push({ query: '[redacted facet]', reason: 'secret', note: `${finding.rule}, ${finding.masked}` });
+        if (finding) { classification.dropped.push({ query: '[redacted facet]', reason: 'secret', note: `${finding.rule}, ${finding.masked}` }); withheld_rules.push(finding.rule); }
         return !finding;
       });
-      if (!clean.length) continue;
       const query_value = check_security_gate(gap.query, 'gaps', secrets)[0];
       const query = query_value ? `[question ${gap.id ?? `with ${query_value.rule} withheld`}]` : gap.query;
+      if (!clean.length) {
+        // one facet is redacted, never the question: with every facet withheld it goes to a human
+        (classification.held_back ??= []).push({ keys: [gap.id ?? query], reason: `every facet withheld by the security gate (${[...new Set(withheld_rules)].sort().join(', ')}): a person must state the fact` });
+        continue;
+      }
       if (query_value) classification.dropped.push({ query: '[redacted query]', reason: 'secret', note: `${query_value.rule}, ${query_value.masked}` });
       classification.facet_gaps.push({ ...gap, query, facets: clean });
       if (clean.some(is_code_line_facet)) classification.warnings.push(`${gap.id ?? gap.query}: a facet looks like a code line; a coverage label built on it may be facet shape, not a missing doc (semantic-memory#101 section 3)`);
@@ -232,7 +240,7 @@ export async function classify_gaps(gaps: Gap[], options: { root: string; docs_r
   }
 
   const blind_ids = classification.facet_gaps.filter((gap) => gap.blind).map((gap) => gap.id ?? gap.query);
-  if (blind_ids.length) classification.warnings.push(`blind entries fed in (${blind_ids.join(', ')}): feeding a blind set here spoils it for measurement; they are classified but not drafted without --include-blind`);
+  if (blind_ids.length) classification.warnings.push(`blind entries fed in (${blind_ids.join(', ')}): feeding a blind set here spoils it for measurement; they are ${options.include_blind ? 'classified and drafted (--include-blind was passed)' : 'classified but not drafted without --include-blind'}`);
 
   // docs that can take a phrase: live (not archived) and free of secrets
   const doc_state = new Map<string, { ok: boolean; existing: string[] }>();

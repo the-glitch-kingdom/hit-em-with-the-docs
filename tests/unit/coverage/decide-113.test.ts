@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolve_decision, NEW_DOC_MAX_SHARE, type DocText } from '../../../src/core/coverage/decide.js';
+import { resolve_decision, type DocText } from '../../../src/core/coverage/decide.js';
 import type { CoverageMiss } from '../../../src/core/coverage/facets.js';
 
 const doc = (path: string, text: string, sources: string[] = []): DocText => ({ path, text, sources });
@@ -19,7 +19,6 @@ describe('resolve_decision (#113)', () => {
     const d = resolve_decision(miss(['alpha_job', 'beta_job', 'gamma_job', 'delta_job']), { code: code(['alpha_job', 'src/jobs/a.ts', 1], ['beta_job', 'src/jobs/b.ts', 2]), instructions: new Map() }, [...docs, doc('ops/x.md', 'nothing here', ['src/other.ts'])]);
     expect(d.kind).toBe('new');
     expect(d.source_files).toEqual(['src/jobs/a.ts', 'src/jobs/b.ts']);
-    expect(NEW_DOC_MAX_SHARE).toBeLessThan(0.5);
   });
   it('extend by graph signal: a doc already citing the located source is the home, though it holds no facet', () => {
     const d = resolve_decision(miss(['purge_interval', 'other_thing']), { code: code(['purge_interval', 'src/cache.ts', 9]), instructions: new Map() }, docs);

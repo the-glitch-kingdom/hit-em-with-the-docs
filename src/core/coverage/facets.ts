@@ -84,3 +84,11 @@ export const list_timed_out_facets = (): string[] => [...timed_out];
 /** Facet copied from a code line (#101 section 3): it will not match prose, so a "coverage" label built on it may be facet shape. */
 export const is_code_line_facet = (source: string): boolean =>
   /\s=\s|(?:^|\s)(?:def|class|function|const|let|var|interface)\s|=>|:\s*(?:str|string|int|number|bool|boolean|float)\b|[;{]\s*$/.test(source);
+
+/** Fewer word characters than this (regex syntax stripped) makes a facet weak: it matches half the codebase (#115). */
+export const WEAK_MIN_WORD_CHARS = 4;
+/** A facet too short, numeric or punctuation-only to locate code on its own: `410`, `30\\.0`, `\\b5\\b`. */
+export function is_weak_facet(source: string): boolean {
+  const text = source.replace(/\\[a-zA-Z]/g, '').replace(/\\/g, '').replace(/[\^$.*+?()[\]{}|]/g, '');
+  return (text.match(/\w/g) ?? []).length < WEAK_MIN_WORD_CHARS || !/[a-z_]/i.test(text);
+}

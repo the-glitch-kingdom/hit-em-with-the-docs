@@ -49,7 +49,7 @@ export function merge_decisions(decisions: Decision[]): Proposal[] {
     if (decision.kind === 'covered') tie(`covered:${decision.doc}`, i);
     else if (decision.kind === 'instruction-only') tie(`instruction:${(decision.instruction_files ?? []).join(',')}`, i);
     else {
-      if (decision.doc) tie(`doc:${decision.doc}`, i);
+      if (decision.doc && !decision.hub) tie(`doc:${decision.doc}`, i);
       for (const file of decision.source_files) tie(`file:${file}`, i);
       if (!decision.doc && !decision.source_files.length) tie(`alone:${decision.key}`, i);
     }

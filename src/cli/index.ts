@@ -1419,7 +1419,7 @@ program
         const { parse_gaps, classify_gaps } = await import('../core/reconcile/gaps.js');
         const { render_gaps_report, write_gaps_report } = await import('../core/reconcile/gaps-report.js');
         const read = parse_gaps(await read_file(resolve(process.cwd(), options.gaps), 'utf-8'), { docs_root: docs_root, repo_root: repo_root });
-        const result = await classify_gaps(read.gaps, { root: repo_root, docs_root: docs_root, config });
+        const result = await classify_gaps(read.gaps, { root: repo_root, docs_root: docs_root, config, ...(options.includeBlind && { include_blind: true }) });
         const { facet_gaps, warnings, ...classified } = result;
         const coverage = facet_gaps.length ? await (await import('../core/coverage/plan.js')).plan_coverage_misses({ repo_root: repo_root, docs_root: docs_root, config, gaps: facet_gaps, include_blind: options.includeBlind, exclude_files: [relative(repo_root, resolve(process.cwd(), options.gaps)).split('\\').join('/')] }) : undefined;
         if (coverage) warnings.push(...coverage.warnings);
@@ -1440,7 +1440,7 @@ program
         for (const entry of read.errors) logger.warn(`  ${entry}`);
         for (const entry of warnings) logger.warn(`  ${entry}`);
         logger.info(`  ${result.proposals.length} doc(s) with phrase proposals (${result.proposals.reduce((count, proposal) => count + proposal.accepted.length, 0)} phrases), ${result.candidates.length} new-doc candidate(s), ${result.questions.length} open question(s), ${result.dropped.length} dropped`);
-        if (coverage) logger.info(`  coverage misses: ${coverage.proposals.length} proposal(s) (${['extend', 'new', 'covered', 'instruction-only'].map((kind) => `${coverage.proposals.filter((proposal) => proposal.kind === kind).length} ${kind}`).join(', ')}), ${coverage.drafts.entries.length} draft(s), ${coverage.drafts.needs_human.length} for a human, ${coverage.drafts.blocked.length} blocked by the security gate`);
+        if (coverage) logger.info(`  coverage misses: ${coverage.proposals.length} proposal(s) (${['extend', 'new', 'covered', 'instruction-only'].map((kind) => `${coverage.proposals.filter((proposal) => proposal.kind === kind).length} ${kind}`).join(', ')}), ${coverage.drafts.entries.length} draft(s), ${coverage.drafts.needs_human.length + (result.held_back?.length ?? 0)} for a human, ${coverage.drafts.blocked.length} blocked by the security gate`);
         logger.info(`  report: ${report_file}`);
         if (review_file) logger.info(`  wrote ${relative(repo_root, review_file)}`);
         if (coverage_review) logger.info(`  wrote ${relative(repo_root, coverage_review)}`);

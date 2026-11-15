@@ -162,14 +162,17 @@ get "generate the reference", every stated fact is true at its `file:line`, read
 - A heredoc is found only when its `<<TAG` is within 200 lines above; a multi-line string literal other than a heredoc is
   read line by line, so a value on a continuation line is caught only by the other rules.
 - Inside a quoted literal or a comment a facet is a name only when it is clearly name-shaped: an option flag (`--omit=dev`),
-  a path or file name (`fixtures/orders.json`), a route, or two or more alphabetic words joined by `_`, `-`, `.` or spaces
-  (`sample_workspace`, `user.created`, `npm audit fix --package-lock-only`), and it passes the name screen. Every other literal
-  (one bare token, anything with digits mixed in, anything after `key=`, `Bearer`, `Basic` or a value-named key) is a value, so a
-  single-word name in quotes (`.command('serve')`) is withheld: this errs toward withholding. An uppercase `NAME = "word"`
+  a file name or path ending in a known code, data or doc extension (`fixtures/orders.json`; no key-shaped segment), a route
+  (`/api/orders/:id`), a dotted lowercase event name (`user.created`; not hostname-shaped), or a command phrase with a
+  `--long-flag` and lowercase words (`npm audit fix --package-lock-only`; no word that is a flag's argument), and it passes the
+  name screen. Every other literal is a value: one bare token (`.command('serve')`), digits mixed in, a slash path with no
+  extension (`jsmith/prod`, `a/b/c`), two or more plain words (`payments-db-replica`, `open sesame please`), anything after
+  `key=`, `Bearer`, `Basic` or a value-named key. This errs toward withholding. Known limit: a lowercase word before a
+  `--flag` in a quoted phrase reads as a command (`"hunter --verbose"`). An uppercase `NAME = "word"`
   assignment is still a config value.
 - Docstrings (`.py`, at a statement or after `=` or `(`), `/* */` blocks (C-family, JS/TS, Java, Go, C#, Rust, PHP, CSS,
   Kotlin, Swift, Scala files) and Ruby `=begin` blocks (`.rb`, column 0) are prose, never a security check, and only the lines
-  wholly inside them (a line with code before the opening or after the closing delimiter is still checked). A block that never
+  wholly inside them (a line with code before the opening or after the closing delimiter is still checked). A block that never closes, or does not close within 200 lines, marks nothing; a `/*` opens a block only at the start of a line or after `;`, `{`, `}` or `)` and a space, never inside a regex literal, a string or after a backslash, and `#` is a line comment in PHP (`#[` is an attribute). A block that never
   closes, or a delimiter hidden by a quote inside a comment, is not recognised.
 - Hostnames in file paths are not screened (`config.local.ts` is not a host); IPs, ids, key shapes and environment resource
   names are.

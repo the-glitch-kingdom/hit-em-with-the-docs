@@ -31,8 +31,8 @@ describe('a name inside a literal or comment is not a value (#120 section 4)', (
   it('a fixture file name in a path expression is kept', async () => {
     expect(await run(['orders_sample.json'])).toEqual(['orders_sample.json']);
   });
-  it('a plain word in quotes is kept', async () => {
-    expect(await run(['a_plain_word'])).toEqual(['a_plain_word']);
+  it('a plain word in quotes is withheld (only the five name shapes are names; main withheld it too)', async () => {
+    expect(await run(['a_plain_word'])).toEqual(['[redacted facet]']);
   });
   it('option arguments and host, url, key-shaped literals stay withheld', async () => {
     const out = await run(['Hunter2Hunter2', 'hunter2', 'abc123xyz', 'db-1.example.com', 'https://example.com/x']);

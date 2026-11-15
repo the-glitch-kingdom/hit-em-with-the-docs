@@ -131,20 +131,30 @@ export function is_value_line(line: string, secrets_config: SecretsConfig): bool
 // a literal that is a name, not a value: an import path, an env var name, a route path or a flag
 const NAME_LITERAL_PREFIX = /(?:\b(?:import|from|require|getenv|environ(?:\.get)?|ENV(?:\.fetch)?|process\.env)\s*[[(]?\s*|\bimport\s+[\w*{}, ]+\s+from\s*)$/;
 // #120 section 4, flipped: inside a literal or a comment a match is a NAME only when it is clearly name-shaped, every other shape is a value
-const FILE_EXTENSION = /\.(?:json|ya?ml|toml|ini|cfg|conf|env|xml|html?|css|scss|md|txt|csv|log|lock|sql|sh|py|rb|go|rs|java|kt|php|cs|c|h|cpp|js|jsx|mjs|cjs|ts|tsx)$/i;
-const FLAG_NAME = /^--?([A-Za-z]+(?:[-_][A-Za-z]+)*)(?:=[A-Za-z]+)?$/;
-const LETTER_WORDS = /^[A-Za-z]+(?:[_.-]+[A-Za-z]+)*$/;
+const FILE_EXTENSION = /\.(?:json|ya?ml|toml|md|txt|csv|sql|py|tsx?|jsx?|rb|go|java|kt|cs|rs|php|sh|html|css|xml|ini|cfg|lock|env\.example)$/i;
+const FLAG_NAME = /^--?([a-z][a-z0-9-]*)(?:=[a-z][a-z0-9-]*)?$/;
+const ROUTE_SEGMENT = '(?:[a-z]+(?:[-_][a-z]+)*|:[a-z_][a-z0-9_]*|\\{[a-z_][a-z0-9_]*\\})';
+const ROUTE = new RegExp(`^/(?:${ROUTE_SEGMENT}(?:/${ROUTE_SEGMENT})*/?)?$`);
+const EVENT_NAME = /^[a-z]+(?:\.[a-z]+){1,3}$/;
+const NOT_EVENT_END = /^(?:com|net|org|io|dev|app|co|us|uk|de|fr|eu|ai|info|biz|edu|gov|mil|int|xyz|me|tv|cc|internal|local|corp|lan|home|intranet|cloud|prod|stg|stage|test|svc|cluster|localhost)$/;
 const AUTH_SCHEME = /^(?:bearer|basic|digest|token)\s/i;
 const AUTH_KEY = /\b(?:bearer|authori[sz]ation|basic)\b/i;
+const is_key_like_segment = (segment: string): boolean => has_key_token(segment) || (/[a-z]/.test(segment) && /[A-Z]/.test(segment) && /\d/.test(segment));
+/** The five shapes that are names inside a literal or comment; any other shape is a value (#120). */
 const is_name_shaped = (content: string): boolean => {
   const flag = FLAG_NAME.exec(content);
-  if (flag) return !is_value_name(flag[1]!);
-  if (/^[\w.\-/+~*{}$]+$/.test(content) && (content.includes('/') || FILE_EXTENSION.test(content))) return true; // a route, a path or a file name
-  // two or more alphabetic words (2+ letters, no digits) joined by `_`, `-`, `.` or spaces; option flags may sit among them
+  if (flag) return !is_value_name(flag[1]!); // (a) an option flag
+  if (FILE_EXTENSION.test(content) && /^[\w./-]+$/.test(content) && !content.split('/').some(is_key_like_segment)) return true; // (b) a file name or path
+  if (ROUTE.test(content)) return true; // (c) a route of lowercase words, :params and {params}
+  if (EVENT_NAME.test(content) && !NOT_EVENT_END.test(content.slice(content.lastIndexOf('.') + 1)) && !find_value_in_name(content)) return true; // (d) a dotted event name
+  // (e) a command phrase: a --long-flag and lowercase letter words, no word that is a flag's argument or a value name
   const tokens = content.split(/\s+/);
-  const words = tokens.filter((token) => LETTER_WORDS.test(token)).flatMap((token) => token.split(/[_.-]+/));
-  const flags_ok = tokens.every((token) => LETTER_WORDS.test(token) || (FLAG_NAME.test(token) && !is_value_name(FLAG_NAME.exec(token)![1]!)));
-  return flags_ok && words.length >= 2 && words.filter((word) => word.length >= 2).length >= 2 && !AUTH_SCHEME.test(content);
+  if (tokens.length < 2 || !tokens.some((token) => /^--[a-z]/.test(token)) || AUTH_SCHEME.test(content)) return false;
+  return tokens.every((token, i) => {
+    const flag_token = FLAG_NAME.exec(token);
+    if (flag_token) return !is_value_name(flag_token[1]!);
+    return /^[a-z]+$/.test(token) && !is_value_name(token) && !/^--?[a-z][a-z0-9-]*$/.test(tokens[i - 1] ?? '');
+  });
 };
 const KEY_BEFORE = /([\w-]+)["'`]?\s*(?:=>|[:=,(])\s*$/;
 const HEAD_KEY = /^\s*(?:(?:export|const|let|var|final|static|readonly|public|private)\s+)*([\w.$-]+)["'`]?\s*(?::[^=]+)?(?:=>|[:=])/;
@@ -293,6 +303,7 @@ export function find_block_lines(text: string, file?: string): Set<number> {
   const c_style = extension === undefined || C_STYLE.has(extension);
   const python = extension === undefined || extension === 'py' || extension === 'pyi';
   const ruby = extension === undefined || extension === 'rb';
+  const php = extension === 'php'; // `#` is a line comment there (`#[` is an attribute); undefined already reads `#` as a comment
   if (!c_style && !python && !ruby) return marked;
   const lines = text.split('\n');
   // the first block that opens on the line and does not close on it, after marking the one-line blocks that are the whole line
@@ -304,6 +315,17 @@ export function find_block_lines(text: string, file?: string): Set<number> {
       const triple = python && (char === '"' || char === "'") && line.startsWith(char.repeat(3), j) ? char.repeat(3) : '';
       const star = c_style && char === '/' && line[j + 1] === '*' ? '*/' : '';
       const delim = triple || star;
+      if (star && !/(?:^|[;{})]\s+)$/.test(line.slice(0, j).replace(/^\s+/, '')) ) { // a block opens only where a comment can start; a regex like /\/*/ or a `(/*` opens nothing
+        const same_line = line.indexOf(star, j + 2);
+        if (same_line >= 0) j = same_line + 1;
+        else j++;
+        continue;
+      }
+      if (c_style && char === '/' && line[j + 1] !== '/' && line[j + 1] !== '*' && /^$|[(,=:[!&|?{};]$/.test(line.slice(0, j).trimEnd().slice(-1))) { // a regex literal: skip it whole
+        let close_at = j + 1;
+        for (let in_class = false; close_at < line.length && (line[close_at] !== '/' || in_class); close_at++) { if (line[close_at] === '\\') close_at++; else if (line[close_at] === '[') in_class = true; else if (line[close_at] === ']') in_class = false; }
+        if (close_at < line.length) { j = close_at; continue; }
+      }
       if (delim) {
         const before = line.slice(0, j);
         const opener = star || /(?:^|[=(])\s*$/.test(before.replace(/[rRuUbBfF]{1,2}$/, ''));
@@ -316,7 +338,7 @@ export function find_block_lines(text: string, file?: string): Set<number> {
         continue;
       }
       if (char === '"' || char === "'" || char === '`') quote = char;
-      else if (c_style && char === '/' && line[j + 1] === '/' || (python || ruby) && char === '#') return undefined;
+      else if (c_style && char === '/' && line[j + 1] === '/' || (python || ruby || php) && char === '#' && !(php && line[j + 1] === '[')) return undefined;
     }
     return undefined;
   };
@@ -328,7 +350,7 @@ export function find_block_lines(text: string, file?: string): Set<number> {
     if (!begin && !opened) { i++; continue; }
     let end = i + 1;
     while (end < lines.length && !(begin ? /^=end\b/.test(lines[end]!) : lines[end]!.includes(opened!.delim))) end++;
-    if (end >= lines.length) { i++; continue; } // never closes: nothing is marked
+    if (end >= lines.length || end - i > 200) { i++; continue; } // never closes, or not within 200 lines: nothing is marked
     if (begin || opened!.blank_before) marked.add(i);
     for (let at = i + 1; at < end; at++) marked.add(at);
     if (begin || !lines[end]!.slice(lines[end]!.indexOf(opened!.delim) + opened!.delim.length).trim()) marked.add(end);

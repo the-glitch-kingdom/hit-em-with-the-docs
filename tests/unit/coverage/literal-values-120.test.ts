@@ -28,6 +28,7 @@ const leaks: [string, string, string][] = [
   ['comment, bearer', '# curl -H "Authorization: Bearer abc123def" https://x', 'abc123def'],
   ['comment, unquoted pair', '# connect with password=correcthorse7 for now', 'correcthorse7'],
 ];
+// two letter-words ('sample_workspace') are no longer a name shape: main withheld them, so they stay withheld (#120 round 3)
 const names: [string, string, string][] = [
   ['flag', '# fall back to npm audit fix --package-lock-only when it fails', '--package-lock-only'],
   ['flag with word', 'run("npm ci --omit=dev")', '--omit=dev'],
@@ -35,7 +36,6 @@ const names: [string, string, string][] = [
   ['fixture path', 'data = load("fixtures/orders_sample.json")', 'fixtures/orders_sample.json'],
   ['route', 'app.get("/api/orders/list", handler)', '/api/orders/list'],
   ['event name', 'bus.emit("user.created", payload)', 'user.created'],
-  ['two words', 'workspace = open("sample_workspace")', 'sample_workspace'],
   ['comment event', '// emits user.created once the row is saved, see "user.created"', 'user.created'],
 ];
 

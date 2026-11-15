@@ -47,9 +47,10 @@ describe('target order (#115 problems 1 and 2)', () => {
     expect(d.kind).toBe('new');
   });
   it('a specific citer is chosen among citers (fewest sources, most facets)', () => {
-    const wide = doc('ops/wide.md', 'x', ['src/x.ts', 'a', 'b', 'c']);
-    const tight = doc('ops/tight.md', 'x', ['src/x.ts']);
-    const d = resolve_decision(miss(['eps_one', 'eps_two']), { code: code(['eps_one', 'src/x.ts', 1]), instructions: none }, [wide, tight]);
+    // #118: the citers must be about the question (shared distinctive terms) to qualify without a facet
+    const wide = doc('ops/wide.md', 'eps scheduler details', ['src/x.ts', 'a', 'b', 'c']);
+    const tight = doc('ops/tight.md', 'eps scheduler details', ['src/x.ts']);
+    const d = resolve_decision(miss(['eps_one', 'eps_two'], { query: 'how does the eps scheduler run' }), { code: code(['eps_one', 'src/x.ts', 1]), instructions: none }, [wide, tight]);
     expect(d).toMatchObject({ kind: 'extend', doc: 'ops/tight.md' });
   });
   it('covered stays covered, even when the doc is an overview', () => {

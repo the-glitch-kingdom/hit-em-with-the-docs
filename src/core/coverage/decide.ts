@@ -20,6 +20,14 @@ export const SPECIFIC_MAX_SOURCES = 5;
 /** A doc citing more files than this is a hub: an index in all but name. */
 export const HUB_MIN_SOURCES = 15;
 
+/** A doc whose body has at least this many path lines, making up at least PATH_LIST_SHARE of its non-empty lines, is a file map (#118). */
+export const PATH_LIST_MIN_LINES = 5;
+export const PATH_LIST_SHARE = 0.5;
+/** A citing doc with no facet qualifies as relevant when its title, purpose or path share a distinctive question term, or its body shares this many (and at least half of all of them) (#118). */
+export const RELEVANT_BODY_TERMS = 2;
+const PATH_TOKEN = /[\w.-]+\/[\w./-]+|\b[\w-]+\.(?:ts|tsx|js|jsx|mjs|cjs|py|rb|go|rs|java|kt|cs|php|sh|ya?ml|json|toml|sql|tf|conf|ini|env)\b/;
+const LIST_LINE = /^\s*(?:[-*+]|\d+[.)]|\|)\s*/;
+
 const HUB_NAME = /^(index|readme|overview)/i;
 const HUB_TIERS = new Set(['overview', 'reference', 'index', 'incident-narrative', 'incident-facts']);
 const hub_cache = new WeakMap<DocText, boolean>();
@@ -33,11 +41,45 @@ export function is_hub_doc(doc: DocText): boolean {
     const { data } = parse_frontmatter<Record<string, unknown>>(doc.text);
     hub = data.generated === true || [data.tier, data.kind].some((value) => typeof value === 'string' && HUB_TIERS.has(value));
   }
+  if (!hub) hub = is_path_list(parse_frontmatter<Record<string, unknown>>(doc.text).content);
   hub_cache.set(doc, hub);
   return hub;
 }
 
-export interface DocText { path: string; text: string; sources: string[] }
+/** A body that is mostly a list of paths (a file map or inventory) names code without explaining any of it. */
+function is_path_list(body: string): boolean {
+  const lines = body.split('\n').filter((line) => line.trim() && !/^\s*#/.test(line));
+  const path_lines = lines.filter((line) => LIST_LINE.test(line) && PATH_TOKEN.test(line)).length;
+  return path_lines >= PATH_LIST_MIN_LINES && path_lines / lines.length >= PATH_LIST_SHARE;
+}
+
+/** A `sources` entry that says which lines it cites; absent `lines` means the whole file. */
+export interface SourceRef { path: string; lines?: [number, number][] }
+export interface DocText { path: string; text: string; sources: string[]; /** Only for entries that carry line granularity. */ source_refs?: SourceRef[] }
+
+const STOP_TERMS = new Set('a an and are as at be by can do does for from how i if in is it its of on or so that the their there these this to was what when where which who why will with work works used use uses using value values code file files data system service function method class'.split(' '));
+/** Distinctive words of a text: identifiers split, lower-cased, stop and generic words dropped, a plural `s` folded. */
+export function get_distinctive_terms(text: string): Set<string> {
+  const words = text.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().match(/[a-z][a-z0-9]{2,}/g) ?? [];
+  return new Set(words.map((word) => (word.length > 4 && word.endsWith('s') ? word.slice(0, -1) : word)).filter((word) => !STOP_TERMS.has(word)));
+}
+function is_relevant_to_query(doc: DocText, query_terms: Set<string>): boolean {
+  if (!query_terms.size) return false;
+  const { data, content } = parse_frontmatter<Record<string, unknown>>(doc.text);
+  const label = get_distinctive_terms([doc.path.replace(/\.md$/, ''), data.title, data.purpose].filter((part): part is string => typeof part === 'string').join(' '));
+  if ([...query_terms].some((term) => label.has(term))) return true;
+  const body = get_distinctive_terms(content);
+  const shared = [...query_terms].filter((term) => body.has(term)).length;
+  return shared >= RELEVANT_BODY_TERMS && shared / query_terms.size >= 0.5;
+}
+/** A citation with line data counts for a file only when it covers one of the facet lines; without line data the whole file counts. */
+function covers_hits(doc: DocText, located: FacetHit[]): boolean {
+  return located.some((found) => {
+    const citations = (doc.source_refs ?? []).filter((citation) => citation.path === found.file);
+    if (!citations.length) return doc.sources.includes(found.file) || doc.text.includes(found.file);
+    return citations.some((citation) => !citation.lines || citation.lines.some(([from, to]) => found.line >= from && found.line <= to));
+  });
+}
 export type DecisionKind = 'extend' | 'new' | 'covered' | 'instruction-only';
 export interface Decision {
   key: string;
@@ -75,7 +117,13 @@ export async function load_doc_texts(docs_root: string): Promise<DocText[]> {
     if (data.generated === true) continue;
     const listed = Array.isArray(data.sources) ? data.sources : [];
     const sources = listed.map((entry) => (typeof entry === 'string' ? entry : (entry as { path?: unknown } | null)?.path)).filter((path_text): path_text is string => typeof path_text === 'string');
-    docs.push({ path: relative(docs_root, abs_path).split('\\').join('/'), text, sources });
+    const source_refs = listed.flatMap((entry): SourceRef[] => {
+      const { path: path_text, lines } = (entry && typeof entry === 'object' ? entry : {}) as { path?: unknown; lines?: unknown };
+      if (typeof path_text !== 'string' || lines === undefined) return [];
+      const ranges = (Array.isArray(lines) ? lines : [lines]).map((item) => /^(\d+)(?:\s*-\s*(\d+))?$/.exec(String(item).trim())).filter((found): found is RegExpExecArray => !!found).map((found): [number, number] => [Number(found[1]), Number(found[2] ?? found[1])]);
+      return ranges.length ? [{ path: path_text, lines: ranges }] : [];
+    });
+    docs.push({ path: relative(docs_root, abs_path).split('\\').join('/'), text, sources, ...(source_refs.length && { source_refs }) });
   }
   return docs.sort((a, b) => a.path.localeCompare(b.path));
 }
@@ -147,8 +195,15 @@ export function resolve_decision(miss: CoverageMiss, located: Pick<LocateResult,
   const enough = counts.filter((item) => total && item.held.length / total >= EXTEND_MIN_SHARE).sort(order);
   const pick = enough.find((item) => !is_hub_doc(item.doc)) ?? enough[0];
   if (pick) return finish({ kind: 'extend', doc: pick.doc.path, held: pick.held.length, missing_facets: facets.filter((facet) => !pick.held.includes(facet)) });
-  // 2. else the most specific non-hub doc already citing the located code
-  const citing = counts.filter(({ doc }) => cited_by.includes(doc.path) && !is_hub_doc(doc) && doc.sources.length <= SPECIFIC_MAX_SOURCES).sort(order)[0];
+  // 2. else the most specific non-hub doc that cites the located code (its cited lines, when it says which) and is about the question (#118):
+  //    it holds a facet, or shares distinctive question terms; the eval's nearest doc holding a facet counts without citing
+  const query_terms = get_distinctive_terms(miss.query);
+  const citing = counts.filter(({ doc, held }) => {
+    if (is_hub_doc(doc)) return false;
+    const eval_pick = doc.path === eval_path && held.length > 0;
+    const cites = cited_by.includes(doc.path) && doc.sources.length <= SPECIFIC_MAX_SOURCES && covers_hits(doc, code_hits);
+    return (cites && (held.length > 0 || is_relevant_to_query(doc, query_terms))) || eval_pick;
+  }).sort((a, b) => b.held.length - a.held.length || order(a, b))[0];
   if (citing) return finish({ kind: 'extend', doc: citing.doc.path, held: citing.held.length, missing_facets: facets.filter((facet) => !citing.held.includes(facet)) });
 
   // new doc: the folder where the docs about nearby code live

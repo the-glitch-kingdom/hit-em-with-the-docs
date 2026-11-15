@@ -84,7 +84,8 @@ async function build_facts(repo_root: string, proposal: Proposal, secrets_config
       const constant = CONFIG_FILE.test(match.file) ? undefined : extract_stated_constant(text);
       if (!constant) continue;
       const sentence = `\`${constant.name}\` is \`${constant.literal}\` (\`${match.file}\`, line ${match.line}).`;
-      if (!matches(sentence) || check_security_gate(sentence, match.file, secrets_config).length || is_security_sensitive(sentence)) continue;
+      // the facet may be code-line shaped (`NAME = literal`): the located line already matched it, so the canonical line form counts too
+      if (!(matches(sentence) || matches(`${constant.name} = ${constant.literal}`)) || check_security_gate(sentence, match.file, secrets_config).length || is_security_sensitive(sentence)) continue;
       if (!sentences.includes(`- ${sentence}`)) sentences.push(`- ${sentence}`);
       stated = true;
       break;

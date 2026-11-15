@@ -65,9 +65,9 @@ describe('reconcile --gaps with facets (built CLI, labelled fixture)', () => {
     const review_path = join(root, out.coverage_review);
     const review = readFileSync(review_path, 'utf-8');
     expect(review).not.toMatch(/- \[x\] accept/);
-    // #115: only a simple constant is stated: report_batch_size (two) and purge_interval (missing-detail); functions, strings and the code-line facet wait for the judge
-    expect((review.match(/"verdict": "create"/g) ?? []).length).toBe(1);
-    expect((review.match(/"verdict": null/g) ?? []).length).toBe(2); // absent, code-line
+    // #115: only a simple constant is stated: report_batch_size (two) and purge_interval (missing-detail); the code-line facet is stated from its located line too (#118); functions and strings wait for the judge
+    expect((review.match(/"verdict": "create"/g) ?? []).length).toBe(2); // + eviction_ttl (#118: a code-line-shaped facet)
+    expect((review.match(/"verdict": null/g) ?? []).length).toBe(1); // absent
     expect(review).toContain('"verdict": "verify"');
     expect(g('status', '--porcelain', '-uno')).toBe('');
     expect(existsSync(join(root, '.documentation/features'))).toBe(false);

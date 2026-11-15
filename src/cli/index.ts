@@ -1440,7 +1440,7 @@ program
         for (const entry of read.errors) logger.warn(`  ${entry}`);
         for (const entry of warnings) logger.warn(`  ${entry}`);
         logger.info(`  ${result.proposals.length} doc(s) with phrase proposals (${result.proposals.reduce((count, proposal) => count + proposal.accepted.length, 0)} phrases), ${result.candidates.length} new-doc candidate(s), ${result.questions.length} open question(s), ${result.dropped.length} dropped`);
-        if (coverage) logger.info(`  coverage misses: ${coverage.proposals.length} proposal(s) (${['extend', 'new', 'covered', 'instruction-only'].map((kind) => `${coverage.proposals.filter((proposal) => proposal.kind === kind).length} ${kind}`).join(', ')}), ${coverage.drafts.entries.length} draft(s), ${coverage.drafts.needs_human.length} for a human, ${coverage.drafts.blocked.length} blocked by the security gate`);
+        if (coverage) logger.info(`  coverage misses: ${coverage.proposals.length} proposal(s) (${['extend', 'new', 'covered', 'instruction-only'].map((kind) => `${coverage.proposals.filter((proposal) => proposal.kind === kind).length} ${kind}`).join(', ')}), ${coverage.drafts.entries.length} draft(s), ${coverage.drafts.needs_human.length + (result.held_back?.length ?? 0)} for a human, ${coverage.drafts.blocked.length} blocked by the security gate`);
         logger.info(`  report: ${report_file}`);
         if (review_file) logger.info(`  wrote ${relative(repo_root, review_file)}`);
         if (coverage_review) logger.info(`  wrote ${relative(repo_root, coverage_review)}`);

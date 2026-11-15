@@ -104,6 +104,21 @@ describe('reconcile --gaps with facets (built CLI, labelled fixture)', () => {
     expect(applied.stdout + applied.stderr).toMatch(/no verdict/);
     expect(readFileSync(join(root, '.documentation/ops/cache.md'), 'utf-8')).toBe(before);
   });
+  it('size constants are classified, one withheld facet keeps its miss, and a miss with every facet withheld is held for a human, not dropped (#115)', () => {
+    writeFileSync(join(root, 'src/up.ts'), 'export const CHUNK_SIZE = 10 * 1024 * 1024;\n');
+    g('add', '-A'); g('commit', '-qm', 'up');
+    writeFileSync(join(root, 'gaps.json'), JSON.stringify({ version: 1, source: 'f', gaps: [
+      { id: 'size', query: 'how big is an upload chunk', facets: ['CHUNK_SIZE'] },
+      { id: 'mixed', query: 'where does it connect', facets: ['db-prod\\.acme-corp\\.internal', 'CHUNK_SIZE'] },
+      { id: 'all', query: 'what is the address', facets: ['10\\.20\\.30\\.40'] },
+    ] }));
+    const { out } = run();
+    expect(proposal_for(out, 'size')).toBeTruthy();
+    expect(proposal_for(out, 'mixed')).toBeTruthy();
+    expect(out.held_back).toEqual([{ keys: ['all'], reason: expect.stringContaining('every facet withheld') }]);
+    expect(JSON.stringify(out)).not.toMatch(/acme-corp|10\.20\.30\.40/);
+    expect(readFileSync(join(root, out.report), 'utf-8')).toContain('needs a human: every facet withheld');
+  });
   it('--include-blind drafts from the blind entry', () => {
     const { out } = run(['--include-blind', '--write-review']);
     expect(out.coverage.skipped.some((s: any) => s.keys.includes('blind'))).toBe(false);

@@ -24,6 +24,7 @@ export function render_gaps_report(classification: GapsClassification, config: S
   if (!classification.questions.length) lines.push('None.');
   for (const question of classification.questions) lines.push(`- ${question.query}${format_count_suffix(question.count)}`);
   if (coverage) lines.push(...render_coverage_section(coverage));
+  if (classification.held_back?.length) lines.push('', '### needs a human: every facet withheld', '', 'Questions whose every facet the security gate withheld. Unit names and rule names only:', ...classification.held_back.map((unit) => `- ${unit.keys.join(', ')}: ${unit.reason}`));
   lines.push('', `## Dropped (${classification.dropped.length})`, '');
   if (!classification.dropped.length) lines.push('None.');
   for (const dropped_phrase of classification.dropped) lines.push(`- ${dropped_phrase.query} - ${dropped_phrase.reason}${dropped_phrase.note ? ` (${dropped_phrase.note})` : ''}`);

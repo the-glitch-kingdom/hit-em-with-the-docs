@@ -105,4 +105,51 @@ describe('reconcile --gaps with facets (built CLI, labelled fixture)', () => {
     const out = JSON.parse(hewtd(['reconcile', '--gaps', 'old.txt', '--json']).stdout);
     expect(Object.keys(out).sort()).toEqual(['candidates', 'dropped', 'errors', 'proposals', 'questions', 'report']);
   });
+
+  describe('apply create edge cases and engine guards', () => {
+    const only_absent = () => { writeFileSync(join(root, 'gaps.json'), JSON.stringify({ version: 1, source: 'f', gaps: [gaps[1]] })); const { out } = run(['--write-review']); const file = join(root, out.coverage_review); return { file, text: readFileSync(file, 'utf-8') }; };
+    const accept = (text: string) => text.replaceAll('- [ ] accept', '- [x] accept');
+    const applied_in = (file: string, text: string) => { writeFileSync(file, accept(text)); const r = hewtd(['reconcile', '--apply', file]); return r.stdout + r.stderr; };
+    it('refuses a create path outside the docs root and a non-.md path', () => {
+      const { file, text } = only_absent();
+      expect(applied_in(file, text.replaceAll('features/what-does-the-csv-export-job-do.md', '../escaped.md'))).toMatch(/inside the docs root|error/i);
+      expect(existsSync(join(root, 'escaped.md'))).toBe(false);
+      expect(applied_in(file, text.replaceAll('features/what-does-the-csv-export-job-do.md', 'features/x.txt'))).toMatch(/\.md path|error/i);
+      expect(existsSync(join(root, '.documentation/features/x.txt'))).toBe(false);
+    });
+    it('an edited draft that trips the gate is refused at apply', () => {
+      const { file, text } = only_absent();
+      const out = applied_in(file, text.replace('## What the code defines', 'Connect to db.internal.example.com on port 5432.\\n\\n## What the code defines'));
+      expect(out).toMatch(/security gate/);
+      expect(existsSync(join(root, '.documentation/features/what-does-the-csv-export-job-do.md'))).toBe(false);
+    });
+    it('a doc cited by a phrases entry and a coverage entry applies cleanly in two separate runs', () => {
+      writeFileSync(join(root, 'gaps.json'), JSON.stringify({ version: 1, source: 'f', gaps: [gaps[0], { query: 'how often is the cache purged', used_doc: '.documentation/ops/cache.md' }, { query: 'how often is the cache purged now', used_doc: '.documentation/ops/cache.md' }] }));
+      const { out } = run(['--write-review']);
+      const coverage = join(root, out.coverage_review);
+      const files = readdirSync(join(root, '.hewtd/reconcile')).filter((f) => f.endsWith('.md')).map((f) => join(root, '.hewtd/reconcile', f));
+      const phrases = files.find((f) => f !== coverage);
+      expect(applied_in(coverage, readFileSync(coverage, 'utf-8'))).not.toMatch(/error [1-9]/);
+      if (phrases) expect(hewtd(['reconcile', '--apply', phrases]).status).toBe(0);
+      expect(readFileSync(join(root, '.documentation/ops/cache.md'), 'utf-8')).toContain('purge_interval');
+    });
+    it('invalid and pathological facet regexes are reported, skipped and never hang', () => {
+      const bad = ['(unclosed[', '(a+)+$', '(a|aa)*b'].map((f, n) => ({ id: `r${n}`, query: `q${n} thing here`, facets: [f] }));
+      writeFileSync(join(root, 'src/long.ts'), 'a'.repeat(30000) + '\n');
+      g('add', '-A'); g('commit', '-qm', 'long');
+      writeFileSync(join(root, 'gaps.json'), JSON.stringify({ version: 1, source: 'f', gaps: bad }));
+      const r = spawnSync('node', [CLI, 'reconcile', '--gaps', 'gaps.json', '--json'], { cwd: root, encoding: 'utf8', env: { ...process.env, HOME: root }, timeout: 20000 });
+      expect(r.status).toBe(0);
+      expect(JSON.parse(r.stdout).errors.filter((e: string) => /facet \d skipped/.test(e))).toHaveLength(3);
+    }, 30000);
+    it('no fake value, host, IP or id appears in --json, drafts or review files', () => {
+      writeFileSync(join(root, 'src/net.ts'), 'export const db_url = "postgres://u:p@db.internal.example.com:5432/x";\nexport const host_ip = "10.20.30.40";\nexport const account_id = "123456789012";\nexport const csv_net_job = 1;\n');
+      g('add', '-A'); g('commit', '-qm', 'net');
+      writeFileSync(join(root, 'gaps.json'), JSON.stringify({ version: 1, source: 'f', gaps: [{ id: 'n', query: 'what is the net setup', facets: ['db_url', 'host_ip', 'account_id'] }, { id: 'm', query: 'what is the net job', facets: ['csv_net_job'] }] }));
+      const { r, out } = run(['--write-review']);
+      expect(out.coverage.blocked.length + out.coverage.proposals.length).toBeGreaterThan(0);
+      const text = r.stdout + (out.coverage_review ? readFileSync(join(root, out.coverage_review), 'utf-8') : '') + all_text();
+      for (const v of ['db.internal.example.com', '10.20.30.40', '123456789012', 'postgres://', 'u:p@']) expect(text).not.toContain(v);
+    });
+  });
 });

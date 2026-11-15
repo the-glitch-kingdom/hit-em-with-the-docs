@@ -23,7 +23,7 @@ export const MAX_FACET_LENGTH = 300;
 /** Longest text one facet test sees; the rest is ignored, so a slow pattern cannot run on a huge line or document. */
 export const MAX_TEST_TEXT = 20_000;
 // shortcut: a nested quantifier is refused by shape, not by timing (JS regexes cannot be interrupted); upgrade to a worker with a timeout if real facets need them
-const NESTED_QUANTIFIER = /\((?:[^()\\]|\\.)*[+*](?:[^()\\]|\\.)*\)[+*{]/;
+const NESTED_QUANTIFIER = /\((?:[^()\\]|\\.)*[+*|](?:[^()\\]|\\.)*\)[+*{]/; // a `|` group under a quantifier counts: (a|aa)*b backtracks exponentially
 
 export interface CompiledFacet { regex?: RegExp; error?: string }
 

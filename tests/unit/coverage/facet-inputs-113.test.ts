@@ -52,6 +52,9 @@ describe('facet inputs (#113)', () => {
     expect(compile_facet('(a').error).toBeTruthy();
     expect(compile_facet('a'.repeat(400)).error).toBeTruthy();
     expect(compile_facet('(a+)+$').error).toBeTruthy();
+    expect(compile_facet('(a|aa)*b').error).toBeTruthy(); // overlapping alternation under a quantifier hung the CLI
+    expect(compile_facet('(foo|bar)+x').error).toBeTruthy();
+    expect(compile_facet('(foo|bar)x').regex).toBeInstanceOf(RegExp);
     expect(compile_facet('retry_limit').regex).toBeInstanceOf(RegExp);
     expect(test_facet(compile_facet('x{2}').regex!, 'ax' + 'x'.repeat(10) + 'a'.repeat(100000))).toBe(true);
   });

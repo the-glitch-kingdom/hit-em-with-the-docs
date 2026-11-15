@@ -96,3 +96,12 @@ describe('merge rules (#115 problem 3)', () => {
     expect(merge_decisions([dec('a', 'extend', { doc: 'ops/a.md', ...shared }), dec('b', 'extend', { doc: 'ops/b.md', ...shared })])).toHaveLength(2);
   });
 });
+
+describe('a hub that is the only doc holding facets (validation edge)', () => {
+  it('is still chosen to extend by coverage, flagged as a hub, rather than a new doc', () => {
+    const hub = doc('architecture/overview.md', 'th_one th_two th_three');
+    const r = resolve_decision(miss(['th_one', 'th_two', 'th_three', 'th_four']), { code: none, instructions: none }, [hub]);
+    expect(r.doc).toBe('architecture/overview.md');
+    expect(r.hub).toBe(true);
+  });
+});

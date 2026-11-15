@@ -112,7 +112,7 @@ function find_anchor(raw_text: string): string | undefined {
 /** Lines read per unit when looking for a security check: a unit citing more than this is too generic to be about one check. */
 const MAX_CHECKED_LINES = 100;
 /** The first located line that is a security check: its kind and place, never its text. */
-async function find_check_line(repo_root: string, sources: FacetHit[]): Promise<{ kind: string; file: string; line: number } | undefined> {
+export async function find_check_line(repo_root: string, sources: FacetHit[]): Promise<{ kind: string; file: string; line: number } | undefined> {
   const lines_of = new Map<string, string[]>();
   for (const found of [...sources].sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line).slice(0, MAX_CHECKED_LINES)) {
     let lines = lines_of.get(found.file);

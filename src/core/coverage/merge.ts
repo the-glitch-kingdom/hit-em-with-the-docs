@@ -31,28 +31,58 @@ export interface Proposal {
 
 const unique = <T>(items: T[]): T[] => [...new Set(items)];
 
-export function merge_decisions(decisions: Decision[]): Proposal[] {
+/** Misses on one file tie only when their lines are this close (#120): a shortcut for "same block or symbol"; upgrade to enclosing-symbol detection if it merges too much. */
+export const FILE_TIE_WINDOW = 30;
+export interface MergeOptions {
+  /** Files that declare a list (schedules, routes, alert rules, flags, keys): their entries are unrelated, so the file never ties misses. */
+  declared_files?: Set<string>;
+  /** Whether a doc holds one of the facets or cites one of the files: an extend doc is never given to misses it does not speak to. */
+  doc_holds?: (doc: string, facets: string[], files: string[]) => boolean;
+}
+
+export function merge_decisions(decisions: Decision[], options: MergeOptions = {}): Proposal[] {
   const sorted = [...decisions].sort((a, b) => a.key.localeCompare(b.key));
-  // union-find over decisions: same doc, or a shared source file, or the same instruction files
+  // union-find over decisions: same doc, or nearby lines of a shared source file, or the same instruction files
   const parent = sorted.map((_, i) => i);
   const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i]!)));
   const owner = new Map<string, number>();
   // the target doc of each group: two groups extending different docs never merge (each miss keeps its own doc)
   const group_doc = sorted.map((decision) => (decision.kind === 'extend' ? decision.doc : undefined));
+  const group_facets = sorted.map((decision) => [...decision.missing_facets]);
+  const group_files = sorted.map((decision) => [...decision.source_files]);
+  const join_groups = (i: number, j: number): void => {
+    const [root, other] = [find(i), find(j)];
+    if (root === other) return;
+    const [doc_a, doc_b] = [group_doc[root], group_doc[other]];
+    if (doc_a && doc_b && doc_a !== doc_b) return;
+    // a group with no doc never inherits one that holds none of its facets (#120)
+    if (options.doc_holds && (doc_a ? !doc_b : !!doc_b) && !options.doc_holds((doc_a ?? doc_b)!, group_facets[doc_a ? other : root]!, group_files[doc_a ? other : root]!)) return;
+    parent[root] = other;
+    group_doc[other] ??= doc_a;
+    group_facets[other] = [...group_facets[other]!, ...group_facets[root]!];
+    group_files[other] = [...group_files[other]!, ...group_files[root]!];
+  };
   const tie = (key: string, i: number): void => {
     const seen = owner.get(key);
     if (seen === undefined) return void owner.set(key, i);
-    const [root, other] = [find(i), find(seen)];
-    if (root === other || (group_doc[root] && group_doc[other] && group_doc[root] !== group_doc[other])) return;
-    parent[root] = other;
-    group_doc[other] ??= group_doc[root];
+    join_groups(i, seen);
   };
+  const lines_in = (i: number, file: string): number[] => sorted[i]!.sources.filter((found) => found.file === file).map((found) => found.line);
+  const members_of = new Map<string, number[]>();
   sorted.forEach((decision, i) => {
     if (decision.kind === 'covered') tie(`covered:${decision.doc}`, i);
     else if (decision.kind === 'instruction-only') tie(`instruction:${(decision.instruction_files ?? []).join(',')}`, i);
     else {
       if (decision.doc && !decision.hub) tie(`doc:${decision.doc}`, i);
-      for (const file of decision.source_files) tie(`file:${file}`, i);
+      for (const file of decision.source_files) {
+        if (options.declared_files?.has(file)) continue;
+        const mine = lines_in(i, file);
+        for (const j of members_of.get(file) ?? []) {
+          const theirs = lines_in(j, file);
+          if (!mine.length || !theirs.length || mine.some((line) => theirs.some((other) => Math.abs(line - other) <= FILE_TIE_WINDOW))) join_groups(i, j);
+        }
+        members_of.set(file, [...(members_of.get(file) ?? []), i]);
+      }
       if (!decision.doc && !decision.source_files.length) tie(`alone:${decision.key}`, i);
     }
   });
@@ -109,6 +139,15 @@ export function detect_declared_lists(files: Map<string, string>): DeclaredList[
     }
   }
   return found.sort((a, b) => a.kind.localeCompare(b.kind) || a.file.localeCompare(b.file));
+}
+
+/** Files, among those the decisions located, that declare a list (3 or more entries). */
+export async function find_declared_files(repo_root: string, decisions: Decision[]): Promise<Set<string>> {
+  const texts = new Map<string, string>();
+  for (const file of new Set(decisions.flatMap((decision) => decision.source_files))) {
+    try { texts.set(file, await readFile(join(repo_root, file), 'utf-8')); } catch { /* deleted since it was located */ }
+  }
+  return new Set(detect_declared_lists(texts).map((list) => list.file));
 }
 
 /** Read each proposal's located files and attach the declared lists they hold. */

@@ -7,10 +7,10 @@ import { readFile } from 'fs/promises';
 import { join } from 'path';
 import type { PluginConfig } from '../../utils/config.js';
 import { load_doc_texts, resolve_decision, type Decision } from './decide.js';
-import { build_drafts, type DraftResult } from './draft.js';
+import { build_drafts, find_check_line, type DraftResult } from './draft.js';
 import { locate_facets, type LocateResult } from './locate.js';
-import { add_generated_references, merge_decisions, type Proposal } from './merge.js';
-import { compile_facet, list_timed_out_facets, parse_position_facet, REDACTED_FACET, test_facet, type CoverageMiss } from './facets.js';
+import { add_generated_references, find_declared_files, merge_decisions, type MergeOptions, type Proposal } from './merge.js';
+import { compile_facet, list_timed_out_facets, match_facets, parse_position_facet, REDACTED_FACET, test_facet, type CoverageMiss } from './facets.js';
 import { find_value_in_name, find_value_spans, has_key_token, is_value_line } from '../security/gate.js';
 import type { SecretsConfig } from '../../utils/config.js';
 
@@ -80,7 +80,30 @@ export async function plan_coverage_misses(options: { repo_root: string; docs_ro
   // a facet that is only a value is classified like any other, then shown as [redacted facet] in every output
   const decisions = misses.map((miss) => resolve_decision(miss, located, docs)).map((decision) => ({ ...decision, missing_facets: [...new Set(decision.missing_facets.map((facet) => (value_facets.has(facet) ? REDACTED_FACET : facet)))] }));
   // blind misses never share a proposal with others: a blind-only proposal can then be skipped whole
-  const proposals = await add_generated_references(repo_root, [...merge_decisions(decisions.filter((decision) => !decision.blind)), ...merge_decisions(decisions.filter((decision) => decision.blind))]);
+  const merge_options: MergeOptions = {
+    declared_files: await find_declared_files(repo_root, decisions),
+    doc_holds: (path, facets, files) => {
+      const doc = docs.find((candidate) => candidate.path === path);
+      if (!doc) return false;
+      // a doc holds a facet it matches, or speaks to the code by citing its file
+      if (files.some((file) => doc.sources.includes(file))) return true;
+      const regexes = facets.filter((facet) => !parse_position_facet(facet)).map((facet) => compile_facet(facet).regex).filter((regex): regex is RegExp => !!regex);
+      return match_facets(regexes, doc.text.split('\n'), 1).some((found) => found?.length);
+    },
+  };
+  const merged = [...merge_decisions(decisions.filter((decision) => !decision.blind), merge_options), ...merge_decisions(decisions.filter((decision) => decision.blind), merge_options)];
+  // a security check on one member's lines withholds that member only (#120): split it out, re-merge the rest
+  const by_key = new Map(decisions.map((decision) => [decision.key, decision]));
+  const split: Proposal[] = [];
+  for (const proposal of merged) {
+    if (proposal.closes.length < 2) { split.push(proposal); continue; }
+    const members = proposal.closes.map((closed) => by_key.get(closed.key)!);
+    const held: typeof members = [];
+    const rest: typeof members = [];
+    for (const member of members) (await find_check_line(repo_root, member.sources) ? held : rest).push(member);
+    split.push(...(held.length && rest.length ? [...merge_decisions(held, merge_options), ...merge_decisions(rest, merge_options)] : [proposal]));
+  }
+  const proposals = await add_generated_references(repo_root, split.length === merged.length ? split : split.sort((a, b) => b.count - a.count || a.closes[0]!.key.localeCompare(b.closes[0]!.key)));
   const drafts = await build_drafts({ repo_root, docs_root, proposals, secrets_config: config.reconcile.secrets, ...(options.include_blind && { include_blind: true }), today: options.today ?? new Date().toISOString().slice(0, 10) });
   const slow = new Set(list_timed_out_facets());
   const warnings = misses.filter((miss) => miss.facets.some((facet) => slow.has(facet))).map((miss) => `${miss.key}: ${miss.facets.filter((facet) => slow.has(facet)).length} of ${miss.facets.length} facet(s) ran out of time while matching and count as matching nothing; simplify them`);

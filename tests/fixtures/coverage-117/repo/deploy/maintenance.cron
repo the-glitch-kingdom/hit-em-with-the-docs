@@ -1,0 +1,3 @@
+*/5 * * * * /opt/app/bin/rotate_logs --all
+0 3 * * 1 root /usr/bin/vacuum_db
+30 2 * * * /opt/app/bin/compact_index

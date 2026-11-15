@@ -1,0 +1,9 @@
+name: reindex
+on:
+  schedule:
+    - cron: "0 5 * * *"
+jobs:
+  reindex:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo go

@@ -1,0 +1,341 @@
+{
+ "note": "One case per detector plus the #117 acceptance cases. grade: absent|named|explained. outcome: the engine proposal kind (new|extend|covered) or none. draft: stated (facts with value and file:line) | judge (waits, lists the surface's own file:line). no_value: no draft states a value for it. The credential-shaped constant is written by the gate at run time.",
+ "held": [
+  {
+   "name": "LEGACY_LIMIT",
+   "reason": "slated for removal"
+  }
+ ],
+ "ignored_files": [
+  "src/generated/schema.ts"
+ ],
+ "generate_reference": [
+  {
+   "kind": "schedules",
+   "file": "deploy/maintenance.cron",
+   "count": 3,
+   "absent": 3
+  }
+ ],
+ "reference_entries": [
+  [
+   "scheduled-job",
+   "rotate_logs"
+  ],
+  [
+   "scheduled-job",
+   "vacuum_db"
+  ],
+  [
+   "scheduled-job",
+   "compact_index"
+  ]
+ ],
+ "cases": [
+  {
+   "id": "crontab",
+   "kind": "scheduled-job",
+   "name": "purge_cache",
+   "file": "ops/crontab",
+   "line": 1,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "judge"
+  },
+  {
+   "id": "github-schedule",
+   "kind": "scheduled-job",
+   "name": "reindex-search",
+   "file": ".github/workflows/reindex-search.yml",
+   "line": 4,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "judge"
+  },
+  {
+   "id": "k8s-cronjob",
+   "kind": "scheduled-job",
+   "name": "sync-inventory",
+   "file": "deploy/cron.yaml",
+   "line": 4,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "judge"
+  },
+  {
+   "id": "celery-beat",
+   "kind": "scheduled-job",
+   "name": "expire-sessions",
+   "file": "app/celery_conf.py",
+   "line": 2,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "judge"
+  },
+  {
+   "id": "apscheduler",
+   "kind": "scheduled-job",
+   "name": "flush_metrics",
+   "file": "app/sched.py",
+   "line": 2,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "judge"
+  },
+  {
+   "id": "prometheus",
+   "kind": "alert-rule",
+   "name": "HighErrorRate",
+   "file": "monitoring/rules.yml",
+   "line": 4,
+   "grade": "explained",
+   "outcome": "none"
+  },
+  {
+   "id": "prometheus-named",
+   "kind": "alert-rule",
+   "name": "QueueBacklog",
+   "file": "monitoring/rules.yml",
+   "line": 6,
+   "grade": "named",
+   "outcome": "covered",
+   "draft": "none",
+   "doc": "ops/alert-list.md"
+  },
+  {
+   "id": "grafana",
+   "kind": "alert-rule",
+   "name": "Disk Almost Full",
+   "file": "monitoring/grafana-alerts.json",
+   "line": 4,
+   "grade": "named",
+   "outcome": "covered",
+   "draft": "none",
+   "doc": "ops/alert-list.md"
+  },
+  {
+   "id": "express-route",
+   "kind": "http-route",
+   "name": "/health",
+   "file": "src/api/server.ts",
+   "line": 1,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "judge"
+  },
+  {
+   "id": "decorator-route",
+   "kind": "http-route",
+   "name": "/reports/export",
+   "file": "app/views.py",
+   "line": 1,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "judge"
+  },
+  {
+   "id": "argparse",
+   "kind": "cli-flag",
+   "name": "--dry-run",
+   "file": "tools/run.py",
+   "line": 1,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "judge"
+  },
+  {
+   "id": "argparse-command",
+   "kind": "cli-command",
+   "name": "migrate",
+   "file": "tools/run.py",
+   "line": 2,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "judge"
+  },
+  {
+   "id": "click",
+   "kind": "cli-flag",
+   "name": "--verbose",
+   "file": "tools/cli.py",
+   "line": 1,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "judge"
+  },
+  {
+   "id": "commander-flag",
+   "kind": "cli-flag",
+   "name": "--docs-path",
+   "file": "cli/main.ts",
+   "line": 2,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "judge"
+  },
+  {
+   "id": "cli-command",
+   "kind": "cli-command",
+   "name": "purge",
+   "file": "cli/main.ts",
+   "line": 1,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "judge"
+  },
+  {
+   "id": "yargs-flag",
+   "kind": "cli-flag",
+   "name": "--output-format",
+   "file": "cli/yargs.js",
+   "line": 1,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "judge"
+  },
+  {
+   "id": "github-workflow",
+   "kind": "ci-workflow",
+   "name": "release",
+   "file": ".github/workflows/release.yml",
+   "line": 1,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "judge"
+  },
+  {
+   "id": "github-job",
+   "kind": "ci-job",
+   "name": "publish",
+   "file": ".github/workflows/release.yml",
+   "line": 6,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "judge"
+  },
+  {
+   "id": "gitlab-job",
+   "kind": "ci-job",
+   "name": "deploy-staging",
+   "file": ".gitlab-ci.yml",
+   "line": 2,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "judge"
+  },
+  {
+   "id": "celery-task",
+   "kind": "background-task",
+   "name": "send_receipt",
+   "file": "app/tasks.py",
+   "line": 2,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "judge"
+  },
+  {
+   "id": "bull-queue",
+   "kind": "background-task",
+   "name": "audit-events",
+   "file": "src/queues.ts",
+   "line": 1,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "judge"
+  },
+  {
+   "id": "sidekiq",
+   "kind": "background-task",
+   "name": "WelcomeMailer",
+   "file": "app/workers/mailer.rb",
+   "line": 1,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "judge"
+  },
+  {
+   "id": "code-constant-absent",
+   "kind": "constant",
+   "name": "RETRY_LIMIT",
+   "file": "src/limits.ts",
+   "line": 1,
+   "grade": "absent",
+   "outcome": "extend",
+   "draft": "stated",
+   "doc": "ops/limits.md",
+   "stated": [
+    {
+     "name": "RETRY_LIMIT",
+     "value": "5"
+    }
+   ]
+  },
+  {
+   "id": "code-constant-explained",
+   "kind": "constant",
+   "name": "MAX_BATCH_SIZE",
+   "file": "src/limits.ts",
+   "line": 2,
+   "grade": "explained",
+   "outcome": "none"
+  },
+  {
+   "id": "code-constant-named",
+   "kind": "constant",
+   "name": "PAGE_SIZE",
+   "file": "src/limits.ts",
+   "line": 3,
+   "grade": "named",
+   "outcome": "extend",
+   "draft": "stated",
+   "doc": "ops/limits.md",
+   "stated": [
+    {
+     "name": "PAGE_SIZE",
+     "value": "50"
+    }
+   ]
+  },
+  {
+   "id": "code-constant-value-named",
+   "kind": "constant",
+   "name": "DB_PORT",
+   "file": "src/limits.ts",
+   "line": 5,
+   "grade": "absent",
+   "outcome": "extend",
+   "draft": "judge",
+   "doc": "ops/limits.md",
+   "no_value": true
+  },
+  {
+   "id": "code-constant-credential",
+   "kind": "constant",
+   "name": "DEPLOY_KEY_NAME",
+   "file": "src/secret.ts",
+   "grade": "undetected"
+  },
+  {
+   "id": "env-var",
+   "kind": "config-key",
+   "name": "SERVICE_REGION",
+   "file": "src/config.ts",
+   "line": 1,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "judge",
+   "no_value": true
+  },
+  {
+   "id": "env-file",
+   "kind": "config-key",
+   "name": "CACHE_DIR",
+   "file": ".env.example",
+   "line": 1,
+   "grade": "absent",
+   "outcome": "new",
+   "draft": "judge",
+   "no_value": true
+  }
+ ]
+}

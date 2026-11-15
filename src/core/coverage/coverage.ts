@@ -56,7 +56,8 @@ export async function list_graded_surfaces(options: { repo_root: string; docs_ro
 
 /** One miss per surface: the facet is its escaped name, and for a constant with a stateable value, the line `NAME = value`. */
 function build_miss(surface: GradedSurface): { gap: FacetGap; facet: string } {
-  const name = `(?<![\\w-])${escape_regex(surface.name)}(?![\\w-])`;
+  // a yargs flag is declared as `option('name')`, so the dashes are optional in the code and in the docs
+  const name = surface.source_kind === 'yargs-flag' ? `(?<![\\w])(?:--)?${escape_regex(surface.name.replace(/^--/, ''))}(?![\\w-])` : `(?<![\\w-])${escape_regex(surface.name)}(?![\\w-])`;
   const facet = surface.kind === 'constant' && surface.value !== undefined ? `${name}\\s*[:=]\\s*${escape_regex(surface.value).replace(/\\? /g, '\\s*')}` : name;
   const query = `What does the ${KIND_LABEL[surface.kind]} ${surface.name} do?`;
   return { gap: { id: `${surface.kind}:${surface.name}@${surface.file}`, query, facets: [facet] }, facet };

@@ -183,27 +183,41 @@ export const find_security_check = (line: string): string | undefined => CHECK_K
 // General rule: a security operand word and a check form on one line, however the language spells it. Crypto APIs and authorization verbs count alone.
 const OPERAND = /^(?:auth(?:n|z|enticat\w*|oriz\w*)?|tokens?|secrets?|pass(?:word|wd)?s?|pwd|keys?|apikeys?|cred(?:ential)?s?|signatures?|sig|hmac|digests?|hash(?:es|ed)?|ciphers?|\w*crypt\w*|jwts?|bearer|sessions?|cookies?|roles?|admins?|permissions?|perms?|acl|polic(?:y|ies)|owners?|grants?|scopes?|claims?|certs?|tls|otp|nonce|secure)$/;
 const PERMISSION_OPERAND = /^(?:roles?|admins?|permissions?|perms?|acl|polic(?:y|ies)|owners?|grants?|scopes?|authz|authorize\w*)$/;
-const FORM_WORD = /^(?:equals?|eq|compare|cmp|isequal|in|verify|validate|check|evaluate|authorize|authenticate|can|cannot|guard|middleware|decorator|attribute|\w*(?:cmp|compare|equals?))$/;
-const CRYPTO_API = /\bopenssl_\w+|\bcrypto\.subtle\b|\bCipher\.\w+|\b(?:hashlib|bcrypt|argon2|scrypt|pbkdf2)\b|\.(?:can|cannot)\?|\b(?:can|cannot)\s*\(\s*[:'"]/i;
+const FORM_WORD = /^(?:matches|ne|enforce|equals?|eq|compare|cmp|isequal|in|verify|validate|check|evaluate|authorize|authenticate|can|cannot|guard|middleware|decorator|attribute|\w*(?:cmp|compare|equals?))$/;
+const CRYPTO_API = /\bopenssl_\w+|\bcrypto\.subtle\b|\bCipher\.\w+|\b(?:hashlib|bcrypt|argon2|scrypt|pbkdf2)\b|\b(?:can|cannot)\?|\.(?:enforce|authorize)(?:ex)?\s*\(|\b(?:can|cannot)\s*\(\s*[:'"]/i;
+// a decorator, attribute or middleware is a check by its NAME (last segment); words inside its string arguments never count
+const AUTH_NAME_WORD = /^(?:auth|authn|authz|authenticat\w*|authoriz\w*|authentication|permissions?|roles?|login|admin|secured|guards?|jwt|acl)$/;
+const MEMBERSHIP_OF_PERMISSIONS = /([\w$]+)\s*\.\s*(?:includes|has|contains|hasAny|some|indexOf|containsKey)\s*\(/g;
+const BLANK_STRINGS = /(?<!\[)(["'`])(?:\\.|(?!\1).)*\1/g;
 const words_of = (identifier: string): string[] => split_words(identifier).toLowerCase().split(/\s+/).filter(Boolean);
 function find_operand_check(line: string): string | undefined {
   if (/^\s*(?:\/\/|#|\*|\/\*|--)/.test(line)) return undefined;
+  const marker = /^\s*(?:@|\[\s*)([\w.]+)/.exec(line);
+  if (marker) {
+    const names = marker[1]!.split('.');
+    if (words_of(names[names.length - 1]!).some((word) => AUTH_NAME_WORD.test(word))) return 'permission or role check';
+    line = line.slice(0, marker.index) + line.slice(marker.index).replace(/^(\s*)(?:@|\[\s*)/, '$1');
+  }
   // a constant set to a literal states a value, it checks nothing
   if (/^\s*(?:export\s+)?(?:(?:const|let|var|final|static|readonly|public|private)\s+)*[A-Za-z_]\w*\s*(?::[^=]+)?=\s*(?:-?\d[\w.]*|["'][^"']*["']|true|false|null)\s*;?\s*$/.test(line)) return undefined;
   // route paths and counts of an operand are not operands
-  const code = line.replace(/(["'`])\/[^"'`]*\1/g, '""').replace(/[\w$]+(?:\.[\w$]+)*\.(?:length|size|count)\b(?:\(\))?/g, ' ');
-  if (CRYPTO_API.test(code)) return /\bcan(?:not)?\b/i.test(code) ? 'permission or role check' : 'crypto or credential check';
+  // "$VAR" is the variable; any other string is a value, its words are not operands; sigils and dashes join words
+  const code = line.replace(/(["'])\$\{?(\w+)\}?\1/g, '$2').replace(BLANK_STRINGS, '""').replace(/[$@&](?=[A-Za-z_])/g, '').replace(/(?<=\w)-(?=[A-Za-z_])/g, '_').replace(/[\w$]+(?:\.[\w$]+)*\.(?:length|size|count)\b(?:\(\))?/g, ' ');
+  if (CRYPTO_API.test(code)) return /\b(?:can|cannot|enforce|authorize)/i.test(code) ? 'permission or role check' : 'crypto or credential check';
   const identifiers = code.match(/[A-Za-z_$][\w$]*/g) ?? [];
   const operands = new Set<string>();
   let predicate = false;
   for (const identifier of identifiers) {
     const parts = words_of(identifier);
-    parts.forEach((part, i) => { if (OPERAND.test(part) && !/^(?:count|len|length|size|num|number|index|limit|max|min)$/.test(parts[i + 1] ?? '')) operands.add(part); });
+    const COUNTED = /^(?:count|len|length|size|num|number|index|limit|max|min)$/;
+    parts.forEach((part, i) => { if (OPERAND.test(part) && !COUNTED.test(parts[i + 1] ?? '') && !COUNTED.test(parts[i - 1] ?? '')) operands.add(part); });
     if (/^(?:is|has|can)$/.test(parts[0] ?? '') && parts.slice(1).some((part) => OPERAND.test(part))) predicate = true;
     if (parts.includes('parse') && parts.some((part) => /^(?:jws|claims?|jwt)$/.test(part))) predicate = true;
   }
+  for (const call of code.matchAll(/(?<![\w$])([\w$]+)\?(?=[\s(),;]|$)/g)) if (words_of(call[1]!).some((part) => OPERAND.test(part))) { predicate = true; operands.add(words_of(call[1]!).find((part) => OPERAND.test(part))!); }
+  for (const call of code.matchAll(MEMBERSHIP_OF_PERMISSIONS)) { const found = words_of(call[1]!).find((part) => PERMISSION_OPERAND.test(part)); if (found) { predicate = true; operands.add(found); } }
   if (!operands.size) return undefined;
-  const form = predicate || /[!=]==?(?!=)/.test(code) || /^\s*[@[]|\.use\(/.test(code)
+  const form = predicate || /[!=]==?(?!=)/.test(code) || (!marker && /^\s*\[/.test(code)) || /\.use\(/.test(code)
     || identifiers.some((identifier) => words_of(identifier).some((part) => FORM_WORD.test(part) && (part !== 'in' || !/\bfor\b/.test(code))))
     || /\bin\b/.test(code) && !/\bfor\b/.test(code);
   if (!form) return undefined;

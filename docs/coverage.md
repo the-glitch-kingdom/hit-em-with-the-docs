@@ -153,4 +153,6 @@ get "generate the reference", every stated fact is true at its `file:line`, read
 - Hostnames in file paths are not screened (`config.local.ts` is not a host); IPs, ids, key shapes and environment resource
   names are.
 - A bare integer under a name with no measuring or describing word is not stated, even when it is harmless (`LEVEL = 3`).
+- The security-check rule is by code shape and context, not a parser: a check whose operand is only inside a string (`headers['authorization']` aside), a check spelled with a user-defined helper whose name holds no operand word, and a decorator named for neither auth nor a guard are not detected; the topic-word route still marks them security-adjacent.
+- A membership call (`includes`, `has`, `contains`) counts only on a role, permission, scope, policy or grant collection; `tokens.includes(x)` alone is not a check.
 - Arithmetic is evaluated for integers, `+ - * / << **` and parentheses only; anything else follows the constant rules as written.

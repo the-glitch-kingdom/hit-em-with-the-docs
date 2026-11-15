@@ -53,6 +53,6 @@ describe('parseGaps', () => {
   it('ships a schema whose gap shape matches the reader', () => {
     const s = JSON.parse(readFileSync(join(__dirname, '../../../schemas/gaps.v1.schema.json'), 'utf8'));
     expect(s.properties.version.const).toBe(1);
-    expect(Object.keys(s.$defs.gap.properties)).toEqual(['query', 'used_doc', 'suggested', 'count', 'last_seen']);
+    expect(Object.keys(s.$defs.gap.properties)).toEqual(['query', 'used_doc', 'suggested', 'count', 'last_seen', 'id', 'tier', 'blind', 'facets', 'missing_facets', 'nearest_doc', 'expected']);
   });
 });

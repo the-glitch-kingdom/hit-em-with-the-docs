@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.5.0] — 2026-11-14
+
+Adds coverage-miss handling to `reconcile --gaps` (#113, semantic-memory#101). No config keys.
+
+- `gaps.v1` entries accept `id`, `tier`, `blind`, `facets` (regexes), `missing_facets`, `nearest_doc` and `expected`; the eval's question-set JSONL is accepted too (`//` and `#` comment lines skipped). Entries without `facets` classify exactly as in 3.4.1; a wrong-typed new field is ignored, not fatal.
+- Entries with facets get one outcome each: extend a doc, new doc, covered (check ranking) or instruction file only. Misses sharing a doc or source merge, but never across two different target docs; a doc holding every facet makes the miss covered; declared lists get a "generate the reference" hint.
+- Drafts go to `review-<batch>-coverage.md`, unticked. Extend is a `verify` entry with a `patch`; new doc uses the new `create` review verdict, which never overwrites and re-runs the gate at apply. Each drafted sentence cites a located `file:line`.
+- One security gate (`src/core/security/gate.ts`): no values (facets and queries holding a host, IP, port, ID or config value are not echoed into the report or `--json`), security-sensitive topics are listed as needing a human and never drafted (identifiers are split into words, so `check_auth_token` and `isAuthorized` count). Blind entries warn and are drafted only with `--include-blind`. Code-line-shaped facets are flagged.
+- Facet regexes are untrusted: compile errors, over 300 characters, nested quantifiers and `|` groups under a quantifier are refused, and matching runs under a 500 ms time limit per file or doc, so any other slow pattern is stopped and named in `warnings`. The engine is reusable under `src/core/coverage/`.
+- Docs: `docs/gaps-format.md`, `docs/reconcile.md`, `commands/reconcile.md`, help, LLM guide.
+
 ## [3.4.1] — 2026-11-12
 
 Fixes #111. No key changes.

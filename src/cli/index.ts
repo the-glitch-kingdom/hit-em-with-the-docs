@@ -1212,7 +1212,8 @@ program
   .option('--changed', 'Reconcile the docs created or changed since their last review (new, edited, or never reviewed) instead of naming a scope; scope args narrow it. Writes no ledger state', false)
   .option('--check', 'With --changed: advisory check for hooks and CI. Prints the unreviewed docs and exits 0, or 1 when reconcile.require_review is true', false)
   .option('--cached', 'With --changed --check: look only at docs staged for commit (the git index)', false)
-  .option('--gaps <file>', 'Classify missed search queries (gaps.v1 file or one question per line) into user_phrase proposals, new-doc candidates and open questions; writes only .hewtd/reconcile/gaps-report-<date>.md', undefined)
+  .option('--gaps <file>', 'Classify missed search queries (gaps.v1 file, the eval question-set JSONL, or one question per line) into user_phrase proposals, new-doc candidates and open questions; entries with facets become extend / new doc / covered proposals with grounded drafts; writes only .hewtd/reconcile/gaps-report-<date>.md', undefined)
+  .option('--include-blind', 'With --gaps: also draft from entries marked blind (feeding a blind set spoils it for measurement)', false)
   .action(async (scope: string[], options, command: Command) => {
     const { load_plugin_config } = await import('../utils/config.js');
     const { load_ledger, get_ledger_status: ledger_status, compute_content_hash: hash_content } = await import('../core/reconcile/ledger.js');
@@ -1419,14 +1420,30 @@ program
         const { render_gaps_report, write_gaps_report } = await import('../core/reconcile/gaps-report.js');
         const read = parse_gaps(await read_file(resolve(process.cwd(), options.gaps), 'utf-8'), { docs_root: docs_root, repo_root: repo_root });
         const result = await classify_gaps(read.gaps, { root: repo_root, docs_root: docs_root, config });
-        const report_file = relative(repo_root, await write_gaps_report(repo_root, render_gaps_report(result, config.reconcile.secrets)));
-        const review_file = options.writeReview ? await (await import('../core/reconcile/review.js')).write_gaps_review({ root: repo_root, docs_root: docs_root, proposals: result.proposals, batch: options.batch }) : undefined;
-        if (options.json) { console.log(JSON.stringify({ ...result, errors: read.errors, report: report_file, ...(review_file && { review: relative(repo_root, review_file) }) }, null, 2)); return; }
+        const { facet_gaps, warnings, ...classified } = result;
+        const coverage = facet_gaps.length ? await (await import('../core/coverage/plan.js')).plan_coverage_misses({ repo_root: repo_root, docs_root: docs_root, config, gaps: facet_gaps, include_blind: options.includeBlind, exclude_files: [relative(repo_root, resolve(process.cwd(), options.gaps)).split('\\').join('/')] }) : undefined;
+        if (coverage) warnings.push(...coverage.warnings);
+        const report_file = relative(repo_root, await write_gaps_report(repo_root, render_gaps_report(result, config.reconcile.secrets, undefined, coverage, warnings)));
+        const { write_gaps_review, write_coverage_review, find_next_batch, resolve_review_dir } = await import('../core/reconcile/review.js');
+        const batch = options.writeReview ? options.batch ?? (await find_next_batch(resolve_review_dir(repo_root))) : undefined;
+        const review_file = options.writeReview ? await write_gaps_review({ root: repo_root, docs_root: docs_root, proposals: result.proposals, batch }) : undefined;
+        const coverage_review = options.writeReview && coverage ? await write_coverage_review({ root: repo_root, entries: coverage.drafts.entries, batch }) : undefined;
+        if (options.json) {
+          console.log(JSON.stringify({
+            ...classified, errors: read.errors, report: report_file, ...(review_file && { review: relative(repo_root, review_file) }),
+            ...(warnings.length && { warnings }),
+            ...(coverage && { coverage: { proposals: coverage.proposals, needs_human: coverage.drafts.needs_human, blocked: coverage.drafts.blocked, skipped: coverage.drafts.skipped }, ...(coverage_review && { coverage_review: relative(repo_root, coverage_review) }) }),
+          }, null, 2));
+          return;
+        }
         logger.header('hewtd reconcile --gaps');
         for (const entry of read.errors) logger.warn(`  ${entry}`);
+        for (const entry of warnings) logger.warn(`  ${entry}`);
         logger.info(`  ${result.proposals.length} doc(s) with phrase proposals (${result.proposals.reduce((count, proposal) => count + proposal.accepted.length, 0)} phrases), ${result.candidates.length} new-doc candidate(s), ${result.questions.length} open question(s), ${result.dropped.length} dropped`);
+        if (coverage) logger.info(`  coverage misses: ${coverage.proposals.length} proposal(s) (${['extend', 'new', 'covered', 'instruction-only'].map((kind) => `${coverage.proposals.filter((proposal) => proposal.kind === kind).length} ${kind}`).join(', ')}), ${coverage.drafts.entries.length} draft(s), ${coverage.drafts.needs_human.length} for a human, ${coverage.drafts.blocked.length} blocked by the security gate`);
         logger.info(`  report: ${report_file}`);
         if (review_file) logger.info(`  wrote ${relative(repo_root, review_file)}`);
+        if (coverage_review) logger.info(`  wrote ${relative(repo_root, coverage_review)}`);
       } catch (entry) {
         logger.error((entry as Error).message);
         process.exitCode = 1;

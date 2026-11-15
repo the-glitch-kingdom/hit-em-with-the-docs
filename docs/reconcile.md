@@ -555,6 +555,25 @@ first object symptom entry's `user_phrase` when the doc has one). A rerun report
 phrases to add") and commits nothing. Without `--gaps`, reconcile is unchanged.
 The slash command runs this as step 4b.
 
+### Coverage misses (3.5.0, #113)
+
+Entries with `facets` (semantic-memory#101 fields, or the eval's question-set JSONL; see
+[gaps-format.md](./gaps-format.md)) skip the phrase buckets. The engine lives in
+`src/core/coverage/` (`facets`, `locate`, `decide`, `merge`, `draft`, `plan`) and the one security gate in
+`src/core/security/gate.ts`; `reconcile --gaps` only wires them in. Each facet is located in tracked
+code (docs and agent instruction files are kept apart), then each miss gets one outcome:
+
+- **extend `<doc>`**: a doc holds most facets or already cites the code. Draft: a `verify` entry with a `patch` appending a "Details from the code (unreviewed)" section and adding the files to `sources`.
+- **new doc**: nothing holds more than a small share. Draft: a `create` entry following `templates/doc.template.md`. `create` is a review verdict added in 3.5.0; it never overwrites (a taken path gets a numbered sibling, apply refuses an existing path, a path outside the docs root or not ending `.md`) and re-runs the gate at apply. With no nearby cited code the domain falls back to `features`.
+- **covered: check ranking**: a doc holds every facet; fix `symptoms`, `purpose` or the title.
+- **instruction file only**: the fact lives only in CLAUDE.md, AGENTS.md or `.claude/rules/**`; move it into an indexed doc.
+
+Misses sharing a doc or source files merge into one proposal listing every question it closes; misses that extend two different docs never merge, even when they share a source file. A miss whose facets are all in some doc is `covered` at that doc, even when the eval's nearest doc is another one (the note names both). A located file that declares a list (routes, schedules, alert rules, CLI flags, config keys) gets a "generate the reference" hint and no prose draft. The JSON gains a `coverage` key only when an entry had usable facets.
+
+Drafts go to `.hewtd/reconcile/review-<batch>-coverage.md`, unticked, apart from `review-<batch>-gaps.md` (apply refuses one doc in two entries of one file; if a phrases entry and a coverage entry hit the same doc, apply the two files in separate runs). Nothing lands without `--apply`. Every drafted sentence traces to a located `file:line`: `` `name` is defined in `file` (line N) ``, `` `NAME` is read in `file` (line N) `` for an env or config name, or `Related code: file (line N)` when the line declares nothing. Words inside string literals are never taken as names.
+
+Security rules: no values (credentials, connection strings, env or config values and defaults, hostnames, IPs, ports, account/tenant/project IDs, key or cert contents); env and config names are fine. Security-sensitive topics (auth internals, permission checks and bypasses, vulnerability details, IAM, firewall and network rules) are listed as "security: needs a human" and never drafted; detection is keyword-based over the query, facets and source paths, with identifiers split into words (`check_auth_token`, `isAuthorized`), so a word like `token` or `session` can over-flag, which errs toward a human; a security topic named only in words the list lacks is not caught, so read the drafts. A gate hit blocks the whole merged proposal and reports `path:line` masked. `--include-blind` drafts blind entries; otherwise they only warn.
+
 ## Ledger
 
 `.hewtd/reconcile.json` (config `reconcile.ledger_path`, relative to the git
@@ -640,6 +659,7 @@ accepted entry. Links from other outside files are not repointed.
 - **Staleness shows `unknown`, shallow clone warning**: run
   `git fetch --unshallow`. Triage still works without the signal.
 - **`--gaps`: "unsupported version" or exit 1**: the file needs `"version": 1` (or be a bare array / one question per line); check the path.
+- **`--gaps`: facets ignored or an entry has no coverage outcome**: the facet regex was invalid, too long, or had a nested quantifier or a `|` group under a quantifier; see `errors`. A facet that ran out of time while matching is named in `warnings` and counts as matching nothing. Blind entries are skipped without `--include-blind`.
 - **`--gaps`: a query is missing from the proposals**: see `dropped` in the report (`too short`, `duplicate`, `over cap`...) and `errors` for unknown `used_doc` paths.
 - **Apply dropped my `sources`** (before 3.1.6, `sources` replaced the list): fixed in
   3.1.6. `sources` now merges; use `sources_remove` to remove entries.

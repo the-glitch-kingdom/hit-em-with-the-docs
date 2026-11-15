@@ -11,7 +11,7 @@ import { validate_no_secrets, find_secrets, type RawSecret } from './secrets.js'
 import { load_plugin_config } from '../../utils/config.js';
 import type { Shard, TriageResult } from './triage.js';
 
-export const VERDICTS = ['verify', 'rewrite', 'archive', 'unverifiable', 'fields', 'integrate', 'delete', 'secret', 'merge', 'point', 'overview', 'phrases'] as const;
+export const VERDICTS = ['verify', 'rewrite', 'archive', 'unverifiable', 'fields', 'integrate', 'delete', 'secret', 'merge', 'point', 'overview', 'phrases', 'create'] as const;
 export type Verdict = (typeof VERDICTS)[number];
 
 export interface ReviewEntry {
@@ -102,8 +102,10 @@ export function render_review(meta: { batch: string; shard: number; scope: strin
   const body = entries
     .map((entry) => `## ${entry.path}\n\n- [ ] accept\n\n\`\`\`json\n${JSON.stringify(entry, null, 2)}\n\`\`\`\n`)
     .join('\n');
+  // `create` (coverage-miss drafts, #113) is named only in files that hold one, so older review files keep their exact header
+  const listed = entries.some((entry) => entry.verdict === 'create') ? VERDICTS : VERDICTS.filter((verdict) => verdict !== 'create');
   const review_text = matter.stringify(
-    `\n# Reconcile review, batch ${meta.batch} shard ${meta.shard}\n\nSet "verdict" (${VERDICTS.join(' | ')}), fill the fields, tick "accept" on entries to apply.\n\n${body}`,
+    `\n# Reconcile review, batch ${meta.batch} shard ${meta.shard}\n\nSet "verdict" (${listed.join(' | ')}), fill the fields, tick "accept" on entries to apply.\n\n${body}`,
     meta
   );
   validate_no_secrets(review_text, `review batch ${meta.batch} shard ${meta.shard}`);
@@ -211,5 +213,16 @@ export async function write_gaps_review(options: { root: string; docs_root: stri
   const file = join(dir_path, `review-${batch}-gaps.md`);
   await mkdir(dirname(file), { recursive: true });
   await writeFile(file, render_review({ batch, shard: 1, scope: 'gaps' }, entries), { encoding: 'utf-8', flag: 'wx' });
+  return file;
+}
+
+/** gaps with facets (#113): coverage-miss drafts (extend patches, new docs) as `review-<batch>-coverage.md`, unticked. Apply it apart from the phrases file when both target one doc. */
+export async function write_coverage_review(options: { root: string; entries: ReviewEntry[]; batch?: string }): Promise<string | undefined> {
+  if (!options.entries.length) return undefined;
+  const dir_path = resolve_review_dir(options.root);
+  const batch = options.batch ?? (await find_next_batch(dir_path));
+  const file = join(dir_path, `review-${batch}-coverage.md`);
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, render_review({ batch, shard: 1, scope: 'gaps' }, options.entries), { encoding: 'utf-8', flag: 'wx' });
   return file;
 }

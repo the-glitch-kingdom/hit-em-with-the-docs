@@ -130,10 +130,38 @@ export function is_value_line(line: string, secrets_config: SecretsConfig): bool
 
 // a literal that is a name, not a value: an import path, an env var name, a route path or a flag
 const NAME_LITERAL_PREFIX = /(?:\b(?:import|from|require|getenv|environ(?:\.get)?|ENV(?:\.fetch)?|process\.env)\s*[[(]?\s*|\bimport\s+[\w*{}, ]+\s+from\s*)$/;
-// #120 section 4: a quoted literal is a value only when it is shaped like one (host, URL, key, id) or is set under a value name (`"password": "..."`); any other literal is a name
-// a mixed-case run with a digit and no separators (`Zq5xVwLm7pR`) is password-shaped
-const PASSWORD_SHAPE = /^(?=[^\s]*\d)(?=[^\s]*[a-z])(?=[^\s]*[A-Z])[^\s]{8,}$/;
-const is_value_literal = (before: string, content: string): boolean => has_key_token(content) || PASSWORD_SHAPE.test(content) && !/\.\w{1,5}$/.test(content) || !!find_value_in_name(content) || /([\w-]+)["'`]?\s*(?:=>|[:=,(])\s*$/.test(before) && is_value_name(/([\w-]+)["'`]?\s*(?:=>|[:=,(])\s*$/.exec(before)![1]!);
+// #120 section 4, flipped: inside a literal or a comment a match is a NAME only when it is clearly name-shaped, every other shape is a value
+const FILE_EXTENSION = /\.(?:json|ya?ml|toml|ini|cfg|conf|env|xml|html?|css|scss|md|txt|csv|log|lock|sql|sh|py|rb|go|rs|java|kt|php|cs|c|h|cpp|js|jsx|mjs|cjs|ts|tsx)$/i;
+const FLAG_NAME = /^--?([A-Za-z]+(?:[-_][A-Za-z]+)*)(?:=[A-Za-z]+)?$/;
+const LETTER_WORDS = /^[A-Za-z]+(?:[_.-]+[A-Za-z]+)*$/;
+const AUTH_SCHEME = /^(?:bearer|basic|digest|token)\s/i;
+const AUTH_KEY = /\b(?:bearer|authori[sz]ation|basic)\b/i;
+const is_name_shaped = (content: string): boolean => {
+  const flag = FLAG_NAME.exec(content);
+  if (flag) return !is_value_name(flag[1]!);
+  if (/^[\w.\-/+~*{}$]+$/.test(content) && (content.includes('/') || FILE_EXTENSION.test(content))) return true; // a route, a path or a file name
+  // two or more alphabetic words (2+ letters, no digits) joined by `_`, `-`, `.` or spaces; option flags may sit among them
+  const tokens = content.split(/\s+/);
+  const words = tokens.filter((token) => LETTER_WORDS.test(token)).flatMap((token) => token.split(/[_.-]+/));
+  const flags_ok = tokens.every((token) => LETTER_WORDS.test(token) || (FLAG_NAME.test(token) && !is_value_name(FLAG_NAME.exec(token)![1]!)));
+  return flags_ok && words.length >= 2 && words.filter((word) => word.length >= 2).length >= 2 && !AUTH_SCHEME.test(content);
+};
+const KEY_BEFORE = /([\w-]+)["'`]?\s*(?:=>|[:=,(])\s*$/;
+const HEAD_KEY = /^\s*(?:(?:export|const|let|var|final|static|readonly|public|private)\s+)*([\w.$-]+)["'`]?\s*(?::[^=]+)?(?:=>|[:=])/;
+// a literal set under a value name (`"password": ".."`, `PASSWORDS = [".."]`, `Authorization: ..`) is a value whatever its shape
+const is_value_key = (key: string | undefined): boolean => !!key && (is_value_name(key) || AUTH_KEY.test(split_words(key)));
+const is_value_literal = (before: string, content: string): boolean => !is_name_shaped(content) || has_key_token(content) || !!find_value_in_name(content) || is_value_key(KEY_BEFORE.exec(before)?.[1]) || is_value_key(HEAD_KEY.exec(before)?.[1]);
+/** Where the comment of a line starts (0 for a comment line), outside any quote; -1 when it has none. */
+function find_comment_start(line: string): number {
+  if (/^\s*(?:\/\/|#|\*|\/\*|--)/.test(line)) return 0;
+  let quote = '';
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i]!;
+    if (quote) { if (char === '\\') i++; else if (char === quote) quote = ''; } else if (char === '"' || char === "'" || char === '`') quote = char;
+    else if (char === '/' && line[i + 1] === '/' && line[i - 1] !== ':' || char === '#' && (i === 0 || /\s/.test(line[i - 1]!))) return i;
+  }
+  return -1;
+}
 /**
  * Where a source line holds values by CONTEXT, not by shape (#118): the spans inside a string literal ('..', "..", `..`),
  * inside an option argument of a shell line (`-p<x>`, `--password=x`, `--token x`) and inside URL or DSN userinfo
@@ -141,7 +169,6 @@ const is_value_literal = (before: string, content: string): boolean => has_key_t
  */
 export function find_value_spans(line: string): [number, number][] {
   const spans: [number, number][] = [];
-  const in_comment_line = /^\s*(?:\/\/|#|\*|\/\*|--)/.test(line);
   for (let i = 0; i < line.length; i++) {
     const quote = line[i]!;
     if (quote !== '"' && quote !== "'" && quote !== '`') continue;
@@ -149,8 +176,13 @@ export function find_value_spans(line: string): [number, number][] {
     while (end < line.length && line[end] !== quote) end += line[end] === '\\' ? 2 : 1;
     if (end >= line.length) break; // unterminated: an apostrophe in prose, not a literal
     const content = line.slice(i + 1, end);
-    if (!NAME_LITERAL_PREFIX.test(line.slice(0, i)) && !/^(?:\/|--)/.test(content) && !in_comment_line && is_value_literal(line.slice(0, i), content)) spans.push([i + 1, end]);
+    if (!NAME_LITERAL_PREFIX.test(line.slice(0, i)) && is_value_literal(line.slice(0, i), content)) spans.push([i + 1, end]);
     i = end;
+  }
+  // an unquoted `key = value` under a value name, or a bearer/basic credential, in a comment
+  const comment_at = find_comment_start(line);
+  if (comment_at >= 0) for (const found of line.slice(comment_at).matchAll(/([\w-]+)\s*[:=]\s*([^\s"'`,;)]+)|\b(?:bearer|basic)\s+([^\s"'`,;)]+)/gi)) {
+    if (found[3] || is_value_key(found[1])) { const value = found[3] ?? found[2]!; spans.push([comment_at + found.index! + found[0].length - value.length, comment_at + found.index! + found[0].length]); }
   }
   for (const token of line.matchAll(/\S+/g)) {
     const [text, at] = [token[0], token.index!];
@@ -245,34 +277,61 @@ function find_operand_check(line: string): string | undefined {
   if (!form) return undefined;
   return [...operands].some((operand) => PERMISSION_OPERAND.test(operand)) ? 'permission or role check' : 'crypto or credential check';
 }
+// block syntax belongs to the languages that have it
+const C_STYLE = new Set(['c', 'h', 'cc', 'cpp', 'cxx', 'hpp', 'js', 'jsx', 'mjs', 'cjs', 'ts', 'tsx', 'java', 'go', 'cs', 'rs', 'php', 'css', 'scss', 'less', 'kt', 'kts', 'swift', 'scala']);
 /**
- * The 0-based lines inside a block string or block comment (#120): a Python triple-quoted string, a C-style block, a Ruby
- * =begin/=end. They are prose, like `#` and `//` lines. A block that never closes marks nothing, and delimiters inside a
- * quoted string do not open one. shortcut: a quote char inside a block comment can hide a delimiter; upgrade with a real tokenizer.
+ * The 0-based lines wholly inside a block string or block comment (#120): a Python triple-quoted string (a statement or
+ * after `=` or `(`), a C-style block, a Ruby =begin/=end at column 0. They are prose, like `#` and `//` lines. Each syntax
+ * is read only in the files that have it (by extension; with no file name, all of them). A delimiter inside a quoted string
+ * or a `#` or `//` comment opens nothing, a block that never closes marks nothing, and a line with code before the
+ * opening or after the closing delimiter is not marked, so a check there is still found.
+ * shortcut: a quote char inside a block comment can hide a delimiter; upgrade with a real tokenizer.
  */
-export function find_block_lines(text: string): Set<number> {
+export function find_block_lines(text: string, file?: string): Set<number> {
   const marked = new Set<number>();
+  const extension = file ? /\.(\w+)$/.exec(file)?.[1]?.toLowerCase() ?? '' : undefined;
+  const c_style = extension === undefined || C_STYLE.has(extension);
+  const python = extension === undefined || extension === 'py' || extension === 'pyi';
+  const ruby = extension === undefined || extension === 'rb';
+  if (!c_style && !python && !ruby) return marked;
   const lines = text.split('\n');
-  const bare = (line: string): string => line.replace(/\\./g, '').replace(/(["'`])(?:(?!\1).)*\1/g, '""');
+  // the first block that opens on the line and does not close on it, after marking the one-line blocks that are the whole line
+  const scan = (line: string, index: number): { delim: string; blank_before: boolean } | undefined => {
+    let quote = '';
+    for (let j = 0; j < line.length; j++) {
+      const char = line[j]!;
+      if (quote) { if (char === '\\') j++; else if (char === quote) quote = ''; continue; }
+      const triple = python && (char === '"' || char === "'") && line.startsWith(char.repeat(3), j) ? char.repeat(3) : '';
+      const star = c_style && char === '/' && line[j + 1] === '*' ? '*/' : '';
+      const delim = triple || star;
+      if (delim) {
+        const before = line.slice(0, j);
+        const opener = star || /(?:^|[=(])\s*$/.test(before.replace(/[rRuUbBfF]{1,2}$/, ''));
+        const skip = j + (triple ? 3 : 2);
+        const close = line.indexOf(delim, skip);
+        if (opener && close < 0) return { delim, blank_before: !before.trim() };
+        if (close < 0) return undefined;
+        if (opener && !before.trim() && !line.slice(close + delim.length).trim()) marked.add(index);
+        j = close + delim.length - 1;
+        continue;
+      }
+      if (char === '"' || char === "'" || char === '`') quote = char;
+      else if (c_style && char === '/' && line[j + 1] === '/' || (python || ruby) && char === '#') return undefined;
+    }
+    return undefined;
+  };
   let i = 0;
   while (i < lines.length) {
     const line = lines[i]!;
-    let close: ((candidate: string) => boolean) | undefined;
-    const triple = /("""|''')/.exec(line);
-    if (/^=begin\b/.test(line)) close = (candidate) => /^=end\b/.test(candidate);
-    else if (triple) {
-      const quote = triple[1]!;
-      if ((line.split(quote).length - 1) % 2 === 0) { marked.add(i); i++; continue; } // opens and closes on this line
-      close = (candidate) => candidate.includes(quote);
-    } else {
-      const code = bare(line).replace(/\/\/.*$/, '');
-      const open = code.indexOf('/*');
-      if (open >= 0 && code.indexOf('*/', open + 2) < 0) close = (candidate) => candidate.includes('*/'); // a one-line /* */ leaves the line's code alone
-    }
-    if (!close) { i++; continue; }
+    const begin = ruby && /^=begin\b/.test(line);
+    const opened = begin ? undefined : scan(line, i);
+    if (!begin && !opened) { i++; continue; }
     let end = i + 1;
-    while (end < lines.length && !close(lines[end]!)) end++;
-    if (end < lines.length) for (let at = i; at <= end; at++) marked.add(at);
+    while (end < lines.length && !(begin ? /^=end\b/.test(lines[end]!) : lines[end]!.includes(opened!.delim))) end++;
+    if (end >= lines.length) { i++; continue; } // never closes: nothing is marked
+    if (begin || opened!.blank_before) marked.add(i);
+    for (let at = i + 1; at < end; at++) marked.add(at);
+    if (begin || !lines[end]!.slice(lines[end]!.indexOf(opened!.delim) + opened!.delim.length).trim()) marked.add(end);
     i = end + 1;
   }
   return marked;

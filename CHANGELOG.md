@@ -9,7 +9,8 @@ Fixes the #120 field-test findings on 3.7.0 in `reconcile --gaps` and `hewtd cov
 - Merging: misses sharing only a declared-list file (schedules, routes, alert rules, CLI flags, config keys) stay separate; elsewhere they tie on a file only within 30 lines; a merged unit is targeted by its union of facets and never inherits one member's `nearest_doc`; a security check holds only the member it was located for.
 - The "generate the reference" hint is given only for facets that are entries of the declared list and sits beside the draft for the rest.
 - Docstrings, triple-quoted strings, `/* */` and Ruby `=begin` blocks are never a security check.
-- Names in quoted literals and comments (flags, fixture file names, command names) are names, not values; value-shaped literals and option arguments are still withheld.
+- Inside a quoted literal or comment a facet is a name only when clearly name-shaped (an option flag, a path or file name, a route, two or more alphabetic words joined by `_`, `-`, `.` or spaces); a single bare token, anything with digits mixed in and anything after `key=`, `Bearer`, `Basic` or a value-named key stays a value, in comments as in code (fixes a 3.8.0 regression that echoed literal passwords, tokens and comment examples).
+- Block syntax is read only in the files that have it (`.py` triple quotes at a statement or after `=` or `(`, C-family `/* */`, `.rb` `=begin`); a delimiter in a comment, a string or a shell glob opens nothing; a line with code before the opening or after the closing delimiter is still checked.
 - Table file maps and file-map or inventory docs are hubs; new docs go in the majority folder of nearby docs and are titled from their subject, not a boolean-looking facet.
 - `coverage` detects class-level constants and annotated collection constants (named, never stated). Docs say `explained` does not mean every why is present.
 - Gates: `gate:gaps` 31/31, `gate:coverage` 40/40. Full suite 2207 tests pass.

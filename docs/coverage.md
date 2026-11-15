@@ -161,11 +161,16 @@ get "generate the reference", every stated fact is true at its `file:line`, read
 - The content-word rule is lexical: three content words in a sentence with the name explain it even when the sentence is not accurate; a doc that does not cite the source never explains it (except a stated constant value).
 - A heredoc is found only when its `<<TAG` is within 200 lines above; a multi-line string literal other than a heredoc is
   read line by line, so a value on a continuation line is caught only by the other rules.
-- A plain word in a quoted literal that is not value-shaped and not under a value name (`.command('serve')`) is a name and
-  is kept; a plain-word password passed as a positional argument (`login('swordfish')`) is therefore not caught. An uppercase
-  `NAME = "word"` assignment is still a config value.
-- Docstrings, triple-quoted strings, `/* */` blocks and Ruby `=begin` blocks are prose, never a security check; a block that
-  never closes, or a delimiter hidden by a quote inside a comment, is not recognised.
+- Inside a quoted literal or a comment a facet is a name only when it is clearly name-shaped: an option flag (`--omit=dev`),
+  a path or file name (`fixtures/orders.json`), a route, or two or more alphabetic words joined by `_`, `-`, `.` or spaces
+  (`sample_workspace`, `user.created`, `npm audit fix --package-lock-only`), and it passes the name screen. Every other literal
+  (one bare token, anything with digits mixed in, anything after `key=`, `Bearer`, `Basic` or a value-named key) is a value, so a
+  single-word name in quotes (`.command('serve')`) is withheld: this errs toward withholding. An uppercase `NAME = "word"`
+  assignment is still a config value.
+- Docstrings (`.py`, at a statement or after `=` or `(`), `/* */` blocks (C-family, JS/TS, Java, Go, C#, Rust, PHP, CSS,
+  Kotlin, Swift, Scala files) and Ruby `=begin` blocks (`.rb`, column 0) are prose, never a security check, and only the lines
+  wholly inside them (a line with code before the opening or after the closing delimiter is still checked). A block that never
+  closes, or a delimiter hidden by a quote inside a comment, is not recognised.
 - Hostnames in file paths are not screened (`config.local.ts` is not a host); IPs, ids, key shapes and environment resource
   names are.
 - A bare integer under a name with no measuring or describing word is not stated, even when it is harmless (`LEVEL = 3`).

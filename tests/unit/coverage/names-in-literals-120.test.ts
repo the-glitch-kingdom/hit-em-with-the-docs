@@ -38,8 +38,8 @@ describe('a name inside a literal or comment is not a value (#120 section 4)', (
     const out = await run(['Hunter2Hunter2', 'hunter2', 'abc123xyz', 'db-1.example.com', 'https://example.com/x']);
     expect(out).toEqual(['[redacted facet]']); // one redacted entry: the facets collapse
   });
-  it('a literal under a value name stays withheld, any other literal is a name', async () => {
+  it('a literal under a value name stays withheld, and so does a single bare token (only clearly name-shaped literals are names)', async () => {
     expect(await run(['swordfish'])).toEqual(['[redacted facet]']);
-    expect(await run(['strictmode'])).toEqual(['strictmode']);
+    expect(await run(['strictmode'])).toEqual(['[redacted facet]']); // one bare token is not clearly a name
   });
 });

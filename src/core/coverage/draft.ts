@@ -116,7 +116,7 @@ export async function find_check_line(repo_root: string, sources: FacetHit[]): P
   const lines_of = new Map<string, { lines: string[]; blocks: Set<number> }>();
   for (const found of [...sources].sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line).slice(0, MAX_CHECKED_LINES)) {
     let read = lines_of.get(found.file);
-    if (!read) { const text = await readFile(join(repo_root, found.file), 'utf-8').catch(() => ''); read = { lines: text.split('\n'), blocks: find_block_lines(text) }; lines_of.set(found.file, read); }
+    if (!read) { const text = await readFile(join(repo_root, found.file), 'utf-8').catch(() => ''); read = { lines: text.split('\n'), blocks: find_block_lines(text, found.file) }; lines_of.set(found.file, read); }
     if (read.blocks.has(found.line - 1)) continue; // docstrings and block comments are prose
     const kind = find_security_check(read.lines[found.line - 1] ?? '');
     if (kind) return { kind, file: found.file, line: found.line };

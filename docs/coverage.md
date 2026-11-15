@@ -151,8 +151,9 @@ get "generate the reference", every stated fact is true at its `file:line`, read
 ## Known limits
 
 - `explained` means a citing doc has a sentence about the surface, not that every why is there: a nightly job can be `explained` while the reason it keys on idle time is missing. Read it as "not a gap by name", not "fully documented".
-- Collection constants need a type annotation, are never stated, and are skipped when the name looks like a credential or the first line holds a key; unannotated collections and indented constants outside a class (function locals, TS/JS local `const`) are not detected.
+- Collection constants need a type annotation or a typed declaration (Java/Kotlin/C# `Map<..>`, `int[]`, `List.of(..)`, `listOf(..)`, `new[] {..}`; Kotlin in a top level or companion `object`), are never stated, and are skipped when the name looks like a credential or the first line holds a key; unannotated collections and indented constants outside a class (function locals, TS/JS local `const`) are not detected.
 
+- A file is a declared list when the surface detectors (or the older regexes) find 3 or more entries of one list kind in it (celery beat with `crontab()` or `timedelta`, Flask/FastAPI decorators, flags, keys); an entry that opens a block covers its next 4 lines for the hint.
 - Two misses whose facets sit in one file within 30 lines (`FILE_TIE_WINDOW`) still merge, except on a declared-list file; this is a shortcut, tighten it if unrelated misses collapse.
 - Surfaces come from `git ls-files`: untracked files are not scanned. Outside a git repo, or with nothing committed, the table is all zero and `hewtd coverage` prints a warning (also in `--json` `warnings`).
 - A cron line with `&&` or `;` is named by its first non-`cd` command; later commands in the chain are not separate jobs. A `(...)` subshell is unwrapped. A name shorter than 2 characters or a stop word (`a`, `the`) becomes `scheduled job at file:line` and a surface with such a name is matched only inside a code span.

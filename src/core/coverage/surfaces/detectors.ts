@@ -150,13 +150,22 @@ function read_call(lines: string[], from: number): string {
 }
 
 // an optional indent, modifiers (`export`, `private static final`, `const`), a Java/C# type, the NAME, a `: type` annotation, and the value
-const CONSTANT_LINE = /^(\s*)((?:(?:export|pub|public|private|protected|internal|static|final|const|readonly|val)\s+)*)(?:[\w<>[\],.?]+\s+)?([A-Z][A-Z0-9_]{2,})\s*(?::\s*([\w<>[\], .|]+?))?\s*=\s*(.+?)\s*;?\s*(?:(?:\/\/|#).*)?$/;
-const COLLECTION_VALUE = /^(?:[[{(]|(?:frozen)?set\(|dict\(|list\(|tuple\(|new\s+(?:Map|Set)\b)/;
+const CONSTANT_LINE = /^(\s*)((?:(?:export|pub|public|private|protected|internal|static|final|const|readonly|val)\s+)*)(?:([\w.?]+(?:<[\w<>[\],.? ]*>)?(?:\[\])*)\s+)?([A-Z][A-Z0-9_]{2,})\s*(?::\s*([\w<>[\], .|]+?))?\s*=\s*(.+?)\s*;?\s*(?:(?:\/\/|#).*)?$/;
+const FACTORY_CALL_SOURCE = String.raw`(?:\w*(?:Map|List|Set)\.(?:of|copyOf|ofEntries)|Arrays\.asList|\w*(?:[Ll]ist|[Ss]et|[Mm]ap|[Aa]rray)Of)\(`;
+const COLLECTION_VALUE = new RegExp('^(?:[[{(]|(?:frozen)?set\\(|dict\\(|list\\(|tuple\\(|new(?:\\s+[\\w.]*(?:Map|Set|List|Dictionary)\\b|\\s*\\w*\\s*\\[)|' + FACTORY_CALL_SOURCE + ')');
+// a Java/C#/Kotlin collection type (`Map<K,V>`, `int[]`, `IReadOnlyList<int>`) or a factory call that is a collection by itself (`List.of(..)`, `listOf(..)`)
+const FACTORY_CALL = new RegExp('^' + FACTORY_CALL_SOURCE);
+const COLLECTION_TYPE = /^[\w.]*(?:Map|List|Set|Collection|Array|Queue|Deque|Dictionary|Enumerable|Iterable)(?:<|\[|$)|\[\]$/;
 /** An indented constant counts when it is a class field: a Python class body line, or a static/final/readonly field (`const` too outside TS and JS, where it is a local). */
 function is_class_member(file: string, lines: string[], index: number, indent: number, modifiers: string): boolean {
   if (/\.py$/.test(file)) {
     const owner = lines.slice(0, index).reverse().find((line) => line.trim() && line.length - line.trimStart().length < indent);
     return !!owner && /^\s*class\s/.test(owner);
+  }
+  // Kotlin: a companion object or object body
+  if (/\.kt$/.test(file)) {
+    const owner = lines.slice(0, index).reverse().find((line) => line.trim() && line.length - line.trimStart().length < indent);
+    return !!owner && /^\s*(?:companion\s+)?object\b/.test(owner);
   }
   return /\b(?:static|final|readonly)\b/.test(modifiers) || (!/\.(?:ts|tsx|js|jsx|mjs|cjs|sh)$/.test(file) && /\bconst\b/.test(modifiers));
 }
@@ -235,11 +244,11 @@ export const SURFACE_DETECTORS: SurfaceDetector[] = [
   { id: 'code-constant', applies: (file) => CODE.test(file), detect: (file, lines) => lines.flatMap((text, i) => {
     const match = CONSTANT_LINE.exec(text);
     if (!match) return [];
-    const [, indent, modifiers = '', name, annotation, value] = match as unknown as [string, string, string | undefined, string, string | undefined, string];
+    const [, indent, modifiers = '', type = '', name, annotation, value] = match as unknown as [string, string, string | undefined, string | undefined, string, string | undefined, string];
     if (indent && !is_class_member(file, lines, i, indent.length, modifiers)) return [];
     if (COLLECTION_VALUE.test(value)) {
-      // a collection is only named, and only when it is annotated, not value-named, and holds nothing key-shaped on its first line
-      if (!annotation || is_value_name(name) || has_key_token(value)) return [];
+      // a collection is only named, and only when it is annotated or typed (or built by a collection factory), not value-named, and holds nothing key-shaped on its first line
+      if (!(annotation || COLLECTION_TYPE.test(type) || FACTORY_CALL.test(value)) || is_value_name(name) || has_key_token(value)) return [];
       return [{ kind: 'constant' as const, name, file, line: i + 1, source_kind: 'code-constant' }];
     }
     if (!is_constant_value(value)) return [];

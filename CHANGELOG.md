@@ -13,6 +13,7 @@ Fixes the #120 field-test findings on 3.7.0 in `reconcile --gaps` and `hewtd cov
 - Block syntax is read only in the files that have it (`.py` triple quotes at a statement or after `=` or `(`, C-family `/* */`, `.rb` `=begin`); a delimiter in a comment, a string or a shell glob opens nothing; a line with code before the opening or after the closing delimiter is still checked.
 - Table file maps and file-map or inventory docs are hubs; new docs go in the majority folder of nearby docs and are titled from their subject, not a boolean-looking facet.
 - `coverage` detects class-level constants and annotated collection constants (named, never stated). Docs say `explained` does not mean every why is present.
+- Declared lists are found by the surface detectors (celery beat `crontab()`/`timedelta`, Flask and FastAPI decorators), not only 5-field cron strings; Java, Kotlin and C# typed collections and arrays are named constants (never stated).
 - Gates: `gate:gaps` 31/31, `gate:coverage` 40/40. Full suite 2207 tests pass.
 
 ## [3.7.0] — 2026-11-15

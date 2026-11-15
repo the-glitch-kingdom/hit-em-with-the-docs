@@ -8,6 +8,7 @@ import { join } from 'path';
 import type { Decision, DecisionKind } from './decide.js';
 import { compile_facet, parse_position_facet, test_facet } from './facets.js';
 import type { FacetHit } from './locate.js';
+import { SURFACE_DETECTORS, type SurfaceKind } from './surfaces/detectors.js';
 
 export interface DeclaredList { kind: 'routes' | 'schedules' | 'alert-rules' | 'cli-flags' | 'config-keys'; file: string; count: number; suggestion: string;
   /** Missing facets that are entries of this list (the hint answers them); absent: every facet. */
@@ -131,6 +132,31 @@ const LISTS: Array<{ kind: DeclaredList['kind']; pattern: RegExp; what: string; 
   { kind: 'config-keys', pattern: /(?:process\.env\.|os\.environ(?:\.get)?[[(]\s*['"]?)([A-Z][A-Z0-9_]{2,})/g, what: 'config keys', unique_names: true },
 ];
 
+// the surface detectors know the entry forms the regexes do not (celery crontab()/timedelta, Flask/FastAPI decorators, yargs flags, ...)
+const LIST_OF_SURFACE: Partial<Record<SurfaceKind, DeclaredList['kind']>> = { 'scheduled-job': 'schedules', 'alert-rule': 'alert-rules', 'http-route': 'routes', 'cli-flag': 'cli-flags', 'config-key': 'config-keys' };
+/** Lines an entry that opens a block covers past its first line (a beat entry's schedule sits a few lines below its key). */
+const ENTRY_SPAN = 4;
+
+/** Entries per list kind, as the surface detectors find them: names (to count unique ones) and the lines each spans. Names are only counted, never reported. */
+function find_surface_entries(file: string, lines: string[]): Map<DeclaredList['kind'], { names: Set<string>; lines: Set<number> }> {
+  const entries = new Map<DeclaredList['kind'], { names: Set<string>; lines: Set<number>; first: number[] }>();
+  for (const detector of SURFACE_DETECTORS.filter((found) => found.applies(file))) {
+    for (const surface of detector.detect(file, lines)) {
+      const kind = LIST_OF_SURFACE[surface.kind];
+      if (!kind) continue;
+      const entry = entries.get(kind) ?? { names: new Set<string>(), lines: new Set<number>(), first: [] };
+      entry.names.add(kind === 'config-keys' ? surface.name : `${surface.name}\0${surface.line}`);
+      entry.first.push(surface.line);
+      entries.set(kind, entry);
+    }
+  }
+  for (const entry of entries.values()) {
+    const starts = [...new Set(entry.first)].sort((a, b) => a - b);
+    starts.forEach((start, i) => { for (let line = start; line <= Math.min(start + (/[{([:]\s*(?:#.*)?$/.test(lines[start - 1] ?? '') ? ENTRY_SPAN : 0), (starts[i + 1] ?? Infinity) - 1, lines.length); line++) entry.lines.add(line); });
+  }
+  return entries;
+}
+
 /** Lines around an entry's own line that still belong to it (a schedule's task name sits beside its cron string). */
 const ENTRY_WINDOW = 1;
 
@@ -143,11 +169,13 @@ export function detect_declared_lists(files: Map<string, string>, facets?: strin
   const found: DeclaredList[] = [];
   for (const [file, text] of files) {
     const lines = text.split('\n');
+    const surface_entries = find_surface_entries(file, lines);
     for (const list of LISTS) {
       const matches = [...text.matchAll(list.pattern)];
-      const count = list.unique_names ? new Set(matches.map((match) => match[1])).size : matches.length;
+      const surface = surface_entries.get(list.kind);
+      const count = Math.max(list.unique_names ? new Set(matches.map((match) => match[1])).size : matches.length, surface?.names.size ?? 0);
       if (count < DECLARED_LIST_MIN) continue;
-      const entry_lines = new Set(matches.map((match) => text.slice(0, match.index).split('\n').length));
+      const entry_lines = new Set([...matches.map((match) => text.slice(0, match.index).split('\n').length), ...(surface?.lines ?? [])]);
       const near = (line: number): boolean => [...entry_lines].some((entry) => Math.abs(entry - line) <= ENTRY_WINDOW);
       const covers = facets?.filter((facet) => {
         const position = parse_position_facet(facet);

@@ -57,9 +57,11 @@ function cites(doc: DocText, surface: Surface): boolean {
 }
 
 const LIST_MIN_ITEMS = 3;
-/** A sentence that is a list: three or more comma or semicolon items, each a single token (an identifier or one word). Its other items are not words about the name. */
+/** A sentence that is a list: three or more items joined by commas, semicolons, `and` or `or`, each a single name (snake_case, kebab-case and camelCase are one token), after an optional lead-in (`Scheduled:`, `The jobs are`). Read before markup is stripped, so `_` stays inside a name. Its other items are not words about the name. */
 function is_list_sentence(sentence: string): boolean {
-  const items = strip_markup(sentence).split(/[,;]/).map((item) => item.replace(/^.*:\s*/, '').replace(/^\s*(?:and|or)\s+/i, '').replace(/[.\s]+$/, '').trim()).filter(Boolean);
+  const text = sentence.replace(/^\s*(?:#+|[-*+]|\d+[.)])\s*/, '').replace(/[|`*]/g, ' ').replace(/[.\s]+$/, '');
+  const items = text.split(/\s*[,;]\s*(?:(?:and|or)\s+)?|\s+(?:and|or)\s+/i).map((item) => item.trim()).filter(Boolean);
+  if (items.length) items[0] = items[0]!.replace(/^(?:[^:]*:|[\w\s'-]{0,40}\b(?:are|is|include|includes|including)\b)\s*/i, '');
   return items.length >= LIST_MIN_ITEMS && items.every((item) => /^[\w.-]+$/.test(item));
 }
 

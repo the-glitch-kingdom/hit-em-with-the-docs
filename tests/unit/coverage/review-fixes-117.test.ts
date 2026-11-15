@@ -57,7 +57,7 @@ beforeAll(async () => {
   ].join('\n'));
   w('vendor/lib.ts', 'const VENDORED_LIMIT = 7;\n');
   w('third_party/lib.ts', 'const THIRD_LIMIT = 7;\n');
-  w('src/archive/old.ts', 'const ARCHIVED_LIMIT = 7;\n');
+  w('archive/old.ts', 'const ARCHIVED_LIMIT = 7;\n');
   w('src/live.ts', 'const LIVE_LIMIT = 7;\n');
   execFileSync('git', ['init', '-q'], { cwd: repo });
   execFileSync('git', ['add', '-A'], { cwd: repo });
@@ -117,7 +117,7 @@ describe('finding 4: Python shapes', () => {
 });
 
 describe('finding 5: vendored and archived code is skipped by default', () => {
-  it('vendor, third_party and nested archive folders yield nothing', () => {
+  it('root vendor, third_party and archive folders yield nothing', () => {
     expect(all.filter((s) => s.kind === 'constant').map((s) => s.name)).toEqual(['LIVE_LIMIT']);
   });
 });

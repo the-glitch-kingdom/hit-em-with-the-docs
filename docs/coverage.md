@@ -20,7 +20,7 @@ Detectors live in `src/core/coverage/surfaces/detectors.ts`; adding one is addin
 
 | Kind | Found in |
 |---|---|
-| scheduled job | crontab and `cron.d` files (named by the script or program the line runs, not by wrappers such as `flock`, `cd X &&`, `nice`, `timeout`, `sh -c`, `python`, `node`, or `VAR=..`; `@daily`, `@reboot` and the like too), GitHub workflow `schedule`, Kubernetes `CronJob`, celery beat (`beat_schedule` in any case, `CELERY_BEAT_SCHEDULE`, one-line entries), APScheduler |
+| scheduled job | crontab and `cron.d` files (named by the script or program the line runs, not by wrappers such as `flock`, `cd X &&`, `nice`, `timeout`, `sh -c`, `python`, `node`, `bundle exec` or `VAR=..`, interpreter options and their values, or the user column of `/etc/crontab` and `cron.d` files; a management runner is named by its subcommand: `manage.py clearsessions`, `rake db:cleanup`, `artisan X`, `npm run X`, `yarn X`, `make X`, `rails runner`; `docker`/`kubectl exec` by the command run inside, `flock -c` and `sh -c` by the quoted command; two jobs on different lines are never merged; `@daily`, `@reboot` and the like too), GitHub workflow `schedule`, Kubernetes `CronJob`, celery beat (`beat_schedule` in any case, `CELERY_BEAT_SCHEDULE`, one-line entries), APScheduler |
 | alert rule | Prometheus rule files, Grafana alert JSON |
 | HTTP route | web framework route declarations |
 | CLI command and flag | argparse, click (multi-line `@click.option(`, `@click.command`, `@<group>.command`, with or without a name), commander style declarations |
@@ -29,7 +29,7 @@ Detectors live in `src/core/coverage/surfaces/detectors.ts`; adding one is addin
 | constant | module-level numeric constants (a size, timeout or limit) |
 | config key | declared config keys |
 
-Generated files, tests, `vendor/`, `third_party/` and any `archive/` folder are skipped; `coverage.ignore` covers
+Generated files, tests, root-level `vendor/`, `third_party/` and `archive/` folders and `node_modules` are skipped (`src/vendor/` and `src/archive/` are the repo's own code and are graded); `coverage.ignore` covers
 the rest. **Known limit:** there is no Go detector, so cobra commands and flags and Go
 constants are not detected. A Go repo shows only its CI, schedules and alert rules.
 
@@ -41,7 +41,7 @@ constants are not detected. A Go repo shows only its CI, schedules and alert rul
 | `named` | a doc names it (whole identifier, split spellings too) but says nothing about what it does or holds |
 | `explained` | a doc that cites its source has a sentence about it, or a section under a heading with its name; a constant is explained when a doc states its value next to its name |
 
-A name inside a list of three or more single-token items (`Scheduled: purge-trials, send-digest, rotate-logs`)
+A name inside a list of three or more single-name items, with an optional lead-in and `and`/`or` joiners (`Scheduled: purge_trials, send_digest, rotate_logs`, `The jobs are a, b and c`; snake, kebab and camel names are one item each)
 stays `named`: the other items are not words about it, unless another sentence about that one name says what it does.
 Named is not covered. Archive docs do not count. Knowledge-base docs count like any doc and are never judged
 against the code. A repo with no docs folder grades every surface `absent` instead of failing.

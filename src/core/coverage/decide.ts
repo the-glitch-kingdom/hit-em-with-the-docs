@@ -27,12 +27,15 @@ const PATH_LIST_SHARE = 0.5;
 /** A citing doc with no facet qualifies as relevant when its title, purpose or path share a distinctive question term, or its body shares this many (and at least half of all of them) (#118). */
 const RELEVANT_BODY_TERMS = 2;
 const FILE_EXTENSION = /\.(?:ts|tsx|js|jsx|mjs|cjs|py|rb|go|rs|java|kt|cs|php|sh|ya?ml|json|toml|sql|tf|conf|ini|env|md|cron)$/i;
-const CODE_FOLDER = new Set('src lib app apps packages scripts tests test spec docs cmd pkg internal bin deploy config cli ops tools monitoring infra api web server client services components models routes'.split(' '));
 const URL_TEXT = /\b[a-z][a-z0-9+.-]*:\/\/\S+/gi;
-/** A path token has a file extension, or a known code folder first; a URL or a short word pair (`and/or`, `yes/no`) is not one (#118). */
-function has_path_token(line: string): boolean {
+/** A brand written with a dot (`Node.js`, `Next.js`) is a word, not a file. */
+const BRAND_WORD = /^[A-Z][a-z]+\.(?:js|ts)$/;
+/** A path token has a file extension, or two or more slashes, or sits in backticks or link syntax; a URL, a folder-first word pair (`api/gateway`) or a brand (`Node.js`) in prose is not one (#118). */
+export function has_path_token(line: string): boolean {
   const text = line.replace(URL_TEXT, ' ');
-  return (text.match(/[\w.@-]+(?:\/[\w.@-]+)+|\b[\w-]+\.[a-z]+\b/gi) ?? []).some((token) => FILE_EXTENSION.test(token) || CODE_FOLDER.has(token.replace(/^\.\//, '').split('/')[0]!.toLowerCase()) && token.includes('/'));
+  const marked = [...text.matchAll(/`([^`]+)`|\]\(([^)]+)\)/g)].map((found) => found[1] ?? found[2]!);
+  if (marked.some((token) => /[\w.@-]\/[\w.@-]/.test(token) || FILE_EXTENSION.test(token))) return true;
+  return (text.match(/[\w.@-]+(?:\/[\w.@-]+)+|\b[\w-]+\.[a-z]+\b/gi) ?? []).some((token) => (token.split('/').length > 2 || FILE_EXTENSION.test(token)) && !BRAND_WORD.test(token));
 }
 const LIST_LINE = /^\s*(?:[-*+]|\d+[.)]|\|)\s*/;
 

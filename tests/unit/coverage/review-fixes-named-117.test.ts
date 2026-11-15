@@ -69,7 +69,7 @@ describe('finding 3: and/or and URLs are not paths', () => {
     expect(is_hub_doc(doc('ops/runbook.md', body))).toBe(false);
   });
   it('a real file map still is', () => {
-    const body = ['# Map', '', ...['src/a/b.ts', 'src/c.py', 'lib/d', 'app/e/f', 'deploy/g.yaml', 'tests/h'].map((p) => `- ${p} - part`)].join('\n');
+    const body = ['# Map', '', ...['src/a/b.ts', 'src/c.py', 'lib/d.ts', 'app/e/f', 'deploy/g.yaml', 'tests/h.ts'].map((p) => `- ${p} - part`)].join('\n');
     expect(is_hub_doc(doc('ops/map.md', body))).toBe(true);
   });
 });

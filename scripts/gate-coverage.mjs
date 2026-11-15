@@ -90,6 +90,7 @@ try {
     }
     if (spec.draft === 'stated') {
       if (!mine.length) problems.push('no draft');
+      if (!Array.isArray(spec.stated) || !spec.stated.length) problems.push('malformed spec: draft "stated" needs a non-empty stated list');
       for (const fact of spec.stated ?? []) {
         const found = stated_facts.find((match) => match[1] === fact.name && match[2] === fact.value && match[3] === spec.file && Number(match[4]) === spec.line);
         if (!found) problems.push(`fact ${fact.name} = ${fact.value} is not stated at ${spec.file}:${spec.line}`);
@@ -107,7 +108,11 @@ try {
     ...expected.held.filter((entry) => out.surfaces.some((found) => found.name === entry.name)).map((entry) => `${entry.name} is still graded`),
     ...expected.held.filter((entry) => JSON.stringify(out.coverage).includes(entry.name)).map((entry) => `${entry.name} reached the triage`),
   ]);
-  group('generated files are ignored', expected.ignored_files.filter((file) => out.surfaces.some((found) => found.file === file) || out.held.entries.some((entry) => entry.file === file)).map((file) => `${file} was graded`));
+  const ignored_files = Array.isArray(expected.ignored_files) ? expected.ignored_files : [];
+  group('generated files are ignored', [
+    ...(!ignored_files.length ? ['malformed spec: ignored_files must be a non-empty list'] : []),
+    ...ignored_files.filter((file) => out.surfaces.some((found) => found.file === file) || out.held.entries.some((entry) => entry.file === file)).map((file) => `${file} was graded`),
+  ]);
   group('declared list: generate the reference, no per-entry draft', [
     ...(JSON.stringify(out.generate_reference.map(({ kind, file, count, absent }) => ({ kind, file, count, absent }))) !== JSON.stringify(expected.generate_reference) ? [`generate_reference ${JSON.stringify(out.generate_reference)}`] : []),
     ...expected.reference_entries.filter(([kind, name]) => !out.surfaces.some((found) => found.kind === kind && found.name === name && found.grade === 'absent')).map(([, name]) => `${name} is not graded absent`),

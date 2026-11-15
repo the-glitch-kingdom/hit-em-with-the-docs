@@ -48,42 +48,75 @@ function list_block_keys(lines: string[], from: number, entry: RegExp = /^\s*['"
 }
 
 const CRON_LINE = /^\s*(?:@(?:reboot|hourly|daily|midnight|weekly|monthly|yearly|annually)|[\d*/,-]+\s+[\d*/,-]+\s+[\d*?/,-]+\s+[\w*/,-]+\s+[\w*?/,-]+)\s+(\S.*)$/;
-const WRAPPERS = new Set(['env', 'nice', 'ionice', 'nohup', 'time', 'sudo', 'flock', 'timeout', 'chronic', 'setsid', 'exec', 'command']);
+const WRAPPERS = new Set(['env', 'nice', 'ionice', 'nohup', 'time', 'sudo', 'flock', 'timeout', 'chronic', 'setsid', 'exec', 'command', 'bundle', 'run-parts']);
 const INTERPRETERS = /^(?:python[\d.]*|node|nodejs|ruby|perl|php|bash|sh|zsh|dash)$/;
+// runners whose first argument is the job: `manage.py clearsessions`, `rake db:cleanup`, `npm run sync`, `make purge`
+const RUNNERS = new Set(['manage.py', 'django-admin', 'django-admin.py', 'rake', 'artisan', 'rails', 'npm', 'pnpm', 'yarn', 'make', 'flask', 'bin/console']);
+const CONTAINER_RUNNERS = new Set(['docker', 'docker-compose', 'podman', 'kubectl']);
 // a wrapper flag that takes a value: `nice -n 10`, `flock -w 5`, `sudo -u app`
 const takes_value = (flag: string, value = ''): boolean => (/^-[ncwk]$/.test(flag) && /^\d+$/.test(value)) || (flag === '-u' && /^\w+$/.test(value));
-/** The script or executable a cron command runs: wrappers, `cd X &&`, interpreters and `VAR=..` stripped. Undefined when it is not a local program (a URL, curl, wget). */
-export function name_cron_command(command: string): string | undefined {
+const unquote = (text: string): string => text.trim().replace(/^(['"])(.*)\1$/, '$2');
+/** Skip options; an option's separate value is a bare word that is not the program (no slash, no extension) and is followed by more words. */
+function skip_options(list: string[], value_flags: RegExp = /^$/): string[] {
+  let rest = list;
+  while (rest[0]?.startsWith('-')) {
+    const [flag, next] = rest;
+    const value = !flag!.includes('=') && next !== undefined && rest.length > 2 && (value_flags.test(flag!) || /^\d+$/.test(next) || (!next.startsWith('-') && !/[/.]/.test(next)));
+    rest = rest.slice(value ? 2 : 1);
+  }
+  return rest;
+}
+/** The script or executable a cron command runs: wrappers, `cd X &&`, interpreters and `VAR=..` stripped; runners name their subcommand, container exec its inner command. Undefined when it is not a local program (a URL, curl, wget). `user_column`: the file is a system crontab whose line has a user after the schedule. */
+export function name_cron_command(command: string, user_column = false): string | undefined {
   const segment = command.split(/&&|\|\||;|\|/).map((part) => part.trim()).find((part) => part && !/^cd\b/.test(part));
   const tokens = (segment ?? '').replace(/\s+(?:>>?|2>>?|<)\s*\S*.*$/, '').split(/\s+/).filter(Boolean);
-  const take = (list: string[]): string | undefined => {
+  const take = (list: string[], user = false): string | undefined => {
     let rest = list.slice();
-    // a user column (`root /usr/bin/x`): a bare word followed by a path, wrapper or interpreter
-    if (rest.length > 1 && /^[a-z_][\w-]*$/.test(rest[0]!) && !WRAPPERS.has(rest[0]!) && !INTERPRETERS.test(rest[0]!) && (rest[1]!.includes('/') || WRAPPERS.has(rest[1]!) || INTERPRETERS.test(rest[1]!))) rest = rest.slice(1);
+    // a user column: always in /etc/crontab and cron.d files; elsewhere a bare word followed by a path, wrapper or interpreter
+    if (rest.length > 1 && (user ? !/^\w+=/.test(rest[0]!) : /^[a-z_][\w-]*$/.test(rest[0]!) && !WRAPPERS.has(rest[0]!) && !CONTAINER_RUNNERS.has(rest[0]!) && !RUNNERS.has(rest[0]!) && !INTERPRETERS.test(rest[0]!) && (rest[1]!.includes('/') || WRAPPERS.has(rest[1]!) || INTERPRETERS.test(rest[1]!)))) rest = rest.slice(1);
     for (;;) {
       const head = rest[0];
       if (!head) return undefined;
       if (/^\w+=/.test(head)) { rest = rest.slice(1); continue; }
       if (/^(?:curl|wget)$/.test(base(head)) || /^[a-z][a-z0-9+.-]*:\/\//i.test(head)) return undefined;
       const word = base(head);
+      if (CONTAINER_RUNNERS.has(word)) {
+        const at = rest.findIndex((token) => token === 'exec' || token === 'run');
+        if (at < 0) return undefined;
+        const after = rest.slice(at + 1);
+        const dash = after.indexOf('--');
+        if (dash >= 0) return take(after.slice(dash + 1));
+        const args = skip_options(after, /^(?:-u|-e|-w|--user|--env|--workdir|-n|--namespace|-c|--container)$/);
+        return take(args.slice(1)); // the first positional is the container or pod
+      }
       if (WRAPPERS.has(word)) {
         rest = rest.slice(1);
         while (rest[0]?.startsWith('-') || /^\w+=/.test(rest[0] ?? '')) rest = rest.slice(takes_value(rest[0]!, rest[1]) ? 2 : 1);
-        if ((word === 'flock' || word === 'timeout') && rest[0]) rest = rest.slice(1); // the lock file or the duration
+        if (word === 'bundle' || word === 'exec') { if (rest[0] === 'exec') rest = rest.slice(1); continue; }
+        if (word === 'flock' || word === 'timeout') {
+          rest = rest.slice(1); // the lock file or the duration
+          if (rest[0] === '-c') return take(unquote(rest.slice(1).join(' ')).split(/\s+/).filter(Boolean));
+        }
         continue;
       }
       if (INTERPRETERS.test(word)) {
         rest = rest.slice(1);
-        if (/^(?:ba|z|da)?sh$/.test(word) && /^-\w*c$/.test(rest[0] ?? '')) return take(rest.slice(1).join(' ').replace(/^(['"])(.*)\1$/, '$2').split(/\s+/).filter(Boolean));
+        if (/^(?:ba|z|da)?sh$/.test(word) && /^-\w*c$/.test(rest[0] ?? '')) return take(unquote(rest.slice(1).join(' ')).split(/\s+/).filter(Boolean));
         if (rest[0] === '-m' && rest[1]) return rest[1].split('.').pop();
-        while (rest[0]?.startsWith('-')) rest = rest.slice(1);
+        if (/^-[ce]$/.test(rest[0] ?? '')) return undefined; // inline code has no name
+        rest = skip_options(rest, /^(?:-W|-X|-r|-I|-C|--require|--import|--loader|--eval|-d)$/);
         continue;
+      }
+      if (RUNNERS.has(word) || RUNNERS.has(head)) {
+        const args = skip_options(rest.slice(1), /^(?:-C|-f|--prefix|--cwd|--app|-A)$/).filter((token) => !/^(?:run|run-script|exec)$/.test(token) || word === 'rails');
+        const sub = word === 'rails' && args[0] === 'runner' ? /^[\w.:]+/.exec(unquote(args.slice(1).join(' ')))?.[0] : args[0];
+        return sub && /^[\w.:@+-]+$/.test(sub) ? sub : undefined;
       }
       return word.replace(/\.[^.]+$/, '') || undefined;
     }
   };
-  const name = take(tokens);
-  return name && /^[\w.@+-]+$/.test(name) ? name : undefined;
+  const name = take(tokens, user_column);
+  return name && /^[\w.@+:-]+$/.test(name) ? name : undefined;
 }
 
 /** Python decorators and calls span lines: the text from line `from` to the closing parenthesis (at most 8 lines). */
@@ -103,7 +136,7 @@ export const SURFACE_DETECTORS: SurfaceDetector[] = [
   { id: 'crontab', applies: (file) => /(^|\/)(crontab|cron\.d\/[^/]+|[^/]*\.cron)$/.test(file), detect: (file, lines) => lines.flatMap((text, i) => {
     const match = CRON_LINE.exec(text);
     if (!match || /^\s*#/.test(text)) return [];
-    const name = name_cron_command(match[1]!);
+    const name = name_cron_command(match[1]!, /(^|\/)cron\.d\/|^etc\/crontab$/.test(file));
     return [{ kind: 'scheduled-job' as const, name: name ?? placeholder_name('scheduled-job', file, i + 1), file, line: i + 1, source_kind: 'crontab', ...(name === undefined && { placeholder: true }) }];
   }) },
   { id: 'github-schedule', applies: (file) => WORKFLOW.test(file), detect: (file, lines) => { const at = lines.findIndex((text) => /^\s*-\s*cron:/.test(text)); return at < 0 ? [] : [{ kind: 'scheduled-job', name: stem(file), file, line: at + 1, source_kind: 'github-schedule' }]; } },

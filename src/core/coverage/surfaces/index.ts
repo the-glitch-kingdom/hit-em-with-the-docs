@@ -11,8 +11,8 @@ export { SURFACE_DETECTORS, KIND_LABEL, placeholder_name, type Surface, type Sur
 
 const TEST_FILE = /(^|\/)(tests?|__tests__|specs?|e2e)\/|\.(?:test|spec)\.[a-z]+$|(^|\/)test_[^/]*\.py$|_test\.(?:py|go)$/;
 
-// vendored, third-party and archived code is not the repo's own surface; coverage.ignore covers the rest
-const NOT_OWN_CODE = /(^|\/)(vendor|third_party|archive)\//;
+// root-level vendored, third-party and archived code (src/vendor is the repo's own) is not the repo's own surface; coverage.ignore covers the rest
+const NOT_OWN_CODE = /^(?:vendor|third_party|archive)\/|(^|\/)node_modules\//;
 // a route segment that is an id or a key (long digits, uuid, key-shaped, long mixed token) is a parameter, never a name
 const ID_SEGMENT = /^(?:\d{5,}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Z0-9]{16,}|[0-9a-f]{16,}|(?=[\w-]*\d)[\w-]{20,})$/i;
 
@@ -48,7 +48,7 @@ export async function detect_surfaces(options: { repo_root: string; docs_root: s
     if (text === undefined || GENERATED.test(text.split('\n', 8).join('\n'))) continue;
     const lines = text.split('\n');
     for (const surface of detectors.flatMap((detector) => detector.detect(file, lines)).map(screen_name)) {
-      const key = `${surface.kind}\0${surface.name}\0${file}`;
+      const key = `${surface.kind}\0${surface.name}\0${file}\0${surface.line}`;
       if (!seen.has(key)) { seen.add(key); surfaces.push(surface); }
     }
   }

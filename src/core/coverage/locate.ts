@@ -59,8 +59,8 @@ export async function locate_facets(options: { repo_root: string; docs_root: str
     const into = instruction ? result.instructions : result.code;
     text.split('\n').forEach((line, i) => {
       for (const { facet, regex } of compiled) {
-        const hits = into.get(facet)!;
-        if (hits.length < MAX_HITS_PER_FACET && test_facet(regex, line)) hits.push({ file, line: i + 1 });
+        const found = into.get(facet)!;
+        if (found.length < MAX_HITS_PER_FACET && test_facet(regex, line)) found.push({ file, line: i + 1 });
       }
     });
   }

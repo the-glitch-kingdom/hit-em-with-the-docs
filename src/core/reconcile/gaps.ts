@@ -200,9 +200,9 @@ export async function classify_gaps(gaps: Gap[], options: { root: string; docs_r
     if (finding) { classification.dropped.push({ query: '[redacted]', reason: 'secret', note: `${finding.rule}, ${finding.masked}` }); continue; }
     if (gap.facets?.length) {
       const clean = gap.facets.filter((facet) => {
-        const hit = scan_text(facet, 'gaps', secrets)[0];
-        if (hit) classification.dropped.push({ query: '[redacted facet]', reason: 'secret', note: `${hit.rule}, ${hit.masked}` });
-        return !hit;
+        const finding = scan_text(facet, 'gaps', secrets)[0];
+        if (finding) classification.dropped.push({ query: '[redacted facet]', reason: 'secret', note: `${finding.rule}, ${finding.masked}` });
+        return !finding;
       });
       if (!clean.length) continue;
       classification.facet_gaps.push({ ...gap, facets: clean });

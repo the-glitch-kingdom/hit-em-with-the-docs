@@ -138,7 +138,37 @@ const CHECK_KINDS: { kind: string; patterns: RegExp[] }[] = [
   { kind: 'firewall or network rule', patterns: [/\baws_security_group\w*|\bcidr_blocks?\b|\b(?:iptables|nftables|ufw)\b|\b(?:ingress|egress)\s*[{:=]|\bsecurity_group_ids?\b|\bfirewall_rule/i] },
 ];
 /** The kind of security check a source line is (a secret compared, hashed, signed or decrypted; a permission or role check; a policy document; a firewall rule), by code shape; undefined when it is not one. */
-export const find_security_check = (line: string): string | undefined => CHECK_KINDS.find(({ patterns }) => patterns.some((pattern) => pattern.test(line)))?.kind;
+export const find_security_check = (line: string): string | undefined => CHECK_KINDS.find(({ patterns }) => patterns.some((pattern) => pattern.test(line)))?.kind ?? find_operand_check(line);
+
+// General rule: a security operand word and a check form on one line, however the language spells it. Crypto APIs and authorization verbs count alone.
+const OPERAND = /^(?:auth(?:n|z|enticat\w*|oriz\w*)?|tokens?|secrets?|pass(?:word|wd)?s?|pwd|keys?|apikeys?|cred(?:ential)?s?|signatures?|sig|hmac|digests?|hash(?:es|ed)?|ciphers?|\w*crypt\w*|jwts?|bearer|sessions?|cookies?|roles?|admins?|permissions?|perms?|acl|polic(?:y|ies)|owners?|grants?|scopes?|claims?|certs?|tls|otp|nonce|secure)$/;
+const PERMISSION_OPERAND = /^(?:roles?|admins?|permissions?|perms?|acl|polic(?:y|ies)|owners?|grants?|scopes?|authz|authorize\w*)$/;
+const FORM_WORD = /^(?:equals?|eq|compare|cmp|isequal|in|verify|validate|check|evaluate|authorize|authenticate|can|cannot|guard|middleware|decorator|attribute|\w*(?:cmp|compare|equals?))$/;
+const CRYPTO_API = /\bopenssl_\w+|\bcrypto\.subtle\b|\bCipher\.\w+|\b(?:hashlib|bcrypt|argon2|scrypt|pbkdf2)\b|\.(?:can|cannot)\?|\b(?:can|cannot)\s*\(\s*[:'"]/i;
+const words_of = (identifier: string): string[] => split_words(identifier).toLowerCase().split(/\s+/).filter(Boolean);
+function find_operand_check(line: string): string | undefined {
+  if (/^\s*(?:\/\/|#|\*|\/\*|--)/.test(line)) return undefined;
+  // a constant set to a literal states a value, it checks nothing
+  if (/^\s*(?:export\s+)?(?:(?:const|let|var|final|static|readonly|public|private)\s+)*[A-Za-z_]\w*\s*(?::[^=]+)?=\s*(?:-?\d[\w.]*|["'][^"']*["']|true|false|null)\s*;?\s*$/.test(line)) return undefined;
+  // route paths and counts of an operand are not operands
+  const code = line.replace(/(["'`])\/[^"'`]*\1/g, '""').replace(/[\w$]+(?:\.[\w$]+)*\.(?:length|size|count)\b(?:\(\))?/g, ' ');
+  if (CRYPTO_API.test(code)) return /\bcan(?:not)?\b/i.test(code) ? 'permission or role check' : 'crypto or credential check';
+  const identifiers = code.match(/[A-Za-z_$][\w$]*/g) ?? [];
+  const operands = new Set<string>();
+  let predicate = false;
+  for (const identifier of identifiers) {
+    const parts = words_of(identifier);
+    parts.forEach((part, i) => { if (OPERAND.test(part) && !/^(?:count|len|length|size|num|number|index|limit|max|min)$/.test(parts[i + 1] ?? '')) operands.add(part); });
+    if (/^(?:is|has|can)$/.test(parts[0] ?? '') && parts.slice(1).some((part) => OPERAND.test(part))) predicate = true;
+    if (parts.includes('parse') && parts.some((part) => /^(?:jws|claims?|jwt)$/.test(part))) predicate = true;
+  }
+  if (!operands.size) return undefined;
+  const form = predicate || /[!=]==?(?!=)/.test(code) || /^\s*[@[]|\.use\(/.test(code)
+    || identifiers.some((identifier) => words_of(identifier).some((part) => FORM_WORD.test(part) && (part !== 'in' || !/\bfor\b/.test(code))))
+    || /\bin\b/.test(code) && !/\bfor\b/.test(code);
+  if (!form) return undefined;
+  return [...operands].some((operand) => PERMISSION_OPERAND.test(operand)) ? 'permission or role check' : 'crypto or credential check';
+}
 export const is_security_check_line = (line: string): boolean => find_security_check(line) !== undefined;
 
 const SENSITIVE = /\b(?:auth(?:n|z|s|entic\w*|ori[sz]\w*)?|oauth|saml|sso|jwts?|login|logout|passwords?|passwd|credentials?|tokens?|secrets?|sessions?|cookies?|permissions?|privileges?|privileged|rbac|acl|iam|admins?|bypass(?:es|ed)?|vulnerabilit(?:y|ies)|vulnerable|cve|exploit\w*|firewall|security groups?|network (?:polic\w+|rules?|acl)|ingress|egress|allow ?lists?|csrf|xss|ssrf|cors|tls|ssl|certs?|certificates?|encrypt\w*|decrypt\w*|signing keys?|encryption keys?)\b|(?:^|\/)(?:auth|iam|security|permissions?|login)\//i;

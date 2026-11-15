@@ -84,7 +84,9 @@ knowledge-base doc is never an extend target (a fact that already states it stil
 - **Routing is code-based.** A unit is withheld for a human only when a located line is an auth, crypto or
   credential check, found by code shape across languages (decorators, attributes, middleware and guards naming
   auth, permission, role, login or admin; a token, secret, password, signature or expected value compared;
-  hashing, signing or password-hash calls; TLS verification turned off). A topic word alone (login, token, an `auth` folder) keeps it drafted, marked
+  hashing, signing or password-hash calls; TLS verification turned off), and by a general rule: a security operand
+  word (token, key, password, role, owner, policy and the like, after splitting identifiers) on a line with a check form
+  (an equality, equals, compare, verify, an `in` test, an is/has/can predicate, a guard); crypto API calls count alone. A topic word alone (login, token, an `auth` folder) keeps it drafted, marked
   "security-adjacent: judge carefully".
 
 ## Ignore list

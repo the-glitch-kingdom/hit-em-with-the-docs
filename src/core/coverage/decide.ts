@@ -105,6 +105,12 @@ function is_relevant_to_query(doc: DocText, query_terms: Set<string>, strong_ter
   const shared = [...query_terms].filter((term) => body.has(term));
   return shared.filter((term) => !GENERIC_TERMS.has(term)).length >= RELEVANT_BODY_TERMS && shared.length / query_terms.size >= 0.5;
 }
+/** The doc's frontmatter title shares a non-generic question term (one generic noun, `email`, is no relevance: #118). */
+function has_title_term(doc: DocText, query_terms: Set<string>): boolean {
+  const { data } = parse_frontmatter<Record<string, unknown>>(doc.text);
+  const title = typeof data.title === 'string' ? get_distinctive_terms(data.title) : new Set<string>();
+  return [...query_terms].some((term) => title.has(term) && !GENERIC_TERMS.has(term));
+}
 /** A citation with line data counts for a file only when it covers one of the facet lines; without line data the whole file counts. */
 function covers_hits(doc: DocText, located: FacetHit[]): boolean {
   return located.some((found) => {
@@ -258,8 +264,11 @@ export function resolve_decision(miss: CoverageMiss, located: Pick<LocateResult,
     if (is_hub_doc(doc) || is_knowledge_base(doc)) return { ok: false, preferred: false };
     const cites = cited_by.includes(doc.path) && doc.sources.length <= SPECIFIC_MAX_SOURCES && covers_hits(doc, code_hits);
     const relevant = is_relevant_to_query(doc, query_terms, strong_terms);
+    // #120: a doc that lists the located file itself (a file few docs cite) and is titled for the question qualifies, whatever else it cites
+    const lists_file = doc.sources.some((source) => source_files.includes(source) && counts.filter((other) => other.doc.sources.includes(source)).length <= SPECIFIC_MAX_SOURCES);
+    const titled = lists_file && has_title_term(doc, query_terms);
     const preferred = doc.path === eval_path && held.some(is_distinctive) && (cites || relevant);
-    return { ok: (cites && (held.length > 0 || relevant)) || preferred, preferred };
+    return { ok: (cites && (held.length > 0 || relevant)) || titled || preferred, preferred };
   };
   const citing = counts.map((item) => ({ item, ...qualifies(item) })).filter(({ ok }) => ok)
     .sort((a, b) => Number(b.preferred) - Number(a.preferred) || b.item.held.length - a.item.held.length || order(a.item, b.item))[0]?.item;

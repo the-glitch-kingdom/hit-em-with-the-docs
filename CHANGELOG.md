@@ -14,7 +14,8 @@ Fixes the #120 field-test findings on 3.7.0 in `reconcile --gaps` and `hewtd cov
 - Table file maps and file-map or inventory docs are hubs; new docs go in the majority folder of nearby docs and are titled from their subject, not a boolean-looking facet.
 - `coverage` detects class-level constants and annotated collection constants (named, never stated). Docs say `explained` does not mean every why is present.
 - Declared lists are found by the surface detectors (celery beat `crontab()`/`timedelta`, Flask and FastAPI decorators), not only 5-field cron strings; Java, Kotlin and C# typed collections and arrays are named constants (never stated).
-- Gates: `gate:gaps` 31/31, `gate:coverage` 40/40. Full suite 2207 tests pass.
+- A doc whose `sources` list the located file (cited by at most 5 docs) and whose title shares a question term is extended (an `Alerts Runbook` for an alerts miss), even when it cites many files.
+- Gates: `gate:gaps` 31/31, `gate:coverage` 40/40. Full suite 2250 tests pass.
 
 ## [3.7.0] — 2026-11-15
 

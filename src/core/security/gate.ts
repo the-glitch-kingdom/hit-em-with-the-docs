@@ -12,7 +12,23 @@ import { scan_text } from '../reconcile/secrets.js';
 
 export interface GateFinding { rule: string; file: string; line: number; masked: string }
 
-interface ValueRule { rule: string; pattern: RegExp; credential?: boolean }
+const UNIT = '(?:ms|s|m|h|d|[KMG]i?B|[kmg]b)';
+const NUMBER = `\\d[\\d_]*(?:\\.\\d+)?(?:${UNIT})?\\b`;
+const TERM = `(?:${NUMBER}|(?:time\\.)?(?:Nano|Micro|Milli)?(?:second|Second|Minute|Hour)s?\\b|Duration\\.of(?:Millis|Seconds|Minutes|Hours|Days)\\(\\s*${NUMBER}\\s*\\))`;
+const CONSTANT_VALUE = new RegExp(`^\\(*\\s*${TERM}(?:\\s*[*+\\-/]\\s*\\(*\\s*${TERM}\\s*\\)*)*\\s*\\)*$`);
+/** A number, arithmetic of numbers, or a duration or size literal: a code constant (#115), never a host, port, id or default. */
+export const is_constant_value = (value: string): boolean => CONSTANT_VALUE.test(value.trim());
+const VALUE_NAME = /\b(?:ports?|hosts?|hostnames?|ips?|addr|address|ids?|urls?|uris?|endpoints?|domains?|accounts?|tenants?|keys?|secrets?|tokens?|passwords?|passwd|credentials?|certs?|salts?)\b/i;
+/** A name that holds a host, port, id, url or credential: what it is set to is a value, not a constant to state. */
+export const is_value_name = (name: string): boolean => VALUE_NAME.test(split_words(name));
+
+interface ValueRule { rule: string; pattern: RegExp; credential?: boolean; /** Drop a match that is not a value (a code constant). */ keep?: (match: RegExpMatchArray) => boolean }
+// NAME = <rest of line>: a constant (number, arithmetic, duration or size) is a fact a doc may state, unless the name says host, port, id, url or credential
+const keep_config_value = (match: RegExpMatchArray): boolean => {
+  const [, name, value] = match;
+  if (!name) return true;
+  return !is_constant_value(value!.replace(/\s*(?:\/\/|#).*$/, '').replace(/[;,]\s*$/, '')) || is_value_name(name);
+};
 const VALUE_RULES: ValueRule[] = [
   { rule: 'key-material', pattern: /-----BEGIN [A-Z ]+-----|[A-Za-z0-9+/]{80,}={0,2}/g, credential: true },
   { rule: 'connection-string', pattern: /\b[a-z][a-z0-9+.-]*:\/\/[^\s'"`<>]+/gi, credential: true },
@@ -20,7 +36,7 @@ const VALUE_RULES: ValueRule[] = [
   { rule: 'hostname', pattern: /\b(?:[a-z0-9-]+\.)+(?:com|net|org|io|dev|internal|local|cloud|aws|app|co|us|eu|gov|mil|edu|ai|xyz|corp|lan|svc)\b/gi },
   { rule: 'port', pattern: /\bports?\b\W{0,4}\d{2,5}\b/gi },
   { rule: 'account-id', pattern: /\b(?:account|tenant|project|subscription|org(?:anization)?)[ _-]?id\b\W{0,8}(?:is\s+)?[\w-]{6,}|\b\d{12}\b|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|\barn:aws[\w-]*:\S+/gi },
-  { rule: 'config-value', pattern: /\b[A-Z][A-Z0-9_]{2,}\s*[=:]\s*['"]?[^\s'"`,;)]+|\bdefaults?\s+(?:to|is|of|value)\b\s*\S+|\bdefault\s*[:=]\s*\S+/g },
+  { rule: 'config-value', pattern: /\b([A-Z][A-Z0-9_]{2,})\s*[=:]\s*(\S[^\n]*)|process\.env\.\w+\s*(?:\?\?|\|\|)\s*\S+|os\.environ\.get\([^,)\n]+,\s*[^)\n]+\)|getenv\([^,)\n]+,\s*[^)\n]+\)|\$\{\w+:-[^}\n]*\}|\bdefaults?\s+(?:to|is|of|value)\b\s*\S+|\bdefault\s*[:=]\s*\S+/g, keep: keep_config_value },
 ];
 
 const mask = (length: number): string => `[${length} chars]`;
@@ -28,9 +44,9 @@ const find_line = (text: string, index: number): number => text.slice(0, index).
 
 function find_value_findings(text: string, where: string, credential_only: boolean): GateFinding[] {
   const found: GateFinding[] = [];
-  for (const { rule, pattern, credential } of VALUE_RULES) {
+  for (const { rule, pattern, credential, keep } of VALUE_RULES) {
     if (credential_only && !credential) continue;
-    for (const match of text.matchAll(pattern)) found.push({ rule, file: where, line: find_line(text, match.index!), masked: mask(match[0].length) });
+    for (const match of text.matchAll(pattern)) if (!keep || keep(match)) found.push({ rule, file: where, line: find_line(text, match.index!), masked: mask(match[0].length) });
   }
   return found;
 }

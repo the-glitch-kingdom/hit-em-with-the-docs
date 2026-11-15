@@ -30,6 +30,7 @@ describe('plan_coverage_misses (#113)', () => {
     expect(r.proposals[0]).toMatchObject({ kind: 'extend', doc: 'ops/cache.md' });
     expect(r.proposals[0]!.closes.map((c) => c.key)).toEqual(['a', 'b']);
     expect(r.drafts.entries).toHaveLength(1);
-    expect(r.drafts.entries[0]!.patch![0]!.new).toContain('`purge_cache` is defined in `src/cache.ts` (line 2)');
+    // #115: purge_cache is a function, not a simple constant: nothing is stated, the judge gets facet + file:line
+    expect(r.drafts.entries[0]).toMatchObject({ verdict: null, path: 'ops/cache.md', for_judge: [{ facet: 'purge_cache', at: ['src/cache.ts:2'] }] });
   });
 });

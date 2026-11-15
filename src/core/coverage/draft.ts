@@ -35,20 +35,6 @@ export const MAX_SENTENCES = 12;
 /** Domain for a new doc when no doc cites nearby code. */
 export const FALLBACK_DOMAIN = 'features';
 
-const ENV_NAME = /process\.env\.([A-Z_][A-Z0-9_]*)|process\.env\[\s*['"]([A-Z_][A-Z0-9_]*)|os\.environ(?:\.get)?[[(]\s*['"]([A-Z_][A-Z0-9_]*)|getenv\(\s*['"]([A-Z_][A-Z0-9_]*)/;
-const DECLARATION = /\b(?:function|def|class|interface|enum|type|const|let|var|fn|func|struct)\s+([A-Za-z_$][\w$]*)/;
-const ASSIGNMENT = /^\s*(?:export\s+)?([A-Za-z_][\w.]*)\s*[:=]/;
-
-/** The name a line declares or reads: an identifier or an env/config name, never what it is set to. Drafts no longer cite by name alone (#115); the judge helpers and tests still use it. */
-export function extract_declared_name(line: string): { name: string; verb: 'defined in' | 'read in' } | undefined {
-  const env_match = ENV_NAME.exec(line);
-  const env_name = env_match?.slice(1).find(Boolean);
-  if (env_name) return { name: env_name, verb: 'read in' };
-  const code = line.replace(/(['"`])(?:\\.|(?!\1).)*\1/g, '""'); // a keyword inside a string literal is text, not a declaration
-  const name = DECLARATION.exec(code)?.[1] ?? ASSIGNMENT.exec(code)?.[1];
-  return name ? { name, verb: 'defined in' } : undefined;
-}
-
 const CONSTANT_LINE = /^\s*(?:export\s+)?(?:(?:public|private|protected|static|final|readonly|const|let|var|val|pub)\s+)*(?:[A-Za-z_][\w<>[\]]*\s+)?([A-Za-z_]\w*)\s*(?::\s*[\w<>[\]|. ]+?)?\s*:?=\s*(.+?)\s*;?\s*(?:(?:\/\/|#).*)?$/;
 /** Config and env files hold values, not code constants. */
 const CONFIG_FILE = /(^|\/)\.env[^/]*$|\.(?:env|ini|ya?ml|toml|properties|cfg|conf|json)$/i;

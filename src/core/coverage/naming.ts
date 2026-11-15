@@ -15,6 +15,8 @@ export const FALLBACK_DOMAIN = 'features';
 
 const GENERIC_SUFFIX = new Set(['service', 'manager', 'handler', 'controller', 'helper', 'helpers', 'util', 'utils', 'impl', 'factory', 'provider']);
 const GENERIC_PREFIX = new Set(['get', 'set', 'is', 'has', 'max', 'min', 'default']);
+/** Identifiers that start like a yes/no property. */
+const BOOLEAN_PREFIX = new Set(['is', 'has', 'can', 'should', 'was', 'does']);
 const GENERIC_MODULE = new Set(['index', 'main', 'init', 'utils', 'util', 'helpers', 'constants', 'config', 'settings', 'base', 'types', 'common', 'mod', 'lib', 'app']);
 const QUESTION_WORDS = new Set('a an and are as at be by can could do does did for from get gets got how i if in is it its many much of on or so than that the their there these this to was were what when where which who whom whose why will with would long large big often often new number'.split(' '));
 
@@ -45,7 +47,10 @@ export function name_new_doc(options: { queries: string[]; facets: string[]; sou
   const counts = new Map<string, number>();
   // a text or identifier that holds a value (as written, as read, or key-shaped) never names a doc; regex escapes read as the text they stand for
   for (const text of [...options.facets, ...options.queries]) for (const identifier of find_identifiers(text)) if (!find_value_in_name(text.replace(/\\(.)/g, '$1')) && !find_value_in_name(identifier)) counts.set(identifier, (counts.get(identifier) ?? 0) + 1);
-  const dominant = [...counts].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length || a[0].localeCompare(b[0]))[0]?.[0];
+  // #120: a boolean column or flag (is_sample) is a property of a subject, not the subject: it names a doc only when nothing else can
+  const ranked = [...counts].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length || a[0].localeCompare(b[0])).map(([identifier]) => identifier);
+  const is_boolean = (identifier: string): boolean => BOOLEAN_PREFIX.has(split_name(identifier)[0] ?? '');
+  const dominant = ranked.find((identifier) => !is_boolean(identifier));
   if (dominant) return make_slug(strip_generic(split_name(dominant)));
   // 2. the source module the facets were found in
   const modules = new Map<string, number>();
@@ -55,6 +60,7 @@ export function name_new_doc(options: { queries: string[]; facets: string[]; sou
   }
   const module_name = [...modules].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
   if (module_name) return make_slug(split_name(module_name));
+  if (ranked[0]) return make_slug(strip_generic(split_name(ranked[0])));
   // 3. the question's noun phrase
   const phrase = (options.queries[0]?.toLowerCase().match(/[a-z][a-z0-9]+/g) ?? []).filter((word) => !QUESTION_WORDS.has(word)).slice(0, MAX_PHRASE_WORDS);
   return make_slug(phrase) || 'topic';

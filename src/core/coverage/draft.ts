@@ -176,8 +176,10 @@ export async function build_drafts(options: { repo_root: string; docs_root: stri
     // new doc: never overwrite an existing path or another draft's
     const { dir, fallback } = place_new_doc({ ...(proposal.folder && { folder: proposal.folder }), ...(proposal.domain && { domain: proposal.domain }), tier: 'guide' });
     const domain = dir.split('/')[0]!;
-    const title = sentence_case(proposal.closes[0]!.query);
     const stem = name_new_doc({ queries: proposal.closes.map((closed) => closed.query), facets: proposal.missing_facets, source_files: proposal.source_files });
+    // #120: the title and purpose name the subject; the question stays in symptoms
+    const subject = stem.replace(/-/g, ' ');
+    const title = sentence_case(subject);
     let path = `${dir}/${stem}.md`;
     for (let copy = 2; existsSync(join(docs_root, path)) || taken.has(path); copy++) path = `${dir}/${stem}-${copy}.md`;
     taken.add(path);
@@ -189,7 +191,7 @@ export async function build_drafts(options: { repo_root: string; docs_root: stri
     }
     const body = `# ${title}\n\nDrafted from code that search questions could not be answered from; every statement cites the code it came from. Review before accepting.\n\n## What the code defines\n\n${built.sentences.join('\n')}\n`;
     const symptoms = [...new Set(proposal.closes.map((closed) => closed.query))].slice(0, 5);
-    const draft = with_frontmatter(body, { title, tier: 'guide', domains: [domain], status: 'draft', version: '1.0.0', last_updated: options.today, purpose: `Answers: ${proposal.closes[0]!.query}`, symptoms, sources: built.source_files });
+    const draft = with_frontmatter(body, { title, tier: 'guide', domains: [domain], status: 'draft', version: '1.0.0', last_updated: options.today, purpose: `Explains ${subject}, drawn from the code`, symptoms, sources: built.source_files });
     const gate = check_security_gate(draft, path, secrets_config)[0];
     if (gate) { result.blocked.push({ keys, reason: `security gate: ${path}:${gate.line} (${gate.rule}, ${gate.masked})` }); continue; }
     result.entries.push({ path, content_hash: compute_content_hash(''), verdict: 'create', draft, sources: built.source_files, ...for_judge, ...mark, reasons: domain_reasons });

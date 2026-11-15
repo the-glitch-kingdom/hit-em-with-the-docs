@@ -41,6 +41,8 @@ constants are not detected. A Go repo shows only its CI, schedules and alert rul
 | `named` | a doc names it (whole identifier, split spellings too) but says nothing about what it does or holds |
 | `explained` | a doc that cites its source has a sentence about it, or a section under a heading with its name; a constant is explained when a doc states its value next to its name |
 
+A name inside a list of three or more single-token items (`Scheduled: purge-trials, send-digest, rotate-logs`)
+stays `named`: the other items are not words about it, unless another sentence about that one name says what it does.
 Named is not covered. Archive docs do not count. Knowledge-base docs count like any doc and are never judged
 against the code. A repo with no docs folder grades every surface `absent` instead of failing.
 
@@ -52,7 +54,9 @@ generate or link the list from the code rather than writing each entry out.
 
 Absent surfaces, and named ones that carry behaviour (jobs, alerts, tasks, constants), go through the gaps
 engine (`src/core/coverage/`), which gives each one outcome (extend a doc, new doc, covered) with the same
-rules as `reconcile --gaps` in [reconcile.md](./reconcile.md). Surfaces already have their `file:line`, so
+rules as `reconcile --gaps` in [reconcile.md](./reconcile.md). A named surface is never `covered`: it extends the
+most specific non-hub, non-knowledge-base doc that names it (one that cites its source first), and its located line
+is listed for the judge to write what it does; a named constant with a stateable value is stated. Surfaces already have their `file:line`, so
 locating is skipped.
 
 Never overwritten: a `create` entry whose path is taken gets a numbered sibling and apply refuses to

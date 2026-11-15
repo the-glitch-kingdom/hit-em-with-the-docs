@@ -98,8 +98,8 @@
    "file": "monitoring/rules.yml",
    "line": 6,
    "grade": "named",
-   "outcome": "covered",
-   "draft": "none",
+   "outcome": "extend",
+   "draft": "judge",
    "doc": "ops/alert-list.md"
   },
   {
@@ -109,8 +109,8 @@
    "file": "monitoring/grafana-alerts.json",
    "line": 4,
    "grade": "named",
-   "outcome": "covered",
-   "draft": "none",
+   "outcome": "extend",
+   "draft": "judge",
    "doc": "ops/alert-list.md"
   },
   {

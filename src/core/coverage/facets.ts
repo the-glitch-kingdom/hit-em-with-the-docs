@@ -15,6 +15,8 @@ export interface CoverageMiss {
   blind?: boolean;
   facets: string[];
   missing_facets?: string[];
+  /** hewtd coverage: a doc names this surface but none explains it (the facet is just its name). */
+  named?: boolean;
   nearest_doc?: { path: string; facet_coverage: string; rank: number | null };
   expected?: string[];
 }

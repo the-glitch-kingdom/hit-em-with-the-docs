@@ -56,14 +56,21 @@ function cites(doc: DocText, surface: Surface): boolean {
   return doc.sources.some((source) => source === surface.file || surface.file.startsWith(source.replace(/\/?$/, '/'))) || doc.text.includes(surface.file);
 }
 
-/** Every sentence of the doc that holds the name, without the name itself. */
-function list_sentences(prepared: Prepared, forms: string[], route: boolean): string[] {
-  const found: string[] = [];
+const LIST_MIN_ITEMS = 3;
+/** A sentence that is a list: three or more comma or semicolon items, each a single token (an identifier or one word). Its other items are not words about the name. */
+function is_list_sentence(sentence: string): boolean {
+  const items = strip_markup(sentence).split(/[,;]/).map((item) => item.replace(/^.*:\s*/, '').replace(/^\s*(?:and|or)\s+/i, '').replace(/[.\s]+$/, '').trim()).filter(Boolean);
+  return items.length >= LIST_MIN_ITEMS && items.every((item) => /^[\w.-]+$/.test(item));
+}
+
+/** Every sentence of the doc that holds the name, without the name itself; a list is flagged. */
+function list_sentences(prepared: Prepared, forms: string[], route: boolean): { rest: string; list: boolean }[] {
+  const found: { rest: string; list: boolean }[] = [];
   for (const line of prepared.lines) {
     if (!forms.some((form) => line.includes(form))) continue;
     for (const sentence of line.split(/(?<=[.!?])\s+/)) {
       const at = forms.map((form) => ({ form, index: find_form(sentence, form, route) })).find((item) => item.index >= 0);
-      if (at) found.push(sentence.slice(0, at.index) + ' ' + sentence.slice(at.index + at.form.length));
+      if (at) found.push({ rest: sentence.slice(0, at.index) + ' ' + sentence.slice(at.index + at.form.length), list: is_list_sentence(sentence) });
     }
   }
   return found;
@@ -101,9 +108,9 @@ export function grade_surfaces(surfaces: Surface[], docs: DocText[]): GradedSurf
     const named_in = named.map((item) => item.doc.path);
     const explainer = named.find((item) => {
       const sentences = list_sentences(item, forms, route);
-      if (surface.value !== undefined && sentences.some((rest) => states_value(rest, surface.value!))) return true;
+      if (surface.value !== undefined && sentences.some(({ rest }) => states_value(rest, surface.value!))) return true;
       if (!cites(item.doc, surface)) return false;
-      return sentences.some(states_purpose) || has_named_section(item, forms, route);
+      return sentences.some(({ rest, list }) => !list && states_purpose(rest)) || has_named_section(item, forms, route);
     });
     return { ...surface, grade: explainer ? 'explained' : named.length ? 'named' : 'absent', named_in, ...(explainer && { explained_by: explainer.doc.path }) };
   });

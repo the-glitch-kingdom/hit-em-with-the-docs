@@ -57,8 +57,8 @@ describe('citation granularity and the eval nearest doc (#118)', () => {
     const d = resolve_decision(miss('how does retry backoff work', ['zz_a', 'zz_b']), { code: code(['zz_a', 'src/q.py', 50]), instructions: none }, [a]);
     expect(d.doc).toBe('ops/a.md');
   });
-  it('the eval nearest doc holding >= 1 facet beats a citing doc holding none', () => {
-    const near = doc('ops/z-near.md', 'only nn_one is here');
+  it('the eval nearest doc holding >= 1 distinctive facet and relevant to the question beats a citing doc holding none', () => {
+    const near = doc('ops/z-near.md', 'retry backoff: only nn_one is here');
     const citer = doc('ops/a-citer.md', 'retry backoff scheduler', ['src/q.py']);
     const d = resolve_decision(miss('how does retry backoff work', ['nn_one', 'nn_two', 'nn_three'], { nearest_doc: { path: 'ops/z-near.md', facet_coverage: '1/3', rank: 1 } }), { code: code(['nn_two', 'src/q.py', 5]), instructions: none }, [near, citer]);
     expect(d).toMatchObject({ kind: 'extend', doc: 'ops/z-near.md' });

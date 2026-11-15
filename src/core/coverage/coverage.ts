@@ -57,7 +57,7 @@ function build_miss(surface: GradedSurface): { gap: FacetGap; facet: string } {
   // a placeholder surface has no name to match: its facet is its position, and the located hit is its own line
   const facet = surface.placeholder ? build_position_facet(surface.file, surface.line) : surface.kind === 'constant' && surface.value !== undefined ? `${name}\\s*[:=]\\s*${escape_regex(surface.value).replace(/\\? /g, '\\s*')}` : name;
   const query = `What does the ${KIND_LABEL[surface.kind]} ${surface.name} do?`;
-  return { gap: { id: `${surface.kind}:${surface.name}@${surface.file}`, query, facets: [facet] }, facet };
+  return { gap: { id: `${surface.kind}:${surface.name}@${surface.file}`, query, facets: [facet], ...(surface.grade === 'named' && { named: true }) }, facet };
 }
 
 export async function run_coverage(options: { repo_root: string; docs_root: string; config: PluginConfig; today?: string }): Promise<CoverageReport> {

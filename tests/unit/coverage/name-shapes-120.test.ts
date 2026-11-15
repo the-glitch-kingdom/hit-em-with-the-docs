@@ -7,7 +7,7 @@ import { plan_coverage_misses } from '../../../src/core/coverage/plan.js';
 import { load_plugin_config } from '../../../src/utils/config.js';
 import { find_block_lines, find_security_check } from '../../../src/core/security/gate.js';
 
-// inside a literal or comment only five shapes are names (#120 review round 3); every other shape is a value, as on main
+// inside a literal only a few shapes are names (see literal-structure-120.test.ts); every other shape is a value, as on main
 const aws_like = ['wJalrXUtnFEMI', 'K7MDENG', 'bPxRfiCYEXAMPLEKEY'].join('/'); // built at runtime, never a committed literal
 const slash_key = ['kZ3f9Qx2', 'Lm8vN4pRt7Yw+aB1cD5eF6gHi'].join('/');
 const withheld: [string, string, string][] = [
@@ -38,7 +38,6 @@ const kept: [string, string, string][] = [
   ['fixture path', 'data = load("fixtures/orders_sample.json")', 'fixtures/orders_sample.json'],
   ['route', 'app.get("/api/orders/list", handler)', '/api/orders/list'],
   ['route params', 'app.get("/api/orders/:id/{kind}", handler)', '/api/orders/:id/{kind}'],
-  ['event name', 'bus.emit("user.created", payload)', 'user.created'],
   ['comment event', '// emits user.created once the row is saved, see "user.created"', 'user.created'],
 ];
 

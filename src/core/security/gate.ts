@@ -130,37 +130,40 @@ export function is_value_line(line: string, secrets_config: SecretsConfig): bool
 
 // a literal that is a name, not a value: an import path, an env var name, a route path or a flag
 const NAME_LITERAL_PREFIX = /(?:\b(?:import|from|require|getenv|environ(?:\.get)?|ENV(?:\.fetch)?|process\.env)\s*[[(]?\s*|\bimport\s+[\w*{}, ]+\s+from\s*)$/;
-// #120 section 4, flipped: inside a literal or a comment a match is a NAME only when it is clearly name-shaped, every other shape is a value
+// #120: main's rule is the base. Inside a literal a matched facet is a value unless it starts with `--` (a long flag) or `/` (a route or path). Only four additions are names:
+// a one-letter flag, a file name, a command phrase with a long flag, and a name a surface detector found on the same line. Every name must also pass find_value_in_name and has_key_token.
 const FILE_EXTENSION = /\.(?:json|ya?ml|toml|md|txt|csv|sql|py|tsx?|jsx?|rb|go|java|kt|cs|rs|php|sh|html|css|xml|ini|cfg|lock|env\.example)$/i;
-const FLAG_NAME = /^--?([a-z][a-z0-9-]*)(?:=[a-z][a-z0-9-]*)?$/;
-const ROUTE_SEGMENT = '(?:[a-z]+(?:[-_][a-z]+)*|:[a-z_][a-z0-9_]*|\\{[a-z_][a-z0-9_]*\\})';
-const ROUTE = new RegExp(`^/(?:${ROUTE_SEGMENT}(?:/${ROUTE_SEGMENT})*/?)?$`);
-const EVENT_NAME = /^[a-z]+(?:\.[a-z]+){1,3}$/;
-const NOT_EVENT_END = /^(?:com|net|org|io|dev|app|co|us|uk|de|fr|eu|ai|info|biz|edu|gov|mil|int|xyz|me|tv|cc|internal|local|corp|lan|home|intranet|cloud|prod|stg|stage|test|svc|cluster|localhost)$/;
-const AUTH_SCHEME = /^(?:bearer|basic|digest|token)\s/i;
+const LONG_FLAG = /^--([a-z][a-z0-9-]*)(?:=[a-z][a-z0-9-]*)?$/;
+const SHORT_FLAG = /^-[A-Za-z]$/;
 const AUTH_KEY = /\b(?:bearer|authori[sz]ation|basic)\b/i;
 const is_key_like_segment = (segment: string): boolean => has_key_token(segment) || (/[a-z]/.test(segment) && /[A-Z]/.test(segment) && /\d/.test(segment));
-/** The five shapes that are names inside a literal or comment; any other shape is a value (#120). */
-const is_name_shaped = (content: string): boolean => {
-  const flag = FLAG_NAME.exec(content);
-  if (flag) return !is_value_name(flag[1]!); // (a) an option flag
-  if (FILE_EXTENSION.test(content) && /^[\w./-]+$/.test(content) && !content.split('/').some(is_key_like_segment)) return true; // (b) a file name or path
-  if (ROUTE.test(content)) return true; // (c) a route of lowercase words, :params and {params}
-  if (EVENT_NAME.test(content) && !NOT_EVENT_END.test(content.slice(content.lastIndexOf('.') + 1)) && !find_value_in_name(content)) return true; // (d) a dotted event name
-  // (e) a command phrase: a --long-flag and lowercase letter words, no word that is a flag's argument or a value name
+const is_plain = (text: string): boolean => !find_value_in_name(text) && !has_key_token(text);
+/** The shapes that are names inside a literal; any other shape is a value (#120). `surface_names` are the names a surface detector found on the same line (already screened). */
+const is_name_shaped = (content: string, surface_names: string[] = []): boolean => {
+  if (!is_plain(content)) return false;
+  const flag = LONG_FLAG.exec(content);
+  if (flag) return !is_value_name(flag[1]!); // a long flag
+  if (content.startsWith('/')) return true; // a route or an absolute path, as on main
+  if (SHORT_FLAG.test(content)) return true; // `-v`, never with attached characters (`-psecret`)
+  if (surface_names.includes(content)) return true; // a scheduled-job key, route, flag, queue or task name, alert name or CI job
+  // a file name or path with a known extension, every segment plain
+  if (FILE_EXTENSION.test(content) && /^[\w./-]+$/.test(content)) return content.split('/').every((segment) => is_plain(segment) && !is_key_like_segment(segment));
+  // a command phrase: a --long-flag and lowercase letter words, no short flag with an attached value, no word that follows a flag
   const tokens = content.split(/\s+/);
-  if (tokens.length < 2 || !tokens.some((token) => /^--[a-z]/.test(token)) || AUTH_SCHEME.test(content)) return false;
+  if (tokens.length < 2 || !tokens.some((token) => /^--[a-z]/.test(token)) || AUTH_KEY.test(content)) return false;
   return tokens.every((token, i) => {
-    const flag_token = FLAG_NAME.exec(token);
-    if (flag_token) return !is_value_name(flag_token[1]!);
-    return /^[a-z]+$/.test(token) && !is_value_name(token) && !/^--?[a-z][a-z0-9-]*$/.test(tokens[i - 1] ?? '');
+    const long = LONG_FLAG.exec(token);
+    if (long) return !is_value_name(long[1]!);
+    if (SHORT_FLAG.test(token)) return true;
+    const before = tokens[i - 1] ?? '';
+    return /^[a-z]+$/.test(token) && !is_value_name(token) && !(/^--?[a-z]/.test(before) && !before.includes('='));
   });
 };
 const KEY_BEFORE = /([\w-]+)["'`]?\s*(?:=>|[:=,(])\s*$/;
 const HEAD_KEY = /^\s*(?:(?:export|const|let|var|final|static|readonly|public|private)\s+)*([\w.$-]+)["'`]?\s*(?::[^=]+)?(?:=>|[:=])/;
 // a literal set under a value name (`"password": ".."`, `PASSWORDS = [".."]`, `Authorization: ..`) is a value whatever its shape
 const is_value_key = (key: string | undefined): boolean => !!key && (is_value_name(key) || AUTH_KEY.test(split_words(key)));
-const is_value_literal = (before: string, content: string): boolean => !is_name_shaped(content) || has_key_token(content) || !!find_value_in_name(content) || is_value_key(KEY_BEFORE.exec(before)?.[1]) || is_value_key(HEAD_KEY.exec(before)?.[1]);
+const is_value_literal = (before: string, content: string, surface_names: string[]): boolean => !is_name_shaped(content, surface_names) || has_key_token(content) || !!find_value_in_name(content) || is_value_key(KEY_BEFORE.exec(before)?.[1]) || is_value_key(HEAD_KEY.exec(before)?.[1]);
 /** Where the comment of a line starts (0 for a comment line), outside any quote; -1 when it has none. */
 function find_comment_start(line: string): number {
   if (/^\s*(?:\/\/|#|\*|\/\*|--)/.test(line)) return 0;
@@ -175,9 +178,9 @@ function find_comment_start(line: string): number {
 /**
  * Where a source line holds values by CONTEXT, not by shape (#118): the spans inside a string literal ('..', "..", `..`),
  * inside an option argument of a shell line (`-p<x>`, `--password=x`, `--token x`) and inside URL or DSN userinfo
- * (`user:pw@host`). A literal that is an import path, an env var name, a route path or a flag is a name, not a value.
+ * (`user:pw@host`). A literal that is an import path, an env var name, a route path, a long flag or a name a surface detector found on the line (`surface_names`) is a name, not a value.
  */
-export function find_value_spans(line: string): [number, number][] {
+export function find_value_spans(line: string, surface_names: string[] = []): [number, number][] {
   const spans: [number, number][] = [];
   for (let i = 0; i < line.length; i++) {
     const quote = line[i]!;
@@ -186,7 +189,7 @@ export function find_value_spans(line: string): [number, number][] {
     while (end < line.length && line[end] !== quote) end += line[end] === '\\' ? 2 : 1;
     if (end >= line.length) break; // unterminated: an apostrophe in prose, not a literal
     const content = line.slice(i + 1, end);
-    if (!NAME_LITERAL_PREFIX.test(line.slice(0, i)) && is_value_literal(line.slice(0, i), content)) spans.push([i + 1, end]);
+    if (!NAME_LITERAL_PREFIX.test(line.slice(0, i)) && is_value_literal(line.slice(0, i), content, surface_names)) spans.push([i + 1, end]);
     i = end;
   }
   // an unquoted `key = value` under a value name, or a bearer/basic credential, in a comment
@@ -358,6 +361,10 @@ export function find_block_lines(text: string, file?: string): Set<number> {
   }
   return marked;
 }
+// a real check always has code syntax; a prose sentence in a docstring or comment does not (#120). `and`/`or`/`not` count only before a code-shaped operand, since prose says "and the"
+const CODE_SYNTAX = /=|&&|\|\||[{};]|\w\(|\w\?(?=[\s,;)]|$)|^\s*(?:if|elif|elsif|unless|return|raise|throw|assert|require|deny)\b|\b(?:and|or|not)\s+(?:not\s+)?[\w$@]+(?:\.\w|[([]|\s*[:)]|\s*$)/;
+/** True when a line has code syntax: a comparison or logical operator, an assignment, a call, a leading statement keyword, a brace or a semicolon. A wrong block can then only cause a needless hold, never hide a check. */
+export const has_code_syntax = (line: string): boolean => CODE_SYNTAX.test(line);
 export const is_security_check_line = (line: string): boolean => find_security_check(line) !== undefined;
 
 const SENSITIVE = /\b(?:auth(?:n|z|s|entic\w*|ori[sz]\w*)?|oauth|saml|sso|jwts?|login|logout|passwords?|passwd|credentials?|tokens?|secrets?|sessions?|cookies?|permissions?|privileges?|privileged|rbac|acl|iam|admins?|bypass(?:es|ed)?|vulnerabilit(?:y|ies)|vulnerable|cve|exploit\w*|firewall|security groups?|network (?:polic\w+|rules?|acl)|ingress|egress|allow ?lists?|csrf|xss|ssrf|cors|tls|ssl|certs?|certificates?|encrypt\w*|decrypt\w*|signing keys?|encryption keys?)\b|(?:^|\/)(?:auth|iam|security|permissions?|login)\//i;

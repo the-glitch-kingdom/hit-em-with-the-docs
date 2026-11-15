@@ -13,7 +13,7 @@ import { with_frontmatter } from '../../utils/frontmatter.js';
 import type { SecretsConfig } from '../../utils/config.js';
 import { compute_content_hash } from '../reconcile/ledger.js';
 import type { ReviewEntry } from '../reconcile/review.js';
-import { check_credential_text, check_security_gate, find_block_lines, find_security_check, find_sensitive_word, is_security_sensitive, is_stateable_constant } from '../security/gate.js';
+import { check_credential_text, check_security_gate, find_block_lines, find_security_check, has_code_syntax, find_sensitive_word, is_security_sensitive, is_stateable_constant } from '../security/gate.js';
 import { compile_facet, match_facets, parse_position_facet, REDACTED_FACET } from './facets.js';
 import type { FacetHit } from './locate.js';
 import { FALLBACK_DOMAIN, name_new_doc, place_new_doc } from './naming.js';
@@ -117,8 +117,9 @@ export async function find_check_line(repo_root: string, sources: FacetHit[]): P
   for (const found of [...sources].sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line).slice(0, MAX_CHECKED_LINES)) {
     let read = lines_of.get(found.file);
     if (!read) { const text = await readFile(join(repo_root, found.file), 'utf-8').catch(() => ''); read = { lines: text.split('\n'), blocks: find_block_lines(text, found.file) }; lines_of.set(found.file, read); }
-    if (read.blocks.has(found.line - 1)) continue; // docstrings and block comments are prose
-    const kind = find_security_check(read.lines[found.line - 1] ?? '');
+    const text = read.lines[found.line - 1] ?? '';
+    if (read.blocks.has(found.line - 1) && !has_code_syntax(text)) continue; // a docstring or block comment line is prose only when it has no code syntax: a wrongly detected block can then only cause a needless hold
+    const kind = find_security_check(text);
     if (kind) return { kind, file: found.file, line: found.line };
   }
   return undefined;

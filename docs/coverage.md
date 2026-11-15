@@ -161,19 +161,27 @@ get "generate the reference", every stated fact is true at its `file:line`, read
 - The content-word rule is lexical: three content words in a sentence with the name explain it even when the sentence is not accurate; a doc that does not cite the source never explains it (except a stated constant value).
 - A heredoc is found only when its `<<TAG` is within 200 lines above; a multi-line string literal other than a heredoc is
   read line by line, so a value on a continuation line is caught only by the other rules.
-- Inside a quoted literal or a comment a facet is a name only when it is clearly name-shaped: an option flag (`--omit=dev`),
-  a file name or path ending in a known code, data or doc extension (`fixtures/orders.json`; no key-shaped segment), a route
-  (`/api/orders/:id`), a dotted lowercase event name (`user.created`; not hostname-shaped), or a command phrase with a
-  `--long-flag` and lowercase words (`npm audit fix --package-lock-only`; no word that is a flag's argument), and it passes the
-  name screen. Every other literal is a value: one bare token (`.command('serve')`), digits mixed in, a slash path with no
-  extension (`jsmith/prod`, `a/b/c`), two or more plain words (`payments-db-replica`, `open sesame please`), anything after
-  `key=`, `Bearer`, `Basic` or a value-named key. This errs toward withholding. Known limit: a lowercase word before a
-  `--flag` in a quoted phrase reads as a command (`"hunter --verbose"`). An uppercase `NAME = "word"`
+- Inside a quoted literal a matched facet is a value unless it starts with `--` (a long flag, optionally `=word`) or `/` (a
+  route or absolute path), as in 3.7.0, and it passes the name screen. Four shapes are added as names: a bare one-letter flag
+  (`-v`; never with attached characters, so `-ptopsecret`, `-uroot` and `-hprod-db-1` are values); a file or path ending in a
+  known code, data or doc extension whose every segment passes the name screen (`fixtures/orders.json`; file names are not a
+  value class in the rules, so a person or customer name inside a file name, `john.smith.json`, is shown); a command phrase
+  with a `--long-flag` whose other words are lowercase letters, with no short flag carrying a value and no word after a flag
+  (`npm audit fix --package-lock-only`); and a literal that a surface detector named on the same line (a scheduled-job key, route,
+  CLI flag, queue or task name, alert name, CI job; those names are screened already). Everything else is a value: dotted event
+  names (`user.created`), dotted lowercase names (`john.smith`, `redis.cache`, `payments.db`), hyphenated words
+  (`payments-retry-batch`), one bare token, plain words, anything after `key=`, `Bearer`, `Basic` or a value-named key. A dotted
+  event name or hyphenated word is withheld unless a detector names it. This errs toward withholding. Known limit: a lowercase
+  word before a `--flag` in a quoted phrase reads as a command (`"hunter --verbose"`). An uppercase `NAME = "word"`
   assignment is still a config value.
 - Docstrings (`.py`, at a statement or after `=` or `(`), `/* */` blocks (C-family, JS/TS, Java, Go, C#, Rust, PHP, CSS,
-  Kotlin, Swift, Scala files) and Ruby `=begin` blocks (`.rb`, column 0) are prose, never a security check, and only the lines
-  wholly inside them (a line with code before the opening or after the closing delimiter is still checked). A block that never closes, or does not close within 200 lines, marks nothing; a `/*` opens a block only at the start of a line or after `;`, `{`, `}` or `)` and a space, never inside a regex literal, a string or after a backslash, and `#` is a line comment in PHP (`#[` is an attribute). A block that never
-  closes, or a delimiter hidden by a quote inside a comment, is not recognised.
+  Kotlin, Swift, Scala files) and Ruby `=begin` blocks (`.rb`, column 0) are detected, and a located line inside one is skipped
+  as prose only when it also has no code syntax: no comparison or logical operator (`==`, `!=`, `<=`, `&&`, `||`, `and`/`or`/`not`
+  before an operand), no assignment, no call (`name(`), no leading statement keyword (`if`, `elif`, `unless`, `return`, `raise`,
+  `throw`, `assert`, `require`, `deny`), no brace or semicolon. A real check always has code syntax, so a block detected wrongly
+  (a triple quote after `return` or `+`, a template literal or Go raw string holding `/*`, an unclosed `/*` before a glob
+  `*/`, a `=begin` in a heredoc) can only cause a needless hold, never hide a check. A prose sentence that happens to hold a
+  `;`, a `=` or `word(` is held too (the safe direction).
 - Hostnames in file paths are not screened (`config.local.ts` is not a host); IPs, ids, key shapes and environment resource
   names are.
 - A bare integer under a name with no measuring or describing word is not stated, even when it is harmless (`LEVEL = 3`).

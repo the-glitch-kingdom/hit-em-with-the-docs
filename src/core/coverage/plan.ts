@@ -11,6 +11,7 @@ import { build_drafts, find_check_line, type DraftResult } from './draft.js';
 import { locate_facets, type LocateResult } from './locate.js';
 import { add_generated_references, find_declared_files, merge_decisions, type MergeOptions, type Proposal } from './merge.js';
 import { compile_facet, list_timed_out_facets, match_facets, parse_position_facet, REDACTED_FACET, test_facet, type CoverageMiss } from './facets.js';
+import { find_surface_names } from './surfaces/index.js';
 import { find_value_in_name, find_value_spans, has_key_token, is_value_line } from '../security/gate.js';
 import type { SecretsConfig } from '../../utils/config.js';
 
@@ -38,8 +39,8 @@ const de_regex = (facet: string): string => facet.replace(/\\(.)/g, '$1');
 export const REDACTED_QUESTION = '[redacted question]';
 
 /** Whether every match of `regex` in the line is inside a literal, an option argument or userinfo. */
-function is_in_value_context(regex: RegExp, text: string): boolean {
-  const spans = find_value_spans(text);
+function is_in_value_context(regex: RegExp, text: string, surface_names: string[]): boolean {
+  const spans = find_value_spans(text, surface_names);
   const global = new RegExp(regex.source, regex.flags.includes('g') ? regex.flags : `${regex.flags}g`);
   const found = [...text.slice(0, 20_000).matchAll(global)].filter((match) => match[0].length);
   return found.length > 0 && found.every((match) => spans.some(([from, to]) => match.index! >= from && match.index! + match[0].length <= to));
@@ -47,6 +48,7 @@ function is_in_value_context(regex: RegExp, text: string): boolean {
 
 async function find_value_facets(repo_root: string, located: LocateResult, secrets_config: SecretsConfig, by_context: boolean): Promise<Set<string>> {
   const lines_of = new Map<string, string[]>();
+  const names_of = new Map<string, Map<number, string[]>>();
   const found = new Set<string>();
   for (const [facet, located_hits] of located.code) {
     const regex = compile_facet(facet).regex;
@@ -57,7 +59,9 @@ async function find_value_facets(repo_root: string, located: LocateResult, secre
       if (!lines) { lines = (await readFile(join(repo_root, located_hit.file), 'utf-8').catch(() => '')).split('\n'); lines_of.set(located_hit.file, lines); }
       const source_line = lines[located_hit.line - 1] ?? '';
       // by context (gaps facets only; a coverage facet is a screened surface name): inside a literal, an option argument, userinfo or a heredoc
-      if (by_context && (is_in_heredoc(lines, located_hit.line - 1) || is_in_value_context(regex, source_line))) continue;
+      let names = names_of.get(located_hit.file);
+      if (by_context && !names) { names = find_surface_names(located_hit.file, lines); names_of.set(located_hit.file, names); }
+      if (by_context && (is_in_heredoc(lines, located_hit.line - 1) || is_in_value_context(regex, source_line, names?.get(located_hit.line) ?? []))) continue;
       const text = source_line.replace(/[\s,;)]+$/, '');
       const cut = Math.max(text.lastIndexOf('??'), text.lastIndexOf('||'), ...[...'=:,('].map((char) => text.lastIndexOf(char)));
       if (!(cut >= 0 && is_value_line(text, secrets_config) && test_facet(regex, text.slice(cut + 1)) && !test_facet(regex, text.slice(0, cut)))) { every = false; break; }

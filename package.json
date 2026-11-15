@@ -49,7 +49,8 @@
     "lint:naming": "eslint src --ext .ts -c .eslintrc.naming.json",
     "format": "prettier --write \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build:all && npm run test && bash scripts/validate-version.sh",
+    "gate:gaps": "npm run build && node scripts/gate-gaps.mjs",
+    "prepublishOnly": "npm run build:all && npm run gate:gaps && npm run test && bash scripts/validate-version.sh",
     "postinstall": "node scripts/link-skills.js",
     "cli": "node dist/cli/index.js"
   },

@@ -1,0 +1,15 @@
+{"id":"best-coverage","tier":"dev","q":"how are failed queue jobs retried","facets":["retry_limit","backoff_seconds","jitter_ratio","dead_letter_name"],"nearest_doc":{"path":"ops/queue-ops.md","facet_coverage":"0/4","rank":3}}
+{"id":"unrelated-citer","q":"how long can a slug be","facets":["slug_max_length"],"nearest_doc":{"path":"knowledge-base/incidents/2026-02-checkout-outage.md","facet_coverage":"0/1","rank":2}}
+{"id":"topic-absent","q":"how many rows does a report export page hold","facets":["export_page_size"]}
+{"id":"hub-a","q":"how many days is the invoice grace period","facets":["invoice_grace_days"]}
+{"id":"hub-b","q":"how large can a thumbnail be","facets":["thumbnail_max_edge"]}
+{"id":"shared-a","q":"how often are metrics scraped","facets":["scrape_interval"]}
+{"id":"shared-b","q":"when does the latency alert fire","facets":["alert_latency_ms"]}
+{"id":"covered","q":"how long does the cache keep entries","facets":["cache_ttl_seconds","eviction_policy"],"nearest_doc":{"path":"ops/cache.md","facet_coverage":"2/2","rank":8}}
+{"id":"numeric","q":"which status code means the resource is gone","facets":["gone_response_code","410"]}
+{"id":"size","q":"how big can an upload be","facets":["max_file_size","chunk_size"]}
+{"id":"secret","q":"how does the deploy client connect","facets":["deploy_timeout","deploy_region_name"]}
+{"id":"declared","q":"which jobs run on a schedule","facets":["nightly_backup"]}
+{"id":"non-code","q":"when is the legacy flag cut off","facets":["legacy_cutoff_days"]}
+{"id":"security","q":"how does the auth check on delete work","facets":["auth_check_attempts"]}
+{"id":"blind","tier":"blind","blind":true,"q":"how many digits are ledger amounts rounded to","facets":["round_digits"]}

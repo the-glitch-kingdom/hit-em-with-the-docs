@@ -1,0 +1,142 @@
+{
+ "note": "13 failure shapes of #115 (14 rows: hub merge is two misses). keys defaults to [id]. draft: stated (facts with file:line) | judge | none.",
+ "cases": [
+  {
+   "id": "best-coverage",
+   "kind": "extend",
+   "doc": "queue/retries.md",
+   "draft": "stated",
+   "stated": [
+    "jitter_ratio"
+   ]
+  },
+  {
+   "id": "unrelated-citer",
+   "kind": "new",
+   "domain": "utils",
+   "sources": [
+    "src/util/slugify.ts"
+   ],
+   "draft": "stated",
+   "stated": [
+    "slug_max_length"
+   ]
+  },
+  {
+   "id": "topic-absent",
+   "kind": "new",
+   "draft": "stated",
+   "stated": [
+    "export_page_size"
+   ]
+  },
+  {
+   "id": "hub-a",
+   "kind": "new",
+   "doc": null,
+   "domain": "billing",
+   "draft": "stated",
+   "stated": [
+    "invoice_grace_days"
+   ]
+  },
+  {
+   "id": "hub-b",
+   "kind": "new",
+   "doc": null,
+   "domain": "media",
+   "draft": "stated",
+   "stated": [
+    "thumbnail_max_edge"
+   ]
+  },
+  {
+   "id": "shared-a",
+   "keys": [
+    "shared-a",
+    "shared-b"
+   ],
+   "kind": "new",
+   "sources": [
+    "src/metrics/exporter.ts"
+   ],
+   "draft": "stated",
+   "stated": [
+    "scrape_interval",
+    "alert_latency_ms"
+   ]
+  },
+  {
+   "id": "covered",
+   "kind": "covered",
+   "doc": "ops/cache.md",
+   "draft": "none",
+   "skipped": "covered by ops/cache.md"
+  },
+  {
+   "id": "numeric",
+   "kind": "new",
+   "sources": [
+    "src/http/gone.ts"
+   ],
+   "draft": "stated",
+   "stated": [
+    "gone_response_code"
+   ]
+  },
+  {
+   "id": "size",
+   "kind": "new",
+   "draft": "stated",
+   "stated": [
+    "max_file_size",
+    "chunk_size"
+   ]
+  },
+  {
+   "id": "secret",
+   "kind": "new",
+   "sources": [
+    "src/deploy/client.ts"
+   ],
+   "draft": "stated",
+   "stated": [
+    "deploy_timeout"
+   ],
+   "needs_human": "src/deploy/client.ts:2"
+  },
+  {
+   "id": "declared",
+   "kind": "new",
+   "reference": "schedules",
+   "draft": "none",
+   "skipped": "generated reference suggested"
+  },
+  {
+   "id": "non-code",
+   "kind": "new",
+   "sources": [
+    "src/flags/legacy.ts"
+   ],
+   "draft": "stated",
+   "stated": [
+    "legacy_cutoff_days"
+   ]
+  },
+  {
+   "id": "security",
+   "kind": "new",
+   "draft": "none",
+   "needs_human": "security-sensitive:"
+  },
+  {
+   "id": "blind",
+   "kind": "new",
+   "draft": "stated",
+   "stated": [
+    "round_digits"
+   ],
+   "blind": true
+  }
+ ]
+}

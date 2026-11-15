@@ -41,6 +41,10 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Gap-triage gate
+        if: matrix.shard == 1
+        run: node scripts/gate-gaps.mjs
+
       - name: Test
         run: npx vitest run --shard=${{ matrix.shard }}/3 ${{ matrix.node-version == '20.x' && '--coverage' || '' }}
 

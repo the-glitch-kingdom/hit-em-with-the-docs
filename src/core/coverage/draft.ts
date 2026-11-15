@@ -127,7 +127,7 @@ export async function build_drafts(options: { repo_root: string; docs_root: stri
   const { repo_root, docs_root, secrets_config } = options;
   const result: DraftResult = { entries: [], needs_human: [], blocked: [], skipped: [] };
   const taken = new Set<string>();
-  for (const proposal of options.proposals) {
+  for (let proposal of options.proposals) {
     const keys = proposal.closes.map((closed) => closed.key);
     const skip = (reason: string): void => void result.skipped.push({ keys, reason });
     if (proposal.kind === 'covered') { skip(`covered by ${proposal.doc}: check ranking and phrasing, nothing to draft`); continue; }
@@ -138,13 +138,19 @@ export async function build_drafts(options: { repo_root: string; docs_root: stri
     if (check) { result.needs_human.push({ keys, source_files: proposal.source_files, reason: `security check (${check.kind}) at ${check.file}:${check.line}: a person must state it` }); continue; }
     const sensitive = ([['the question', proposal.closes.map((closed) => closed.query)], ['a facet', proposal.missing_facets], ['a source path', proposal.source_files]] as const).flatMap(([where, texts]) => texts.map((text) => ({ where, word: find_sensitive_word(text) }))).find((found) => found.word);
     if (!proposal.sources.length) { skip('nothing located in code: no file:line to ground a draft'); continue; }
-    if (proposal.generated_reference.length) { skip(`generated reference suggested (${proposal.generated_reference.map((list) => `${list.kind} in ${list.file}`).join(', ')}): generate it instead of writing prose`); continue; }
+    // #120: the hint covers the facets that are entries of the declared list; the other facets are still drafted, beside it
+    const reference = proposal.generated_reference;
+    const hint = `generated reference suggested (${reference.map((list) => `${list.kind} in ${list.file}`).join(', ')})`;
+    const listed = new Set(reference.flatMap((list) => list.covers ?? proposal.missing_facets));
+    const rest = proposal.missing_facets.filter((facet) => !listed.has(facet));
+    if (reference.length && !rest.length) { skip(`${hint}: generate it instead of writing prose`); continue; }
+    if (reference.length) proposal = { ...proposal, missing_facets: rest };
     const adjacent = sensitive?.word ? { word: sensitive.word, where: sensitive.where } : undefined;
     if (adjacent) (result.security_adjacent ??= []).push({ keys, ...adjacent });
     const built = await build_facts(repo_root, proposal, secrets_config);
     if (built.lost_facet) result.needs_human.push({ keys, source_files: built.source_files, reason: `a missing fact is only on a line holding a credential or a config value, withheld${built.withheld.length ? `: ${built.withheld.join('; ')}` : ''}` });
     if (!built.source_files.length) { if (!built.lost_facet) skip('no citable line'); continue; }
-    const reasons = [`coverage miss: ${keys.join(', ')}`, ...(adjacent ? [`security-adjacent: judge carefully (\`${adjacent.word}\` in ${adjacent.where}); state no values and no internals of any check`] : [])];
+    const reasons = [`coverage miss: ${keys.join(', ')}`, ...(reference.length ? [`${hint}: it covers ${listed.size} fact(s); the rest are drafted`] : []), ...(adjacent ? [`security-adjacent: judge carefully (\`${adjacent.word}\` in ${adjacent.where}); state no values and no internals of any check`] : [])];
     const mark = adjacent ? { security_adjacent: adjacent } : {};
     const for_judge = built.for_judge.length ? { for_judge: built.for_judge } : {};
     const waiting = `waiting for the judge: ${built.for_judge.length} missing fact(s) need a sentence written from the listed lines (verdict is null, so apply leaves the doc alone)`;

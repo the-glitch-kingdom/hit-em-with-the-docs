@@ -6,9 +6,12 @@
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import type { Decision, DecisionKind } from './decide.js';
+import { compile_facet, parse_position_facet, test_facet } from './facets.js';
 import type { FacetHit } from './locate.js';
 
-export interface DeclaredList { kind: 'routes' | 'schedules' | 'alert-rules' | 'cli-flags' | 'config-keys'; file: string; count: number; suggestion: string }
+export interface DeclaredList { kind: 'routes' | 'schedules' | 'alert-rules' | 'cli-flags' | 'config-keys'; file: string; count: number; suggestion: string;
+  /** Missing facets that are entries of this list (the hint answers them); absent: every facet. */
+  covers?: string[] }
 export interface Proposal {
   kind: DecisionKind;
   doc?: string;
@@ -128,14 +131,32 @@ const LISTS: Array<{ kind: DeclaredList['kind']; pattern: RegExp; what: string; 
   { kind: 'config-keys', pattern: /(?:process\.env\.|os\.environ(?:\.get)?[[(]\s*['"]?)([A-Z][A-Z0-9_]{2,})/g, what: 'config keys', unique_names: true },
 ];
 
-/** Declared lists in the located source files, by kind then file. Counts and names only; no value is read out. */
-export function detect_declared_lists(files: Map<string, string>): DeclaredList[] {
+/** Lines around an entry's own line that still belong to it (a schedule's task name sits beside its cron string). */
+const ENTRY_WINDOW = 1;
+
+/**
+ * Declared lists in the located source files, by kind then file. Counts and names only; no value is read out.
+ * With `facets`, a list is reported only when some facet is one of its entries (the facet matches a line within an
+ * entry, or is the position of one), and `covers` names those facets.
+ */
+export function detect_declared_lists(files: Map<string, string>, facets?: string[]): DeclaredList[] {
   const found: DeclaredList[] = [];
   for (const [file, text] of files) {
+    const lines = text.split('\n');
     for (const list of LISTS) {
       const matches = [...text.matchAll(list.pattern)];
       const count = list.unique_names ? new Set(matches.map((match) => match[1])).size : matches.length;
-      if (count >= DECLARED_LIST_MIN) found.push({ kind: list.kind, file, count, suggestion: `${file} declares ${count} ${list.what}: generate the reference from the code (or point the doc at it) instead of writing them out, so it cannot go stale` });
+      if (count < DECLARED_LIST_MIN) continue;
+      const entry_lines = new Set(matches.map((match) => text.slice(0, match.index).split('\n').length));
+      const near = (line: number): boolean => [...entry_lines].some((entry) => Math.abs(entry - line) <= ENTRY_WINDOW);
+      const covers = facets?.filter((facet) => {
+        const position = parse_position_facet(facet);
+        if (position) return position.file === file && near(position.line);
+        const regex = compile_facet(facet).regex;
+        return !!regex && lines.some((line, i) => near(i + 1) && test_facet(regex, line));
+      });
+      if (covers && !covers.length) continue;
+      found.push({ kind: list.kind, file, count, suggestion: `${file} declares ${count} ${list.what}: generate the reference from the code (or point the doc at it) instead of writing them out, so it cannot go stale`, ...(covers && { covers }) });
     }
   }
   return found.sort((a, b) => a.kind.localeCompare(b.kind) || a.file.localeCompare(b.file));
@@ -157,7 +178,7 @@ export async function add_generated_references(repo_root: string, proposals: Pro
     for (const file of proposal.source_files) {
       try { texts.set(file, await readFile(join(repo_root, file), 'utf-8')); } catch { /* deleted since it was located */ }
     }
-    proposal.generated_reference = detect_declared_lists(texts);
+    proposal.generated_reference = detect_declared_lists(texts, proposal.missing_facets);
   }
   return proposals;
 }

@@ -24,6 +24,7 @@ const { load_review } = await import(pathToFileURL(join(root_dir, 'dist/core/rec
 const expected = JSON.parse(readFileSync(expected_file, 'utf-8'));
 
 // a malformed expectation must fail the gate, not pass quietly: validate every case before scoring
+const { KIND_LABEL } = await import(pathToFileURL(join(root_dir, 'dist/core/coverage/surfaces/index.js')).href);
 const KNOWN_KEYS = new Set(['line', 'kind', 'outcome', 'grade', 'draft', 'id', 'name', 'file', 'no_value', 'doc', 'stated']);
 const malformed = [];
 if (!Array.isArray(expected.cases) || !expected.cases.length) malformed.push('cases must be a non-empty list');
@@ -33,10 +34,11 @@ for (const [position, spec] of (Array.isArray(expected.cases) ? expected.cases :
   if (!spec || typeof spec !== 'object') { bad('not an object'); continue; }
   for (const key of Object.keys(spec)) if (!KNOWN_KEYS.has(key)) bad(`unknown key "${key}"`);
   if (typeof spec.id !== 'string' || !spec.id) bad('id must be a non-empty string');
-  if (false) bad('draft is required');
+  if (spec.draft === undefined) bad('draft is required');
   if (spec.draft !== undefined && !['stated', 'judge', 'none'].includes(spec.draft)) bad(`draft "${spec.draft}" is not one of stated, judge, none`);
   if (spec.draft === 'stated' && (!Array.isArray(spec.stated) || !spec.stated.length)) bad('draft "stated" needs a non-empty stated list');
 }
+if (expected.unscored !== undefined && !(Array.isArray(expected.unscored) && expected.unscored.every((item) => item && typeof item.kind === 'string' && typeof item.name === 'string' && typeof item.file === 'string' && typeof item.reason === 'string' && item.reason))) malformed.push('unscored must be a list of { kind, name, file, reason }, each with a reason');
 if (malformed.length) { console.error(`gate:coverage: malformed expectation\n  ${malformed.join('\n  ')}`); process.exit(2); }
 
 // the one credential-shaped line is built here, so no secret-shaped literal is committed
@@ -145,6 +147,15 @@ try {
   // no value that must never be written, anywhere the gate writes
   const outputs = [table.stdout, main.stdout, ...readdirSync(join(repo, '.hewtd'), { recursive: true }).filter((file) => /\.(md|json|jsonl)$/.test(file)).map((file) => { try { return readFileSync(join(repo, '.hewtd', file), 'utf-8'); } catch { return ''; } })];
   group('no secret or value-named value in any output', [secret_value, port_value].filter((value) => outputs.some((text) => text.includes(value))).map((value) => `a value was written (${value.slice(0, 2)}...)`));
+
+  // every detector kind needs a scored case, and a surface nobody expects fails unless it is allowlisted with a reason
+  const scored = expected.cases.filter((spec) => spec.grade !== 'undetected');
+  const unscored = expected.unscored ?? [];
+  const same = (a, b) => a.kind === b.kind && a.name === b.name && a.file === b.file;
+  group('every detector kind has a case; no unexpected surface', [
+    ...Object.keys(KIND_LABEL).filter((kind) => !scored.some((spec) => spec.kind === kind)).map((kind) => `no case for detector kind ${kind}`),
+    ...out.surfaces.filter((found) => ![...scored, ...unscored].some((spec) => same(spec, found))).map((found) => `unexpected surface ${found.kind} ${found.name} at ${found.file}:${found.line}`),
+  ]);
 
   const width = Math.max(...rows.map((row) => row.id.length));
   for (const row of rows) console.log(`${row.problems.length ? 'FAIL' : 'ok  '}  ${row.id.padEnd(width)}${row.problems.length ? '  ' + row.problems.join('; ') : ''}`);

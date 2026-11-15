@@ -17,7 +17,7 @@ describe('gate:coverage', () => {
     const run = gate();
     expect(run.stdout).not.toMatch(/^FAIL/m);
     expect(run.status).toBe(0);
-    expect(run.stdout).toMatch(/gate:coverage 35\/35/);
+    expect(run.stdout).toMatch(/gate:coverage 36\/36/);
   }, 130_000);
 
   it('is wired into package.json, prepublishOnly and CI', () => {
@@ -57,6 +57,32 @@ describe('gate:coverage', () => {
       const run = gate(file);
       expect(run.status).toBe(1);
       expect(run.stdout).toMatch(/^FAIL  generated files.*non-empty list/m);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }, 130_000);
+
+  it('fails a deleted draft, a deleted case and an unexpected surface', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gate-cov-complete-'));
+    try {
+      const file = join(dir, 'expected.json');
+      const run_with = (mutate: (all: any) => void) => {
+        const broken = JSON.parse(readFileSync(EXPECTED, 'utf-8'));
+        mutate(broken);
+        writeFileSync(file, JSON.stringify(broken));
+        const run = gate(file);
+        return { status: run.status, text: run.stdout + run.stderr };
+      };
+      const no_draft = run_with((all) => { delete all.cases[0].draft; });
+      expect(no_draft.status).not.toBe(0);
+      expect(no_draft.text).toMatch(/malformed expectation[\s\S]*draft is required/);
+      const no_case = run_with((all) => { all.cases = all.cases.filter((c: any) => c.kind !== 'cli-flag'); });
+      expect(no_case.status).toBe(1);
+      expect(no_case.text).toMatch(/^FAIL  every detector kind has a case.*no case for detector kind cli-flag/m);
+      const unexpected = run_with((all) => { all.unscored = all.unscored.slice(1); });
+      expect(unexpected.status).toBe(1);
+      expect(unexpected.text).toMatch(/^FAIL  every detector kind.*unexpected surface/m);
+      const no_reason = run_with((all) => { delete all.unscored[0].reason; });
+      expect(no_reason.status).not.toBe(0);
+      expect(no_reason.text).toMatch(/unscored must be/);
     } finally { rmSync(dir, { recursive: true, force: true }); }
   }, 130_000);
 

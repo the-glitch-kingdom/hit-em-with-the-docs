@@ -118,6 +118,10 @@ try {
     rows.push({ id: spec.id, problems });
   }
 
+  // every gap in the fixture needs a case: deleting a case must fail
+  const expected_keys = new Set(expected.cases.flatMap((spec) => spec.keys ?? [spec.id]));
+  rows.push({ id: 'every fixture gap has a case', problems: gaps.filter((gap) => !expected_keys.has(gap.id)).map((gap) => `no case for gap ${gap.id}`) });
+
   // no value from a credential line, anywhere the gate writes
   const outputs = [main.stdout, plain.stdout, ...[main.out.report, plain.out.report, main.out.coverage_review].filter(Boolean).map((file) => readFileSync(join(repo, file), 'utf-8')), ...readdirSync(join(repo, '.hewtd'), { recursive: true }).filter((file) => /\.(md|json|jsonl)$/.test(file)).map((file) => { try { return readFileSync(join(repo, '.hewtd', file), 'utf-8'); } catch { return ''; } })];
   const leaked = outputs.some((text) => text.includes(secret_value));

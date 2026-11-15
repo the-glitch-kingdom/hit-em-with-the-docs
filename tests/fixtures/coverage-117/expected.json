@@ -89,7 +89,8 @@
    "file": "monitoring/rules.yml",
    "line": 4,
    "grade": "explained",
-   "outcome": "none"
+   "outcome": "none",
+   "draft": "none"
   },
   {
    "id": "prometheus-named",
@@ -277,7 +278,8 @@
    "file": "src/limits.ts",
    "line": 2,
    "grade": "explained",
-   "outcome": "none"
+   "outcome": "none",
+   "draft": "none"
   },
   {
    "id": "code-constant-named",
@@ -313,7 +315,8 @@
    "kind": "constant",
    "name": "DEPLOY_KEY_NAME",
    "file": "src/secret.ts",
-   "grade": "undetected"
+   "grade": "undetected",
+   "draft": "none"
   },
   {
    "id": "env-var",
@@ -336,6 +339,38 @@
    "outcome": "new",
    "draft": "judge",
    "no_value": true
+  }
+ ],
+ "unscored": [
+  {
+   "kind": "ci-workflow",
+   "name": "reindex-search",
+   "file": ".github/workflows/reindex-search.yml",
+   "reason": "sibling of a scored surface in the same file (the workflow case scores the schedule); not scored separately"
+  },
+  {
+   "kind": "ci-job",
+   "name": "reindex",
+   "file": ".github/workflows/reindex-search.yml",
+   "reason": "sibling of a scored surface in the same file (the workflow case scores the schedule); not scored separately"
+  },
+  {
+   "kind": "scheduled-job",
+   "name": "rotate_logs",
+   "file": "deploy/maintenance.cron",
+   "reason": "one of several entries in a cron list; the list is scored once through its first entry"
+  },
+  {
+   "kind": "scheduled-job",
+   "name": "vacuum_db",
+   "file": "deploy/maintenance.cron",
+   "reason": "one of several entries in a cron list; the list is scored once through its first entry"
+  },
+  {
+   "kind": "scheduled-job",
+   "name": "compact_index",
+   "file": "deploy/maintenance.cron",
+   "reason": "one of several entries in a cron list; the list is scored once through its first entry"
   }
  ]
 }

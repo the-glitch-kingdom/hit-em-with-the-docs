@@ -17,7 +17,7 @@ describe('gate:gaps', () => {
     const run = gate();
     expect(run.stdout).not.toMatch(/^FAIL/m);
     expect(run.status).toBe(0);
-    expect(run.stdout).toMatch(/gate:gaps 19\/19/);
+    expect(run.stdout).toMatch(/gate:gaps 20\/20/);
   }, 130_000);
 
   it('fails when an expectation is wrong (outcome, target, stated fact, source)', () => {
@@ -33,7 +33,20 @@ describe('gate:gaps', () => {
       const run = gate(file);
       expect(run.status).toBe(1);
       for (const id of ['best-coverage', 'topic-absent', 'size', 'numeric']) expect(run.stdout).toMatch(new RegExp(`^FAIL  ${id}`, 'm'));
-      expect(run.stdout).toMatch(/gate:gaps 15\/19/);
+      expect(run.stdout).toMatch(/gate:gaps 16\/20/);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }, 130_000);
+
+  it('fails when a case is deleted', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gate-deleted-'));
+    try {
+      const broken = JSON.parse(readFileSync(EXPECTED, 'utf-8'));
+      broken.cases.pop();
+      const file = join(dir, 'expected.json');
+      writeFileSync(file, JSON.stringify(broken));
+      const run = gate(file);
+      expect(run.status).toBe(1);
+      expect(run.stdout).toMatch(/^FAIL  every fixture gap has a case.*no case for gap/m);
     } finally { rmSync(dir, { recursive: true, force: true }); }
   }, 130_000);
 

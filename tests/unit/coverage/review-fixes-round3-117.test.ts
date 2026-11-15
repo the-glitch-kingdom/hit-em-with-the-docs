@@ -43,8 +43,8 @@ describe('finding 2: a job is named by what it runs', () => {
     expect(name("rails runner 'Report.send_all'")).toBe('Report.send_all');
   });
   it('interpreter options and their values are skipped', () => {
-    expect(name('python -W ignore x.py')).toBe('x');
-    expect(name('node --max-old-space-size 4096 x.js')).toBe('x');
+    expect(name('python -W ignore xx.py')).toBe('xx');
+    expect(name('node --max-old-space-size 4096 xx.js')).toBe('xx');
     expect(name('python -u -X dev job.py')).toBe('job');
   });
   it('the user column is skipped in a file that has one', () => {

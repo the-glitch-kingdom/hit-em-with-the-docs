@@ -2,7 +2,7 @@
  * Surface grading (#117): how well the docs cover each surface the code declares.
  *   absent     no doc names it
  *   named      some doc names it (whole identifier, split spellings too) but none says what it does or its value
- *   explained  a doc that cites the surface's source has a sentence about it (a verb phrase, or the value for a
+ *   explained  a doc that cites the surface's source has a sentence about it (a verb phrase, or 3+ content words, or the value for a
  *              constant), or a section under a heading with its name; a constant whose value a doc states
  *              next to its name is explained wherever it is stated
  * Knowledge-base docs count like any doc and are never judged against the code: grading only reports code surfaces.
@@ -10,6 +10,7 @@
  */
 import type { DocText } from './decide.js';
 import type { Surface, SurfaceKind } from './surfaces/index.js';
+import { STOP_WORDS, is_unusable_name } from './surfaces/detectors.js';
 
 export type Grade = 'absent' | 'named' | 'explained';
 export interface GradedSurface extends Surface { grade: Grade; /** Docs naming it, sorted. */ named_in: string[]; explained_by?: string }
@@ -20,6 +21,8 @@ export interface GradeSummary { total: GradeCounts; by_kind: Record<string, Grad
 const EXPLAIN_MIN_WORDS = 4;
 const EXPLAIN_ANY_WORDS = 7;
 const VERB = /\b(?:is|are|was|runs?|ran|sends?|sent|checks?|deletes?|removes?|revokes?|returns?|retr(?:y|ies)|expires?|triggers?|uses?|calls?|writes?|reads?|fires?|fails?|processe[sd]|cleans?|syncs?|refreshe[sd]|handles?|creates?|updates?|limits?|caps?|sets?|means|ensures?|when|if|every|per|controls?|decides?|determines?|keeps?|prevents?|allows?|marks?|emails?|pages?|logs?|stores?|clears?|prunes?|rotates?|starts?|stops?|waits?|blocks?|rejects?|notifies|alerts?)\b/i;
+/** A sentence about a surface that is not a list also explains it with this many content words (not stop words, not other surface names). */
+const EXPLAIN_CONTENT_WORDS = 3;
 const GENERIC_KINDS = new Set<SurfaceKind>(['ci-job', 'cli-command', 'ci-workflow']);
 
 interface Prepared { doc: DocText; lines: string[]; lower: string; archived: boolean }
@@ -28,6 +31,7 @@ const prepare = (doc: DocText): Prepared => ({ doc, lines: doc.text.toLowerCase(
 /** The spellings of a name a doc may use: the literal, and for identifiers the split forms. Lower case. */
 function list_forms(surface: Surface): string[] {
   const literal = surface.name.toLowerCase();
+  if (is_unusable_name(literal)) return [`\`${literal}\``]; // too short or too common to be a word in prose
   const words = surface.name.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().split(/[\s_.-]+/).filter(Boolean);
   if (!/^[a-z0-9_.\- ]+$/i.test(surface.name) || words.length < 1) return [literal];
   const forms = new Set([literal, words.join(' '), words.join('_'), words.join('-'), words.join('')]);
@@ -91,9 +95,12 @@ function has_named_section(prepared: Prepared, forms: string[], route: boolean):
   return false;
 }
 
-function states_purpose(rest: string): boolean {
-  const words = count_words(strip_markup(rest));
-  return words >= EXPLAIN_ANY_WORDS || (words >= EXPLAIN_MIN_WORDS && VERB.test(rest));
+function states_purpose(rest: string, other_names: Set<string>): boolean {
+  const text = strip_markup(rest);
+  const words = count_words(text);
+  if (words >= EXPLAIN_ANY_WORDS || (words >= EXPLAIN_MIN_WORDS && VERB.test(rest))) return true;
+  const content = (text.toLowerCase().match(/[a-z][a-z'-]*/g) ?? []).filter((word) => !STOP_WORDS.has(word) && !other_names.has(word));
+  return content.length >= EXPLAIN_CONTENT_WORDS;
 }
 
 function states_value(rest: string, value: string): boolean {
@@ -103,7 +110,9 @@ function states_value(rest: string, value: string): boolean {
 
 export function grade_surfaces(surfaces: Surface[], docs: DocText[]): GradedSurface[] {
   const prepared = docs.map(prepare).filter((item) => !item.archived).sort((a, b) => a.doc.path.localeCompare(b.doc.path));
+  const all_names = surfaces.map((surface) => surface.name.toLowerCase());
   return surfaces.map((surface): GradedSurface => {
+    const other_names = new Set(all_names.filter((name) => name !== surface.name.toLowerCase()).flatMap((name) => [name, ...name.split(/[\s_.-]+/).filter(Boolean)]));
     const forms = list_forms(surface);
     const route = surface.kind === 'http-route';
     const named = prepared.filter((item) => forms.some((form) => item.lower.includes(form) && find_form(item.lower, form, route) >= 0));
@@ -112,7 +121,7 @@ export function grade_surfaces(surfaces: Surface[], docs: DocText[]): GradedSurf
       const sentences = list_sentences(item, forms, route);
       if (surface.value !== undefined && sentences.some(({ rest }) => states_value(rest, surface.value!))) return true;
       if (!cites(item.doc, surface)) return false;
-      return sentences.some(({ rest, list }) => !list && states_purpose(rest)) || has_named_section(item, forms, route);
+      return sentences.some(({ rest, list }) => !list && states_purpose(rest, other_names)) || has_named_section(item, forms, route);
     });
     return { ...surface, grade: explainer ? 'explained' : named.length ? 'named' : 'absent', named_in, ...(explainer && { explained_by: explainer.doc.path }) };
   });

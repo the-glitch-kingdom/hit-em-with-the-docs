@@ -9,7 +9,7 @@ import type { CoverageIgnore, PluginConfig } from '../../utils/config.js';
 import { build_position_facet } from './facets.js';
 import { load_doc_texts } from './decide.js';
 import { grade_surfaces, summarize_grades, type GradedSurface, type GradeSummary } from './grade.js';
-import type { LocateResult, FacetHit } from './locate.js';
+import { list_tracked_files, type LocateResult, type FacetHit } from './locate.js';
 import { DECLARED_LIST_MIN, type DeclaredList } from './merge.js';
 import { plan_coverage_misses, type CoveragePlan, type FacetGap } from './plan.js';
 import { detect_surfaces, is_ignored, KIND_LABEL, type Surface, type SurfaceKind } from './surfaces/index.js';
@@ -24,6 +24,8 @@ export interface CoverageReport {
   /** Absent, or named with behaviour, and not in a declared list: what went through the engine. */
   triaged: number;
   plan?: CoveragePlan;
+  /** Notes about what was scanned (not a git repo, nothing tracked). */
+  warnings: string[];
 }
 
 /** A named surface of these kinds still needs a sentence about what it does or holds. */
@@ -56,7 +58,8 @@ function build_miss(surface: GradedSurface): { gap: FacetGap; facet: string } {
   // a yargs flag is declared as `option('name')`, so the dashes are optional in the code and in the docs
   const name = surface.source_kind === 'yargs-flag' ? `(?<![\\w])(?:--)?${escape_regex(surface.name.replace(/^--/, ''))}(?![\\w-])` : `(?<![\\w-])${escape_regex(surface.name)}(?![\\w-])`;
   // a placeholder surface has no name to match: its facet is its position, and the located hit is its own line
-  const facet = surface.placeholder ? build_position_facet(surface.file, surface.line) : surface.kind === 'constant' && surface.value !== undefined ? `${name}\\s*[:=]\\s*${escape_regex(surface.value).replace(/\\? /g, '\\s*')}` : name;
+  // a click command named from its function (`migrate_data` -> `migrate-data`) is not spelled in its line, so it is matched by position too
+  const facet = surface.placeholder || surface.source_kind === 'click-command' ? build_position_facet(surface.file, surface.line) : surface.kind === 'constant' && surface.value !== undefined ? `${name}\\s*[:=]\\s*${escape_regex(surface.value).replace(/\\? /g, '\\s*')}` : name;
   const query = `What does the ${KIND_LABEL[surface.kind]} ${surface.name} do?`;
   return { gap: { id: `${surface.kind}:${surface.name}@${surface.file}`, query, facets: [facet], ...(surface.grade === 'named' && { named: true }) }, facet };
 }
@@ -95,8 +98,9 @@ export async function run_coverage(options: { repo_root: string; docs_root: stri
     const located: LocateResult = { code, instructions: new Map(), weak: new Set() };
     plan = await plan_coverage_misses({ ...options, gaps, located });
   }
+  const warnings = list_tracked_files(options.repo_root).length ? [] : ['no tracked files found (not a git repository, or nothing committed): surfaces are read from tracked files only, so an untracked file is never scanned'];
   return {
-    summary, surfaces: graded, held: { total: held.length, by_kind: held_by_kind, entries: held },
+    warnings, summary, surfaces: graded, held: { total: held.length, by_kind: held_by_kind, entries: held },
     generate_reference: [...generate.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.file.localeCompare(b.file)),
     triaged: drafted.length, ...(plan && { plan }),
   };
@@ -109,6 +113,7 @@ export function render_coverage_table(report: CoverageReport): string {
     `  ${pad(label, 18)}${pad(String(counts.total), 7)}${pad(String(counts.absent), 8)}${pad(String(counts.named), 7)}${pad(String(counts.explained), 10)}${held ? `${held} held` : ''}`.trimEnd();
   const head = `  ${pad('', 18)}${pad('total', 7)}${pad('absent', 8)}${pad('named', 7)}explained`;
   const lines = ['By kind', head, ...Object.entries(report.summary.by_kind).map(([kind, counts]) => row(kind, counts, report.held.by_kind[kind])), row('all', report.summary.total, report.held.total), '', 'By code area', head, ...Object.entries(report.summary.by_area).map(([area, counts]) => row(area, counts))];
+  for (const warning of report.warnings) lines.push('', `warning: ${warning}`);
   if (report.held.total) lines.push('', `${report.held.total} surface(s) held, by coverage.ignore or because a file path holds a value (counted apart, never missed)`);
   for (const list of report.generate_reference) lines.push('', `generate the reference first: ${list.suggestion} (${list.absent} of ${list.count} not named in any doc)`);
   return lines.join('\n');

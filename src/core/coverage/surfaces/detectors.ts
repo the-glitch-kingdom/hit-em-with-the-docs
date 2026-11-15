@@ -73,7 +73,7 @@ function skip_options(list: string[], value_flags: RegExp = /^$/): string[] {
 }
 /** The script or executable a cron command runs: wrappers, `cd X &&`, interpreters and `VAR=..` stripped; runners name their subcommand, container exec its inner command. Undefined when it is not a local program (a URL, curl, wget). `user_column`: the file is a system crontab whose line has a user after the schedule. */
 export function name_cron_command(command: string, user_column = false): string | undefined {
-  let words = command.trim().split(/\s+/);
+  let words = command.trim().replace(/^\(\s*(.*?)\s*\)$/, '$1').split(/\s+/); // a surrounding subshell is not part of the command
   const has_user = words.length > 1 && (user_column ? !/^\w+=/.test(words[0]!) : USER_WORDS.has(words[0]!) && !/^(?:-|\w+=)/.test(words[1]!));
   if (has_user) words = words.slice(1);
   const segment = words.join(' ').split(/&&|\|\||;|\|/).map((part) => part.trim()).find((part) => part && !/^cd\b/.test(part));
@@ -130,8 +130,12 @@ export function name_cron_command(command: string, user_column = false): string 
     }
   };
   const name = take(tokens);
-  return name && /^[\w.@+:-]+$/.test(name) ? name : undefined;
+  return name && /^[\w.@+:-]+$/.test(name) && !is_unusable_name(name) ? name : undefined;
 }
+
+/** Words too common to name a thing: a name that is one of them (or under 2 chars) is never matched as a word. */
+export const STOP_WORDS = new Set('a an and are as at be but by do for from has have he i if in is it its no not of on or so that the then there these this those to up was we were will with you'.split(' '));
+export const is_unusable_name = (name: string): boolean => name.length < 2 || STOP_WORDS.has(name.toLowerCase());
 
 /** Python decorators and calls span lines: the text from line `from` to the closing parenthesis (at most 8 lines). */
 function read_call(lines: string[], from: number): string {
@@ -179,8 +183,10 @@ export const SURFACE_DETECTORS: SurfaceDetector[] = [
   by_pattern('argparse-command', 'cli-command', (file) => /\.py$/.test(file), /\badd_parser\(\s*['"]([\w:-]+)/),
   { id: 'click', applies: (file) => /\.py$/.test(file), detect: (file, lines) => lines.flatMap((text, i) => {
     if (!/^\s*@click\.option\(/.test(text)) return [];
-    const flag = /['"](--[\w-]+)['"]/.exec(read_call(lines, i));
-    return flag ? [{ kind: 'cli-flag' as const, name: flag[1]!, file, line: i + 1, source_kind: 'click' }] : [];
+    // a boolean pair is one string: `--shout/--no-shout`; the first long flag names it, `-v` and `--verbose` may be separate strings
+    const strings = [...read_call(lines, i).matchAll(/['"](-[\w/-]+)['"]/g)].flatMap((match) => match[1]!.split('/'));
+    const flag = strings.find((item) => /^--[\w-]+$/.test(item));
+    return flag ? [{ kind: 'cli-flag' as const, name: flag, file, line: i + 1, source_kind: 'click' }] : [];
   }) },
   { id: 'click-command', applies: (file) => /\.py$/.test(file), detect: (file, lines) => lines.flatMap((text, i) => {
     const decorator = /^\s*@(?:\w+\.)+command\b/.exec(text);
@@ -197,8 +203,14 @@ export const SURFACE_DETECTORS: SurfaceDetector[] = [
   { id: 'github-workflow', applies: (file) => WORKFLOW.test(file), detect: (file) => [{ kind: 'ci-workflow', name: stem(file), file, line: 1, source_kind: 'github-workflow' }] },
   { id: 'github-job', applies: (file) => WORKFLOW.test(file), detect: (file, lines) => lines.flatMap((text, i) => (/^jobs:\s*$/.test(text) ? list_block_keys(lines, i).map((key) => ({ kind: 'ci-job' as const, name: key.name, file, line: key.line, source_kind: 'github-job' })) : [])) },
   { id: 'gitlab-job', applies: (file) => base(file) === '.gitlab-ci.yml', detect: (file, lines) => {
-    const tops = lines.flatMap((text, i) => { const key = /^([A-Za-z][\w.-]*):\s*$/.exec(text); return key ? [{ name: key[1]!, at: i }] : []; });
-    return tops.flatMap((top, i) => (lines.slice(top.at + 1, tops[i + 1]?.at ?? lines.length).some((text) => /^\s+script:/.test(text)) ? [{ kind: 'ci-job' as const, name: top.name, file, line: top.at + 1, source_kind: 'gitlab-job' }] : []));
+    // top-level keys: `name:`, `a:b:`, `"two words":`, `name: # comment`; reserved and hidden (`.x`) keys are not jobs but still end the previous body
+    const reserved = new Set(['stages', 'variables', 'default', 'include', 'workflow', 'image', 'services', 'cache', 'before_script', 'after_script']);
+    const tops = lines.flatMap((text, i) => {
+      const key = /^(?:"([^"]+)"|'([^']+)'|([^\s#:'"-][^\s#'"]*?)):(?:\s*(#.*)?$|\s)/.exec(text);
+      const name = key?.[1] ?? key?.[2] ?? key?.[3];
+      return name ? [{ name, at: i, job: /:\s*(?:#.*)?$/.test(text) && !reserved.has(name) && !name.startsWith('.') }] : [];
+    });
+    return tops.flatMap((top, i) => (top.job && lines.slice(top.at + 1, tops[i + 1]?.at ?? lines.length).some((text) => /^\s+(?:script|trigger|extends|run):/.test(text)) ? [{ kind: 'ci-job' as const, name: top.name, file, line: top.at + 1, source_kind: 'gitlab-job' }] : []));
   } },
   // background tasks and queues
   { id: 'celery-task', applies: (file) => /\.py$/.test(file), detect: (file, lines) => lines.flatMap((text, i) => {

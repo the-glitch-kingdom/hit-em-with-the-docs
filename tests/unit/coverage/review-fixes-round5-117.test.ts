@@ -3,11 +3,11 @@ import { name_cron_command } from '../../../src/core/coverage/surfaces/detectors
 
 describe('cron command naming: user column, wrapper options', () => {
   it('drops the user column before cd/&& splitting', () => {
-    expect(name_cron_command('root cd /app && ./x.sh', true)).toBe('x');
+    expect(name_cron_command('root cd /app && ./xx.sh', true)).toBe('xx');
     expect(name_cron_command('www-data cd /srv && php artisan queue:work', true)).toBe('queue:work');
-    expect(name_cron_command('root cd /app && ./x.sh')).toBe('x');
+    expect(name_cron_command('root cd /app && ./xx.sh')).toBe('xx');
     expect(name_cron_command('www-data cd /srv && php artisan queue:work')).toBe('queue:work');
-    expect(name_cron_command('deploy cd /srv && ./y.sh')).toBe('y');
+    expect(name_cron_command('deploy cd /srv && ./yy.sh')).toBe('yy');
   });
   it('skips wrapper options and their values', () => {
     expect(name_cron_command('timeout -s KILL 300 /app/slow.sh')).toBe('slow');

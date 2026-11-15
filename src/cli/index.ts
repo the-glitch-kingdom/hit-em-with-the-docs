@@ -1204,11 +1204,11 @@ program
       const review_file = options.writeReview && drafts ? await write_coverage_review({ root: repo_root, entries: drafts.entries, batch: options.batch }) : undefined;
       const review = review_file && relative(repo_root, review_file);
       if (options.json) {
-        const { plan, surfaces, ...rest } = report;
+        const { plan, surfaces, warnings: scan_warnings, ...rest } = report;
         console.log(JSON.stringify({
           ...rest,
           surfaces: surfaces.map((surface) => ({ kind: surface.kind, name: surface.name, file: surface.file, line: surface.line, grade: surface.grade })),
-          ...(plan && { warnings: plan.warnings }),
+          ...((plan || scan_warnings.length) && { warnings: [...scan_warnings, ...(plan?.warnings ?? [])] }),
           coverage: { proposals: plan?.proposals ?? [], needs_human: drafts?.needs_human ?? [], blocked: drafts?.blocked ?? [], skipped: drafts?.skipped ?? [], ...(drafts?.security_adjacent && { security_adjacent: drafts.security_adjacent }) },
           ...(review && { coverage_review: review }),
         }, null, 2));

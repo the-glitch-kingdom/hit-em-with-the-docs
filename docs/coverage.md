@@ -38,8 +38,8 @@ constants are not detected. A Go repo shows only its CI, schedules and alert rul
 | Grade | Meaning |
 |---|---|
 | `absent` | no doc names it |
-| `named` | a doc names it (whole identifier, split spellings too) but says nothing about what it does or holds |
-| `explained` | a doc that cites its source has a sentence about it, or a section under a heading with its name; a constant is explained when a doc states its value next to its name |
+| `named` | a doc names it (whole identifier, split spellings too) but says nothing about what it does or holds, or the doc does not cite the surface's source |
+| `explained` | a doc that cites its source has a sentence about it (a verb phrase, or any sentence that is not a list with the name and at least 3 other content words: words that are not stop words, other surface names or list items), or a section under a heading with its name; a constant is explained when a doc states its value next to its name |
 
 A name inside a list of three or more single-name items, with an optional lead-in and `and`/`or` joiners (`Scheduled: purge_trials, send_digest, rotate_logs`, `The jobs are a, b and c`; snake, kebab and camel names are one item each)
 stays `named`: the other items are not words about it, unless another sentence about that one name says what it does.
@@ -146,6 +146,11 @@ get "generate the reference", every stated fact is true at its `file:line`, read
 
 ## Known limits
 
+- Surfaces come from `git ls-files`: untracked files are not scanned. Outside a git repo, or with nothing committed, the table is all zero and `hewtd coverage` prints a warning (also in `--json` `warnings`).
+- A cron line with `&&` or `;` is named by its first non-`cd` command; later commands in the chain are not separate jobs. A `(...)` subshell is unwrapped. A name shorter than 2 characters or a stop word (`a`, `the`) becomes `scheduled job at file:line` and a surface with such a name is matched only inside a code span.
+- A click command named from its function (`migrate_data` is `migrate-data`) is located by position (its decorator line), since the name is not spelled there. A boolean flag pair (`--shout/--no-shout`) is the first long flag.
+- GitLab jobs are top-level keys (`test:unit:`, quoted, with a trailing comment) holding `script`, `trigger`, `extends` or `run`; reserved keys (`stages`, `variables`, `default`, `include`, `workflow`, `image`, `services`, `cache`, `before_script`, `after_script`) and hidden `.jobs` are skipped.
+- The content-word rule is lexical: three content words in a sentence with the name explain it even when the sentence is not accurate; a doc that does not cite the source never explains it (except a stated constant value).
 - A heredoc is found only when its `<<TAG` is within 200 lines above; a multi-line string literal other than a heredoc is
   read line by line, so a value on a continuation line is caught only by the other rules.
 - The literal rule withholds any facet that sits only inside quotes, so a gaps facet that is a plain word in a string

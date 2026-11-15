@@ -1182,6 +1182,49 @@ program
     }
   });
 
+// Coverage command (#117)
+program
+  .command('coverage')
+  .description('Grade every surface the code declares (jobs, alert rules, routes, flags, constants, config keys, CI) absent, named or explained by the docs, and draft what is missing through the reconcile gaps engine. Read-only unless --write-review.')
+  .option('-p, --docs-path <path>', 'Documentation path', '.documentation')
+  .option('--json', 'Machine-readable output', false)
+  .option('--write-review', 'Write the drafts as review-<batch>-coverage.md under .hewtd/reconcile/ (nothing lands in the docs without reconcile --apply)', false)
+  .option('--batch <id>', 'Batch id for --write-review (default: next number)')
+  .action(async (options) => {
+    try {
+      const { load_plugin_config } = await import('../utils/config.js');
+      const { resolve_git_top: project_root_of } = await import('../core/reconcile/outside.js');
+      const { run_coverage, render_coverage_table } = await import('../core/coverage/coverage.js');
+      const docs_root = resolve(process.cwd(), options.docsPath);
+      const repo_root = project_root_of(docs_root);
+      const config = await load_plugin_config(repo_root);
+      const report = await run_coverage({ repo_root, docs_root, config });
+      const drafts = report.plan?.drafts;
+      const { write_coverage_review } = await import('../core/reconcile/review.js');
+      const review_file = options.writeReview && drafts ? await write_coverage_review({ root: repo_root, entries: drafts.entries, batch: options.batch }) : undefined;
+      const review = review_file && relative(repo_root, review_file);
+      if (options.json) {
+        const { plan, surfaces, ...rest } = report;
+        console.log(JSON.stringify({
+          ...rest,
+          surfaces: surfaces.map((surface) => ({ kind: surface.kind, name: surface.name, file: surface.file, line: surface.line, grade: surface.grade })),
+          ...(plan && { warnings: plan.warnings }),
+          coverage: { proposals: plan?.proposals ?? [], needs_human: drafts?.needs_human ?? [], blocked: drafts?.blocked ?? [], skipped: drafts?.skipped ?? [], ...(drafts?.security_adjacent && { security_adjacent: drafts.security_adjacent }) },
+          ...(review && { coverage_review: review }),
+        }, null, 2));
+        return;
+      }
+      logger.header('hewtd coverage');
+      console.log(render_coverage_table(report));
+      if (drafts) logger.info(`\n  ${report.triaged} surface(s) sent through the reconcile engine: ${drafts.entries.length} draft(s), ${drafts.needs_human.length} for a human, ${drafts.blocked.length} blocked by the security gate`);
+      if (review) logger.info(`  wrote ${review}`);
+      else if (drafts?.entries.length) logger.info('  --write-review writes the drafts as a review file; judge them, then reconcile --apply <file>');
+    } catch (entry) {
+      logger.error((entry as Error).message);
+      process.exitCode = 1;
+    }
+  });
+
 // Reconcile command
 program
   .command('reconcile')

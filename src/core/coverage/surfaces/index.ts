@@ -15,7 +15,7 @@ export function is_ignored(file: string, ignore: string[]): boolean {
   return ignore.some((entry) => {
     const pattern = entry.replace(/^\.\//, '');
     if (!/[*?]/.test(pattern)) return file === pattern || file.startsWith(pattern.endsWith('/') ? pattern : `${pattern}/`);
-    const source = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*\/?/g, '@@GLOB@@').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]').replace(/@@GLOB@@/g, '(?:.*/)?');
+    const source = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\/\*\*$/, '/@@REST@@').replace(/\*\*\/?/g, '@@GLOB@@').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]').replace(/@@GLOB@@/g, '(?:.*/)?').replace('@@REST@@', '.*');
     return new RegExp(`^${source}$`).test(file);
   });
 }

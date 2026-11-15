@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 
-// The release gate (scripts/gate-gaps.mjs) over the synthetic 13-case fixture (#115), through the built CLI.
+// The release gate (scripts/gate-gaps.mjs) over the synthetic fixture (#115), through the built CLI.
 const ROOT = resolve(__dirname, '../..');
 const SCRIPT = join(ROOT, 'scripts/gate-gaps.mjs');
 const EXPECTED = join(ROOT, 'tests/fixtures/gaps-triage-115/expected.json');
@@ -17,7 +17,7 @@ describe('gate:gaps', () => {
     const run = gate();
     expect(run.stdout).not.toMatch(/^FAIL/m);
     expect(run.status).toBe(0);
-    expect(run.stdout).toMatch(/gate:gaps 15\/15/);
+    expect(run.stdout).toMatch(/gate:gaps 19\/19/);
   }, 130_000);
 
   it('fails when an expectation is wrong (outcome, target, stated fact, source)', () => {
@@ -33,7 +33,7 @@ describe('gate:gaps', () => {
       const run = gate(file);
       expect(run.status).toBe(1);
       for (const id of ['best-coverage', 'topic-absent', 'size', 'numeric']) expect(run.stdout).toMatch(new RegExp(`^FAIL  ${id}`, 'm'));
-      expect(run.stdout).toMatch(/gate:gaps 11\/15/);
+      expect(run.stdout).toMatch(/gate:gaps 15\/19/);
     } finally { rmSync(dir, { recursive: true, force: true }); }
   }, 130_000);
 });

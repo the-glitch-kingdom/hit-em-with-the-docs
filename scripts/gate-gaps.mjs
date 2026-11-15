@@ -78,7 +78,7 @@ try {
       for (const facet of spec.stated ?? []) {
         const regex = compile_facet(facet).regex;
         const found = mine.filter((entry) => entry.verdict !== null).flatMap((entry) => entry_text(entry).split('\n')).map((line) => STATED.exec(line)).filter(Boolean)
-          .find((match) => regex.test(match[0]) && regex.test(repo_lines(match[3])[Number(match[4]) - 1] ?? ''));
+          .find((match) => (regex.test(match[0]) || regex.test(`${match[1]} = ${match[2]}`)) && regex.test(repo_lines(match[3])[Number(match[4]) - 1] ?? ''));
         if (!found) problems.push(`fact "${facet}" is not stated with file:line`);
       }
       for (const entry of mine) for (const file of entry.sources ?? []) if (!facets.some((facet) => !is_weak_facet(facet) && holds(file, facet))) problems.push(`draft source ${file} holds no distinctive facet`);
@@ -88,6 +88,8 @@ try {
       for (const facet of spec.judge ?? []) if (!listed.includes(facet)) problems.push(`fact "${facet}" is not listed for the judge`);
       if (mine.some((entry) => entry.verdict !== null)) problems.push('a judge-pending case was written as a verdict');
     }
+    if (spec.path && !mine.some((entry) => entry.path === spec.path)) problems.push(`new doc path ${mine.map((entry) => entry.path).join(',') || 'none'}, expected ${spec.path}`);
+    if (spec.security_adjacent && !main.out.coverage.security_adjacent?.some((found) => found.keys.includes(keys[0]) && found.word === spec.security_adjacent)) problems.push(`not marked security-adjacent by "${spec.security_adjacent}"`);
     const human = main.out.coverage.needs_human.find((found) => found.keys.includes(keys[0]));
     if (spec.needs_human) { if (!human) problems.push('not listed for a human'); else if (!human.reason?.includes(spec.needs_human)) problems.push(`reason "${human.reason}" lacks "${spec.needs_human}"`); } else if (human) problems.push(`listed for a human: ${human.reason}`);
     if (spec.skipped && !main.out.coverage.skipped.some((found) => found.keys.includes(keys[0]) && found.reason.includes(spec.skipped))) problems.push(`not skipped with "${spec.skipped}"`);

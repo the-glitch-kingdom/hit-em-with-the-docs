@@ -28,7 +28,7 @@ describe('build_drafts (#113)', () => {
     const r = await run([proposal({ domain: 'ops', sources: [{ file: 'src/queue.ts', line: 1 }, { file: 'src/queue.ts', line: 2 }], source_files: ['src/queue.ts'] })]);
     expect(r.entries).toHaveLength(1);
     const e = r.entries[0]!;
-    expect(e).toMatchObject({ verdict: 'create', path: 'ops/what-is-the-retry-limit.md', content_hash: compute_content_hash(''), sources: ['src/queue.ts'] });
+    expect(e).toMatchObject({ verdict: 'create', path: 'ops/retry-limit.md', content_hash: compute_content_hash(''), sources: ['src/queue.ts'] });
     expect(e.draft).toMatch(/^---\n/);
     expect(e.draft).toContain('`retry_limit` is `5` (`src/queue.ts`, line 1).');
     expect(e.draft).not.toContain('drain_queue'); // line 2 holds no missing facet: not cited
@@ -37,9 +37,9 @@ describe('build_drafts (#113)', () => {
     expect(sentences.every((s) => /line \d+\)/.test(s))).toBe(true);
   });
   it('never overwrites: an existing path gets a numbered sibling', async () => {
-    w('.documentation/ops/what-is-the-retry-limit.md', '# x\n');
+    w('.documentation/ops/retry-limit.md', '# x\n');
     const r = await run([proposal({ domain: 'ops', sources: [{ file: 'src/queue.ts', line: 1 }], source_files: ['src/queue.ts'] })]);
-    expect(r.entries[0]!.path).toBe('ops/what-is-the-retry-limit-2.md');
+    expect(r.entries[0]!.path).toBe('ops/retry-limit-2.md');
   });
   it('extend: a patch entry on the target doc anchored to its last line, with sources', async () => {
     const r = await run([proposal({ kind: 'extend', doc: 'ops/queue.md', sources: [{ file: 'src/queue.ts', line: 1 }], source_files: ['src/queue.ts'] })]);

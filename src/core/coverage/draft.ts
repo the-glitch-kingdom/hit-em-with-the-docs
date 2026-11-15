@@ -16,6 +16,7 @@ import type { ReviewEntry } from '../reconcile/review.js';
 import { check_credential_text, check_security_gate, find_security_check, find_sensitive_word, is_security_sensitive, is_stateable_constant } from '../security/gate.js';
 import { compile_facet, match_facets } from './facets.js';
 import type { FacetHit } from './locate.js';
+import { FALLBACK_DOMAIN, name_new_doc, place_new_doc } from './naming.js';
 import type { Proposal } from './merge.js';
 
 /** A missing fact hewtd cannot state on its own: the facet and where it was found (file:line), for the reconcile judge. */
@@ -34,8 +35,7 @@ export interface DraftResult {
 
 /** A draft cites a handful of lines; more is a sign the facets were too generic to ground one doc. */
 export const MAX_SENTENCES = 12;
-/** Domain for a new doc when no doc cites nearby code. */
-export const FALLBACK_DOMAIN = 'features';
+export { FALLBACK_DOMAIN };
 
 const CONSTANT_LINE = /^\s*(?:export\s+)?(?:(?:public|private|protected|static|final|readonly|const|let|var|val|pub)\s+)*(?:[A-Za-z_][\w<>[\]]*\s+)?([A-Za-z_]\w*)\s*(?::\s*[\w<>[\]|. ]+?)?\s*:?=\s*(.+?)\s*;?\s*(?:(?:\/\/|#).*)?$/;
 /** Config and env files hold values, not code constants. */
@@ -48,7 +48,6 @@ export function extract_stated_constant(line: string): { name: string; literal: 
   return { name: match[1]!, literal: match[2]!.trim() };
 }
 
-const slugify = (text: string): string => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').split('-').slice(0, 8).join('-').slice(0, 60) || 'topic';
 const sentence_case = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
 /** Located lines listed per facet for the judge. */
 const MAX_JUDGE_LINES = 5;
@@ -165,13 +164,14 @@ export async function build_drafts(options: { repo_root: string; docs_root: stri
     }
 
     // new doc: never overwrite an existing path or another draft's
-    const domain = proposal.domain ?? FALLBACK_DOMAIN;
+    const { dir, fallback } = place_new_doc({ ...(proposal.folder && { folder: proposal.folder }), ...(proposal.domain && { domain: proposal.domain }), tier: 'guide' });
+    const domain = dir.split('/')[0]!;
     const title = sentence_case(proposal.closes[0]!.query);
-    const stem = slugify(proposal.closes[0]!.query);
-    let path = `${domain}/${stem}.md`;
-    for (let copy = 2; existsSync(join(docs_root, path)) || taken.has(path); copy++) path = `${domain}/${stem}-${copy}.md`;
+    const stem = name_new_doc({ queries: proposal.closes.map((closed) => closed.query), facets: proposal.missing_facets, source_files: proposal.source_files });
+    let path = `${dir}/${stem}.md`;
+    for (let copy = 2; existsSync(join(docs_root, path)) || taken.has(path); copy++) path = `${dir}/${stem}-${copy}.md`;
     taken.add(path);
-    const domain_reasons = proposal.domain ? reasons : [...reasons, `domain ${FALLBACK_DOMAIN} is a fallback: no doc cites nearby code`];
+    const domain_reasons = fallback ? [...reasons, `domain ${FALLBACK_DOMAIN} is a fallback: no doc cites nearby code`] : reasons;
     if (!built.sentences.length) {
       if (built.for_judge.length) result.entries.push({ path, content_hash: compute_content_hash(''), verdict: null, sources: built.source_files, ...for_judge, ...mark, reasons: [...domain_reasons, waiting] });
       else skip('no citable line');

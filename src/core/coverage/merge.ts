@@ -13,6 +13,8 @@ export interface Proposal {
   kind: DecisionKind;
   doc?: string;
   domain?: string;
+  /** new: the folder (possibly a subfolder of the domain) holding the docs about nearby code. */
+  folder?: string;
   /** Every question this proposal closes. */
   closes: { key: string; query: string; count: number }[];
   count: number;
@@ -63,12 +65,14 @@ export function merge_decisions(decisions: Decision[]): Proposal[] {
     const doc_votes = new Map<string, number>();
     for (const decision of extends_in_group) doc_votes.set(decision.doc!, (doc_votes.get(decision.doc!) ?? 0) + 1);
     const doc = kind === 'covered' ? group[0]!.doc : [...doc_votes].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
-    const domain = group.find((decision) => decision.domain)?.domain;
+    const placed = group.find((decision) => decision.domain);
+    const domain = placed?.domain;
     const sources = group.flatMap((decision) => decision.sources).filter((found, i, all) => all.findIndex((other) => other.file === found.file && other.line === found.line) === i);
     return {
       kind,
       ...(doc && { doc }),
       ...(kind === 'new' && domain && { domain }),
+      ...(kind === 'new' && placed?.folder && { folder: placed.folder }),
       closes: group.map((decision) => ({ key: decision.key, query: decision.query, count: decision.count })),
       count: group.reduce((sum, decision) => sum + decision.count, 0),
       missing_facets: unique(group.flatMap((decision) => decision.missing_facets)),

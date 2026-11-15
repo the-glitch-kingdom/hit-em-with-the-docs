@@ -79,14 +79,14 @@ describe('reconcile --gaps with facets (built CLI, labelled fixture)', () => {
     const cache = readFileSync(join(root, '.documentation/ops/cache.md'), 'utf-8');
     expect(cache).toContain('`purge_interval` is `900` (`src/cache/store.ts`, line 2).');
     expect(existsSync(join(root, '.documentation/features/what-does-the-csv-export-job-do.md'))).toBe(false); // a null-verdict entry waits for the judge: ticked or not, apply leaves it
-    expect(readFileSync(join(root, '.documentation/ops/when-does-the-nightly-report-run.md'), 'utf-8')).toContain('`report_batch_size` is `200` (`src/jobs/scheduler.ts`, line 2).');
+    expect(readFileSync(join(root, '.documentation/ops/nightly-report-job.md'), 'utf-8')).toContain('`report_batch_size` is `200` (`src/jobs/scheduler.ts`, line 2).');
     // never overwrites: replaying the same review is a no-op, and a fresh create on a taken path errors
     const head = g('rev-parse', 'HEAD');
     hewtd(['reconcile', '--apply', review_path]);
     expect(g('rev-parse', 'HEAD')).toBe(head);
     const before = readFileSync(join(root, '.documentation/ops/cache.md'), 'utf-8');
     const clash = join(root, '.hewtd/reconcile/review-9-coverage.md');
-    writeFileSync(clash, review.replaceAll('- [ ] accept', '- [x] accept').replaceAll('ops/when-does-the-nightly-report-run.md', 'ops/cache.md').replace(/"path": "ops\/cache.md",\n  "content_hash": "[0-9a-f]+",\n  "verdict": "verify"/, '"path": "ops/skip-me.md",\n  "content_hash": "x",\n  "verdict": null'));
+    writeFileSync(clash, review.replaceAll('- [ ] accept', '- [x] accept').replaceAll('ops/nightly-report-job.md', 'ops/cache.md').replace(/"path": "ops\/cache.md",\n  "content_hash": "[0-9a-f]+",\n  "verdict": "verify"/, '"path": "ops/skip-me.md",\n  "content_hash": "x",\n  "verdict": null'));
     const refused = hewtd(['reconcile', '--apply', clash]);
     expect(refused.stdout + refused.stderr).toMatch(/already exists \(never overwrites\)/);
     expect(readFileSync(join(root, '.documentation/ops/cache.md'), 'utf-8')).toBe(before);
@@ -141,16 +141,16 @@ describe('reconcile --gaps with facets (built CLI, labelled fixture)', () => {
     const applied_in = (file: string, text: string) => { writeFileSync(file, accept(text)); const r = hewtd(['reconcile', '--apply', file]); return r.stdout + r.stderr; };
     it('refuses a create path outside the docs root and a non-.md path', () => {
       const { file, text } = only_absent();
-      expect(applied_in(file, text.replaceAll('ops/when-does-the-nightly-report-run.md', '../escaped.md'))).toMatch(/inside the docs root|error/i);
+      expect(applied_in(file, text.replaceAll('ops/nightly-report-job.md', '../escaped.md'))).toMatch(/inside the docs root|error/i);
       expect(existsSync(join(root, 'escaped.md'))).toBe(false);
-      expect(applied_in(file, text.replaceAll('ops/when-does-the-nightly-report-run.md', 'ops/x.txt'))).toMatch(/\.md path|error/i);
+      expect(applied_in(file, text.replaceAll('ops/nightly-report-job.md', 'ops/x.txt'))).toMatch(/\.md path|error/i);
       expect(existsSync(join(root, '.documentation/ops/x.txt'))).toBe(false);
     });
     it('an edited draft that trips the gate is refused at apply', () => {
       const { file, text } = only_absent();
       const out = applied_in(file, text.replace('## What the code defines', 'Connect to db.internal.example.com on port 5432.\\n\\n## What the code defines'));
       expect(out).toMatch(/security gate/);
-      expect(existsSync(join(root, '.documentation/ops/when-does-the-nightly-report-run.md'))).toBe(false);
+      expect(existsSync(join(root, '.documentation/ops/nightly-report-job.md'))).toBe(false);
     });
     it('a doc cited by a phrases entry and a coverage entry applies cleanly in two separate runs', () => {
       writeFileSync(join(root, 'gaps.json'), JSON.stringify({ version: 1, source: 'f', gaps: [gaps[0], { query: 'how often is the cache purged', used_doc: '.documentation/ops/cache.md' }, { query: 'how often is the cache purged now', used_doc: '.documentation/ops/cache.md' }] }));

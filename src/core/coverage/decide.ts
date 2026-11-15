@@ -100,6 +100,8 @@ export interface Decision {
   cited_by: string[];
   /** new: folder where the docs about nearby code live. */
   domain?: string;
+  /** new: deepest folder common to the docs about nearby code (the domain or a subfolder of it). */
+  folder?: string;
   rank?: number | null;
   instruction_files?: string[];
   flags: string[];
@@ -126,6 +128,18 @@ export async function load_doc_texts(docs_root: string): Promise<DocText[]> {
     docs.push({ path: relative(docs_root, abs_path).split('\\').join('/'), text, sources, ...(source_refs.length && { source_refs }) });
   }
   return docs.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+/** The deepest folder every given folder sits in (posix, docs-relative). */
+function find_common_folder(folders: string[]): string {
+  const common = folders[0]!.split('/');
+  for (const folder of folders.slice(1)) {
+    const parts = folder.split('/');
+    let keep = 0;
+    while (keep < common.length && common[keep] === parts[keep]) keep++;
+    common.length = keep;
+  }
+  return common.join('/');
 }
 
 export function resolve_decision(miss: CoverageMiss, located: Pick<LocateResult, 'code' | 'instructions' | 'weak'>, docs: DocText[]): Decision {
@@ -207,13 +221,16 @@ export function resolve_decision(miss: CoverageMiss, located: Pick<LocateResult,
   if (citing) return finish({ kind: 'extend', doc: citing.doc.path, held: citing.held.length, missing_facets: facets.filter((facet) => !citing.held.includes(facet)) });
 
   // new doc: the folder where the docs about nearby code live
-  const votes = new Map<string, number>();
+  const votes = new Map<string, DocText[]>();
   for (const doc of docs) {
-    const folder = doc.path.includes('/') ? doc.path.split('/')[0]! : undefined;
-    if (!folder || folder === 'archive' || is_hub_doc(doc)) continue; // an incident or overview is no home for a new doc
+    const domain_dir = doc.path.includes('/') ? doc.path.split('/')[0]! : undefined;
+    if (!domain_dir || domain_dir === 'archive' || domain_dir === 'knowledge-base' || is_hub_doc(doc)) continue; // an incident, overview or knowledge-base fact is no home for a new doc (#118)
     const near = doc.sources.some((source) => source_files.some((file) => dirname(file) === dirname(source)));
-    if (near) votes.set(folder, (votes.get(folder) ?? 0) + 1);
+    if (near) votes.set(domain_dir, [...(votes.get(domain_dir) ?? []), doc]);
   }
-  const domain = [...votes].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
-  return finish({ kind: 'new', held: ranked[0]?.held.length ?? 0, missing_facets: facets, ...(domain && { domain }) });
+  const winner = [...votes].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))[0];
+  const domain = winner?.[0];
+  // the deepest folder every voting doc of the winning domain shares
+  const folder = winner && find_common_folder(winner[1].map((doc) => dirname(doc.path)));
+  return finish({ kind: 'new', held: ranked[0]?.held.length ?? 0, missing_facets: facets, ...(domain && { domain }), ...(folder && { folder }) });
 }

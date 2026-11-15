@@ -7,6 +7,7 @@
  * Deterministic: same inputs, same output (ties break on doc path).
  */
 import { readFile } from 'fs/promises';
+import { existsSync } from 'fs';
 import { dirname, relative } from 'path';
 import { parse_frontmatter } from '../../utils/frontmatter.js';
 import { list_markdown_files } from '../reconcile/triage.js';
@@ -113,6 +114,7 @@ export interface Decision {
 
 export async function load_doc_texts(docs_root: string): Promise<DocText[]> {
   const docs: DocText[] = [];
+  if (!existsSync(docs_root)) return docs; // a repo with no docs yet: every surface is absent
   for (const abs_path of await list_markdown_files(docs_root)) {
     const text = await readFile(abs_path, 'utf-8');
     const { data } = parse_frontmatter<Record<string, unknown>>(text);

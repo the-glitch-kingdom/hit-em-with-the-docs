@@ -84,3 +84,19 @@ describe('hewtd coverage (built CLI)', () => {
     expect(readdirSync(join(repo, '.documentation/ops'))).toEqual(['uploads.md']);
   });
 });
+
+describe('coverage without a docs folder (validation)', () => {
+  it('grades every surface absent instead of failing on the missing folder', () => {
+    const bare = mkdtempSync(join(tmpdir(), 'coverage-nodocs-'));
+    try {
+      writeFileSync(join(bare, 'limits.ts'), 'export const RETRY_LIMIT = 5;\n');
+      execFileSync('git', ['init', '-q'], { cwd: bare });
+      execFileSync('git', ['add', '-A'], { cwd: bare });
+      execFileSync('git', ['-c', 'user.name=a', '-c', 'user.email=a@a', 'commit', '-qm', 'init'], { cwd: bare });
+      const run = spawnSync('node', [join(resolve(__dirname, '../../..'), 'dist/cli/index.js'), 'coverage', '--json'], { cwd: bare, encoding: 'utf8', env: { ...process.env, HOME: bare } });
+      expect(run.stderr).not.toMatch(/ENOENT/);
+      expect(run.status).toBe(0);
+      expect(JSON.parse(run.stdout).summary.total.absent).toBe(1);
+    } finally { rmSync(bare, { recursive: true, force: true }); }
+  });
+});

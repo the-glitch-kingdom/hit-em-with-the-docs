@@ -10,6 +10,9 @@
 > You still need to remember to use this plugin when creating documentation! As projects grow, documentation needs to be created and maintained. You'll need to invoke this plugin or ask an LLM to create documentation for your features, workflows, or infrastructure. This plugin must be invoked to create, update, or maintain your docs.
 
 > [!NOTE]
+> **3.7.0** (#117, #118) adds `hewtd coverage`: it grades every surface the code declares (scheduled jobs, alert rules, routes, CLI commands and flags, CI, background tasks, constants, config keys) `absent`, `named` or `explained` by the docs and drafts what is missing for you to accept. `coverage.ignore` holds surfaces on purpose; `targets.code_coverage` is an opt-in advisory audit row. `reconcile --gaps` also picks more relevant target docs, routes to a human only on a located security check, and names new docs after their subject. New gate `npm run gate:coverage`. See [`docs/coverage.md`](./docs/coverage.md).
+
+> [!NOTE]
 > **3.6.0** (#115) reworks `hewtd reconcile --gaps` triage after a field test: the target doc comes from facet coverage (hubs last, never merged), new docs are proposed, weak facets and non-code files no longer pollute sources, and a draft states a fact only for a simple code constant; every other missing fact is listed with `file:line` for the reconcile judge. `needs_human` entries say why. New release gate `npm run gate:gaps`. See [`docs/reconcile.md`](./docs/reconcile.md).
 
 > [!NOTE]

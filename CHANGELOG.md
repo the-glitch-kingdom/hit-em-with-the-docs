@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.7.0] — 2026-11-15
+
+Adds `hewtd coverage` (#117) and fixes the #118 field-test misses in `reconcile --gaps`. New command, new config keys `coverage.ignore` and `targets.code_coverage`. Entries without `facets` are still byte-identical to 3.4.1.
+
+- `hewtd coverage` (and `/hit-em-with-the-docs:coverage`): grades every declared surface (scheduled jobs, alert rules, routes, CLI commands and flags, CI workflows and jobs, background tasks, numeric constants, config keys) `absent`, `named` or `explained`, prints the table per kind and code area, and drafts the gaps through the `reconcile --gaps` engine. Read-only unless `--write-review` (`review-<batch>-coverage.md`). A repo with no docs folder grades every surface absent. Known limit: no Go detector (cobra commands and flags, Go constants). See `docs/coverage.md`.
+- `coverage.ignore` (path prefix, glob or surface name, each with an optional `reason`) holds surfaces on purpose; `targets.code_coverage` (`min`, `reason`) is an opt-in, advisory audit row per surface kind, not written by `--fix`.
+- #118: a citing doc must be relevant to the question before it is the target; file-map docs count as hubs; the eval's `nearest_doc` is preferred over a zero-facet citer; only a located security check (by code shape) goes to a human, a topic word alone is drafted and marked `security_adjacent`; new docs are named after their subject and placed beside nearby docs; a simple constant is stated from its located line.
+- Field check on a copy of semantic-memory: 237 surfaces (68 absent, 81 named, 88 explained) in 1.6 s; `--write-review` wrote 37 drafts with no IPs, URLs, ports or key shapes.
+- New release gate `npm run gate:coverage` (in `prepublishOnly`). Measured: `gate:gaps` 19/19 (18 cases plus a secret scan), `gate:coverage` 35/35 (29 surface cases plus 6 checks). The real-tree score is not measured here.
+
 ## [3.6.0] — 2026-11-14
 
 Reworks `reconcile --gaps` coverage triage after the 3.5.0 field test (#115). No config keys. Entries without `facets` are byte-identical to 3.4.1.

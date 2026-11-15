@@ -27,10 +27,11 @@ describe('targets.code_coverage (#117)', () => {
     expect(rows().some((row) => row.id.startsWith('code_coverage'))).toBe(false);
   });
   it('set: an advisory row per surface kind; ignored surfaces are held; audit still exits 0', () => {
+    const baseline = hewtd('audit', '--strict').status;
     put('.claude/hit-em-with-the-docs.json', JSON.stringify({ targets: { code_coverage: { min: 0.9 } } }));
     const row = rows().find((r) => r.id === 'code_coverage_constant')!;
     expect(row).toMatchObject({ value: 1, total: 2, met: false, held: 0 });
-    expect(hewtd('audit', '--strict').status).toBe(0);
+    expect(hewtd('audit', '--strict').status).toBe(baseline); // an unmet code row never changes the exit code
     put('.claude/hit-em-with-the-docs.json', JSON.stringify({ targets: { code_coverage: { min: 0.9 } }, coverage: { ignore: [{ name: 'OLD_LIMIT', reason: 'dead' }] } }));
     expect(rows().find((r) => r.id === 'code_coverage_constant')).toMatchObject({ value: 1, total: 1, met: true, held: 1 });
   });

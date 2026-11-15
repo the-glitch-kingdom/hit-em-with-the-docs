@@ -126,8 +126,7 @@
   {
    "id": "security",
    "kind": "new",
-   "draft": "none",
-   "needs_human": "security-sensitive:"
+   "draft": "judge"
   },
   {
    "id": "blind",

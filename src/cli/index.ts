@@ -1432,7 +1432,7 @@ program
           console.log(JSON.stringify({
             ...classified, errors: read.errors, report: report_file, ...(review_file && { review: relative(repo_root, review_file) }),
             ...(warnings.length && { warnings }),
-            ...(coverage && { coverage: { proposals: coverage.proposals, needs_human: coverage.drafts.needs_human, blocked: coverage.drafts.blocked, skipped: coverage.drafts.skipped }, ...(coverage_review && { coverage_review: relative(repo_root, coverage_review) }) }),
+            ...(coverage && { coverage: { proposals: coverage.proposals, needs_human: coverage.drafts.needs_human, blocked: coverage.drafts.blocked, skipped: coverage.drafts.skipped, ...(coverage.drafts.security_adjacent && { security_adjacent: coverage.drafts.security_adjacent }) }, ...(coverage_review && { coverage_review: relative(repo_root, coverage_review) }) }),
           }, null, 2));
           return;
         }

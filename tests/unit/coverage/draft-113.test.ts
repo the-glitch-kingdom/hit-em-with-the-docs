@@ -65,10 +65,11 @@ describe('build_drafts (#113)', () => {
     expect(mixed.needs_human).toHaveLength(1);
     expect(JSON.stringify(mixed)).not.toContain(token);
   });
-  it('security-sensitive topics are listed for a human with unit names only, never drafted', async () => {
-    const r = await run([proposal({ closes: [{ key: 'q9', query: 'how does the permission check work', count: 1 }], sources: [{ file: 'src/queue.ts', line: 1 }], source_files: ['src/queue.ts'] })]);
-    expect(r.entries).toEqual([]);
-    expect(r.needs_human).toEqual([{ keys: ['q9'], source_files: ['src/queue.ts'], reason: 'security-sensitive: `permission` in the question' }]); // #115: the reason names the matched word
+  it('a security topic word alone no longer withholds the unit (#118: code-based routing); it is drafted and marked security-adjacent', async () => {
+    const r = await run([proposal({ domain: 'ops', closes: [{ key: 'q9', query: 'how does the permission check work', count: 1 }], sources: [{ file: 'src/queue.ts', line: 1 }], source_files: ['src/queue.ts'] })]);
+    expect(r.needs_human).toEqual([]);
+    expect(r.entries).toHaveLength(1);
+    expect(r.entries[0]).toMatchObject({ security_adjacent: { word: 'permission', where: 'the question' } });
   });
   it('blind proposals are skipped unless include_blind; covered, instruction-only and generated-reference are not drafted', async () => {
     const base = { sources: [{ file: 'src/queue.ts', line: 1 }], source_files: ['src/queue.ts'], domain: 'ops' };

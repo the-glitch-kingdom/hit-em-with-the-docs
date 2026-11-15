@@ -78,6 +78,27 @@ export function check_credential_text(text: string, where: string, secrets_confi
   return [...secrets, ...find_value_findings(text, where, true)];
 }
 
+// What a located source line IS (#118): code-shape detection on the line, never topic words. Kind labels are the only thing reported.
+const CHECK_KINDS: { kind: string; patterns: RegExp[] }[] = [
+  { kind: 'crypto or credential check', patterns: [
+    /\b(?:timing_?safe_?equal|compare_digest|constant_time_(?:eq|compare)|createHmac|createHash|createSign|createVerify|createCipher(?:iv)?|createDecipher(?:iv)?|bcrypt|argon2|scrypt|pbkdf2|hashpw|checkpw)\b/i,
+    /\b(?:jwt|jws|jose|hmac|rsa|ecdsa|signer|verifier)\w*\.(?:sign|verify|decode|digest)\b/i,
+    /\b(?:decrypt|encrypt|verify_(?:signature|token|password|hmac)|check_password|validate_(?:token|password|signature))\w*\s*\(/i,
+    /\b(?:password|passwd|secret|api_?key|digest|signature|hmac)\w*\s*(?:===?|!==?)\s*\S|\S\s*(?:===?|!==?)\s*[\w.]*(?:password|passwd|secret|api_?key|digest|signature)\w*/i,
+  ] },
+  { kind: 'permission or role check', patterns: [
+    /\b(?:has|check|require[sd]?|assert|ensure|can|is|verify)_?(?:permission|role|scope|privilege|access|admin|authori[sz]ed?|superuser|staff)s?\b/i,
+    /@(?:requires?_?(?:auth|role|permission|login)\w*|login_required|PreAuthorize|RolesAllowed|Secured)\b/i,
+    /\brole\w*\s*(?:===?|!==?|\bin\b)\s*[[\w"']/i,
+    /\b(?:PermissionDenied|Forbidden|Unauthori[sz]ed)\b/,
+  ] },
+  { kind: 'access policy', patterns: [/"?\bEffect"?\s*[:=]\s*"?(?:Allow|Deny)\b|\bsts:AssumeRole|\bPrincipal"?\s*[:=]|\baws_iam_\w+|\bAssumeRolePolicy|\bpolicy_document\b/] },
+  { kind: 'firewall or network rule', patterns: [/\baws_security_group\w*|\bcidr_blocks?\b|\b(?:iptables|nftables|ufw)\b|\b(?:ingress|egress)\s*[{:=]|\bsecurity_group_ids?\b|\bfirewall_rule/i] },
+];
+/** The kind of security check a source line is (a secret compared, hashed, signed or decrypted; a permission or role check; a policy document; a firewall rule), by code shape; undefined when it is not one. */
+export const find_security_check = (line: string): string | undefined => CHECK_KINDS.find(({ patterns }) => patterns.some((pattern) => pattern.test(line)))?.kind;
+export const is_security_check_line = (line: string): boolean => find_security_check(line) !== undefined;
+
 const SENSITIVE = /\b(?:auth(?:n|z|s|entic\w*|ori[sz]\w*)?|oauth|saml|sso|jwts?|login|logout|passwords?|passwd|credentials?|tokens?|secrets?|sessions?|cookies?|permissions?|privileges?|privileged|rbac|acl|iam|admins?|bypass(?:es|ed)?|vulnerabilit(?:y|ies)|vulnerable|cve|exploit\w*|firewall|security groups?|network (?:polic\w+|rules?|acl)|ingress|egress|allow ?lists?|csrf|xss|ssrf|cors|tls|ssl|certs?|certificates?|encrypt\w*|decrypt\w*|signing keys?|encryption keys?)\b|(?:^|\/)(?:auth|iam|security|permissions?|login)\//i;
 
 /** Identifiers split into words, so `check_auth_token`, `isAuthorized` and `\bauth\b` read as the words they hold. */

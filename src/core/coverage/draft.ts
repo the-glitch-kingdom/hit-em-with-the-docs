@@ -14,7 +14,7 @@ import type { SecretsConfig } from '../../utils/config.js';
 import { compute_content_hash } from '../reconcile/ledger.js';
 import type { ReviewEntry } from '../reconcile/review.js';
 import { check_credential_text, check_security_gate, find_security_check, find_sensitive_word, is_security_sensitive, is_stateable_constant } from '../security/gate.js';
-import { compile_facet, match_facets, parse_position_facet } from './facets.js';
+import { compile_facet, match_facets, parse_position_facet, REDACTED_FACET } from './facets.js';
 import type { FacetHit } from './locate.js';
 import { FALLBACK_DOMAIN, name_new_doc, place_new_doc } from './naming.js';
 import type { Proposal } from './merge.js';
@@ -76,6 +76,7 @@ async function build_facts(repo_root: string, proposal: Proposal, secrets_config
   const for_judge: JudgeItem[] = [];
   let lost_facet = false;
   for (const facet of proposal.missing_facets) {
+    if (facet === REDACTED_FACET) { lost_facet = true; continue; }
     const regex = compile_facet(facet).regex;
     const matches = (text: string): boolean => !!regex && !!match_facets([regex], [text], 1)[0]?.length;
     const position = parse_position_facet(facet);
@@ -141,7 +142,7 @@ export async function build_drafts(options: { repo_root: string; docs_root: stri
     const adjacent = sensitive?.word ? { word: sensitive.word, where: sensitive.where } : undefined;
     if (adjacent) (result.security_adjacent ??= []).push({ keys, ...adjacent });
     const built = await build_facts(repo_root, proposal, secrets_config);
-    if (built.lost_facet) result.needs_human.push({ keys, source_files: built.source_files, reason: `a missing fact is only on a line holding a credential, withheld: ${built.withheld.join('; ')}` });
+    if (built.lost_facet) result.needs_human.push({ keys, source_files: built.source_files, reason: `a missing fact is only on a line holding a credential or a config value, withheld${built.withheld.length ? `: ${built.withheld.join('; ')}` : ''}` });
     if (!built.source_files.length) { if (!built.lost_facet) skip('no citable line'); continue; }
     const reasons = [`coverage miss: ${keys.join(', ')}`, ...(adjacent ? [`security-adjacent: judge carefully (\`${adjacent.word}\` in ${adjacent.where}); state no values and no internals of any check`] : [])];
     const mark = adjacent ? { security_adjacent: adjacent } : {};

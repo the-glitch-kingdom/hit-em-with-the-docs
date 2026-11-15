@@ -68,13 +68,18 @@ knowledge-base doc is never an extend target (a fact that already states it stil
 
 - **No values** in the table, `--json`, review files or drafts: hosts, IPs, ports, IDs, URLs, credentials, key
   material, env or config values and defaults. Names are fine. A code constant (size, timeout, limit) may be
-  stated; a number under a credential-like name or a network name may not, and a well-known port number is never
-  stated, whatever the name measures (`BIND_MAX = 8080`).
+  stated; a number under a credential-like name or a network name (bind, relay, collector, exporter, broker, sink,
+  agent, otlp, statsd, syslog...) may not, a well-known port number is never stated, whatever the name measures
+  (`BIND_MAX = 8080`), and a bare integer from 1024 to 65535 is stated only when the name says what it measures
+  (timeout, ttl, interval, size, bytes, max, limit, count...), so `OTLP_COLLECTOR = 4317` goes to the judge.
 - **Names are screened too.** Every surface name from every detector passes the gate's value rules and the secrets
-  scan. A name with a finding (a host, `host:port`, IP, environment resource name such as `sync-prod-eu-west-1`, key
+  scan, run on the name as written, with `_` and `-` read as spaces (dashed digit runs rejoined to an IP), and split
+  at letter, digit and case boundaries, so `sync_to_10.0.0.5`, `High5xxOn10.1.2.3` and `deploy-to-10-0-0-5` are found; a
+  key-shaped token inside a name (`backup_s3_<key>`, `sk-`, `ghp_`, `AKIA`, `xox`, `npm_` prefixes, long hex or mixed
+  runs) is a finding too. A name with a finding (a host, `host:port`, IP, environment resource name such as `sync-prod-eu-west-1`, key
   or id shape) is replaced everywhere (table, `--json` name, key, query, facets, review files) by `<kind> at
   file:line`, for example `scheduled job at deploy/crontab:3`, and the surface is matched by its position, never
-  by the value. Route segments that are ids or keys become `:param`. A crontab line that runs a URL (`curl`,
+  by the value. Route segments that are ids or keys (including key-shaped tokens such as `sk_live_...`) become `:param`. A crontab line that runs a URL (`curl`,
   `wget`) is named by position, never by the URL.
 - **Routing is code-based.** A unit is withheld for a human only when a located line is an auth, crypto or
   credential check, found by code shape across languages (decorators, attributes, middleware and guards naming

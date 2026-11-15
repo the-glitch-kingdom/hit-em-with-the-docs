@@ -4,7 +4,7 @@
  */
 import { relative } from 'path';
 import { GENERATED, NOT_CODE, list_tracked_files, read_code_file } from '../locate.js';
-import { check_security_gate } from '../../security/gate.js';
+import { find_value_in_name, has_key_token } from '../../security/gate.js';
 import { SURFACE_DETECTORS, placeholder_name, type Surface } from './detectors.js';
 
 export { SURFACE_DETECTORS, KIND_LABEL, placeholder_name, type Surface, type SurfaceKind, type SurfaceDetector } from './detectors.js';
@@ -15,12 +15,11 @@ const TEST_FILE = /(^|\/)(tests?|__tests__|specs?|e2e)\/|\.(?:test|spec)\.[a-z]+
 const NOT_OWN_CODE = /(^|\/)(vendor|third_party|archive)\//;
 // a route segment that is an id or a key (long digits, uuid, key-shaped, long mixed token) is a parameter, never a name
 const ID_SEGMENT = /^(?:\d{5,}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Z0-9]{16,}|[0-9a-f]{16,}|(?=[\w-]*\d)[\w-]{20,})$/i;
-const GATE_CONFIG = { allow: [], disabled_rules: [] };
 
-/** Every surface name passes the security gate's value rules and the secrets scan; a name with a finding is replaced by `<kind> at file:line`, and the surface is then matched by position. */
+/** Every surface name passes find_value_in_name (gate rules on the name as written and as read, secrets scan, key tokens); a name with a finding is replaced by `<kind> at file:line`, and the surface is then matched by position. */
 function screen_name(surface: Surface): Surface {
-  const name = surface.kind === 'http-route' ? surface.name.split('/').map((segment) => (ID_SEGMENT.test(segment) ? ':param' : segment)).join('/') : surface.name;
-  if (!check_security_gate(name, surface.file, GATE_CONFIG).length) return { ...surface, name };
+  const name = surface.kind === 'http-route' ? surface.name.split('/').map((segment) => (ID_SEGMENT.test(segment) || has_key_token(segment) ? ':param' : segment)).join('/') : surface.name;
+  if (!find_value_in_name(name)) return { ...surface, name };
   const { value: _value, ...rest } = surface;
   return { ...rest, name: placeholder_name(surface.kind, surface.file, surface.line), placeholder: true };
 }

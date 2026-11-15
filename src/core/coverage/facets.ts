@@ -101,3 +101,6 @@ export function is_weak_facet(source: string): boolean {
   const text = source.replace(/\\[a-zA-Z]/g, '').replace(/\\/g, '').replace(/[\^$.*+?()[\]{}|]/g, '');
   return (text.match(/\w/g) ?? []).length < WEAK_MIN_WORD_CHARS || !/[a-z_]/i.test(text);
 }
+
+/** What a facet that is only a value (a credential or config default) is shown as, everywhere. */
+export const REDACTED_FACET = '[redacted facet]';

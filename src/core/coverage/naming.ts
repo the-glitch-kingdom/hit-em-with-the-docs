@@ -4,6 +4,7 @@
  * else the question's noun phrase. The folder is where the docs about nearby code live; never the knowledge-base root.
  */
 import { basename } from 'path';
+import { find_value_in_name } from '../security/gate.js';
 
 /** A doc name is cut at a whole word, never mid-phrase. */
 export const MAX_SLUG_LENGTH = 40;
@@ -42,7 +43,8 @@ function strip_generic(words: string[]): string[] {
 export function name_new_doc(options: { queries: string[]; facets: string[]; source_files: string[] }): string {
   // 1. the most frequent identifier; a tie goes to the longer name, then the alphabet
   const counts = new Map<string, number>();
-  for (const text of [...options.facets, ...options.queries]) for (const identifier of find_identifiers(text)) counts.set(identifier, (counts.get(identifier) ?? 0) + 1);
+  // a text or identifier that holds a value (as written, as read, or key-shaped) never names a doc; regex escapes read as the text they stand for
+  for (const text of [...options.facets, ...options.queries]) for (const identifier of find_identifiers(text)) if (!find_value_in_name(text.replace(/\\(.)/g, '$1')) && !find_value_in_name(identifier)) counts.set(identifier, (counts.get(identifier) ?? 0) + 1);
   const dominant = [...counts].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length || a[0].localeCompare(b[0]))[0]?.[0];
   if (dominant) return make_slug(strip_generic(split_name(dominant)));
   // 2. the source module the facets were found in

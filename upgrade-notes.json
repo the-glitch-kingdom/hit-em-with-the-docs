@@ -154,5 +154,15 @@
     "behaviour_changes": [],
     "hook_block": null,
     "template_changes": null
+  },
+  "3.5.0": {
+    "summary": "reconcile --gaps handles retrieval-eval coverage misses (#113): facets, outcomes, merged grounded drafts through one security gate. No key changes.",
+    "config_keys": [],
+    "changed_defaults": [],
+    "behaviour_changes": [
+      { "issue": 113, "note": "reconcile --gaps entries with `facets` (semantic-memory#101 fields or the eval question-set JSONL) get an extend / new doc / covered / instruction-file outcome and drafts in review-<batch>-coverage.md (new `create` verdict). Blind entries need --include-blind; security-sensitive topics are never drafted. Files without facets behave as in 3.4.1.", "patterns": ["reconcile\\b.*--gaps"] }
+    ],
+    "hook_block": null,
+    "template_changes": null
   }
 }

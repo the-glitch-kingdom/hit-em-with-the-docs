@@ -10,6 +10,9 @@
 > You still need to remember to use this plugin when creating documentation! As projects grow, documentation needs to be created and maintained. You'll need to invoke this plugin or ask an LLM to create documentation for your features, workflows, or infrastructure. This plugin must be invoked to create, update, or maintain your docs.
 
 > [!NOTE]
+> **3.5.0** (#113) teaches `hewtd reconcile --gaps` the retrieval eval's coverage misses (semantic-memory#101 fields or its question-set JSONL): each miss gets one outcome (extend a doc, new doc, covered, instruction file only), misses merge by doc or source, and grounded drafts go to a review file through one security gate (no values, security-sensitive topics left to a human, blind entries need `--include-blind`). Nothing lands without `--apply`. See [`docs/reconcile.md`](./docs/reconcile.md) and [`docs/gaps-format.md`](./docs/gaps-format.md).
+
+> [!NOTE]
 > **3.4.0** fixes #108 (the `post-merge` / `post-checkout` graph hook now runs `hewtd graph` in the background and `hewtd graph` locks itself, so a pull never waits) and adds docs targets (#109): `hewtd init` writes a `targets` block, and `hewtd audit` ends with an advisory Targets section that never fails `--strict`. See [`docs/docs-targets.md`](./docs/docs-targets.md) and [`docs/write-time-guards.md`](./docs/write-time-guards.md).
 
 > [!NOTE]

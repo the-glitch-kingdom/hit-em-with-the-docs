@@ -25,6 +25,25 @@ Input to `hewtd reconcile --gaps <file>`: queries a reader searched for and how 
 | `gaps[].count` | no | Integer >= 1. Ranks gaps and picks the winning wording among near-duplicates. |
 | `gaps[].last_seen` | no | `YYYY-MM-DD`. |
 
+## Coverage misses (3.5.0)
+
+An entry may also carry the retrieval-eval fields from semantic-memory#101. All are optional and keep `version: 1`:
+
+| Field | Use |
+|---|---|
+| `id`, `tier` | The question's id and tier from the eval. |
+| `blind` | `true` for a blind-set question. Blind entries warn and are not drafted unless `--include-blind` is passed (feeding a blind set here spoils it for measurement). |
+| `facets` | Regexes, one per fact the answer needs. An entry with `facets` leaves the phrase buckets and gets a coverage outcome (`extend`, `new doc`, `covered`, `instruction file only`). Entries without `facets` classify exactly as before. |
+| `missing_facets` | The facets the nearest doc lacks. |
+| `nearest_doc` | `{path, facet_coverage: "n/m", rank}` for the closest doc the eval found. |
+| `expected` | Doc paths the question should have reached. |
+
+The eval's question-set JSONL (`{id, tier, q, facets, expected?}`, one object per line) is accepted as input too; `q` is the query.
+
+Facets are untrusted regexes and matched case-insensitively. A facet that does not compile, is longer than 300 characters, has a nested quantifier, or has a `|` group under a quantifier (such as `(a|aa)*b`) is refused and listed in `errors`; `(foo|bar)x` is fine. If every facet of an entry is refused, the entry falls back to the old buckets. Code-line-shaped facets (`x = 24 * 60`, `def f(`, `class C`) are flagged: prefer one-fact, prose-tolerant facets.
+
+Located files over 512 KB are skipped, and the input file itself is never searched. See [reconcile.md](./reconcile.md) for the outcomes, merging, drafts and the security rules.
+
 ## Hand-written
 
 No search tool needed. Any of these work:
@@ -39,4 +58,4 @@ Questions without a usable `used_doc` have no doc to attach to, so they become n
 
 An invalid entry is reported with its index (`gaps[3]: ...`) and skipped; the rest are kept. Never put doc text or secrets in the file: every query is secret-scanned and a hit is dropped with a masked note.
 
-Reader: `parseGaps` in `src/core/reconcile/gaps.ts`.
+Reader: `parse_gaps` in `src/core/reconcile/gaps.ts`.

@@ -82,7 +82,7 @@ knowledge-base doc is never an extend target (a fact that already states it stil
   runs) is a finding too. A name with a finding (a host, `host:port`, IP, environment resource name such as `sync-prod-eu-west-1`, key
   or id shape) is replaced everywhere (table, `--json` name, key, query, facets, review files) by `<kind> at
   file:line`, for example `scheduled job at deploy/crontab:3`, and the surface is matched by its position, never
-  by the value. Route segments that are ids or keys (including key-shaped tokens such as `sk_live_...`) become `:param`. A crontab line that runs a URL (`curl`,
+  by the value. Route segments that are ids or keys (key-shaped tokens such as `sk_live_...`; a segment, or a dash-separated piece of one, of 6+ characters that mixes letters and digits or looks like base64; a known key prefix such as `sk-`, `pk_`, `xox`, `ghp_`, `AKIA`) become `:param`, and a query string is dropped from the name; version segments (`v1`, `v2beta`) stay. A crontab line that runs a URL (`curl`,
   `wget`) is named by position, never by the URL. Names are normalized first (repeated separators collapsed, leading zeros
   stripped from digit groups: `sync_010_000_000_005`, `10__0__0__5`), IPv6 forms (`fe80::1`, `[::1]`) count, a run of 8 or
   more digits or an 8-digit hex token in a name is an id (decimal and hex IPs), and `_` is also read as `-` for environment
@@ -154,6 +154,8 @@ get "generate the reference", every stated fact is true at its `file:line`, read
   names are.
 - A bare integer under a name with no measuring or describing word is not stated, even when it is harmless (`LEVEL = 3`).
 - The security-check rule is by code shape and context, not a parser: a check whose operand is only inside a string (`headers['authorization']` aside), a check spelled with a user-defined helper whose name holds no operand word, and a decorator named for neither auth nor a guard are not detected; the topic-word route still marks them security-adjacent.
+- Helper-style checks are found by name words: an operand word (token, password, signature, pin, otp, totp, stored, expected) or a constant-time word (`safe_equal`, `timing_safe`) with a validity or permission word (valid, ok, eq, eql, verify, check, match, allowed, allows, permitted, in group); a negated request or session user is an auth check. A few ordinary lines are withheld by mistake (`is_allowed_file(name)`, `len(tokens) == 0`); that is the safe direction. Small ids and personal names inside job or constant names are identifiers, not credentials, and are kept.
+- `code` measures only as a status, response, http, exit, error, return or reason code; access, invite, unlock, verification, door, admin, reset and recovery codes are values. A bare integer from 1024 to 65535 under a db, database, redis, cache, queue, host or server name is not stated unless the name carries a unit (timeout, ttl, size, bytes, ...).
 - A membership call (`includes`, `has`, `contains`) counts only on a role, permission, scope, policy or grant collection; `tokens.includes(x)` alone is not a check.
 - Arithmetic is evaluated for integers, `+ - * / << **` and parentheses only; anything else follows the constant rules as written.
 - A user column in a non-system crontab is recognised only for the listed account words (`root`, `www-data`, `nobody`, `daemon`, `postgres`, `deploy`, `app`, `ubuntu`) or a bare word followed by a path, wrapper or interpreter; any other account name is dropped only in `/etc/crontab` and `cron.d` files.

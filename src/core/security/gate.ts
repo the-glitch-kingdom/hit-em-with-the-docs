@@ -20,12 +20,18 @@ const OPERATOR = '(?:<<|\\*\\*|[*+\\-/])';
 const CONSTANT_VALUE = new RegExp(`^\\(*\\s*${TERM}(?:\\s*${OPERATOR}\\s*\\(*\\s*${TERM}\\s*\\)*)*\\s*\\)*$`);
 /** A number, arithmetic of numbers, or a duration or size literal: a code constant (#115), never a host, port, id or default. A bare run of 9+ digits is an id, card or account number shape, a hex literal over 6 digits is a key, hash or hex IP; the key-token and value rules run on every value. */
 export const is_constant_value = (value: string): boolean => CONSTANT_VALUE.test(value.trim()) && !/^\d{9,}$/.test(value.trim().replace(/_/g, '')) && !has_key_token(value) && !find_value_findings(value, 'value', false).length;
-const VALUE_NAME = /\b(?:ports?|hosts?|hostnames?|ips?|addr|address|ids?|urls?|uris?|endpoints?|domains?|accounts?|tenants?|keys?|secrets?|tokens?|passwords?|passwd|pass|passes|passcodes?|pwd|pins?|seeds?|ssn|cards?|cvv|cvc|iban|routing|otp|totp|hotp|mfa|nonces?|private|priv|credentials?|creds?|auth|cookies?|sessions?|signatures?|sig|hmac|licen[cs]es?|serials?|phones?|dob|certs?|salts?)\b/i;
+const VALUE_NAME = /\b(?:ports?|hosts?|hostnames?|ips?|addr|address|ids?|urls?|uris?|endpoints?|domains?|accounts?|tenants?|keys?|secrets?|tokens?|passwords?|passwd|pass|passes|passcodes?|pwd|pins?|seeds?|ssn|cards?|cvv|cvc|iban|routing|otp|totp|hotp|mfa|(?:access|invite|unlock|verification|door|admin|reset|recovery) codes?|nonces?|private|priv|credentials?|creds?|auth|cookies?|sessions?|signatures?|sig|hmac|licen[cs]es?|serials?|phones?|dob|certs?|salts?)\b/i;
 /** A name that holds a host, port, id, url or credential: what it is set to is a value, not a constant to state. */
 export const is_value_name = (name: string): boolean => VALUE_NAME.test(split_words(name));
 // a network name (BIND, RELAY, UPSTREAM) or a well-known port number holds a port unless the name says what it measures
 const NETWORK_NAME = /\b(?:bind|binds|listen|listener|socket|proxy|upstream|relay|gateway|dns|smtp|imap|redis|postgres|mysql|mongo|server|grpc|https?|collector|exporter|broker|sink|agent|otlp|statsd|syslog|prometheus|telemetry|metrics)\b/i;
-const MEASURE_NAME = /\b(?:timeouts?|ttl|interval|delay|size|bytes|max|min|limit|count|retries|retry|attempts|ms|seconds?|minutes?|hours?|days?|batch|pool|workers?|threads?|concurrency|buffer|capacity|depth|length|duration|backoff|window|rate|quota|code|status|digits|decimals|places|precision|ratio|factor|cap|threshold|percent|percentage|priority|weight|score|version)\b/i;
+const MEASURE_NAME = /\b(?:timeouts?|ttl|interval|delay|size|bytes|max|min|limit|count|retries|retry|attempts|ms|seconds?|minutes?|hours?|days?|batch|pool|workers?|threads?|concurrency|buffer|capacity|depth|length|duration|backoff|window|rate|quota|status|digits|decimals|places|precision|ratio|factor|cap|threshold|percent|percentage|priority|weight|score|version)\b/i;
+// `code` measures only as a status, response, exit, error, return or reason code; any other code (access, invite, door) is a secret
+const MEASURED_CODE = /\b(?:status|response|http|exit|error|return|reason) codes?\b/i;
+// a bare integer in the dynamic port range under a name that points at a service is a port, whatever else the name says
+const SERVICE_NAME = /\b(?:db|database|redis|cache|queue|host|server)\b/i;
+// a unit-bearing measure (timeout, ttl, size, bytes) is not a port even under a service name
+const UNIT_MEASURE = /\b(?:timeouts?|ttl|interval|delay|ms|seconds?|minutes?|hours?|days?|bytes|size|duration|backoff|window|retries|retry|attempts)\b/i;
 const WELL_KNOWN_PORTS = new Set([21, 22, 23, 25, 53, 67, 69, 80, 88, 110, 111, 123, 135, 139, 143, 161, 389, 443, 445, 465, 514, 587, 636, 873, 993, 995, 1433, 1521, 2049, 2379, 3000, 3306, 3389, 5000, 5432, 5672, 5900, 6379, 6443, 8000, 8080, 8081, 8443, 8888, 9000, 9090, 9092, 9200, 9300, 11211, 15672, 27017]);
 /** A constant a draft may state (#115): a constant value, under a name that is not a value name, and not a port in disguise. */
 export function is_stateable_constant(name: string, value: string): boolean {
@@ -38,8 +44,10 @@ export function is_stateable_constant(name: string, value: string): boolean {
   const words = split_words(name);
   // a bare integer that could be a port (1..65535) is stated only under a name that says what it measures
   const bare = /^\d+$/.test(text) ? Number(text) : result;
-  if (bare !== undefined && bare >= 1 && bare <= 65535) return MEASURE_NAME.test(words);
-  return MEASURE_NAME.test(words) || !NETWORK_NAME.test(words);
+  const measures = MEASURE_NAME.test(words) || MEASURED_CODE.test(words);
+  if (/^\d+$/.test(text) && bare! >= 1024 && bare! <= 65535 && SERVICE_NAME.test(words) && !UNIT_MEASURE.test(words)) return false;
+  if (bare !== undefined && bare >= 1 && bare <= 65535) return measures;
+  return measures || !NETWORK_NAME.test(words);
 }
 
 // a key or token written inside a longer name (`backup_s3_AKIA...`, `token_sk-ant-...`): \b never sees it after an underscore or a letter
@@ -181,9 +189,14 @@ const CHECK_KINDS: { kind: string; patterns: RegExp[] }[] = [
 export const find_security_check = (line: string): string | undefined => CHECK_KINDS.find(({ patterns }) => patterns.some((pattern) => pattern.test(line)))?.kind ?? find_operand_check(line);
 
 // General rule: a security operand word and a check form on one line, however the language spells it. Crypto APIs and authorization verbs count alone.
-const OPERAND = /^(?:auth(?:n|z|enticat\w*|oriz\w*)?|tokens?|secrets?|pass(?:word|wd)?s?|pwd|keys?|apikeys?|cred(?:ential)?s?|signatures?|sig|hmac|digests?|hash(?:es|ed)?|ciphers?|\w*crypt\w*|jwts?|bearer|sessions?|cookies?|roles?|admins?|permissions?|perms?|acl|polic(?:y|ies)|owners?|grants?|scopes?|claims?|certs?|tls|otp|nonce|secure)$/;
+const OPERAND = /^(?:auth(?:n|z|enticat\w*|oriz\w*)?|tokens?|secrets?|pass(?:word|wd)?s?|pwd|keys?|apikeys?|cred(?:ential)?s?|signatures?|sig|hmac|digests?|hash(?:es|ed)?|ciphers?|\w*crypt\w*|jwts?|bearer|sessions?|cookies?|roles?|admins?|permissions?|perms?|acl|polic(?:y|ies)|owners?|grants?|scopes?|claims?|certs?|tls|otp|totp|pin|nonce|secure|stored|expected)$/;
 const PERMISSION_OPERAND = /^(?:roles?|admins?|permissions?|perms?|acl|polic(?:y|ies)|owners?|grants?|scopes?|authz|authorize\w*)$/;
-const FORM_WORD = /^(?:matches|ne|enforce|equals?|eq|compare|cmp|isequal|in|verify|validate|check|evaluate|authorize|authenticate|can|cannot|guard|middleware|decorator|attribute|\w*(?:cmp|compare|equals?))$/;
+const FORM_WORD = /^(?:valid|ok|eql|match|allowed|allows|permitted|member|members|matches|ne|enforce|equals?|eq|compare|cmp|isequal|in|verify|validate|check|evaluate|authorize|authenticate|can|cannot|guard|middleware|decorator|attribute|\w*(?:cmp|compare|equals?))$/;
+// a constant-time or equality helper is an operand of its own; a call that allows, permits or tests group membership is a permission check
+const CONSTANT_TIME_WORDS = /\b(?:safe equal|constant time|timing safe|ct eq)\b/;
+const PERMISSION_CALL = /\b(?:allowed|allows|permitted|in group|member of)\b/;
+// a negated request or session user is an authentication check
+const NEGATED_USER = /!\s*(?:req|request|ctx|session)\.(?:user|session)\b(?!\.)|\bnot\s+(?:req|request)\.user\b(?!\.)|\b(?:req|request)\.user\.is_anonymous\b|\bcurrent_user\.nil\?/;
 const CRYPTO_API = /\bopenssl_\w+|\bcrypto\.subtle\b|\bCipher\.\w+|\b(?:hashlib|bcrypt|argon2|scrypt|pbkdf2)\b|\b(?:can|cannot)\?|\.(?:enforce|authorize)(?:ex)?\s*\(|\b(?:can|cannot)\s*\(\s*[:'"]/i;
 // a decorator, attribute or middleware is a check by its NAME (last segment); words inside its string arguments never count
 const AUTH_NAME_WORD = /^(?:auth|authn|authz|authenticat\w*|authoriz\w*|authentication|permissions?|roles?|login|admin|secured|guards?|jwt|acl)$/;
@@ -203,6 +216,7 @@ function find_operand_check(line: string): string | undefined {
   // route paths and counts of an operand are not operands
   // "$VAR" is the variable; any other string is a value, its words are not operands; sigils and dashes join words
   const code = line.replace(/(["'])\$\{?(\w+)\}?\1/g, '$2').replace(BLANK_STRINGS, '""').replace(/[$@&](?=[A-Za-z_])/g, '').replace(/(?<=\w)-(?=[A-Za-z_])/g, '_').replace(/[\w$]+(?:\.[\w$]+)*\.(?:length|size|count)\b(?:\(\))?/g, ' ');
+  if (NEGATED_USER.test(code)) return 'permission or role check';
   if (CRYPTO_API.test(code)) return /\b(?:can|cannot|enforce|authorize)/i.test(code) ? 'permission or role check' : 'crypto or credential check';
   const identifiers = code.match(/[A-Za-z_$][\w$]*/g) ?? [];
   const operands = new Set<string>();
@@ -212,6 +226,9 @@ function find_operand_check(line: string): string | undefined {
     const COUNTED = /^(?:count|len|length|size|num|number|index|limit|max|min)$/;
     parts.forEach((part, i) => { if (OPERAND.test(part) && !COUNTED.test(parts[i + 1] ?? '') && !COUNTED.test(parts[i - 1] ?? '')) operands.add(part); });
     if (/^(?:is|has|can)$/.test(parts[0] ?? '') && parts.slice(1).some((part) => OPERAND.test(part))) predicate = true;
+    const spaced_words = parts.join(' ');
+    if (CONSTANT_TIME_WORDS.test(spaced_words)) { operands.add('ct'); predicate = true; }
+    if (PERMISSION_CALL.test(spaced_words) && new RegExp(`${identifier.replace(/\$/g, '\\$')}\\s*\\(`).test(code)) { operands.add('permission'); predicate = true; }
     if (parts.includes('parse') && parts.some((part) => /^(?:jws|claims?|jwt)$/.test(part))) predicate = true;
   }
   for (const call of code.matchAll(/(?<![\w$])([\w$]+)\?(?=[\s(),;]|$)/g)) if (words_of(call[1]!).some((part) => OPERAND.test(part))) { predicate = true; operands.add(words_of(call[1]!).find((part) => OPERAND.test(part))!); }

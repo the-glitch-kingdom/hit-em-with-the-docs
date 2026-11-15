@@ -16,13 +16,29 @@ const NOT_OWN_CODE = /^(?:vendor|third_party|archive)\/|(^|\/)node_modules\//;
 // a route segment that is an id or a key (long digits, uuid, key-shaped, long mixed token) is a parameter, never a name
 const ID_SEGMENT = /^(?:\d{5,}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Z0-9]{16,}|[0-9a-f]{16,}|(?=[\w-]*\d)[\w-]{20,})$/i;
 
+// a version segment (v1, v2beta) and a word with a trailing digit or two (oauth2, base64) are names
+const VERSION_SEGMENT = /^v\d+(?:alpha|beta)?\d*$/i;
+const WORD_DIGITS = /^[a-z]{3,}\d{1,2}$/i;
+const KEY_PREFIX_SEGMENT = /^(?:sk[-_]|pk_|rk_|xox|ghp_|AKIA)/;
+/** A route segment, or a dash-separated piece of one, that is an id, a key or a token: it mixes letters and digits (6+ chars), looks like base64, or starts with a key prefix. */
+function is_opaque_segment(segment: string): boolean {
+  if (VERSION_SEGMENT.test(segment)) return false;
+  if (ID_SEGMENT.test(segment) || has_key_token(segment) || KEY_PREFIX_SEGMENT.test(segment)) return true;
+  return segment.split('-').some((piece) => {
+    if (piece.length < 6 || WORD_DIGITS.test(piece)) return false;
+    const mixed = /[A-Za-z]/.test(piece) && /\d/.test(piece);
+    const base64 = /[a-z]/.test(piece) && /[A-Z]/.test(piece) && /\d/.test(piece) && (piece.length % 4 === 0 || piece.endsWith('='));
+    return mixed || base64;
+  });
+}
+
 /** Every surface name passes find_value_in_name (gate rules on the name as written and as read, secrets scan, key tokens); a name with a finding is replaced by `<kind> at file:line`, and the surface is then matched by position. */
 function screen_name(surface: Surface): Surface {
   // a file path holds a value (an IP or id in a folder or file name; a hostname-shaped `config.local.ts` is not one): the surface is only listed for a human, and its path is shown as a placeholder
   if (surface.file.split('/').some((segment) => find_value_in_name(segment, undefined, ['hostname']) || find_value_in_name(segment.replace(/\.[^.]+$/, ''), undefined, ['hostname']))) {
     return { kind: surface.kind, name: placeholder_name(surface.kind, WITHHELD_PATH, surface.line), file: WITHHELD_PATH, line: surface.line, source_kind: surface.source_kind, placeholder: true, path_withheld: true };
   }
-  const name = surface.kind === 'http-route' ? surface.name.split('/').map((segment) => (ID_SEGMENT.test(segment) || has_key_token(segment) ? ':param' : segment)).join('/') : surface.name;
+  const name = surface.kind === 'http-route' ? surface.name.replace(/[?#].*$/, '').split('/').map((segment) => (is_opaque_segment(segment) ? ':param' : segment)).join('/') : surface.name;
   if (!find_value_in_name(name)) return { ...surface, name };
   const { value: _value, ...rest } = surface;
   return { ...rest, name: placeholder_name(surface.kind, surface.file, surface.line), placeholder: true };

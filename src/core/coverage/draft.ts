@@ -13,7 +13,7 @@ import { with_frontmatter } from '../../utils/frontmatter.js';
 import type { SecretsConfig } from '../../utils/config.js';
 import { compute_content_hash } from '../reconcile/ledger.js';
 import type { ReviewEntry } from '../reconcile/review.js';
-import { check_credential_text, check_security_gate, find_sensitive_word, is_constant_value, is_security_sensitive, is_value_name } from '../security/gate.js';
+import { check_credential_text, check_security_gate, find_sensitive_word, is_security_sensitive, is_stateable_constant } from '../security/gate.js';
 import { compile_facet, match_facets } from './facets.js';
 import type { FacetHit } from './locate.js';
 import type { Proposal } from './merge.js';
@@ -42,7 +42,7 @@ const CONFIG_FILE = /(^|\/)\.env[^/]*$|\.(?:env|ini|ya?ml|toml|properties|cfg|co
 /** The one kind of line hewtd states a fact from: `NAME = <number | arithmetic | duration or size>` (#115). Never a value that names a host, port, id, url or credential. */
 export function extract_stated_constant(line: string): { name: string; literal: string } | undefined {
   const match = CONSTANT_LINE.exec(line);
-  if (!match || !is_constant_value(match[2]!) || is_value_name(match[1]!)) return undefined;
+  if (!match || !is_stateable_constant(match[1]!, match[2]!)) return undefined;
   return { name: match[1]!, literal: match[2]!.trim() };
 }
 

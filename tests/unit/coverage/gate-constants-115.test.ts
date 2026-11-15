@@ -54,7 +54,7 @@ describe('classify_gaps: one bad facet never drops the question (#115)', () => {
   it('every facet withheld: the miss stays as needs-a-human with the reason, not dropped, value-free', async () => {
     const result = await classify([{ id: 'h', query: 'where is the database', facets: ['db-prod\\.acme-corp\\.internal', '10\\.20\\.30\\.40'] }]);
     expect(result.facet_gaps).toEqual([]);
-    expect(result.held_back).toEqual([{ keys: ['h'], reason: expect.stringMatching(/every facet withheld.*hostname.*ip-address|every facet withheld.*ip-address.*hostname/) }]);
+    expect(result.held_back).toEqual([{ keys: ['h'], reason: expect.stringMatching(/every facet withheld.*(?:hostname|environment-resource).*ip-address|every facet withheld.*ip-address.*(?:hostname|environment-resource)/) }]); // db-prod.* is also an environment resource name (3.6.0 review)
     const report = render_gaps_report(result, config);
     expect(report).toContain('h');
     expect(report).toMatch(/needs a human/);

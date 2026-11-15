@@ -155,7 +155,7 @@ export function resolve_decision(miss: CoverageMiss, located: Pick<LocateResult,
   const votes = new Map<string, number>();
   for (const doc of docs) {
     const folder = doc.path.includes('/') ? doc.path.split('/')[0]! : undefined;
-    if (!folder || folder === 'archive') continue;
+    if (!folder || folder === 'archive' || is_hub_doc(doc)) continue; // an incident or overview is no home for a new doc
     const near = doc.sources.some((source) => source_files.some((file) => dirname(file) === dirname(source)));
     if (near) votes.set(folder, (votes.get(folder) ?? 0) + 1);
   }

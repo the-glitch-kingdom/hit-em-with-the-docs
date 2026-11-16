@@ -32,6 +32,20 @@ const withheld: [string, string, string, string][] = [
   ['name also quoted as a value in a comment', 's2.py', '# emits user.created, see "user.created"', 'user.created'],
   ['tool phrase with a word after a flag', 'q.py', 'run("npm login --user alice")', 'npm login --user alice'],
   ['tool phrase with a short flag value', 'r.py', 'run("npm ci -psecretpw --prod")', 'npm ci -psecretpw --prod'],
+  // review round 2: allowlists for option arguments, command phrases, file names
+  ['option = person', 'x1.sh', 'kubectl get pods --as=alice', '--as=alice'],
+  ['phrase with --passphrase=', 'x2.py', 'run("npm cmd --passphrase=swordfish")', 'npm cmd --passphrase=swordfish'],
+  ['phrase login with positional', 'x3.py', 'run("npm login alice --force")', 'npm login alice --force'],
+  ['phrase kubectl config set', 'x4.py', 'run("kubectl config set acme --force")', 'kubectl config set acme --force'],
+  ['git remote add phrase', 'x5.py', 'run("git remote add origin2 --x=y")', 'git remote add origin2 --x=y'],
+  ['--owner=acme', 'x6.sh', 'tool --owner=acme', '--owner=acme'],
+  ['--email=x', 'x7.sh', 'tool --email=x', '--email=x'],
+  ['--apikey=x', 'x8.sh', 'tool --apikey=x', '--apikey=x'],
+  ['--pw=xyz1', 'x9.sh', 'tool --pw=xyz1', '--pw=xyz1'],
+  ['--target build', 'y1.sh', 'tool --target build', '--target build'],
+  ['data/alice.json', 'y2.py', 'load("data/alice.json")', 'data/alice.json'],
+  ['acme-corp.json', 'y3.py', 'load("acme-corp.json")', 'acme-corp.json'],
+  ['customers/acme/export.csv', 'y4.py', 'load("customers/acme/export.csv")', 'customers/acme/export.csv'],
 ];
 const kept: [string, string, string, string][] = [
   ['long flag = word', 's.sh', 'npm ci --omit=dev', '--omit=dev'],
@@ -39,6 +53,7 @@ const kept: [string, string, string, string][] = [
   ['tool phrase in a literal', 'u.py', 'run("npm audit fix --package-lock-only")', 'npm audit fix --package-lock-only'],
   ['tool phrase with = flag in a literal', 'v.py', 'run("npm ci --omit=dev")', 'npm ci --omit=dev'],
   ['git phrase', 'w.py', 'run("git push --force-with-lease")', 'git push --force-with-lease'],
+  ['fixture file name', 'z1.py', 'load("fixtures/x.json")', 'fixtures/x.json'],
 ];
 
 let repo: string;

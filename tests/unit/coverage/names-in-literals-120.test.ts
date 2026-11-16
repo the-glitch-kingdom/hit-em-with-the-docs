@@ -28,8 +28,8 @@ describe('a name inside a literal or comment is not a value (#120 section 4)', (
   it('flag names in a comment or script line are kept', async () => {
     expect(await run(['npm audit fix --package-lock-only', '--omit=dev'])).toEqual(['npm audit fix --package-lock-only', '--omit=dev']);
   });
-  it('a fixture file name in a path expression is kept', async () => {
-    expect(await run(['orders_sample.json'])).toEqual(['orders_sample.json']);
+  it('a bare file name in a path expression is withheld (3.7.0; only a name under a project folder is shown)', async () => {
+    expect(await run(['orders_sample.json'])).toEqual(['[withheld]']);
   });
   it('a plain word in quotes is withheld (only the five name shapes are names; main withheld it too)', async () => {
     expect(await run(['a_plain_word'])).toEqual(['[withheld]']);

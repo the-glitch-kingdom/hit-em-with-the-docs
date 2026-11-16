@@ -20,7 +20,7 @@ const OPERATOR = '(?:<<|\\*\\*|[*+\\-/])';
 const CONSTANT_VALUE = new RegExp(`^\\(*\\s*${TERM}(?:\\s*${OPERATOR}\\s*\\(*\\s*${TERM}\\s*\\)*)*\\s*\\)*$`);
 /** A number, arithmetic of numbers, or a duration or size literal: a code constant (#115), never a host, port, id or default. A bare run of 9+ digits is an id, card or account number shape, a hex literal over 6 digits is a key, hash or hex IP; the key-token and value rules run on every value. */
 export const is_constant_value = (value: string): boolean => CONSTANT_VALUE.test(value.trim()) && !/^\d{9,}$/.test(value.trim().replace(/_/g, '')) && !has_key_token(value) && !find_value_findings(value, 'value', false).length;
-const VALUE_NAME = /\b(?:ports?|hosts?|hostnames?|ips?|addr|address|ids?|urls?|uris?|endpoints?|domains?|accounts?|tenants?|keys?|secrets?|tokens?|passwords?|passwd|pass|passes|passcodes?|pwd|pins?|seeds?|ssn|cards?|cvv|cvc|iban|routing|otp|totp|hotp|mfa|(?:access|invite|unlock|verification|door|admin|reset|recovery) codes?|nonces?|private|priv|credentials?|creds?|auth|cookies?|sessions?|signatures?|sig|hmac|licen[cs]es?|serials?|phones?|dob|certs?|salts?)\b/i;
+const VALUE_NAME = /\b(?:ports?|hosts?|hostnames?|ips?|addr|address|ids?|urls?|uris?|endpoints?|domains?|accounts?|tenants?|keys?|secrets?|tokens?|passwords?|passwd|pass|passes|passcodes?|pwd|pw|passphrases?|apikeys?|pins?|seeds?|ssn|cards?|cvv|cvc|iban|routing|otp|totp|hotp|mfa|(?:access|invite|unlock|verification|door|admin|reset|recovery) codes?|nonces?|private|priv|credentials?|creds?|auth|cookies?|sessions?|signatures?|sig|hmac|licen[cs]es?|serials?|phones?|dob|certs?|salts?)\b/i;
 /** A name that holds a host, port, id, url or credential: what it is set to is a value, not a constant to state. */
 export const is_value_name = (name: string): boolean => VALUE_NAME.test(split_words(name));
 // a network name (BIND, RELAY, UPSTREAM) or a well-known port number holds a port unless the name says what it measures
@@ -33,9 +33,11 @@ const SERVICE_NAME = /\b(?:db|database|redis|cache|queue|host|server)\b/i;
 // a unit-bearing measure (timeout, ttl, size, bytes) is not a port even under a service name
 const UNIT_MEASURE = /\b(?:timeouts?|ttl|interval|delay|ms|seconds?|minutes?|hours?|days?|bytes|size|duration|backoff|window|retries|retry|attempts)\b/i;
 const WELL_KNOWN_PORTS = new Set([21, 22, 23, 25, 53, 67, 69, 80, 88, 110, 111, 123, 135, 139, 143, 161, 389, 443, 445, 465, 514, 587, 636, 873, 993, 995, 1433, 1521, 2049, 2379, 3000, 3306, 3389, 5000, 5432, 5672, 5900, 6379, 6443, 8000, 8080, 8081, 8443, 8888, 9000, 9090, 9092, 9200, 9300, 11211, 15672, 27017]);
+// #120: a number under a name that points at a person, an account or an OS identity is an id (ADMIN_UID = 90210), singular whole tokens only; USER_LIMIT is refused, MAX_USERS (plural) may be stated
+const PERSON_NAME = /\b(?:uid|pid|gid|user|owner|customer|admin|email|name|root|support|billing)\b/i;
 /** A constant a draft may state (#115): a constant value, under a name that is not a value name, and not a port in disguise. */
 export function is_stateable_constant(name: string, value: string): boolean {
-  if (!is_constant_value(value) || is_value_name(name)) return false;
+  if (!is_constant_value(value) || is_value_name(name) || PERSON_NAME.test(split_words(name))) return false;
   const text = value.trim().replace(/(?<=\d)_(?=\d)/g, '');
   const operands = (text.match(/(?<![\d.])\d+(?![\d.])/g) ?? []).map(Number);
   // simple integer arithmetic is evaluated (digits, operators and parentheses only, so the expression cannot run code)
@@ -133,11 +135,31 @@ const NAME_LITERAL_PREFIX = /(?:\b(?:import|from|require|getenv|environ(?:\.get)
 // #120: main's rule is the base. Inside a literal a matched facet is a value unless it starts with `--` (a long flag) or `/` (a route or path). Only four additions are names:
 // a one-letter flag, a file name, a command phrase with a long flag, and a name a surface detector found on the same line. Every name must also pass find_value_in_name and has_key_token.
 const FILE_EXTENSION = /\.(?:json|ya?ml|toml|md|txt|csv|sql|py|tsx?|jsx?|rb|go|java|kt|cs|rs|php|sh|html|css|xml|ini|cfg|lock|env\.example)$/i;
-const PLAIN_WORD = /^[a-z]+(?:-[a-z]+)*$/;
+// a file name is shown only under a project folder (#120): a bare name.ext or any other folder (data/, customers/) can name a person or a customer
+const FILE_DIRS = new Set(['fixtures', 'fixture', '__fixtures__', 'tests', 'test', '__tests__', 'spec', 'specs', 'docs', 'doc', 'config', 'configs', 'scripts', 'src', 'lib', 'examples', 'templates', 'migrations', 'schemas', 'public', 'assets', '.github']);
+// the only values an option may carry and stay a name (#120): an allowlist, anything else after a flag is a value
+const HARMLESS_OPTION_VALUE = new Set(['dev', 'optional', 'peer', 'true', 'false', 'none', 'all', 'json', 'text', 'yaml', 'patch', 'minor', 'major', 'latest', 'debug', 'info', 'warn', 'error', 'silent', 'verbose']);
 const LONG_FLAG = /^--([a-z][a-z0-9-]*)(?:=([a-z]+(?:-[a-z]+)*))?$/;
+const BARE_FLAG = /^--([a-z][a-z0-9]*(?:-[a-z0-9]+)*)$/;
 const SHORT_FLAG = /^-[A-Za-z]$/;
 // a command phrase is a name only when its first word is a known tool (#120): a positional word after any other command can be a password or a person
-const KNOWN_TOOLS = new Set(['npm', 'npx', 'yarn', 'pnpm', 'pip', 'pipx', 'poetry', 'uv', 'git', 'docker', 'kubectl', 'helm', 'terraform', 'make', 'cargo', 'go', 'node', 'deno', 'bun', 'python', 'python3', 'ruby', 'bundle', 'rake', 'rails', 'gem', 'mvn', 'gradle', 'dotnet', 'hewtd', 'gh']);
+const subcommands = (words: string): Set<string> => new Set(words.split(' '));
+const BUILD_WORDS = 'build test clean install check run lint fmt format all deploy';
+// a known tool and the subcommand words it may be followed by, as a name (#120); any other word in a command phrase makes the whole phrase a value
+const KNOWN_TOOLS = new Map<string, Set<string>>([
+  ['npm', subcommands('install ci audit fix run test publish pack ls outdated update prune dedupe init version exec cache clean rebuild build login adduser owner user role set add')],
+  ['npx', subcommands('')], ['yarn', subcommands('install add remove run test build upgrade audit cache init publish')], ['pnpm', subcommands('install add remove run test build update audit publish init')],
+  ['pip', subcommands('install uninstall list freeze show check download')], ['pipx', subcommands('install uninstall list run upgrade')], ['poetry', subcommands('install add remove run build publish update lock check')], ['uv', subcommands('sync run add remove lock pip venv build publish')],
+  ['git', subcommands('push pull fetch commit add rm mv checkout switch branch merge rebase reset status log diff tag stash clone init remote show restore cherry-pick')],
+  ['docker', subcommands('build run compose up down ps exec pull push logs images rm rmi start stop restart network volume')],
+  ['kubectl', subcommands('get apply delete describe logs exec rollout scale create edit patch port-forward top config set pods deployments services nodes')],
+  ['helm', subcommands('install upgrade uninstall list template lint package repo search status rollback')], ['terraform', subcommands('init plan apply destroy fmt validate output state workspace')],
+  ['make', subcommands(BUILD_WORDS)], ['cargo', subcommands('build run test check clippy fmt doc clean publish update')], ['go', subcommands('build run test vet fmt mod get install generate')],
+  ['node', subcommands('')], ['deno', subcommands('run test fmt lint check task')], ['bun', subcommands('install add remove run test build')],
+  ['python', subcommands('')], ['python3', subcommands('')], ['ruby', subcommands('')], ['bundle', subcommands('install exec update add')], ['rake', subcommands(BUILD_WORDS)], ['rails', subcommands('server console generate new routes test')], ['gem', subcommands('install uninstall list build push')],
+  ['mvn', subcommands(BUILD_WORDS + ' package verify compile')], ['gradle', subcommands(BUILD_WORDS + ' assemble')], ['dotnet', subcommands('build run test restore publish new add pack clean')],
+  ['hewtd', subcommands('reconcile coverage status init policy update relink domain archive')], ['gh', subcommands('pr issue repo run workflow list view create merge checkout status release')],
+]);
 // a flag that takes a person or an account, whatever the value looks like
 const PERSON_FLAG = /^(?:user|username|login)$/;
 const AUTH_KEY = /\b(?:bearer|authori[sz]ation|basic)\b/i;
@@ -147,20 +169,20 @@ const is_plain = (text: string): boolean => !find_value_in_name(text) && !has_ke
 const is_name_shaped = (content: string, surface_names: string[] = []): boolean => {
   if (!is_plain(content)) return false;
   const flag = LONG_FLAG.exec(content);
-  if (flag) return !is_value_name(flag[1]!); // a long flag
+  if (flag) return !is_value_name(flag[1]!) && !PERSON_FLAG.test(flag[1]!) && (flag[2] === undefined || HARMLESS_OPTION_VALUE.has(flag[2])); // a long flag, bare or with a harmless value
   if (content.startsWith('/')) return true; // a route or an absolute path, as on main
   if (SHORT_FLAG.test(content)) return true; // `-v`, never with attached characters (`-psecret`)
   if (surface_names.includes(content)) return true; // a scheduled-job key, route, flag, queue or task name, alert name or CI job
   // a file name or path with a known extension, every segment plain
-  if (FILE_EXTENSION.test(content) && /^[\w./-]+$/.test(content)) return content.split('/').every((segment) => is_plain(segment) && !is_key_like_segment(segment));
-  // a command phrase: a known tool, then only --long-flags (never a value name) and lowercase subcommand words; a word after a flag without `=` is never allowed
+  if (FILE_EXTENSION.test(content) && /^[\w./-]+$/.test(content)) return FILE_DIRS.has(content.split('/')[0]!) && content.includes('/') && content.split('/').every((segment) => is_plain(segment) && !is_key_like_segment(segment));
+  // a command phrase (#120, allowlist): a known tool, then only bare --long-flags, --flag=<harmless value>, and that tool's subcommand words; anything else makes it a value
   const tokens = content.split(/\s+/);
-  if (tokens.length < 2 || !KNOWN_TOOLS.has(tokens[0]!) || !tokens.some((token) => /^--[a-z]/.test(token)) || AUTH_KEY.test(content)) return false;
-  return tokens.slice(1).every((token, i) => {
+  const subs = KNOWN_TOOLS.get(tokens[0]!);
+  if (tokens.length < 2 || !subs || !tokens.some((token) => /^--[a-z]/.test(token)) || AUTH_KEY.test(content)) return false;
+  return tokens.slice(1).every((token) => {
     const long = LONG_FLAG.exec(token);
-    if (long) return !is_value_name(long[1]!) && !PERSON_FLAG.test(long[1]!);
-    const before = tokens[i]!; // the token before this one
-    return /^[a-z]+$/.test(token) && !is_value_name(token) && !(/^--?[a-z]/.test(before) && !before.includes('='));
+    if (long) return !is_value_name(long[1]!) && !PERSON_FLAG.test(long[1]!) && (long[2] === undefined ? BARE_FLAG.test(token) : HARMLESS_OPTION_VALUE.has(long[2]));
+    return subs.has(token) && !is_value_name(token);
   });
 };
 const KEY_BEFORE = /([\w-]+)["'`]?\s*(?:=>|[:=,(])\s*$/;
@@ -180,14 +202,13 @@ function find_comment_start(line: string): number {
   return -1;
 }
 /**
- * The option arguments of a shell line. `refined` (#120) keeps a plain lowercase word after a long flag a name (`--omit=dev`, `--omit dev`) unless
- * the flag takes a value or a person; unrefined is the 3.7.0 set, every argument, kept so a facet wholly inside one stays withheld. `-pX` is always a value.
+ * The option arguments of a shell line. `refined` (#120) keeps a word from HARMLESS_OPTION_VALUE after a long flag a name (`--omit=dev`, `--omit dev`); any other argument is a value; unrefined is the 3.7.0 set, every argument, kept so a facet wholly inside one stays withheld. `-pX` is always a value.
  */
 export function find_option_spans(line: string, refined: boolean): [number, number][] {
   const spans: [number, number][] = [];
   const is_value_argument = (flag: string, written: string): boolean => {
     const value = written.replace(/[)\]}"'`,;]+$/, ''); // closing punctuation of the call is not part of the value
-    return !refined || is_value_name(flag) || PERSON_FLAG.test(flag) || !PLAIN_WORD.test(value) || is_key_like_segment(value) || !!find_value_in_name(value);
+    return !refined || is_value_name(flag) || PERSON_FLAG.test(flag) || !HARMLESS_OPTION_VALUE.has(value);
   };
   for (const token of line.matchAll(/\S+/g)) {
     const [text, at] = [token[0], token.index!];

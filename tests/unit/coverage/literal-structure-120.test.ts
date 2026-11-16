@@ -21,6 +21,7 @@ const withheld: [string, string, string][] = [
   ['event name no detector', 'bus.emit("user.created", payload)', 'user.created'],
   ['hyphenated word', 'queue_name = "payments-retry-batch"', 'payments-retry-batch'],
   ['command phrase with short flag value', 'run("mysql --host x -psecret")', 'mysql --host x -psecret'],
+  ['person in a bare file name (a file name is shown only under a project folder)', 'f = "ann.lee.json"', 'ann.lee.json'],
   ['command phrase with option argument', 'run("tool --user alice")', 'tool --user alice'],
 ];
 const kept: [string, string, string][] = [
@@ -30,8 +31,7 @@ const kept: [string, string, string][] = [
   ['param route', 'app.get("/api/Orders/:orderId", handler)', '/api/Orders/:orderId'],
   ['one-letter flag', 'run("tool", "-v")', '-v'],
   ['long flag', 'run("npm ci --omit=dev")', '--omit=dev'],
-  ['person in a file name is shown (file names are not a value class)', 'f = "ann.lee.json"', 'ann.lee.json'],
-  ['file name', 'data = load("fixtures/orders_sample.json")', 'orders_sample.json'],
+  ['file name', 'data = load("fixtures/orders_sample.json")', 'fixtures/orders_sample.json'],
   ['command phrase', 'run("npm audit fix --package-lock-only")', 'npm audit fix --package-lock-only'],
   ['scheduled job key', "beat_schedule = {'nightly-report': {'task': 't', 'schedule': 60}}", 'nightly-report'],
   ['queue name', "const q = new Queue('email-sender-jobs');", 'email-sender-jobs'],

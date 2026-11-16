@@ -160,8 +160,9 @@ const KNOWN_TOOLS = new Map<string, Set<string>>([
   ['mvn', subcommands(BUILD_WORDS + ' package verify compile')], ['gradle', subcommands(BUILD_WORDS + ' assemble')], ['dotnet', subcommands('build run test restore publish new add pack clean')],
   ['hewtd', subcommands('reconcile coverage status init policy update relink domain archive')], ['gh', subcommands('pr issue repo run workflow list view create merge checkout status release')],
 ]);
-// a flag that takes a person or an account, whatever the value looks like
-const PERSON_FLAG = /^(?:user|username|login)$/;
+// a flag that takes or names a person or an account, whatever the value looks like; any word of the flag counts (`--customer-acme`)
+const PERSON_FLAG_WORD = /\b(?:users?|usernames?|logins?|as|customers?|owners?|emails?|names?|admins?|authors?|assignees?|reviewers?|principals?|identity|impersonate|members?|clients?|orgs?|uid|gid|root|support|billing)\b/i;
+const is_person_flag = (flag: string): boolean => PERSON_FLAG_WORD.test(split_words(flag));
 const AUTH_KEY = /\b(?:bearer|authori[sz]ation|basic)\b/i;
 const is_key_like_segment = (segment: string): boolean => has_key_token(segment) || (/[a-z]/.test(segment) && /[A-Z]/.test(segment) && /\d/.test(segment));
 const is_plain = (text: string): boolean => !find_value_in_name(text) && !has_key_token(text);
@@ -169,19 +170,19 @@ const is_plain = (text: string): boolean => !find_value_in_name(text) && !has_ke
 const is_name_shaped = (content: string, surface_names: string[] = []): boolean => {
   if (!is_plain(content)) return false;
   const flag = LONG_FLAG.exec(content);
-  if (flag) return !is_value_name(flag[1]!) && !PERSON_FLAG.test(flag[1]!) && (flag[2] === undefined || HARMLESS_OPTION_VALUE.has(flag[2])); // a long flag, bare or with a harmless value
+  if (flag) return !is_value_name(flag[1]!) && !is_person_flag(flag[1]!) && (flag[2] === undefined || HARMLESS_OPTION_VALUE.has(flag[2])); // a long flag, bare or with a harmless value
   if (content.startsWith('/')) return true; // a route or an absolute path, as on main
   if (SHORT_FLAG.test(content)) return true; // `-v`, never with attached characters (`-psecret`)
   if (surface_names.includes(content)) return true; // a scheduled-job key, route, flag, queue or task name, alert name or CI job
   // a file name or path with a known extension, every segment plain
-  if (FILE_EXTENSION.test(content) && /^[\w./-]+$/.test(content)) return FILE_DIRS.has(content.split('/')[0]!) && content.includes('/') && content.split('/').every((segment) => is_plain(segment) && !is_key_like_segment(segment));
+  if (FILE_EXTENSION.test(content) && /^[\w./-]+$/.test(content)) return FILE_DIRS.has(content.split('/')[0]!) && content.includes('/') && content.split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..' && is_plain(segment) && !is_key_like_segment(segment)); // `..`, `.` or `//` could leave the folder
   // a command phrase (#120, allowlist): a known tool, then only bare --long-flags, --flag=<harmless value>, and that tool's subcommand words; anything else makes it a value
   const tokens = content.split(/\s+/);
   const subs = KNOWN_TOOLS.get(tokens[0]!);
   if (tokens.length < 2 || !subs || !tokens.some((token) => /^--[a-z]/.test(token)) || AUTH_KEY.test(content)) return false;
   return tokens.slice(1).every((token) => {
     const long = LONG_FLAG.exec(token);
-    if (long) return !is_value_name(long[1]!) && !PERSON_FLAG.test(long[1]!) && (long[2] === undefined ? BARE_FLAG.test(token) : HARMLESS_OPTION_VALUE.has(long[2]));
+    if (long) return !is_value_name(long[1]!) && !is_person_flag(long[1]!) && (long[2] === undefined ? BARE_FLAG.test(token) : HARMLESS_OPTION_VALUE.has(long[2]));
     return subs.has(token) && !is_value_name(token);
   });
 };
@@ -208,7 +209,7 @@ export function find_option_spans(line: string, refined: boolean): [number, numb
   const spans: [number, number][] = [];
   const is_value_argument = (flag: string, written: string): boolean => {
     const value = written.replace(/[)\]}"'`,;]+$/, ''); // closing punctuation of the call is not part of the value
-    return !refined || is_value_name(flag) || PERSON_FLAG.test(flag) || !HARMLESS_OPTION_VALUE.has(value);
+    return !refined || is_value_name(flag) || is_person_flag(flag) || !HARMLESS_OPTION_VALUE.has(value);
   };
   for (const token of line.matchAll(/\S+/g)) {
     const [text, at] = [token[0], token.index!];

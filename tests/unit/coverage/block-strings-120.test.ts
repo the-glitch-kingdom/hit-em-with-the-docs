@@ -24,7 +24,7 @@ describe('block strings and comments are prose (#120 section 3)', () => {
       const blocks = find_block_lines(text, files[name]);
       const prose_at = lines.findIndex((line) => line.includes('expiry'));
       if (!['one-line docstring', 'jsdoc'].includes(name)) expect(find_security_check(lines[prose_at]!)).toBeDefined(); // flagged alone, so the block is what saves it
-      expect(blocks.has(prose_at)).toBe(true);
+      expect(blocks.has(prose_at)).toBe(!files[name]!.endsWith('.rb')); // Ruby is not parser-checked: every line is held
       expect(blocks.has(lines.indexOf(real))).toBe(false);
     });
   }

@@ -90,7 +90,7 @@ describe('block syntax belongs to the languages that have it (#120 review)', () 
   it('real blocks still hide prose, by language', () => {
     expect([...find_block_lines('/*\nx\n*/\n', 'a.go')]).toEqual([0, 1, 2]);
     expect([...find_block_lines('"""\nx\n"""\n', 'a.py')]).toEqual([0, 1, 2]);
-    expect([...find_block_lines('=begin\nx\n=end\n', 'a.rb')]).toEqual([0, 1, 2]);
+    expect([...find_block_lines('=begin\nx\n=end\n', 'a.rb')]).toEqual([]); // Ruby is not parser-checked: every line is held
     expect(find_block_lines('=begin\nx\n=end\n', 'a.py').size).toBe(0);
     expect(find_block_lines('"""\nx\n"""\n', 'a.ts').size).toBe(0);
     expect(find_block_lines('/*\nx\n*/\n', 'a.py').size).toBe(0);

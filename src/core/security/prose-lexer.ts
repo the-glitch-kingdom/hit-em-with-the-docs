@@ -19,6 +19,9 @@ const TRIPLE_STRINGS = new Set(['java', 'kt', 'kts', 'swift', 'scala', 'cs']);
 const C_STYLE = new Set([...JS_EXTENSIONS, ...C_FAMILY, ...NESTED_COMMENTS, ...TRIPLE_STRINGS, 'go', 'php', 'css', 'scss', 'less']);
 // a `/` after one of these starts a regex literal; `of`, `yield` and `await` can also be plain identifiers, so they are ambiguous
 const REGEX_KEYWORDS = new Set(['return', 'typeof', 'instanceof', 'case', 'in', 'delete', 'void', 'throw', 'new', 'else', 'do', 'default']);
+// Prose is read only where a real parser checks the lexer (Python ast, the TypeScript parser, go/scanner, gcc); every
+// other language holds every line, as 3.7.0 did. Interpolation in Kotlin, Swift, Scala, C# and PHP is not tracked (#120).
+const PARSER_CHECKED = new Set(['py', 'pyi', ...JS_EXTENSIONS, ...C_FAMILY, 'go']);
 const AMBIGUOUS_KEYWORDS = new Set(['of', 'yield', 'await']);
 const PAREN_KEYWORDS = new Set(['if', 'while', 'for', 'with']);
 type Reading = 'regex' | 'division' | 'ambiguous';
@@ -417,7 +420,8 @@ const resolve_family = (extension: string): 'python' | 'c' | 'ruby' | undefined 
 export function find_block_lines(text: string, file?: string): Set<number> {
   const extension = file ? /\.(\w+)$/.exec(file)?.[1]?.toLowerCase() ?? '' : '';
   const family = resolve_family(extension);
-  if (!family) return new Set();
+  if (!family || !PARSER_CHECKED.has(extension)) return new Set();
+  if (JS_EXTENSIONS.has(extension) && /<!--|^[ \t]*-->/m.test(text)) return new Set(); // a classic-script HTML comment opener
   if (extension === 'php' && (!/^(?:\uFEFF)?(?:#![^\n]*\n)?\s*<\?/.test(text) || /\?>\s*\S/.test(text))) return new Set(); // inline HTML is text this lexer does not read
   if (extension === 'jsx' || extension === 'tsx') return new Set(); // JSX text is not lexed
   if (family === 'c' && !JS_EXTENSIONS.has(extension) && extension !== 'php' && /^\uFEFF?#!/.test(text)) return new Set(); // a hashbang line is only a comment in JS

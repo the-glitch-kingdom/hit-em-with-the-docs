@@ -192,7 +192,7 @@ describe('real prose is still skipped (#120)', () => {
     const prose = 'the token expiry is why we compare the token against the expected value';
     expect([...find_block_lines(lines_of('def f():', `    ${Q}Doc.`, `    ${prose}`, `    ${Q}`, '    return 1'), 'a.py')]).toEqual([1, 2, 3]);
     expect([...find_block_lines(lines_of('/*', prose, '*/', 'foo();'), 'a.ts')]).toEqual([0, 1, 2]);
-    expect([...find_block_lines(lines_of('=begin', prose, '=end', 'x = 1'), 'a.rb')]).toEqual([0, 1, 2]);
+    expect([...find_block_lines(lines_of('=begin', prose, '=end', 'x = 1'), 'a.rb')]).toEqual([]); // Ruby is not parser-checked: every line is held
   });
   it('find_check_line skips the docstring prose line and still finds the real check after it', async () => {
     const prose = 'the token expiry is why we compare the token against the expected value';
@@ -211,6 +211,7 @@ describe('real prose is still skipped (#120)', () => {
 });
 
 // the lexer must be back in the normal state after each construct: a real block after it is still found (no construct fails by giving up)
+const PARSER_CHECKED = new Set(['py', 'pyi', 'js', 'jsx', 'mjs', 'cjs', 'ts', 'tsx', 'c', 'h', 'cc', 'cpp', 'cxx', 'hpp', 'go']);
 const TAIL: Record<string, string> = { py: lines_of('def tail():', `    ${Q}`, '    tail prose', `    ${Q}`), rb: lines_of('=begin', 'tail prose', '=end'), c: lines_of('/*', 'tail prose', '*/') };
 describe('the lexer recovers after every well-formed construct (#120)', () => {
   for (const construct of [...PYTHON, ...RUBY, ...C_STYLE]) {
@@ -219,6 +220,7 @@ describe('the lexer recovers after every well-formed construct (#120)', () => {
       const tail = TAIL[construct.ext === 'py' ? 'py' : construct.ext === 'rb' ? 'rb' : 'c']!;
       const text = construct.text.replace('@@', FILLER) + tail;
       const marked = find_block_lines(text, `a.${construct.ext}`);
+      if (!PARSER_CHECKED.has(construct.ext)) return expect(marked.size).toBe(0); // only parser-checked languages read prose; the rest hold every line
       expect(marked.has(text.split('\n').findIndex((line) => line.trim() === 'tail prose'))).toBe(true);
     });
   }

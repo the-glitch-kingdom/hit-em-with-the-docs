@@ -1200,8 +1200,9 @@ How to use it:
   4. hewtd reconcile --apply <file>  apply only the ticked entries; nothing else is written
 
 What the output means:
-  needs_human        a located line is a security check (auth, crypto, permission, firewall):
-                     never drafted; the kind and file:line are shown, never the line
+  needs_human        units a person must handle, never drafted, with the reason: a located line
+                     is a security check (auth, crypto, permission, firewall), or every facet is
+                     withheld as a value; the kind and file:line are shown, never the line
   security_adjacent  a security topic word only: drafted, judge carefully
   withheld_facets    a count of facets that touch a value (credential, host, id, URL, option
                      argument, env default): their text is never printed

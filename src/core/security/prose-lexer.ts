@@ -313,11 +313,11 @@ class Lexer {
   private scan_block_comment(): void {
     let level = 0;
     do {
-      if (this.starts('/*')) { level++; this.consume('prose', 2); }
+      // `/*` opens only at level 0 unless comments nest: in `/*/` the `*` must stay free to close
+      if (this.starts('/*') && (level === 0 || NESTED_COMMENTS.has(this.extension))) { level++; this.consume('prose', 2); }
       else if (this.starts('*/')) { level--; this.consume('prose', 2); }
       else if (this.pos >= this.text.length) give_up();
       else this.consume('prose');
-      if (!NESTED_COMMENTS.has(this.extension) && level > 1) level = 1;
     } while (level > 0);
   }
   private scan_template(): void {
@@ -422,6 +422,7 @@ export function find_block_lines(text: string, file?: string): Set<number> {
   const family = resolve_family(extension);
   if (!family || !PARSER_CHECKED.has(extension)) return new Set();
   if (JS_EXTENSIONS.has(extension) && /<!--|^[ \t]*-->/m.test(text)) return new Set(); // a classic-script HTML comment opener
+  if (/\r(?!\n)|[\u2028\u2029]/.test(text)) return new Set(); // a lone CR (JS, Python) or U+2028/U+2029 (JS) ends a line comment where this lexer does not
   if (extension === 'php' && (!/^(?:\uFEFF)?(?:#![^\n]*\n)?\s*<\?/.test(text) || /\?>\s*\S/.test(text))) return new Set(); // inline HTML is text this lexer does not read
   if (extension === 'jsx' || extension === 'tsx') return new Set(); // JSX text is not lexed
   if (family === 'c' && !JS_EXTENSIONS.has(extension) && extension !== 'php' && /^\uFEFF?#!/.test(text)) return new Set(); // a hashbang line is only a comment in JS

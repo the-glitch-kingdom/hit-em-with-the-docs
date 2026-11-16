@@ -41,3 +41,20 @@ describe('a path with a dot segment never passes the folder rule', () => {
     it(`${path} is a value`, () => expect(is_withheld(`P = "${path}"`, path)).toBe(true));
   it('fixtures/x.json stays a name', () => expect(is_withheld('P = "fixtures/x.json"', 'fixtures/x.json')).toBe(false));
 });
+
+describe('review round 4: a `/*` inside an open comment, and line terminators the lexer does not end lines at', () => {
+  const tail = '\nlistOf(\n  requireAdmin,\n)\n// */\n';
+  for (const [file, head] of [['src/a.ts', 'const x = 1; /*\n/*/'], ['src/a.js', 'const x = 1; /*\n/*/'], ['src/a.go', 'package a\nvar x = 1 /*\n/*/'], ['src/a.c', 'int x = 1; /*\n/*/']])
+    it(`${file}: /*/ closes the comment, the code after it is not prose`, () => {
+      const text = head + tail;
+      const marked = find_block_lines(text, file);
+      expect(marked.has(text.split('\n').findIndex((line) => line.includes('requireAdmin')))).toBe(false);
+    });
+  for (const terminator of ['\r', '\u2028', '\u2029'])
+    for (const file of ['src/a.ts', 'src/a.mjs', 'src/a.py'])
+      it(`${file} with ${JSON.stringify(terminator)} marks nothing`, () => {
+        expect([...find_block_lines(`const a = [1, // c${terminator}\`\n/* \`, requireAdmin,\n]; /**/\n`, file)]).toEqual([]);
+      });
+  it('CRLF files still read real comments', () => expect(find_block_lines('/* note\r\n requireAdmin\r\n*/\r\nx();\r\n', 'src/a.ts').has(1)).toBe(true));
+});
+

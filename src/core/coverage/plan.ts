@@ -12,7 +12,7 @@ import { locate_facets, type LocateResult } from './locate.js';
 import { add_generated_references, find_declared_files, merge_decisions, type MergeOptions, type Proposal } from './merge.js';
 import { compile_facet, list_timed_out_facets, match_facets, parse_position_facet, test_facet, type CoverageMiss } from './facets.js';
 import { find_surface_names } from './surfaces/index.js';
-import { find_value_in_name, find_value_spans, has_key_token, is_value_line } from '../security/gate.js';
+import { find_option_spans, find_value_in_name, find_value_spans, has_key_token, is_value_line } from '../security/gate.js';
 import type { SecretsConfig } from '../../utils/config.js';
 
 /** The fields of a gaps.v1 entry the engine reads; `facets` is required. */
@@ -38,12 +38,20 @@ function is_in_heredoc(lines: string[], index: number): boolean {
 const de_regex = (facet: string): string => facet.replace(/\\(.)/g, '$1');
 export const REDACTED_QUESTION = '[redacted question]';
 
-/** Whether every match of `regex` in the line is inside a literal, an option argument or userinfo. */
-function is_in_value_context(regex: RegExp, text: string, surface_names: string[]): boolean {
-  const spans = find_value_spans(text, surface_names);
+/** The matches of `regex` in a line, as [from, to] pairs; `names` lists the surface names of the line (already screened), whose exact text is not a value wherever it sits. */
+function find_matches(regex: RegExp, text: string, names: string[] = []): { all: [number, number][]; unscreened: [number, number][] } {
   const global = new RegExp(regex.source, regex.flags.includes('g') ? regex.flags : `${regex.flags}g`);
   const found = [...text.slice(0, 20_000).matchAll(global)].filter((match) => match[0].length);
-  return found.length > 0 && found.every((match) => spans.some(([from, to]) => match.index! >= from && match.index! + match[0].length <= to));
+  const pair = (match: RegExpMatchArray): [number, number] => [match.index!, match.index! + match[0].length];
+  return { all: found.map(pair), unscreened: found.filter((match) => !names.includes(match[0])).map(pair) };
+}
+
+/** Whether any match of `regex` in the line overlaps a value span: showing the facet would show part of that value (#120). */
+const has_value_overlap = (found: [number, number][], spans: [number, number][]): boolean => found.some(([from, to]) => spans.some(([start, end]) => from < end && to > start));
+
+/** Whether every match of `regex` in the line is wholly inside a literal, an option argument (3.7.0 set) or userinfo. */
+function is_in_value_context(found: [number, number][], spans: [number, number][]): boolean {
+  return found.length > 0 && found.every(([from, to]) => spans.some(([start, end]) => from >= start && to <= end));
 }
 
 async function find_value_facets(repo_root: string, located: LocateResult, secrets_config: SecretsConfig, by_context: boolean): Promise<Set<string>> {
@@ -54,18 +62,28 @@ async function find_value_facets(repo_root: string, located: LocateResult, secre
     const regex = compile_facet(facet).regex;
     if (!regex || !located_hits.length || parse_position_facet(facet)) continue;
     let every = true;
+    let overlaps = false;
     for (const located_hit of located_hits) {
       let lines = lines_of.get(located_hit.file);
       if (!lines) { lines = (await readFile(join(repo_root, located_hit.file), 'utf-8').catch(() => '')).split('\n'); lines_of.set(located_hit.file, lines); }
       const source_line = lines[located_hit.line - 1] ?? '';
-      // by context (gaps facets only; a coverage facet is a screened surface name): inside a literal, an option argument, userinfo or a heredoc
+      // by context (gaps facets only; a coverage facet is a screened surface name): a literal, an option argument, userinfo or a heredoc
       let names = names_of.get(located_hit.file);
       if (by_context && !names) { names = find_surface_names(located_hit.file, lines); names_of.set(located_hit.file, names); }
-      if (by_context && (is_in_heredoc(lines, located_hit.line - 1) || is_in_value_context(regex, source_line, names?.get(located_hit.line) ?? []))) continue;
+      if (by_context) {
+        const line_names = names?.get(located_hit.line) ?? [];
+        const spans = find_value_spans(source_line, line_names);
+        const matches = find_matches(regex, source_line, line_names);
+        // #120: a match that overlaps ANY value span withholds the facet, on any located line; the 3.7.0 wholly-inside rule (every option argument) still holds too
+        if (has_value_overlap(matches.unscreened, spans)) { overlaps = true; break; }
+        if (every && (is_in_heredoc(lines, located_hit.line - 1) || is_in_value_context(matches.all, [...spans, ...find_option_spans(source_line, false)]))) continue;
+      }
+      if (!every) continue;
       const text = source_line.replace(/[\s,;)]+$/, '');
       const cut = Math.max(text.lastIndexOf('??'), text.lastIndexOf('||'), ...[...'=:,('].map((char) => text.lastIndexOf(char)));
-      if (!(cut >= 0 && is_value_line(text, secrets_config) && test_facet(regex, text.slice(cut + 1)) && !test_facet(regex, text.slice(0, cut)))) { every = false; break; }
+      if (!(cut >= 0 && is_value_line(text, secrets_config) && test_facet(regex, text.slice(cut + 1)) && !test_facet(regex, text.slice(0, cut)))) every = false;
     }
+    if (overlaps) { found.add(facet); continue; }
     if (every) found.add(facet);
   }
   return found;

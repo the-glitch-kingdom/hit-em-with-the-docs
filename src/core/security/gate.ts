@@ -133,8 +133,13 @@ const NAME_LITERAL_PREFIX = /(?:\b(?:import|from|require|getenv|environ(?:\.get)
 // #120: main's rule is the base. Inside a literal a matched facet is a value unless it starts with `--` (a long flag) or `/` (a route or path). Only four additions are names:
 // a one-letter flag, a file name, a command phrase with a long flag, and a name a surface detector found on the same line. Every name must also pass find_value_in_name and has_key_token.
 const FILE_EXTENSION = /\.(?:json|ya?ml|toml|md|txt|csv|sql|py|tsx?|jsx?|rb|go|java|kt|cs|rs|php|sh|html|css|xml|ini|cfg|lock|env\.example)$/i;
-const LONG_FLAG = /^--([a-z][a-z0-9-]*)(?:=[a-z][a-z0-9-]*)?$/;
+const PLAIN_WORD = /^[a-z]+(?:-[a-z]+)*$/;
+const LONG_FLAG = /^--([a-z][a-z0-9-]*)(?:=([a-z]+(?:-[a-z]+)*))?$/;
 const SHORT_FLAG = /^-[A-Za-z]$/;
+// a command phrase is a name only when its first word is a known tool (#120): a positional word after any other command can be a password or a person
+const KNOWN_TOOLS = new Set(['npm', 'npx', 'yarn', 'pnpm', 'pip', 'pipx', 'poetry', 'uv', 'git', 'docker', 'kubectl', 'helm', 'terraform', 'make', 'cargo', 'go', 'node', 'deno', 'bun', 'python', 'python3', 'ruby', 'bundle', 'rake', 'rails', 'gem', 'mvn', 'gradle', 'dotnet', 'hewtd', 'gh']);
+// a flag that takes a person or an account, whatever the value looks like
+const PERSON_FLAG = /^(?:user|username|login)$/;
 const AUTH_KEY = /\b(?:bearer|authori[sz]ation|basic)\b/i;
 const is_key_like_segment = (segment: string): boolean => has_key_token(segment) || (/[a-z]/.test(segment) && /[A-Z]/.test(segment) && /\d/.test(segment));
 const is_plain = (text: string): boolean => !find_value_in_name(text) && !has_key_token(text);
@@ -148,14 +153,13 @@ const is_name_shaped = (content: string, surface_names: string[] = []): boolean 
   if (surface_names.includes(content)) return true; // a scheduled-job key, route, flag, queue or task name, alert name or CI job
   // a file name or path with a known extension, every segment plain
   if (FILE_EXTENSION.test(content) && /^[\w./-]+$/.test(content)) return content.split('/').every((segment) => is_plain(segment) && !is_key_like_segment(segment));
-  // a command phrase: a --long-flag and lowercase letter words, no short flag with an attached value, no word that follows a flag
+  // a command phrase: a known tool, then only --long-flags (never a value name) and lowercase subcommand words; a word after a flag without `=` is never allowed
   const tokens = content.split(/\s+/);
-  if (tokens.length < 2 || !tokens.some((token) => /^--[a-z]/.test(token)) || AUTH_KEY.test(content)) return false;
-  return tokens.every((token, i) => {
+  if (tokens.length < 2 || !KNOWN_TOOLS.has(tokens[0]!) || !tokens.some((token) => /^--[a-z]/.test(token)) || AUTH_KEY.test(content)) return false;
+  return tokens.slice(1).every((token, i) => {
     const long = LONG_FLAG.exec(token);
-    if (long) return !is_value_name(long[1]!);
-    if (SHORT_FLAG.test(token)) return true;
-    const before = tokens[i - 1] ?? '';
+    if (long) return !is_value_name(long[1]!) && !PERSON_FLAG.test(long[1]!);
+    const before = tokens[i]!; // the token before this one
     return /^[a-z]+$/.test(token) && !is_value_name(token) && !(/^--?[a-z]/.test(before) && !before.includes('='));
   });
 };
@@ -174,6 +178,29 @@ function find_comment_start(line: string): number {
     else if (char === '/' && line[i + 1] === '/' && line[i - 1] !== ':' || char === '#' && (i === 0 || /\s/.test(line[i - 1]!))) return i;
   }
   return -1;
+}
+/**
+ * The option arguments of a shell line. `refined` (#120) keeps a plain lowercase word after a long flag a name (`--omit=dev`, `--omit dev`) unless
+ * the flag takes a value or a person; unrefined is the 3.7.0 set, every argument, kept so a facet wholly inside one stays withheld. `-pX` is always a value.
+ */
+export function find_option_spans(line: string, refined: boolean): [number, number][] {
+  const spans: [number, number][] = [];
+  const is_value_argument = (flag: string, written: string): boolean => {
+    const value = written.replace(/[)\]}"'`,;]+$/, ''); // closing punctuation of the call is not part of the value
+    return !refined || is_value_name(flag) || PERSON_FLAG.test(flag) || !PLAIN_WORD.test(value) || is_key_like_segment(value) || !!find_value_in_name(value);
+  };
+  for (const token of line.matchAll(/\S+/g)) {
+    const [text, at] = [token[0], token.index!];
+    const short = /^-[A-Za-z]\S/.test(text) ? 2 : 0;
+    const long = /^--([\w-]+)=/.exec(text);
+    if (short) spans.push([at + short, at + text.length]);
+    else if (long) { if (is_value_argument(long[1]!, text.slice(long[0].length))) spans.push([at + long[0].length, at + text.length]); }
+    else if (/^--?[A-Za-z][\w-]*$/.test(text)) {
+      const next = /^\s+(?!-)(\S+)/.exec(line.slice(at + text.length));
+      if (next && (text.startsWith('--') ? is_value_argument(text.slice(2), next[1]!) : true)) spans.push([at + text.length + next[0].length - next[1]!.length, at + text.length + next[0].length]);
+    }
+  }
+  return spans;
 }
 /**
  * Where a source line holds values by CONTEXT, not by shape (#118): the spans inside a string literal ('..', "..", `..`),
@@ -197,13 +224,7 @@ export function find_value_spans(line: string, surface_names: string[] = []): [n
   if (comment_at >= 0) for (const found of line.slice(comment_at).matchAll(/([\w-]+)\s*[:=]\s*([^\s"'`,;)]+)|\b(?:bearer|basic)\s+([^\s"'`,;)]+)/gi)) {
     if (found[3] || is_value_key(found[1])) { const value = found[3] ?? found[2]!; spans.push([comment_at + found.index! + found[0].length - value.length, comment_at + found.index! + found[0].length]); }
   }
-  for (const token of line.matchAll(/\S+/g)) {
-    const [text, at] = [token[0], token.index!];
-    const short = /^-[A-Za-z]\S/.test(text) ? 2 : 0;
-    const long = /^--[\w-]+=/.exec(text)?.[0].length ?? 0;
-    if (short || long) spans.push([at + (short || long), at + text.length]);
-    else if (/^--?[A-Za-z][\w-]*$/.test(text)) { const next = /^\s+(?!-)(\S+)/.exec(line.slice(at + text.length)); if (next) spans.push([at + text.length + next[0].length - next[1]!.length, at + text.length + next[0].length]); }
-  }
+  spans.push(...find_option_spans(line, true));
   for (const found of line.matchAll(/[^\s'"`/@:]+:[^\s'"`@/]*@|:\/\/[^\s/@]*@/g)) spans.push([found.index!, found.index! + found[0].length]);
   return spans;
 }

@@ -35,7 +35,7 @@ const names: [string, string, string][] = [
   ['fixture file', 'data = load("fixtures/orders_sample.json")', 'orders_sample.json'],
   ['fixture path', 'data = load("fixtures/orders_sample.json")', 'fixtures/orders_sample.json'],
   ['route', 'app.get("/api/orders/list", handler)', '/api/orders/list'],
-  ['comment event', '// emits user.created once the row is saved, see "user.created"', 'user.created'],
+  ['comment event', '// emits user.created once the row is saved', 'user.created'],
 ];
 
 let repo: string;

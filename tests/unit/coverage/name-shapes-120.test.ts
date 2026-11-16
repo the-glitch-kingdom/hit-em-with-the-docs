@@ -38,7 +38,7 @@ const kept: [string, string, string][] = [
   ['fixture path', 'data = load("fixtures/orders_sample.json")', 'fixtures/orders_sample.json'],
   ['route', 'app.get("/api/orders/list", handler)', '/api/orders/list'],
   ['route params', 'app.get("/api/orders/:id/{kind}", handler)', '/api/orders/:id/{kind}'],
-  ['comment event', '// emits user.created once the row is saved, see "user.created"', 'user.created'],
+  ['comment event', '// emits user.created once the row is saved', 'user.created'],
 ];
 
 let repo: string;

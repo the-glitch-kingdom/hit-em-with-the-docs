@@ -81,6 +81,12 @@ const RUBY: Construct[] = [
   { name: 'indented =begin is code', ext: 'rb', text: lines_of('  =begin', '@@', '  =end') },
   { name: 'unterminated =begin', ext: 'rb', text: lines_of('=begin', '@@') },
   { name: 'data after __END__', ext: 'rb', text: lines_of('x = 1', '__END__', '=begin', '@@', '=end') },
+  { name: 'multi-line /x regex holding =begin (gives up)', ext: 'rb', text: lines_of('re = /', '  a b # x', '=begin', '@@', '=end', '/x') },
+  { name: 'multi-line %r regex holding =begin', ext: 'rb', text: lines_of('re = %r{', '=begin', '@@', '=end', '}x') },
+  { name: 'lowercase heredoc id holding =begin', ext: 'rb', text: lines_of('x = <<eos', '=begin', '@@', '=end', 'eos') },
+  { name: 'lowercase squiggly heredoc holding =begin', ext: 'rb', text: lines_of('x = <<~eos', '=begin', '@@', '=end', 'eos') },
+  { name: 'quoted heredoc id with a space (gives up)', ext: 'rb', text: lines_of('x = <<~"END OF"', '=begin', '@@', '=end', 'END OF') },
+  { name: 'interpolated regex (gives up)', ext: 'rb', text: lines_of('re = /a#{b/c}d/', '=begin', '@@', '=end') },
   { name: 'real =begin block', ext: 'rb', real: true, text: lines_of('=begin', '@@', '=end', 'x = 1') },
   { name: 'real =begin after modulo', ext: 'rb', real: true, text: lines_of('y = x % 3', '=begin', '@@', '=end') },
 ];
@@ -123,6 +129,21 @@ const C_STYLE: Construct[] = [
   { name: 'real block holding quotes and delimiters', ext: 'js', real: true, text: lines_of('/* it\'s "x" // y', '@@', '*/') },
   { name: 'real block after a char literal', ext: 'c', real: true, text: lines_of('char c = \'"\'; /* x', '@@', '*/') },
   { name: 'real block after a division', ext: 'js', real: true, text: lines_of('const a = b / c; /* real', '@@', '*/') },
+  // regex literals after a keyword or the paren of if/while/for: the `/*` inside the class is not a comment (review finding 1)
+  ...['if (ok)', 'while (ok)', 'for (;;)', 'return', 'typeof', 'case 1: return', 'x instanceof', "'a' in", 'else', 'do', 'void', 'delete', 'throw', 'x =', 'foo(1,', 'x = !'].map((head): Construct => ({ name: `regex after ${head}`, ext: 'js', text: lines_of(`${head} /[/*]/.test(s);`, '@@', 'y = z; // end */') })),
+  ...['for (const a of', 'yield', 'await', '}'].map((head): Construct => ({ name: `regex after ${head} (gives up or reads both)`, ext: 'js', text: lines_of(`${head}`, '/[/*]/.test(s);', '@@', 'y = z; // end */') })),
+  { name: 'regex after a ++ (gives up)', ext: 'ts', text: lines_of('a++', '/[/*]/.test(s);', '@@', 'y = z; // end */') },
+  { name: 'division after ) and ] and a name', ext: 'ts', text: lines_of('const q = (a + b) / 2 / c[0] / d; // x', '@@', 'const w = "*/";') },
+  { name: 'jsx text holding /* in a jsx file (gives up)', ext: 'jsx', text: lines_of('const e = <code>src/*</code>;', '@@', 'const t = x; // */') },
+  { name: 'jsx text holding /* in a tsx file (gives up)', ext: 'tsx', text: lines_of('const e = <code>src/*</code>;', '@@', 'const t = x; // */') },
+  { name: 'jsx text holding /* in a js file (gives up)', ext: 'js', text: lines_of('const e = cond ? <code>src/*</code> : null;', '@@', 'const t = x; // */') },
+  { name: 'comparison is not jsx', ext: 'js', real: true, text: lines_of('if (a <b) go(); /* real', '@@', '*/') },
+  { name: 'hashbang ending in a block opener', ext: 'js', text: lines_of('#!/usr/bin/env node /*', '@@', 'y = z; // end */') },
+  { name: 'hashbang in a c file (gives up)', ext: 'c', text: lines_of('#!/usr/bin/env tcc /*', '@@', 'y = z; // end */') },
+  { name: 'include with a comment opener in the header name', ext: 'c', text: lines_of('#include <a/*b>', '@@', 'int x; // end */') },
+  { name: 'spliced line comment', ext: 'c', text: lines_of('// note \\', '/* still the comment', '@@', 'int y; /* real */') },
+  { name: 'spliced line comment with trailing space', ext: 'cpp', text: lines_of('// note \\ ', '/* still the comment', '@@', 'int y; /* real */') },
+  { name: 'splice inside a comment opener (gives up)', ext: 'c', text: lines_of('int a; /\\', '* x', '@@', 'int y; // end */') },
 ];
 
 const FILLER = 'filler line';
@@ -193,7 +214,7 @@ describe('real prose is still skipped (#120)', () => {
 const TAIL: Record<string, string> = { py: lines_of('def tail():', `    ${Q}`, '    tail prose', `    ${Q}`), rb: lines_of('=begin', 'tail prose', '=end'), c: lines_of('/*', 'tail prose', '*/') };
 describe('the lexer recovers after every well-formed construct (#120)', () => {
   for (const construct of [...PYTHON, ...RUBY, ...C_STYLE]) {
-    if (/unterminated|__END__|indented/.test(construct.name)) continue;
+    if (/unterminated|__END__|indented|gives up/.test(construct.name)) continue;
     it(construct.name, () => {
       const tail = TAIL[construct.ext === 'py' ? 'py' : construct.ext === 'rb' ? 'rb' : 'c']!;
       const text = construct.text.replace('@@', FILLER) + tail;

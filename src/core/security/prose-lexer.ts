@@ -17,7 +17,11 @@ const C_FAMILY = new Set(['c', 'h', 'cc', 'cpp', 'cxx', 'hpp']);
 const NESTED_COMMENTS = new Set(['rs', 'kt', 'kts', 'swift', 'scala']);
 const TRIPLE_STRINGS = new Set(['java', 'kt', 'kts', 'swift', 'scala', 'cs']);
 const C_STYLE = new Set([...JS_EXTENSIONS, ...C_FAMILY, ...NESTED_COMMENTS, ...TRIPLE_STRINGS, 'go', 'php', 'css', 'scss', 'less']);
-const REGEX_KEYWORDS = new Set(['return', 'typeof', 'case', 'in', 'of', 'delete', 'void', 'throw', 'new', 'else', 'do', 'yield', 'await']);
+// a `/` after one of these starts a regex literal; `of`, `yield` and `await` can also be plain identifiers, so they are ambiguous
+const REGEX_KEYWORDS = new Set(['return', 'typeof', 'instanceof', 'case', 'in', 'delete', 'void', 'throw', 'new', 'else', 'do', 'default']);
+const AMBIGUOUS_KEYWORDS = new Set(['of', 'yield', 'await']);
+const PAREN_KEYWORDS = new Set(['if', 'while', 'for', 'with']);
+type Reading = 'regex' | 'division' | 'ambiguous';
 const WORD = /[\w$]/;
 const CLOSERS: Record<string, string> = { '(': ')', '[': ']', '{': '}', '<': '>' };
 
@@ -26,6 +30,12 @@ class Lexer {
   line = 0;
   last_sig = '';
   last_word = '';
+  private prev_sig = '';
+  private last_word_is_property = false;
+  private last_paren: Reading = 'ambiguous';
+  private parens: Reading[] = []; // per open `(`: what a `/` after its `)` means
+  private trial = false; // a throwaway fork that lexes the rest of one line one way
+  private trial_depth = 0;
   readonly prose_lines = new Set<number>();
   readonly code_lines = new Set<number>();
   // python logical lines: the head of the previous statement decides whether a triple string is a docstring
@@ -44,11 +54,12 @@ class Lexer {
     for (let i = 0; i < count; i++) {
       if (this.pos >= this.text.length) give_up();
       const char = this.text[this.pos++]!;
-      if (char === '\n') { this.line++; continue; }
+      if (char === '\n') { if (this.trial) give_up(); this.line++; continue; }
       if (/\s/.test(char)) continue;
       if (mode === 'prose') { this.prose_lines.add(this.line); continue; }
       this.code_lines.add(this.line);
       if (mode === 'comment') continue;
+      this.prev_sig = this.last_sig;
       this.last_sig = char;
       if (this.family === 'python' && !this.nest && !this.stmt_started) { this.stmt_started = true; this.stmt_start = this.pos - 1; }
     }
@@ -174,20 +185,27 @@ class Lexer {
   }
 
   // ---- c-style ----
-  private scan_c(nested: boolean): void {
+  private scan_c(nested: boolean, start_depth = 0): void {
     const extension = this.extension;
     const js = JS_EXTENSIONS.has(extension);
+    const jsx_possible = extension === 'js' || extension === 'mjs' || extension === 'cjs';
     const php = extension === 'php';
-    let depth = 0;
+    let depth = start_depth;
     for (;;) {
-      if (this.pos >= this.text.length) { if (nested) give_up(); return; }
+      if (this.pos >= this.text.length) { if (nested) give_up(); this.trial_depth = depth; return; }
       const char = this.text[this.pos]!;
-      if (nested && char === '}' && !depth) return;
-      if (char === '\n') { this.end_line(); continue; }
+      if (nested && char === '}' && !depth) { this.trial_depth = depth; return; }
+      if (char === '\n') { if (this.trial) { this.trial_depth = depth; return; } this.end_line(); continue; }
       if (/\s/.test(char)) { this.consume(); continue; }
       if (char === '/' && this.text[this.pos + 1] === '*') { this.scan_block_comment(); continue; }
-      if (char === '/' && this.text[this.pos + 1] === '/' && extension !== 'css') { this.consume_to_line_end(); continue; }
+      if (char === '/' && this.text[this.pos + 1] === '/' && extension !== 'css') { this.scan_line_comment(); continue; }
       if (php && char === '#' && this.text[this.pos + 1] !== '[') { this.consume_to_line_end(); continue; }
+      if (js && char === '#' && this.text[this.pos + 1] === '!' && this.pos === (this.text[0] === '\uFEFF' ? 1 : 0)) { this.consume_to_line_end(); continue; } // hashbang
+      if (C_FAMILY.has(extension) && char === '#') {
+        const header = this.match(/#[ \t]*(?:include|include_next|import)[ \t]*<[^>\n]*>/y); // a header name is not lexed for comments
+        if (header) { this.consume('code', header[0].length); continue; }
+      }
+      if (jsx_possible && char === '<' && /[A-Za-z_$>/]/.test(this.text[this.pos + 1] ?? '') && this.classify_slash() !== 'division') give_up(); // JSX text is not lexed
       if (WORD.test(char)) { this.scan_c_word(); continue; }
       if (char === '"') {
         if (TRIPLE_STRINGS.has(extension) && this.starts('"""')) { this.consume('code', 3); this.scan_until('"""', true); }
@@ -218,17 +236,60 @@ class Lexer {
         const heredoc = this.match(/<<<[ \t]*(?:"(\w+)"|'(\w+)'|(\w+))/y);
         if (heredoc) { this.pending.push({ id: (heredoc[1] ?? heredoc[2] ?? heredoc[3])!, strip: true }); this.consume('code', heredoc[0].length); continue; }
       }
-      if (js && char === '/' && this.is_regex_allowed()) {
-        const regex = this.match(/\/(?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n[])+\//y);
-        if (regex) { this.consume('code', regex[0].length); continue; }
+      if (js && char === '/') {
+        const reading = this.classify_slash();
+        const regex = reading === 'division' ? null : this.match(/\/(?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n[])+\//y);
+        if (regex) {
+          // a `/` that could be either: lex the rest of the line both ways and trust the file only if both end in the same state
+          if (reading === 'ambiguous' && (this.trial || this.read_rest_of_line(regex[0].length, nested, depth) !== this.read_rest_of_line(0, nested, depth))) give_up();
+          this.consume('code', regex[0].length);
+          continue;
+        }
       }
+      if (js && char === '(') this.parens.push(this.classify_paren());
+      if (js && char === ')') this.last_paren = this.parens.pop() ?? 'ambiguous';
       if (char === '{') depth++;
       if (char === '}' && depth) depth--;
       this.consume();
     }
   }
-  private is_regex_allowed(): boolean {
-    return !this.last_sig || '(,=:[!&|?{};+-*%<>~^'.includes(this.last_sig) || WORD.test(this.last_sig) && REGEX_KEYWORDS.has(this.last_word);
+  /** What a `/` means here: a regex literal, a division, or either (the caller then lexes both). */
+  private classify_slash(): Reading {
+    const sig = this.last_sig;
+    if (!sig) return 'regex';
+    if (sig === ')') return this.last_paren;
+    if (sig === ']') return 'division';
+    if (sig === '}' || sig === '.' || sig === '/') return 'ambiguous';
+    if (sig === '+' || sig === '-') return this.prev_sig === sig ? 'ambiguous' : 'regex'; // `a++ / b`
+    if (sig === '!') return WORD.test(this.prev_sig) || ')]'.includes(this.prev_sig) ? 'ambiguous' : 'regex'; // `a! / b`
+    if ('(,=:[&|?{};*%<>~^'.includes(sig)) return 'regex';
+    if (WORD.test(sig)) {
+      if (this.last_word_is_property) return 'division';
+      if (REGEX_KEYWORDS.has(this.last_word)) return 'regex';
+      return AMBIGUOUS_KEYWORDS.has(this.last_word) ? 'ambiguous' : 'division';
+    }
+    return 'division';
+  }
+  private classify_paren(): Reading {
+    if (!WORD.test(this.last_sig) || this.last_word_is_property) return 'division';
+    if (PAREN_KEYWORDS.has(this.last_word)) return 'regex';
+    return this.last_word === 'await' ? 'ambiguous' : 'division'; // `for await (...) /re/`
+  }
+  /** Lexes the rest of the line from a throwaway copy, the `/` read as a regex of that length (0: as a division); the state it ends in. */
+  private read_rest_of_line(regex_length: number, nested: boolean, depth: number): string {
+    const fork: Lexer = Object.assign(Object.create(Lexer.prototype) as Lexer, this, { prose_lines: new Set(this.prose_lines), code_lines: new Set(this.code_lines), parens: [...this.parens], pending: [...this.pending], trial: true });
+    if (regex_length) fork.consume('code', regex_length); else fork.consume();
+    fork.scan_c(nested, depth);
+    return [fork.pos, fork.last_sig, fork.last_word, fork.prev_sig, fork.last_word_is_property, fork.last_paren, fork.parens.join(), fork.trial_depth, fork.pending.length].join('|');
+  }
+  private scan_line_comment(): void {
+    const spliced = C_FAMILY.has(this.extension); // in C and C++ a backslash before the newline continues the comment
+    for (;;) {
+      const start = this.pos;
+      this.consume_to_line_end();
+      if (!spliced || this.pos >= this.text.length || !/\\[ \t\r]*$/.test(this.text.slice(start, this.pos))) return;
+      this.consume();
+    }
   }
   private scan_c_word(): void {
     const extension = this.extension;
@@ -243,6 +304,7 @@ class Lexer {
       if (raw_string) { this.consume('code', raw_string[0].length); this.scan_until(`)${raw_string[1]}"`, false); return; }
     }
     this.last_word = word;
+    this.last_word_is_property = /\.\s*$/.test(this.text.slice(Math.max(0, this.pos - 8), this.pos));
     this.consume('code', word.length);
   }
   private scan_block_comment(): void {
@@ -290,7 +352,8 @@ class Lexer {
       }
       if (char === '<' && this.text[this.pos + 1] === '<' && this.text[this.pos + 2] !== '<') {
         const heredoc = this.match(/<<([~-]?)(?:(["'`])(\w+)\2|([A-Za-z_]\w*))/y);
-        if (heredoc && (heredoc[1] || heredoc[3] || /^[A-Z_][A-Z0-9_]*$/.test(heredoc[4]!))) {
+        if (!heredoc && /<<[~-]["'`]/y.test(this.text.slice(this.pos, this.pos + 4))) give_up(); // a quoted id this lexer cannot read
+        if (heredoc) { // any bare id counts: a wrongly read `a <<b` can only make the file give up or read more as code
           this.pending.push({ id: (heredoc[3] ?? heredoc[4])!, strip: !!heredoc[1] });
           this.consume('code', heredoc[0].length);
           continue;
@@ -305,7 +368,9 @@ class Lexer {
         const after = this.text[this.pos + 1] ?? ' ';
         if (!this.last_sig || !(WORD.test(this.last_sig) || ')]}\'"'.includes(this.last_sig)) || /\s/.test(this.text[this.pos - 1] ?? '') && !/[\s=]/.test(after)) {
           const regex = this.match(/\/(?:\\.|[^/\\\n])+\//y);
-          if (regex) { this.consume('code', regex[0].length); continue; }
+          if (!regex || regex[0].includes('#{')) return give_up(); // a multi-line /x regex or an interpolated one is not lexed
+          this.consume('code', regex[0].length);
+          continue;
         }
       }
       if (char === '{') depth++;
@@ -354,6 +419,9 @@ export function find_block_lines(text: string, file?: string): Set<number> {
   const family = resolve_family(extension);
   if (!family) return new Set();
   if (extension === 'php' && (!/^(?:\uFEFF)?(?:#![^\n]*\n)?\s*<\?/.test(text) || /\?>\s*\S/.test(text))) return new Set(); // inline HTML is text this lexer does not read
+  if (extension === 'jsx' || extension === 'tsx') return new Set(); // JSX text is not lexed
+  if (family === 'c' && !JS_EXTENSIONS.has(extension) && extension !== 'php' && /^\uFEFF?#!/.test(text)) return new Set(); // a hashbang line is only a comment in JS
+  if (C_FAMILY.has(extension) && /__has_include|\?\?\/|^[ \t]*(?:export[ \t]+)?import[ \t]*<|\/\\[ \t]*\r?\n[*/]|\*\\[ \t]*\r?\n\//m.test(text)) return new Set(); // header units, trigraphs and a splice inside a comment mark
   try {
     const lexer = new Lexer(text, extension, family);
     lexer.run();

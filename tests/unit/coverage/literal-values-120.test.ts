@@ -80,7 +80,8 @@ describe('block syntax belongs to the languages that have it (#120 review)', () 
     const c = '/*\nprose\n*/ if (token === expected) {}\n';
     expect([...find_block_lines(c, 'a.ts')]).toEqual([0, 1]);
     const py = '"""\nprose\n""" ; ok = token == expected\n';
-    expect([...find_block_lines(py, 'a.py')]).toEqual([0, 1]);
+    // a string with code after its closing quotes is data, not a docstring: nothing is skipped
+    expect([...find_block_lines(py, 'a.py')]).toEqual([]);
   });
   it('a check on the line that opens a block is still checked', () => {
     const c = 'if (token === expected) {} /* start\nprose\n*/\n';

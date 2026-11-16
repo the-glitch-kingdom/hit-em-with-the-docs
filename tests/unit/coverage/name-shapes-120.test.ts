@@ -91,10 +91,13 @@ describe('a C block opens only where a comment can start (#120)', () => {
     expect([...find_block_lines('a();\n/* x\ny\n*/\n', 'a.ts')]).toEqual([1, 2, 3]);
     expect([...find_block_lines('if (a) {} /* x\ny\n*/\n', 'a.ts')]).toEqual([1, 2]);
   });
-  it('a block that does not close within 200 lines marks nothing', () => {
+  // the 200-line cap is gone: the lexer knows where a block really closes, so a long one is prose; one that never closes marks nothing
+  it('a long closed block is prose and an unclosed one marks nothing', () => {
     const body = Array.from({ length: 205 }, () => 'prose').join('\n');
-    expect(find_block_lines(`/*\n${body}\n*/\n`, 'a.ts').size).toBe(0);
-    expect(find_block_lines(`"""\n${body}\n"""\n`, 'a.py').size).toBe(0);
+    const q3 = '"'.repeat(3);
+    expect(find_block_lines(`/*\n${body}\n*/\n`, 'a.ts').size).toBe(207);
+    expect(find_block_lines(`${q3}\n${body}\n${q3}\n`, 'a.py').size).toBe(207);
+    expect(find_block_lines(`/*\n${body}\n`, 'a.ts').size).toBe(0);
     expect(find_block_lines(`/*\n${body.split('\n').slice(0, 150).join('\n')}\n*/\n`, 'a.ts').size).toBeGreaterThan(100);
   });
 });

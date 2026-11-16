@@ -290,80 +290,10 @@ function find_operand_check(line: string): string | undefined {
   if (!form) return undefined;
   return [...operands].some((operand) => PERMISSION_OPERAND.test(operand)) ? 'permission or role check' : 'crypto or credential check';
 }
-// block syntax belongs to the languages that have it
-const C_STYLE = new Set(['c', 'h', 'cc', 'cpp', 'cxx', 'hpp', 'js', 'jsx', 'mjs', 'cjs', 'ts', 'tsx', 'java', 'go', 'cs', 'rs', 'php', 'css', 'scss', 'less', 'kt', 'kts', 'swift', 'scala']);
-/**
- * The 0-based lines wholly inside a block string or block comment (#120): a Python triple-quoted string (a statement or
- * after `=` or `(`), a C-style block, a Ruby =begin/=end at column 0. They are prose, like `#` and `//` lines. Each syntax
- * is read only in the files that have it (by extension; with no file name, all of them). A delimiter inside a quoted string
- * or a `#` or `//` comment opens nothing, a block that never closes marks nothing, and a line with code before the
- * opening or after the closing delimiter is not marked, so a check there is still found.
- * shortcut: a quote char inside a block comment can hide a delimiter; upgrade with a real tokenizer.
- */
-export function find_block_lines(text: string, file?: string): Set<number> {
-  const marked = new Set<number>();
-  const extension = file ? /\.(\w+)$/.exec(file)?.[1]?.toLowerCase() ?? '' : undefined;
-  const c_style = extension === undefined || C_STYLE.has(extension);
-  const python = extension === undefined || extension === 'py' || extension === 'pyi';
-  const ruby = extension === undefined || extension === 'rb';
-  const php = extension === 'php'; // `#` is a line comment there (`#[` is an attribute); undefined already reads `#` as a comment
-  if (!c_style && !python && !ruby) return marked;
-  const lines = text.split('\n');
-  // the first block that opens on the line and does not close on it, after marking the one-line blocks that are the whole line
-  const scan = (line: string, index: number): { delim: string; blank_before: boolean } | undefined => {
-    let quote = '';
-    for (let j = 0; j < line.length; j++) {
-      const char = line[j]!;
-      if (quote) { if (char === '\\') j++; else if (char === quote) quote = ''; continue; }
-      const triple = python && (char === '"' || char === "'") && line.startsWith(char.repeat(3), j) ? char.repeat(3) : '';
-      const star = c_style && char === '/' && line[j + 1] === '*' ? '*/' : '';
-      const delim = triple || star;
-      if (star && !/(?:^|[;{})]\s+)$/.test(line.slice(0, j).replace(/^\s+/, '')) ) { // a block opens only where a comment can start; a regex like /\/*/ or a `(/*` opens nothing
-        const same_line = line.indexOf(star, j + 2);
-        if (same_line >= 0) j = same_line + 1;
-        else j++;
-        continue;
-      }
-      if (c_style && char === '/' && line[j + 1] !== '/' && line[j + 1] !== '*' && /^$|[(,=:[!&|?{};]$/.test(line.slice(0, j).trimEnd().slice(-1))) { // a regex literal: skip it whole
-        let close_at = j + 1;
-        for (let in_class = false; close_at < line.length && (line[close_at] !== '/' || in_class); close_at++) { if (line[close_at] === '\\') close_at++; else if (line[close_at] === '[') in_class = true; else if (line[close_at] === ']') in_class = false; }
-        if (close_at < line.length) { j = close_at; continue; }
-      }
-      if (delim) {
-        const before = line.slice(0, j);
-        const opener = star || /(?:^|[=(])\s*$/.test(before.replace(/[rRuUbBfF]{1,2}$/, ''));
-        const skip = j + (triple ? 3 : 2);
-        const close = line.indexOf(delim, skip);
-        if (opener && close < 0) return { delim, blank_before: !before.trim() };
-        if (close < 0) return undefined;
-        if (opener && !before.trim() && !line.slice(close + delim.length).trim()) marked.add(index);
-        j = close + delim.length - 1;
-        continue;
-      }
-      if (char === '"' || char === "'" || char === '`') quote = char;
-      else if (c_style && char === '/' && line[j + 1] === '/' || (python || ruby || php) && char === '#' && !(php && line[j + 1] === '[')) return undefined;
-    }
-    return undefined;
-  };
-  let i = 0;
-  while (i < lines.length) {
-    const line = lines[i]!;
-    const begin = ruby && /^=begin\b/.test(line);
-    const opened = begin ? undefined : scan(line, i);
-    if (!begin && !opened) { i++; continue; }
-    let end = i + 1;
-    while (end < lines.length && !(begin ? /^=end\b/.test(lines[end]!) : lines[end]!.includes(opened!.delim))) end++;
-    if (end >= lines.length || end - i > 200) { i++; continue; } // never closes, or not within 200 lines: nothing is marked
-    if (begin || opened!.blank_before) marked.add(i);
-    for (let at = i + 1; at < end; at++) marked.add(at);
-    if (begin || !lines[end]!.slice(lines[end]!.indexOf(opened!.delim) + opened!.delim.length).trim()) marked.add(end);
-    i = end + 1;
-  }
-  return marked;
-}
+export { find_block_lines } from './prose-lexer.js';
 // a real check always has code syntax; a prose sentence in a docstring or comment does not (#120). `and`/`or`/`not` count only before a code-shaped operand, since prose says "and the"
-const CODE_SYNTAX = /=|&&|\|\||[{};]|\w\(|\w\?(?=[\s,;)]|$)|^\s*(?:if|elif|elsif|unless|return|raise|throw|assert|require|deny)\b|\b(?:and|or|not)\s+(?:not\s+)?[\w$@]+(?:\.\w|[([]|\s*[:)]|\s*$)/;
-/** True when a line has code syntax: a comparison or logical operator, an assignment, a call, a leading statement keyword, a brace or a semicolon. A wrong block can then only cause a needless hold, never hide a check. */
+const CODE_SYNTAX = /^\s*@\w|\w\s+:[A-Za-z_]\w*|\w!(?!\w)|^\s*[\w$"']+\s*:\s*\S.*,\s*$|^\s*[A-Za-z_$][\w$]*\s*:\s*(?:true|false|nil|null|None)\b|=|&&|\|\||[{};]|\w\(|\w\?(?=[\s,;)]|$)|^\s*(?:if|elif|elsif|unless|return|raise|throw|assert|require|deny)\b|\b(?:and|or|not)\s+(?:not\s+)?[\w$@]+(?:\.\w|[([]|\s*[:)]|\s*$)/;
+/** True when a line has code syntax: a comparison or logical operator, an assignment, a call, a leading statement keyword, a brace or a semicolon, a decorator, a Ruby symbol argument, a bang call, an object-literal entry. A wrong block can then only cause a needless hold, never hide a check. */
 export const has_code_syntax = (line: string): boolean => CODE_SYNTAX.test(line);
 export const is_security_check_line = (line: string): boolean => find_security_check(line) !== undefined;
 

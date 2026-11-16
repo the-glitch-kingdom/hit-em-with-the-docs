@@ -15,11 +15,13 @@ const cases: Record<string, string> = {
   'c block': `/*\n${prose}\n*/\n${real}\n`,
   'ruby begin': `=begin\n${prose}\n=end\n${real}\n`,
 };
+const files: Record<string, string> = { 'python docstring': 'a.py', 'single-quoted triple': 'a.py', 'one-line docstring': 'a.py', jsdoc: 'a.ts', 'c block': 'a.ts', 'ruby begin': 'a.rb' };
 describe('block strings and comments are prose (#120 section 3)', () => {
   for (const [name, text] of Object.entries(cases)) {
     it(name, () => {
       const lines = text.split('\n');
-      const blocks = find_block_lines(text);
+      // a file name is required: an unknown extension marks nothing
+      const blocks = find_block_lines(text, files[name]);
       const prose_at = lines.findIndex((line) => line.includes('expiry'));
       if (!['one-line docstring', 'jsdoc'].includes(name)) expect(find_security_check(lines[prose_at]!)).toBeDefined(); // flagged alone, so the block is what saves it
       expect(blocks.has(prose_at)).toBe(true);

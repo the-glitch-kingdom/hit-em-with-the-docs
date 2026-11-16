@@ -33,6 +33,24 @@ describe('rule 2 needs relevance (#118 section 1)', () => {
   });
 });
 
+describe('a doc listing the located file, titled for the question (#120)', () => {
+  const rules = 'src/alerts/rules.yml';
+  const runbook = (extra: string[] = []) => doc('ops/alerts-runbook.md', '---\ntitle: Alerts Runbook\n---\n# Alerts Runbook\n\nWhat to do when paged.\n', [rules, ...extra]);
+  const q = () => miss('which alerts fire on error rate or backlog', ['HighErrorRate', 'QueueBacklog']);
+  const found = () => ({ code: code(['HighErrorRate', rules, 4], ['QueueBacklog', rules, 12]), instructions: none });
+  it('an alerts runbook that lists the rules file is extended for an alerts miss', () => {
+    expect(resolve_decision(q(), found(), [runbook(['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts', 'src/e.ts'])])).toMatchObject({ kind: 'extend', doc: 'ops/alerts-runbook.md' });
+  });
+  it('a file cited by many docs never qualifies this way', () => {
+    const crowd = Array.from({ length: 6 }, (_, i) => doc(`ops/other${i}.md`, `# Other ${i}`, [rules]));
+    expect(resolve_decision(q(), found(), [runbook(['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts', 'src/e.ts']), ...crowd]).kind).toBe('new');
+  });
+  it('a title sharing no question term does not qualify', () => {
+    const other = doc('ops/cache.md', '---\ntitle: Cache refresh\n---\n# Cache', [rules, 'src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts', 'src/e.ts']);
+    expect(resolve_decision(q(), found(), [other]).kind).toBe('new');
+  });
+});
+
 describe('file maps are hubs (#118 section 1)', () => {
   const map = ['# Monitoring file map', '', ...Array.from({ length: 8 }, (_, i) => `- \`src/monitoring/part${i}.py\` - part ${i}`)].join('\n');
   it('a body that is mostly a list of paths is a hub', () => {

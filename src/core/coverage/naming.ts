@@ -4,7 +4,7 @@
  * else the question's noun phrase. The folder is where the docs about nearby code live; never the knowledge-base root.
  */
 import { basename } from 'path';
-import { find_value_in_name } from '../security/gate.js';
+import { find_security_check, find_value_in_name, is_security_sensitive } from '../security/gate.js';
 
 /** A doc name is cut at a whole word, never mid-phrase. */
 export const MAX_SLUG_LENGTH = 40;
@@ -15,6 +15,8 @@ export const FALLBACK_DOMAIN = 'features';
 
 const GENERIC_SUFFIX = new Set(['service', 'manager', 'handler', 'controller', 'helper', 'helpers', 'util', 'utils', 'impl', 'factory', 'provider']);
 const GENERIC_PREFIX = new Set(['get', 'set', 'is', 'has', 'max', 'min', 'default']);
+/** Identifiers that start like a yes/no property. */
+const BOOLEAN_PREFIX = new Set(['is', 'has', 'can', 'should', 'was', 'does']);
 const GENERIC_MODULE = new Set(['index', 'main', 'init', 'utils', 'util', 'helpers', 'constants', 'config', 'settings', 'base', 'types', 'common', 'mod', 'lib', 'app']);
 const QUESTION_WORDS = new Set('a an and are as at be by can could do does did for from get gets got how i if in is it its many much of on or so than that the their there these this to was were what when where which who whom whose why will with would long large big often often new number'.split(' '));
 
@@ -45,7 +47,13 @@ export function name_new_doc(options: { queries: string[]; facets: string[]; sou
   const counts = new Map<string, number>();
   // a text or identifier that holds a value (as written, as read, or key-shaped) never names a doc; regex escapes read as the text they stand for
   for (const text of [...options.facets, ...options.queries]) for (const identifier of find_identifiers(text)) if (!find_value_in_name(text.replace(/\\(.)/g, '$1')) && !find_value_in_name(identifier)) counts.set(identifier, (counts.get(identifier) ?? 0) + 1);
-  const dominant = [...counts].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length || a[0].localeCompare(b[0]))[0]?.[0];
+  // #120: a boolean column or flag (is_sample) is a property of a subject, not the subject: it names a doc only when nothing else can
+  const ranked = [...counts].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length || a[0].localeCompare(b[0])).map(([identifier]) => identifier);
+  const is_boolean = (identifier: string): boolean => BOOLEAN_PREFIX.has(split_name(identifier)[0] ?? '');
+  // #120: an identifier names the doc when the question speaks of it (shares a word); one that is merely there (a security check's operand, an incidental constant) never does
+  const stem = (word: string): string => word.replace(/(?:ies|es|s)$/, '');
+  const asked = new Set(options.queries.flatMap((query) => query.toLowerCase().match(/[a-z][a-z0-9]+/g) ?? []).filter((word) => !QUESTION_WORDS.has(word)).map(stem));
+  const dominant = ranked.find((identifier) => !is_boolean(identifier) && split_name(identifier).some((word) => !GENERIC_PREFIX.has(word) && !GENERIC_SUFFIX.has(word) && asked.has(stem(word))));
   if (dominant) return make_slug(strip_generic(split_name(dominant)));
   // 2. the source module the facets were found in
   const modules = new Map<string, number>();
@@ -57,7 +65,11 @@ export function name_new_doc(options: { queries: string[]; facets: string[]; sou
   if (module_name) return make_slug(split_name(module_name));
   // 3. the question's noun phrase
   const phrase = (options.queries[0]?.toLowerCase().match(/[a-z][a-z0-9]+/g) ?? []).filter((word) => !QUESTION_WORDS.has(word)).slice(0, MAX_PHRASE_WORDS);
-  return make_slug(phrase) || 'topic';
+  if (phrase.length) return make_slug(phrase);
+  // 4. nothing else: the most frequent identifier that is not a boolean flag or a security check
+  const plain = ranked.find((identifier) => !is_boolean(identifier) && !find_security_check(identifier) && !is_security_sensitive(identifier)) ?? ranked.find((identifier) => !find_security_check(identifier) && !is_security_sensitive(identifier));
+  if (plain) return make_slug(strip_generic(split_name(plain)));
+  return 'topic';
 }
 
 /** Where a new doc goes: the folder of the nearby docs, else the domain, else the fallback. Never the knowledge-base root; a fact goes in knowledge-base/facts. */

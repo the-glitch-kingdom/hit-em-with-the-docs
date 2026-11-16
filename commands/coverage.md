@@ -26,7 +26,7 @@ A kind listed under "generate the reference first" is a list the code declares (
 hewtd coverage --write-review --json
 ```
 
-This writes `review-<batch>-coverage.md` under `.hewtd/reconcile/`: unticked entries, the same shape as `reconcile --gaps` coverage drafts. Follow **Facts, and what is left for you**, **Security routing** and the value rules in `/hit-em-with-the-docs:reconcile` (section on `--gaps`) exactly: every sentence cites `file:line`; never a host, IP, port, ID, URL, credential, key material, or env/config value or default (names are fine; code constants such as a size, timeout or limit are fine); a unit whose located line is a security check stays with a human.
+This writes `review-<batch>-coverage.md` under `.hewtd/reconcile/`: unticked entries, the same shape as `reconcile --gaps` coverage drafts. Class-level and typed collection constants are graded too (3.8.0). Follow **Facts, and what is left for you**, **Security routing** and the value rules in `/hit-em-with-the-docs:reconcile` (section on `--gaps`) exactly: every sentence cites `file:line`; never a host, IP, port, ID, URL, credential, key material, or env/config value or default (names are fine; code constants such as a size, timeout or limit are fine); a unit whose located line is a security check stays with a human.
 
 ## 3. Rules for you
 

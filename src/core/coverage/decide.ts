@@ -54,15 +54,27 @@ export function is_hub_doc(doc: DocText): boolean {
     const { data } = parse_frontmatter<Record<string, unknown>>(doc.text);
     hub = data.generated === true || [data.tier, data.kind].some((value) => typeof value === 'string' && HUB_TIERS.has(value));
   }
-  if (!hub) hub = is_path_list(parse_frontmatter<Record<string, unknown>>(doc.text).content);
+  if (!hub) {
+    const { data, content } = parse_frontmatter<Record<string, unknown>>(doc.text);
+    // #120: a title, keyword or tag that says file map or inventory is a hub signal
+    hub = FILE_MAP_SIGNAL.test([data.title, data.keywords, data.tags].flat().filter((value) => typeof value === 'string').join(' ')) || is_path_list(content);
+  }
   hub_cache.set(doc, hub);
   return hub;
 }
 
-/** A body that is mostly a list of paths (a file map or inventory) names code without explaining any of it. */
+const FILE_MAP_SIGNAL = /file[\s_-]?map|inventory|index of files/i;
+const TABLE_SEPARATOR = /^\s*\|?\s*:?-{2,}:?\s*(?:\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+/** A table row is a path row when its first cell is a path: a path token, or a bare `dir/name`. */
+function is_path_row(line: string): boolean {
+  const cell = line.trim().replace(/^\|/, '').split('|')[0]!.trim();
+  return has_path_token(cell) || /^`?[\w.@-]+(?:\/[\w.@-]*)+`?$/.test(cell);
+}
+
+/** A body that is mostly a list of paths (a file map or inventory, as list items or table rows) names code without explaining any of it. */
 function is_path_list(body: string): boolean {
-  const lines = body.split('\n').filter((line) => line.trim() && !/^\s*#/.test(line));
-  const path_lines = lines.filter((line) => LIST_LINE.test(line) && has_path_token(line)).length;
+  const lines = body.split('\n').filter((line) => line.trim() && !/^\s*#/.test(line) && !TABLE_SEPARATOR.test(line));
+  const path_lines = lines.filter((line) => (/^\s*\|/.test(line) ? is_path_row(line) : LIST_LINE.test(line) && has_path_token(line))).length;
   return path_lines >= PATH_LIST_MIN_LINES && path_lines / lines.length >= PATH_LIST_SHARE;
 }
 
@@ -93,6 +105,12 @@ function is_relevant_to_query(doc: DocText, query_terms: Set<string>, strong_ter
   const shared = [...query_terms].filter((term) => body.has(term));
   return shared.filter((term) => !GENERIC_TERMS.has(term)).length >= RELEVANT_BODY_TERMS && shared.length / query_terms.size >= 0.5;
 }
+/** The doc's frontmatter title shares a non-generic question term (one generic noun, `email`, is no relevance: #118). */
+function has_title_term(doc: DocText, query_terms: Set<string>): boolean {
+  const { data } = parse_frontmatter<Record<string, unknown>>(doc.text);
+  const title = typeof data.title === 'string' ? get_distinctive_terms(data.title) : new Set<string>();
+  return [...query_terms].some((term) => title.has(term) && !GENERIC_TERMS.has(term));
+}
 /** A citation with line data counts for a file only when it covers one of the facet lines; without line data the whole file counts. */
 function covers_hits(doc: DocText, located: FacetHit[]): boolean {
   return located.some((found) => {
@@ -113,6 +131,10 @@ export interface Decision {
   hub?: boolean;
   held: number;
   total: number;
+  /** Facets withheld because each is only a value: they count in `total` (so a doc never covers the miss) but are never matched. */
+  withheld_facets?: number;
+  /** Where the withheld facets sit: read only by the security-check hold, never cited or drafted from. */
+  withheld_sources?: FacetHit[];
   /** Facets the target doc (or, for a new doc, every doc) lacks. */
   missing_facets: string[];
   /** Located code: file -> lines, for the facets this proposal must add. */
@@ -152,21 +174,25 @@ export async function load_doc_texts(docs_root: string): Promise<DocText[]> {
   return docs.sort((a, b) => a.path.localeCompare(b.path));
 }
 
-/** The deepest folder every given folder sits in (posix, docs-relative). */
-function find_common_folder(folders: string[]): string {
-  const common = folders[0]!.split('/');
-  for (const folder of folders.slice(1)) {
-    const parts = folder.split('/');
-    let keep = 0;
-    while (keep < common.length && common[keep] === parts[keep]) keep++;
-    common.length = keep;
+/** The deepest folder that more than half of the given folders sit in (posix, docs-relative); all of them share the first segment. */
+function find_majority_folder(folders: string[]): string {
+  const chosen = [folders[0]!.split('/')[0]!];
+  for (;;) {
+    const next = new Map<string, number>();
+    for (const folder of folders) {
+      const parts = folder.split('/');
+      if (parts.length > chosen.length && chosen.every((part, i) => parts[i] === part)) next.set(parts[chosen.length]!, (next.get(parts[chosen.length]!) ?? 0) + 1);
+    }
+    const top = [...next].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
+    if (!top || top[1] * 2 <= folders.length) return chosen.join('/');
+    chosen.push(top[0]);
   }
-  return common.join('/');
 }
 
 export function resolve_decision(miss: CoverageMiss, located: Pick<LocateResult, 'code' | 'instructions' | 'weak'>, docs: DocText[]): Decision {
   const facets = miss.facets;
-  const total = facets.length;
+  const withheld_facets = miss.withheld ?? 0;
+  const total = facets.length + withheld_facets;
   const compiled = facets.map((facet) => ({ facet, regex: compile_facet(facet).regex })).filter((item): item is { facet: string; regex: RegExp } => !!item.regex);
   const held_by = (doc: DocText): string[] => {
     const matched = match_facets(compiled.map(({ regex }) => regex), doc.text.split('\n'), 1);
@@ -195,7 +221,7 @@ export function resolve_decision(miss: CoverageMiss, located: Pick<LocateResult,
   if (compiled.length && !strong_files.size) notes.push('every facet is weak (short, numeric or found in many files): no source is named for it, so a person must say where it lives');
   const source_files = [...new Set(code_hits.map((found) => found.file))].sort();
   const cited_by = counts.filter(({ doc }) => doc.sources.some((source) => source_files.includes(source)) || source_files.some((file) => doc.text.includes(file))).map(({ doc }) => doc.path);
-  const base = { key: miss.key, query: miss.query, count: miss.count, total, flags, notes, ids: [miss.key], ...(miss.blind && { blind: true }), ...(miss.tier && { tier: miss.tier }) };
+  const base = { key: miss.key, query: miss.query, count: miss.count, total, withheld_facets, withheld_sources: [] as FacetHit[], flags, notes, ids: [miss.key], ...(miss.blind && { blind: true }), ...(miss.tier && { tier: miss.tier }) };
   const finish = (decision: Omit<Decision, keyof typeof base | 'cited_by' | 'source_files' | 'sources'>): Decision => {
     if (decision.doc && decision.kind === 'extend' && is_hub_doc(counts.find((item) => item.doc.path === decision.doc)!.doc)) decision.hub = true;
     const missing_set = new Set(decision.missing_facets);
@@ -243,8 +269,11 @@ export function resolve_decision(miss: CoverageMiss, located: Pick<LocateResult,
     if (is_hub_doc(doc) || is_knowledge_base(doc)) return { ok: false, preferred: false };
     const cites = cited_by.includes(doc.path) && doc.sources.length <= SPECIFIC_MAX_SOURCES && covers_hits(doc, code_hits);
     const relevant = is_relevant_to_query(doc, query_terms, strong_terms);
+    // #120: a doc that lists the located file itself (a file few docs cite) and is titled for the question qualifies, whatever else it cites
+    const lists_file = doc.sources.some((source) => source_files.includes(source) && counts.filter((other) => other.doc.sources.includes(source)).length <= SPECIFIC_MAX_SOURCES);
+    const titled = lists_file && has_title_term(doc, query_terms);
     const preferred = doc.path === eval_path && held.some(is_distinctive) && (cites || relevant);
-    return { ok: (cites && (held.length > 0 || relevant)) || preferred, preferred };
+    return { ok: (cites && (held.length > 0 || relevant)) || titled || preferred, preferred };
   };
   const citing = counts.map((item) => ({ item, ...qualifies(item) })).filter(({ ok }) => ok)
     .sort((a, b) => Number(b.preferred) - Number(a.preferred) || b.item.held.length - a.item.held.length || order(a.item, b.item))[0]?.item;
@@ -260,7 +289,7 @@ export function resolve_decision(miss: CoverageMiss, located: Pick<LocateResult,
   }
   const winner = [...votes].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))[0];
   const domain = winner?.[0];
-  // the deepest folder every voting doc of the winning domain shares
-  const folder = winner && find_common_folder(winner[1].map((doc) => dirname(doc.path)));
+  // the deepest folder most voting docs of the winning domain sit in (#120)
+  const folder = winner && find_majority_folder(winner[1].map((doc) => dirname(doc.path)));
   return finish({ kind: 'new', held: ranked[0]?.held.length ?? 0, missing_facets: facets, ...(domain && { domain }), ...(folder && { folder }) });
 }

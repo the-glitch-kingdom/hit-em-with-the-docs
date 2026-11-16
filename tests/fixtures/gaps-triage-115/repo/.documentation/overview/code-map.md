@@ -11,7 +11,7 @@ sources:
 # Code map
 
 - src/jobs/drain.ts
-- src/jobs/schedule.ts
+- src/jobs/schedule.py
 - src/queue/retry.ts
 - src/queue/policy.ts
 - src/cache/store.ts

@@ -17,7 +17,7 @@ describe('gate:coverage', () => {
     const run = gate();
     expect(run.stdout).not.toMatch(/^FAIL/m);
     expect(run.status).toBe(0);
-    expect(run.stdout).toMatch(/gate:coverage 36\/36/);
+    expect(run.stdout).toMatch(/gate:coverage 40\/40/);
   }, 130_000);
 
   it('is wired into package.json, prepublishOnly and CI', () => {

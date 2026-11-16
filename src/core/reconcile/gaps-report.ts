@@ -47,6 +47,7 @@ function render_coverage_section(coverage: CoveragePlan): string[] {
     const head = proposal.kind === 'extend' ? `extend ${proposal.doc}` : proposal.kind === 'new' ? `new doc${proposal.domain ? ` in ${proposal.domain}` : ''}` : proposal.kind === 'covered' ? `covered: check ranking (${proposal.doc})` : 'instruction file only: search cannot reach it';
     lines.push(`### ${head}${proposal.blind ? ' [blind]' : ''}`, '', 'Closes:', ...proposal.closes.map((closed) => `- ${closed.key}: ${closed.query}${closed.count > 1 ? ` (x${closed.count})` : ''}`));
     if (proposal.missing_facets.length && proposal.kind !== 'covered') lines.push('', 'Missing facets:', ...proposal.missing_facets.map((facet) => `- \`${facet}\``));
+    if (proposal.withheld_facets) lines.push('', `${proposal.withheld_facets} facet(s) withheld`);
     if (proposal.sources.length) lines.push('', 'Located in code:', ...proposal.sources.map((found) => `- ${found.file}:${found.line}`));
     if (proposal.instruction_files.length) lines.push('', `Found only in: ${proposal.instruction_files.join(', ')}`);
     if (proposal.cited_by.length) lines.push('', `Already cited by: ${proposal.cited_by.join(', ')}`);

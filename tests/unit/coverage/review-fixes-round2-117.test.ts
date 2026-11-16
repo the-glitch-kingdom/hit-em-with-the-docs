@@ -83,7 +83,7 @@ describe('finding 2: a facet that is only a value is withheld everywhere', () =>
     execFileSync('git', ['-c', 'user.name=a', '-c', 'user.email=a@a', 'commit', '-qm', 'i'], { cwd: repo });
   });
   afterAll(() => rmSync(repo, { recursive: true, force: true }));
-  it('the report, json, review entries and doc name carry [redacted facet], and the miss is still classified', async () => {
+  it('the report, json, review entries and doc name count the withheld facet and carry no text of it, and the miss is still classified', async () => {
     const gaps = [{ id: 'v1', query: 'how does the worker start', facets: [pass, pass2, 'start_worker'] }];
     const plan = await plan_coverage_misses({ repo_root: repo, docs_root: join(repo, '.documentation'), config: plugin_config_schema.parse({}), gaps, today: '2026-11-15' });
     const text = JSON.stringify(plan) + render_gaps_report({ proposals: [], candidates: [], questions: [], dropped: [], facet_gaps: [], warnings: [] } as never, config, '2026-11-15', plan);
@@ -91,7 +91,9 @@ describe('finding 2: a facet that is only a value is withheld everywhere', () =>
     expect(text).not.toContain(pass2);
     expect(text).not.toContain('s3cr3t');
     expect(plan.proposals).toHaveLength(1);
-    expect(plan.proposals[0]!.missing_facets).toEqual(expect.arrayContaining(['[redacted facet]', 'start_worker']));
+    expect(plan.proposals[0]!.missing_facets).toEqual(['start_worker']);
+    expect(plan.proposals[0]!.withheld_facets).toBe(2);
+    expect(text).toContain('2 facet(s) withheld');
     expect(plan.drafts.entries.every((entry) => !entry.path.includes('s3cr3t') && !entry.path.includes('hunter'))).toBe(true);
   });
 });

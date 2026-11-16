@@ -1190,6 +1190,30 @@ program
   .option('--json', 'Machine-readable output', false)
   .option('--write-review', 'Write the drafts as review-<batch>-coverage.md under .hewtd/reconcile/ (nothing lands in the docs without reconcile --apply)', false)
   .option('--batch <id>', 'Batch id for --write-review (default: next number)')
+  .addHelpText('after', `
+How to use it:
+  1. hewtd coverage                  grade each declared surface (jobs, alert rules, routes, CLI
+                                     flags, CI, constants, config keys): absent, named or explained
+  2. hewtd coverage --write-review   write the drafts to .hewtd/reconcile/review-<batch>-coverage.md
+  3. /hit-em-with-the-docs:coverage  the judge: an agent reads each cited file:line, fills the
+                                     "verdict": null entries, and you tick what you accept
+  4. hewtd reconcile --apply <file>  apply only the ticked entries; nothing else is written
+
+What the output means:
+  needs_human        units a person must handle, never drafted, with the reason: a located line
+                     is a security check (auth, crypto, permission, firewall), or every facet is
+                     withheld as a value; the kind and file:line are shown, never the line
+  security_adjacent  a security topic word only: drafted, judge carefully
+  withheld_facets    a count of facets that touch a value (credential, host, id, URL, option
+                     argument, env default): their text is never printed
+  for_judge          facts hewtd does not state itself (it states only simple code constants);
+                     the judge writes each one from the cited lines
+
+Config (.claude/hit-em-with-the-docs.json):
+  coverage.ignore        path prefixes, globs or { "name", "reason" } held on purpose
+  targets.code_coverage  opt-in advisory row in hewtd audit ({ "min", "reason" })
+
+Never overwrites a doc and never edits the knowledge base. Full guide: docs/coverage.md`)
   .action(async (options) => {
     try {
       const { load_plugin_config } = await import('../utils/config.js');
@@ -1257,6 +1281,27 @@ program
   .option('--cached', 'With --changed --check: look only at docs staged for commit (the git index)', false)
   .option('--gaps <file>', 'Classify missed search queries (gaps.v1 file, the eval question-set JSONL, or one question per line) into user_phrase proposals, new-doc candidates and open questions; entries with facets become extend / new doc / covered proposals with grounded drafts; writes only .hewtd/reconcile/gaps-report-<date>.md', undefined)
   .option('--include-blind', 'With --gaps: also draft from entries marked blind (feeding a blind set spoils it for measurement)', false)
+  .addHelpText('after', `
+Reviewing docs:
+  hewtd reconcile <scope> --write-review   triage and write review skeletons under .hewtd/reconcile/
+  /hit-em-with-the-docs:reconcile          the judge fills each entry; you tick what you accept
+  hewtd reconcile --apply <file>           apply the ticked entries (serial, one commit per batch)
+  hewtd reconcile --status                 progress per lane and verdict
+
+Search gaps (--gaps <file>):
+  1. hewtd reconcile --gaps <file>                 classify missed queries; entries with facets get
+                                                   extend / new doc / covered / instruction-only outcomes
+  2. hewtd reconcile --gaps <file> --write-review  write review-<batch>-gaps.md (phrases) and
+                                                   review-<batch>-coverage.md (drafts)
+  3. /hit-em-with-the-docs:reconcile               the judge fills "verdict": null entries from the
+                                                   cited file:line; you tick what you accept
+  4. hewtd reconcile --apply <file>                apply the ticked entries
+  <file> is a gaps.v1 list, the eval's --gaps-out or question-set JSONL, or one question per line.
+  Blind entries are drafted only with --include-blind (that spoils the blind set for measurement).
+  A security check goes to needs_human (kind and file:line only); a facet that touches a value
+  (credential, host, id, URL, option argument, env default) is withheld and only counted.
+
+Full guides: docs/reconcile.md, docs/gaps-format.md`)
   .action(async (scope: string[], options, command: Command) => {
     const { load_plugin_config } = await import('../utils/config.js');
     const { load_ledger, get_ledger_status: ledger_status, compute_content_hash: hash_content } = await import('../core/reconcile/ledger.js');

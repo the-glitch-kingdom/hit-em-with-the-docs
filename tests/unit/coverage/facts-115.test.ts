@@ -76,7 +76,8 @@ describe('fact-stating drafts (#115)', () => {
     expect(e.patch).toBeUndefined();
     expect(e.draft).toBeUndefined();
     const n = (await run([proposal({ missing_facets: ['drain_queue'], sources: [{ file: 'src/upload.ts', line: 2 }], source_files: ['src/upload.ts'] })])).entries[0]!;
-    expect(n).toMatchObject({ verdict: null, path: 'ops/drain-queue.md' });
+    // #120: drain_queue shares no word with the question, so the source module (upload.ts) names the doc
+    expect(n).toMatchObject({ verdict: null, path: 'ops/upload.md' });
     expect(n.draft).toBeUndefined();
   });
   it('config files and values are never stated', async () => {

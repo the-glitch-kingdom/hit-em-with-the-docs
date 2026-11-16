@@ -17,3 +17,15 @@
 {"id":"real-check","q":"who may delete a record","facets":["has_permission"]}
 {"id":"code-line","q":"how many times is a call retried","facets":["RETRY_CAP = 7"]}
 {"id":"map-hub","q":"how many items does the drain take per batch","facets":["drain_batch_size"]}
+{"id":"beat-a","q":"what does the nightly idle cleanup do","facets":["sweep_idle_rows"]}
+{"id":"beat-b","q":"which email series do trials get","facets":["send_trial_series"]}
+{"id":"beat-c","q":"how are signup rows purged","facets":["purge_signup_rows"]}
+{"id":"pool-a","q":"how long can a pool connection idle","facets":["pool_idle_seconds"],"nearest_doc":{"path":"ops/cache.md","facet_coverage":"0/1","rank":4}}
+{"id":"pool-b","q":"how long does the pool wait for a slot","facets":["pool_max_wait"]}
+{"id":"access-a","q":"how big is a sync batch","facets":["sync_batch_limit"]}
+{"id":"access-b","q":"who may edit","facets":["has_role"]}
+{"id":"rotate","q":"which jobs rotate logs and how many days are kept","facets":["rotate_logs","ROTATE_KEEP_DAYS"]}
+{"id":"docstring","q":"after how long is an idle session reaped","facets":["reap_after_minutes"]}
+{"id":"flags","q":"how does the audit gate fix the lockfile","facets":["--omit=dev","npm audit fix --package-lock-only"]}
+{"id":"chunk","q":"how often is a chunk retried","facets":["chunk_retry_limit"]}
+{"id":"alert-map","q":"how wide is the alert window","facets":["alert_window_minutes"]}

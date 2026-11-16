@@ -44,6 +44,19 @@ function screen_name(surface: Surface): Surface {
   return { ...rest, name: placeholder_name(surface.kind, surface.file, surface.line), placeholder: true };
 }
 
+const NAMED_KINDS = new Set<Surface['kind']>(['scheduled-job', 'alert-rule', 'http-route', 'cli-command', 'cli-flag', 'ci-workflow', 'ci-job', 'background-task']);
+/** The screened names the detectors find on each line of one file (1-based), so a literal that is one of them on that line is a name, not a value (#120). Withheld (placeholder) names are left out. */
+export function find_surface_names(file: string, lines: string[]): Map<number, string[]> {
+  const names = new Map<number, string[]>();
+  for (const detector of SURFACE_DETECTORS.filter((found) => found.applies(file))) {
+    for (const surface of detector.detect(file, lines).map(screen_name)) {
+      if (surface.placeholder || !NAMED_KINDS.has(surface.kind)) continue;
+      names.set(surface.line, [...(names.get(surface.line) ?? []), surface.name]);
+    }
+  }
+  return names;
+}
+
 /** An ignore entry is a path prefix, or a glob (`*` within a folder, `**` across folders). */
 export function is_ignored(file: string, ignore: string[]): boolean {
   return ignore.some((entry) => {

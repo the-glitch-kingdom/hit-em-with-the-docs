@@ -3,7 +3,7 @@
  * lines and returns surfaces; only names leave a detector, never a value. A constant carries its literal only when
  * is_stateable_constant says it may be stated. Add a detector by adding an entry to SURFACE_DETECTORS.
  */
-import { is_constant_value, is_stateable_constant } from '../../security/gate.js';
+import { has_key_token, is_constant_value, is_stateable_constant, is_value_name } from '../../security/gate.js';
 
 export type SurfaceKind = 'scheduled-job' | 'alert-rule' | 'http-route' | 'cli-command' | 'cli-flag' | 'ci-workflow' | 'ci-job' | 'background-task' | 'constant' | 'config-key';
 export interface Surface { kind: SurfaceKind; name: string; file: string; line: number; source_kind: string; /** Constants only, and only when stateable. */ value?: string; /** The name was withheld (it held a value): it is `<kind label> at file:line` and the surface is matched by position. */ placeholder?: boolean; /** The file path held a value: `file` is WITHHELD_PATH and the surface is only listed for a human. */ path_withheld?: boolean }
@@ -149,6 +149,28 @@ function read_call(lines: string[], from: number): string {
   return text;
 }
 
+// an optional indent, modifiers (`export`, `private static final`, `const`), a Java/C# type, the NAME, a `: type` annotation, and the value
+const CONSTANT_LINE = /^(\s*)((?:(?:export|pub|public|private|protected|internal|static|final|const|readonly|val)\s+)*)(?:([\w.?]+(?:<[\w<>[\],.? ]*>)?(?:\[\])*)\s+)?([A-Z][A-Za-z0-9_]{2,})\s*(?::\s*([\w<>[\], .|]+?))?\s*=\s*(.+?)\s*;?\s*(?:(?:\/\/|#).*)?$/;
+const FACTORY_CALL_SOURCE = String.raw`(?:\w*(?:Map|List|Set)\.(?:of|copyOf|ofEntries)|Arrays\.asList|\w*(?:[Ll]ist|[Ss]et|[Mm]ap|[Aa]rray)Of)\(`;
+const COLLECTION_VALUE = new RegExp('^(?:[[{(]|(?:frozen)?set\\(|dict\\(|list\\(|tuple\\(|new(?:\\s+[\\w.]*(?:Map|Set|List|Dictionary)\\b|\\s*\\w*\\s*\\[)|' + FACTORY_CALL_SOURCE + ')');
+// a Java/C#/Kotlin collection type (`Map<K,V>`, `int[]`, `IReadOnlyList<int>`) or a factory call that is a collection by itself (`List.of(..)`, `listOf(..)`)
+const FACTORY_CALL = new RegExp('^' + FACTORY_CALL_SOURCE);
+const COLLECTION_TYPE = /^[\w.]*(?:Map|List|Set|Collection|Array|Queue|Deque|Dictionary|Enumerable|Iterable)(?:<|\[|$)|\[\]$/;
+/** An indented constant counts when it is a class field: a Python class body line, or a static/final/readonly field (`const` too outside TS and JS, where it is a local). */
+function is_class_member(file: string, lines: string[], index: number, indent: number, modifiers: string): boolean {
+  if (/\.py$/.test(file)) {
+    const owner = lines.slice(0, index).reverse().find((line) => line.trim() && line.length - line.trimStart().length < indent);
+    return !!owner && /^\s*class\s/.test(owner);
+  }
+  // Kotlin: a companion object or object body
+  if (/\.kt$/.test(file)) {
+    const owner = lines.slice(0, index).reverse().find((line) => line.trim() && line.length - line.trimStart().length < indent);
+    return !!owner && /^\s*(?:companion\s+)?object\b/.test(owner);
+  }
+  // Java and C#: a field has `static`, or an access modifier with final / const / readonly; a bare `final int X` or `const int X` in a body is a local
+  if (/\.(?:java|cs)$/.test(file)) return /\bstatic\b/.test(modifiers) || (/\b(?:public|private|protected|internal)\b/.test(modifiers) && /\b(?:final|const|readonly)\b/.test(modifiers));
+  return /\b(?:static|final|readonly)\b/.test(modifiers) || (!/\.(?:ts|tsx|js|jsx|mjs|cjs|sh)$/.test(file) && /\bconst\b/.test(modifiers));
+}
 export const SURFACE_DETECTORS: SurfaceDetector[] = [
   // scheduled jobs
   { id: 'crontab', applies: (file) => /(^|\/)(crontab|cron\.d\/[^/]+|[^/]*\.cron)$/.test(file), detect: (file, lines) => lines.flatMap((text, i) => {
@@ -177,7 +199,11 @@ export const SURFACE_DETECTORS: SurfaceDetector[] = [
   { id: 'grafana', applies: (file) => /(alert|grafana)/i.test(file) && /\.(json|ya?ml)$/.test(file), detect: (file, lines) => (lines.some((text) => /\bcondition\b/.test(text)) ? lines.flatMap((text, i) => { const found = /^\s*(?:[{[,]\s*)*"?title"?\s*:\s*"?([^",\n]+?)"?\s*(?:,|$)/.exec(text); const titles = found ? [found[1]!] : [...text.matchAll(/[{,]\s*"title"\s*:\s*"([^"]+)"/g)].map((match) => match[1]!); return titles.map((title) => ({ kind: 'alert-rule' as const, name: title.trim(), file, line: i + 1, source_kind: 'grafana' })); }) : []) },
   // HTTP routes
   by_pattern('express-route', 'http-route', (file) => CODE.test(file), /\b(?:app|router|server|api)\.(?:get|post|put|patch|delete)\s*\(\s*['"`](\/[^'"`]*)/g),
-  by_pattern('decorator-route', 'http-route', (file) => /\.(?:py|java|kt|ts)$/.test(file), /@(?:\w+\.)?(?:route|get|post|put|patch|delete|Get|Post|Put|Patch|Delete)\(\s*['"`](\/[^'"`]+)/),
+  // a decorator or call may span lines (`@router.post(\n "/orders",\n ...)`): the path is the first string of the joined call
+  { id: 'decorator-route', applies: (file) => /\.(?:py|java|kt|ts)$/.test(file), detect: (file, lines) => lines.flatMap((text, i) => [...text.matchAll(/@(?:\w+\.)?(?:route|get|post|put|patch|delete|api_route|websocket|Get|Post|Put|Patch|Delete)\(|\b\w+\.add_url_rule\(/g)].flatMap((start) => {
+    const path = /^[^(]*\(\s*['"`](\/[^'"`]+)/.exec(read_call(lines, i).slice(start.index));
+    return path ? [{ kind: 'http-route' as const, name: path[1]!, file, line: i + 1, source_kind: 'decorator-route' }] : [];
+  })) },
   // CLI commands and flags
   by_pattern('argparse', 'cli-flag', (file) => /\.py$/.test(file), /add_argument\(\s*['"](--[\w-]+)/),
   by_pattern('argparse-command', 'cli-command', (file) => /\.py$/.test(file), /\badd_parser\(\s*['"]([\w:-]+)/),
@@ -220,11 +246,21 @@ export const SURFACE_DETECTORS: SurfaceDetector[] = [
   }) },
   by_pattern('bull-queue', 'background-task', (file) => /\.(?:ts|js|mjs|cjs)$/.test(file), /new\s+(?:Queue|Worker|QueueScheduler)\s*(?:<[^>]*>)?\(\s*['"`]([\w:.-]+)/g),
   { id: 'sidekiq', applies: (file) => /\.rb$/.test(file), detect: (file, lines) => (lines.some((text) => /include\s+Sidekiq::(?:Worker|Job)/.test(text)) ? lines.flatMap((text, i) => { const found = /^\s*class\s+(\w+)/.exec(text); return found && lines.slice(i + 1, i + 4).some((next) => /Sidekiq::(?:Worker|Job)/.test(next)) ? [{ kind: 'background-task' as const, name: found[1]!, file, line: i + 1, source_kind: 'sidekiq' }] : []; }) : []) },
-  // module-level limit, TTL, size and threshold constants
+  // module-level and class-level limit, TTL, size and threshold constants; typed collections are named, never stated
   { id: 'code-constant', applies: (file) => CODE.test(file), detect: (file, lines) => lines.flatMap((text, i) => {
-    const match = /^(?:export\s+)?(?:(?:pub\s+)?const\s+|static\s+)?([A-Z][A-Z0-9_]{2,})\s*(?::\s*[\w<>[\] ]+)?=\s*(.+?)\s*;?\s*(?:(?:\/\/|#).*)?$/.exec(text);
-    if (!match || !is_constant_value(match[2]!)) return [];
-    return [{ kind: 'constant' as const, name: match[1]!, file, line: i + 1, source_kind: 'code-constant', ...(is_stateable_constant(match[1]!, match[2]!) && { value: match[2]!.trim() }) }];
+    const match = CONSTANT_LINE.exec(text);
+    if (!match) return [];
+    const [, indent, modifiers = '', type = '', name, annotation, value] = match as unknown as [string, string, string | undefined, string | undefined, string, string | undefined, string];
+    // a PascalCase name is a C# idiom: only a `const` or `static readonly` field in a .cs file
+    if (/[a-z]/.test(name) && !(/\.cs$/.test(file) && (/\bconst\b/.test(modifiers) || (/\bstatic\b/.test(modifiers) && /\breadonly\b/.test(modifiers))))) return [];
+    if (indent && !is_class_member(file, lines, i, indent.length, modifiers)) return [];
+    if (COLLECTION_VALUE.test(value)) {
+      // a collection is only named, and only when it is annotated or typed (or built by a collection factory), not value-named, and holds nothing key-shaped on its first line
+      if (!(annotation || COLLECTION_TYPE.test(type) || FACTORY_CALL.test(value)) || is_value_name(name) || has_key_token(value)) return [];
+      return [{ kind: 'constant' as const, name, file, line: i + 1, source_kind: 'code-constant' }];
+    }
+    if (!is_constant_value(value)) return [];
+    return [{ kind: 'constant' as const, name, file, line: i + 1, source_kind: 'code-constant', ...(is_stateable_constant(name, value) && { value: value.trim() }) }];
   }) },
   // config and env key NAMES: never a value or a default
   by_pattern('env-var', 'config-key', (file) => CODE.test(file), /(?:process\.env\.([A-Z][A-Z0-9_]+)|process\.env\[\s*['"]([A-Z][A-Z0-9_]+)|os\.environ(?:\.get)?\s*[[(]\s*['"]([A-Z][A-Z0-9_]+)|\bgetenv\(\s*['"]([A-Z][A-Z0-9_]+)|\bENV(?:\.fetch\(|\[)\s*['"]([A-Z][A-Z0-9_]+))/g, (match) => match.slice(1).find(Boolean)),

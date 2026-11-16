@@ -129,7 +129,9 @@
    "id": "security",
    "kind": "new",
    "draft": "judge",
-   "judge": ["auth_check_attempts"],
+   "judge": [
+    "auth_check_attempts"
+   ],
    "security_adjacent": "auth"
   },
   {
@@ -174,6 +176,116 @@
     "drain_batch_size"
    ],
    "path": "features/drain-batch-size.md"
+  },
+  {
+   "id": "beat-a",
+   "kind": "new",
+   "reference": "schedules",
+   "draft": "none",
+   "skipped": "generated reference suggested"
+  },
+  {
+   "id": "beat-b",
+   "kind": "new",
+   "reference": "schedules",
+   "draft": "none",
+   "skipped": "generated reference suggested"
+  },
+  {
+   "id": "beat-c",
+   "kind": "new",
+   "reference": "schedules",
+   "draft": "none",
+   "skipped": "generated reference suggested"
+  },
+  {
+   "id": "pool-a",
+   "keys": [
+    "pool-a",
+    "pool-b"
+   ],
+   "kind": "new",
+   "doc": null,
+   "sources": [
+    "src/pool/limits.ts"
+   ],
+   "draft": "stated",
+   "stated": [
+    "pool_idle_seconds",
+    "pool_max_wait"
+   ]
+  },
+  {
+   "id": "access-a",
+   "kind": "new",
+   "sources": [
+    "src/access/edit.ts"
+   ],
+   "draft": "stated",
+   "stated": [
+    "sync_batch_limit"
+   ]
+  },
+  {
+   "id": "access-b",
+   "kind": "new",
+   "draft": "none",
+   "needs_human": "security check (permission or role check) at src/access/edit.ts:2"
+  },
+  {
+   "id": "rotate",
+   "kind": "new",
+   "reference": "schedules",
+   "draft": "stated",
+   "stated": [
+    "ROTATE_KEEP_DAYS"
+   ],
+   "path": "features/rotate-keep-days.md"
+  },
+  {
+   "id": "docstring",
+   "kind": "new",
+   "sources": [
+    "src/pyjobs/reaper.py"
+   ],
+   "draft": "stated",
+   "stated": [
+    "reap_after_minutes"
+   ]
+  },
+  {
+   "id": "flags",
+   "kind": "new",
+   "sources": [
+    "src/ci/audit.ts"
+   ],
+   "draft": "judge",
+   "judge": [
+    "--omit=dev",
+    "npm audit fix --package-lock-only"
+   ]
+  },
+  {
+   "id": "chunk",
+   "kind": "new",
+   "doc": null,
+   "draft": "stated",
+   "stated": [
+    "chunk_retry_limit"
+   ],
+   "path": "features/chunk/chunk-retry-limit.md"
+  },
+  {
+   "id": "alert-map",
+   "kind": "new",
+   "doc": null,
+   "sources": [
+    "src/alerting/rules.ts"
+   ],
+   "draft": "stated",
+   "stated": [
+    "alert_window_minutes"
+   ]
   }
  ]
 }

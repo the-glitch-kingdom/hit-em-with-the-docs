@@ -13,8 +13,8 @@ import { with_frontmatter } from '../../utils/frontmatter.js';
 import type { SecretsConfig } from '../../utils/config.js';
 import { compute_content_hash } from '../reconcile/ledger.js';
 import type { ReviewEntry } from '../reconcile/review.js';
-import { check_credential_text, check_security_gate, find_security_check, find_sensitive_word, is_security_sensitive, is_stateable_constant } from '../security/gate.js';
-import { compile_facet, match_facets, parse_position_facet, REDACTED_FACET } from './facets.js';
+import { check_credential_text, check_security_gate, find_block_lines, find_security_check, has_code_syntax, find_sensitive_word, is_security_sensitive, is_stateable_constant } from '../security/gate.js';
+import { compile_facet, match_facets, parse_position_facet } from './facets.js';
 import type { FacetHit } from './locate.js';
 import { FALLBACK_DOMAIN, name_new_doc, place_new_doc } from './naming.js';
 import type { Proposal } from './merge.js';
@@ -74,9 +74,8 @@ async function build_facts(repo_root: string, proposal: Proposal, secrets_config
   }
   const sentences: string[] = [];
   const for_judge: JudgeItem[] = [];
-  let lost_facet = false;
+  let lost_facet = (proposal.withheld_facets ?? 0) > 0;
   for (const facet of proposal.missing_facets) {
-    if (facet === REDACTED_FACET) { lost_facet = true; continue; }
     const regex = compile_facet(facet).regex;
     const matches = (text: string): boolean => !!regex && !!match_facets([regex], [text], 1)[0]?.length;
     const position = parse_position_facet(facet);
@@ -112,12 +111,14 @@ function find_anchor(raw_text: string): string | undefined {
 /** Lines read per unit when looking for a security check: a unit citing more than this is too generic to be about one check. */
 const MAX_CHECKED_LINES = 100;
 /** The first located line that is a security check: its kind and place, never its text. */
-async function find_check_line(repo_root: string, sources: FacetHit[]): Promise<{ kind: string; file: string; line: number } | undefined> {
-  const lines_of = new Map<string, string[]>();
+export async function find_check_line(repo_root: string, sources: FacetHit[]): Promise<{ kind: string; file: string; line: number } | undefined> {
+  const lines_of = new Map<string, { lines: string[]; blocks: Set<number> }>();
   for (const found of [...sources].sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line).slice(0, MAX_CHECKED_LINES)) {
-    let lines = lines_of.get(found.file);
-    if (!lines) { lines = (await readFile(join(repo_root, found.file), 'utf-8').catch(() => '')).split('\n'); lines_of.set(found.file, lines); }
-    const kind = find_security_check(lines[found.line - 1] ?? '');
+    let read = lines_of.get(found.file);
+    if (!read) { const text = await readFile(join(repo_root, found.file), 'utf-8').catch(() => ''); read = { lines: text.split('\n'), blocks: find_block_lines(text, found.file) }; lines_of.set(found.file, read); }
+    const text = read.lines[found.line - 1] ?? '';
+    if (read.blocks.has(found.line - 1) && !has_code_syntax(text)) continue; // a docstring or block comment line is prose only when it has no code syntax: a wrongly detected block can then only cause a needless hold
+    const kind = find_security_check(text);
     if (kind) return { kind, file: found.file, line: found.line };
   }
   return undefined;
@@ -127,24 +128,31 @@ export async function build_drafts(options: { repo_root: string; docs_root: stri
   const { repo_root, docs_root, secrets_config } = options;
   const result: DraftResult = { entries: [], needs_human: [], blocked: [], skipped: [] };
   const taken = new Set<string>();
-  for (const proposal of options.proposals) {
+  for (let proposal of options.proposals) {
     const keys = proposal.closes.map((closed) => closed.key);
     const skip = (reason: string): void => void result.skipped.push({ keys, reason });
     if (proposal.kind === 'covered') { skip(`covered by ${proposal.doc}: check ranking and phrasing, nothing to draft`); continue; }
     if (proposal.kind === 'instruction-only') { skip(`the fact is only in agent instruction files (${proposal.instruction_files.join(', ')}): move it into an indexed doc`); continue; }
     if (proposal.blind && !options.include_blind) { skip('blind entry: drafting from it would spoil the blind set (pass --include-blind to draft anyway)'); continue; }
     // #118: withhold only when a located line IS a security check; a topic word alone keeps the unit drafted, marked security-adjacent
-    const check = await find_check_line(repo_root, proposal.sources);
+    const check = await find_check_line(repo_root, [...proposal.sources, ...(proposal.withheld_sources ?? [])]);
     if (check) { result.needs_human.push({ keys, source_files: proposal.source_files, reason: `security check (${check.kind}) at ${check.file}:${check.line}: a person must state it` }); continue; }
     const sensitive = ([['the question', proposal.closes.map((closed) => closed.query)], ['a facet', proposal.missing_facets], ['a source path', proposal.source_files]] as const).flatMap(([where, texts]) => texts.map((text) => ({ where, word: find_sensitive_word(text) }))).find((found) => found.word);
+    if (proposal.withheld_facets && !proposal.sources.length) { result.needs_human.push({ keys, source_files: [], reason: `every facet is withheld (${proposal.withheld_facets}): each is only a credential or config value, so a person must say what to write` }); continue; }
     if (!proposal.sources.length) { skip('nothing located in code: no file:line to ground a draft'); continue; }
-    if (proposal.generated_reference.length) { skip(`generated reference suggested (${proposal.generated_reference.map((list) => `${list.kind} in ${list.file}`).join(', ')}): generate it instead of writing prose`); continue; }
+    // #120: the hint covers the facets that are entries of the declared list; the other facets are still drafted, beside it
+    const reference = proposal.generated_reference;
+    const hint = `generated reference suggested (${reference.map((list) => `${list.kind} in ${list.file}`).join(', ')})`;
+    const listed = new Set(reference.flatMap((list) => list.covers ?? proposal.missing_facets));
+    const rest = proposal.missing_facets.filter((facet) => !listed.has(facet));
+    if (reference.length && !rest.length && !proposal.withheld_facets) { skip(`${hint}: generate it instead of writing prose`); continue; }
+    if (reference.length) proposal = { ...proposal, missing_facets: rest };
     const adjacent = sensitive?.word ? { word: sensitive.word, where: sensitive.where } : undefined;
     if (adjacent) (result.security_adjacent ??= []).push({ keys, ...adjacent });
     const built = await build_facts(repo_root, proposal, secrets_config);
     if (built.lost_facet) result.needs_human.push({ keys, source_files: built.source_files, reason: `a missing fact is only on a line holding a credential or a config value, withheld${built.withheld.length ? `: ${built.withheld.join('; ')}` : ''}` });
     if (!built.source_files.length) { if (!built.lost_facet) skip('no citable line'); continue; }
-    const reasons = [`coverage miss: ${keys.join(', ')}`, ...(adjacent ? [`security-adjacent: judge carefully (\`${adjacent.word}\` in ${adjacent.where}); state no values and no internals of any check`] : [])];
+    const reasons = [`coverage miss: ${keys.join(', ')}`, ...(reference.length ? [`${hint}: it covers ${listed.size} fact(s); the rest are drafted`] : []), ...(adjacent ? [`security-adjacent: judge carefully (\`${adjacent.word}\` in ${adjacent.where}); state no values and no internals of any check`] : [])];
     const mark = adjacent ? { security_adjacent: adjacent } : {};
     const for_judge = built.for_judge.length ? { for_judge: built.for_judge } : {};
     const waiting = `waiting for the judge: ${built.for_judge.length} missing fact(s) need a sentence written from the listed lines (verdict is null, so apply leaves the doc alone)`;
@@ -169,8 +177,10 @@ export async function build_drafts(options: { repo_root: string; docs_root: stri
     // new doc: never overwrite an existing path or another draft's
     const { dir, fallback } = place_new_doc({ ...(proposal.folder && { folder: proposal.folder }), ...(proposal.domain && { domain: proposal.domain }), tier: 'guide' });
     const domain = dir.split('/')[0]!;
-    const title = sentence_case(proposal.closes[0]!.query);
     const stem = name_new_doc({ queries: proposal.closes.map((closed) => closed.query), facets: proposal.missing_facets, source_files: proposal.source_files });
+    // #120: the title and purpose name the subject; the question stays in symptoms
+    const subject = stem.replace(/-/g, ' ');
+    const title = sentence_case(subject);
     let path = `${dir}/${stem}.md`;
     for (let copy = 2; existsSync(join(docs_root, path)) || taken.has(path); copy++) path = `${dir}/${stem}-${copy}.md`;
     taken.add(path);
@@ -182,7 +192,7 @@ export async function build_drafts(options: { repo_root: string; docs_root: stri
     }
     const body = `# ${title}\n\nDrafted from code that search questions could not be answered from; every statement cites the code it came from. Review before accepting.\n\n## What the code defines\n\n${built.sentences.join('\n')}\n`;
     const symptoms = [...new Set(proposal.closes.map((closed) => closed.query))].slice(0, 5);
-    const draft = with_frontmatter(body, { title, tier: 'guide', domains: [domain], status: 'draft', version: '1.0.0', last_updated: options.today, purpose: `Answers: ${proposal.closes[0]!.query}`, symptoms, sources: built.source_files });
+    const draft = with_frontmatter(body, { title, tier: 'guide', domains: [domain], status: 'draft', version: '1.0.0', last_updated: options.today, purpose: `Explains ${subject}, drawn from the code`, symptoms, sources: built.source_files });
     const gate = check_security_gate(draft, path, secrets_config)[0];
     if (gate) { result.blocked.push({ keys, reason: `security gate: ${path}:${gate.line} (${gate.rule}, ${gate.masked})` }); continue; }
     result.entries.push({ path, content_hash: compute_content_hash(''), verdict: 'create', draft, sources: built.source_files, ...for_judge, ...mark, reasons: domain_reasons });
